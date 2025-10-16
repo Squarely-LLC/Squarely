@@ -1,0 +1,6 @@
+ignoredBuiltDependencies:
+  - '@scarf/scarf'
+  - esbuild
+  - msw
+  - unrs-resolver
+  - vue-demi

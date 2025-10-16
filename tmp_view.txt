@@ -1,0 +1,494 @@
+<!-- Contacts page -->
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+
+import ContactEditDialog from "@/views/apps/contact/list/ContactEditDialog.vue";
+import AddNewUserDrawer from "@/views/apps/contact/list/AddNewUserDrawer.vue";
+import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+
+type SortKey = "user" | "status" | "category" | "channel" | "createdAt";
+type SortVal = { key: SortKey; order: "asc" | "desc" };
+
+const searchQuery = ref("");
+const selectedRole = ref<string | undefined>();
+const selectedPlan = ref<string | undefined>();
+const selectedStatus = ref<string | undefined>();
+
+const sortOptions: { title: string; value: SortVal }[] = [
+  { title: "Name (A-Z)", value: { key: "user", order: "asc" } },
+  { title: "Name (Z-A)", value: { key: "user", order: "desc" } },
+  {
+    title: "Recently Added",
+    value: { key: "createdAt", order: "desc" },
+  },
+];
+
+const selectedSort = ref<SortVal | undefined>(sortOptions[0].value);
+
+const itemsPerPage = ref(15);\nconst page = ref(1);\nconst sortBy = ref<string | undefined>(selectedSort.value?.key);\nconst orderBy = ref<"asc" | "desc" | undefined>(selectedSort.value?.order);\nconst selectedRows = ref<number[]>([]);
+
+const headers = [
+  { title: "Name", key: "user" },
+  { title: "Role", key: "class" },
+  { title: "Number", key: "number" },
+  { title: "Connections", key: "connections" },
+  { title: "Status", key: "status" },
+  { title: "Channel", key: "channel" },
+  { title: "Actions", key: "actions", sortable: false },
+];
+
+const roleFilter = computed(() =>
+  selectedRole.value ? selectedRole.value : undefined
+);
+const planFilter = computed(() =>
+  selectedPlan.value ? selectedPlan.value : undefined
+);
+const statusFilter = computed(() => {
+  if (!selectedStatus.value) return undefined;
+  if (selectedStatus.value === "Cold") return "Dormant";
+  return selectedStatus.value;
+});
+
+const { data: contactsData, execute: executeFetch } = await useApi<any>(
+  createUrl("/apps/contacts", {
+    query: {
+      q: searchQuery,
+      class: roleFilter,
+      category: planFilter,
+      status: statusFilter,
+      itemsPerPage,
+      page,
+      sortBy,
+      orderBy,
+    },
+  })
+);
+
+const fetchContacts = () => executeFetch();
+
+watch(selectedSort, (val) => {
+  if (!val) {
+    sortBy.value = undefined;
+    orderBy.value = undefined;
+  } else {
+    sortBy.value = val.key;
+    orderBy.value = val.order;
+  }
+  page.value = 1;
+  fetchContacts();
+});
+
+watch(
+  [
+    searchQuery,
+    selectedRole,
+    selectedPlan,
+    selectedStatus,
+    itemsPerPage,
+    sortBy,
+    orderBy,
+    page,
+  ],
+  () => fetchContacts()
+);
+
+const contacts = computed<ContactProperties[]>(() => contactsData.value?.users ?? []);
+const totalContacts = computed(() => contactsData.value?.totalUsers ?? 0);
+
+const roles = [
+  { title: "All", value: "" },
+  { title: "Client", value: "Client" },
+  { title: "Contact", value: "Contact" },
+  { title: "Lead", value: "Lead" },
+  { title: "Supplier", value: "Supplier" },
+  { title: "Owner", value: "Owner" },
+];
+
+const plans = [
+  { title: "All", value: "" },
+  { title: "General", value: "General" },
+  { title: "Real Estate", value: "Real Estate" },
+  { title: "VIP", value: "VIP" },
+];
+
+const statusOptions = [
+  { title: "All", value: "" },
+  { title: "Cold", value: "Cold" },
+  { title: "Active", value: "Active" },
+  { title: "Lost", value: "Lost" },
+];
+
+const resolveClassVariant = (contactClass: string) => {
+  switch (contactClass) {
+    case "Lead":
+      return { color: "warning", icon: "tabler-target" };
+    case "Client":
+      return { color: "primary", icon: "tabler-briefcase" };
+    case "Supplier":
+      return { color: "info", icon: "tabler-truck" };
+    case "Contact":
+      return { color: "success", icon: "tabler-user" };
+    case "Owner":
+      return { color: "secondary", icon: "tabler-building" };
+    default:
+      return { color: "primary", icon: "tabler-user" };
+  }
+};
+
+const resolveStatusColor = (status: string) => {
+  switch (status) {
+    case "Active":
+      return "success";
+    case "Dormant":
+      return "secondary";
+    case "Potential":
+      return "info";
+    case "Lost":
+      return "error";
+    default:
+      return "primary";
+  }
+};
+
+const channelColor = (channel: string) => {
+  switch (channel) {
+    case "Direct Sales":
+      return "primary";
+    case "Referral":
+      return "success";
+    case "Social Media":
+      return "info";
+    case "Website":
+      return "secondary";
+    case "Email Campaigns":
+      return "warning";
+    default:
+      return "primary";
+  }
+};
+
+const avatarText = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+const isAddNewUserDrawerVisible = ref(false);
+const isContactEditDialogVisible = ref(false);
+const selectedContact = ref<ContactProperties | null>(null);
+const loading = ref(false);
+const error = ref<string | null>(null);
+
+const addNewContact = async (contact: ContactProperties) => {
+  await $api("/apps/contacts", {
+    method: "POST",
+    body: contact,
+  });
+  fetchContacts();
+};
+
+const deleteContact = async (id: number) => {
+  await $api(`/apps/contacts/${id}`, { method: "DELETE" });
+  const index = selectedRows.value.findIndex((row) => row === id);
+  if (index !== -1) selectedRows.value.splice(index, 1);
+  fetchContacts();
+};
+
+const fetchContactDetails = async (id: number | string) => {
+  try {
+    loading.value = true;
+    error.value = null;
+    const { data } = await useApi<any>(`/apps/contacts/${id}`);
+    const contact = data?.value ?? data ?? null;
+    selectedContact.value = contact ?? null;
+  } catch (err) {
+    console.error(err);
+    error.value = "Failed to load contact";
+    selectedContact.value = null;
+  } finally {
+    loading.value = false;
+  }
+};
+
+const openEditDialog = async (id: number | string) => {
+  await fetchContactDetails(id);
+  if (selectedContact.value) {
+    isContactEditDialogVisible.value = true;
+  }
+};
+
+const saveEditedContact = async (payload: ContactProperties) => {
+  try {
+    loading.value = true;
+    await $api(`/apps/contacts/${payload.id}`, {
+      method: "PUT",
+      body: payload,
+    });
+    isContactEditDialogVisible.value = false;
+    selectedContact.value = null;
+    await fetchContacts();
+  } catch (err) {
+    console.error(err);
+    error.value = "Failed to save contact";
+  } finally {
+    loading.value = false;
+  }
+};
+
+const updateOptions = (options: any) => {
+  sortBy.value = options.sortBy?.[0]?.key;
+  orderBy.value = options.sortBy?.[0]?.order;
+
+  // keep dropdown visually in sync with header clicks
+  const found = sortOptions.find(
+    (opt) => opt.value.key === sortBy.value && opt.value.order === orderBy.value
+  );
+  selectedSort.value = found?.value;
+};
+
+const connectionPreview = (connections: ContactProperties["connections"]) =>
+  connections.slice(0, 2);
+
+const connectionOverflow = (connections: ContactProperties["connections"]) =>
+  Math.max(connections.length - 2, 0);
+
+</script>
+
+<template>
+  <section>
+    <VCard class="mb-6">
+      <VCardItem class="pb-4">
+        <VCardTitle>Contacts</VCardTitle>
+      </VCardItem>
+
+      <VCardText>
+        <VRow>
+          <VCol cols="12" sm="4">
+            <AppSelect
+              v-model="selectedRole"
+              placeholder="Select Role"
+              :items="roles"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+
+          <VCol cols="12" sm="4">
+            <AppSelect
+              v-model="selectedPlan"
+              placeholder="Select Category"
+              :items="plans"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+
+          <VCol cols="12" sm="4">
+            <AppSelect
+              v-model="selectedStatus"
+              placeholder="Select Status"
+              :items="statusOptions"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+
+          <VCol cols="12" sm="4">
+            <AppSelect
+              v-model="selectedSort"
+              placeholder="Sort By"
+              :return-object="true"
+              :items="sortOptions"
+              item-title="title"
+              item-value="value"
+            />
+          </VCol>
+        </VRow>
+      </VCardText>
+
+      <VDivider />
+
+      <VCardText class="d-flex flex-wrap gap-4">
+        <div class="me-3 d-flex gap-3">
+          <AppSelect
+            :model-value="itemsPerPage"
+            :items="[
+              { value: 10, title: '10' },
+              { value: 25, title: '25' },
+              { value: 50, title: '50' },
+              { value: 100, title: '100' },
+              { value: -1, title: 'All' },
+            ]"
+            style="inline-size: 6.25rem"
+            @update:model-value="(value) => (itemsPerPage = Number(value))"
+          />
+        </div>
+
+        <VSpacer />
+
+        <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
+          <div style="inline-size: 15.625rem">
+            <AppTextField v-model="searchQuery" placeholder="Search Contacts" />
+          </div>
+
+          <VBtn variant="tonal" color="secondary" prepend-icon="tabler-upload">
+            Export
+          </VBtn>
+
+          <VBtn prepend-icon="tabler-plus" @click="isAddNewUserDrawerVisible = true">
+            Add New Contact
+          </VBtn>
+        </div>
+      </VCardText>
+    </VCard>
+
+    <VCard>
+      <VDataTableServer
+        v-model:items-per-page="itemsPerPage"
+        v-model:model-value="selectedRows"
+        v-model:page="page"
+        :items="contacts"
+        :items-length="totalContacts"
+        item-value="id"
+        :headers="headers"
+        class="text-no-wrap"\n        :sort-by="sortBy ? [{ key: sortBy, order: orderBy }] : []"\n        @update:options="updateOptions"
+      >
+        <template #item.user="{ item }">
+          <div class="d-flex align-center gap-x-4">
+            <VAvatar
+              size="34"
+              :variant="!item.picture ? 'tonal' : undefined"
+              :color="!item.picture ? resolveClassVariant(item.class).color : undefined"
+            >
+              <VImg v-if="item.picture" :src="item.picture" />
+              <span v-else>{{ avatarText(item.fullName) }}</span>
+            </VAvatar>
+            <div class="d-flex flex-column">
+              <h6 class="text-base">
+                <RouterLink
+                  :to="{ name: 'apps-contact-view-id', params: { id: item.id } }"
+                  class="font-weight-medium text-link"
+                >
+                  {{ item.fullName }}
+                </RouterLink>
+              </h6>
+              <div class="text-sm">
+                {{ item.email }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template #item.class="{ item }">
+          <VChip
+            :color="resolveClassVariant(item.class).color"
+            size="small"
+            variant="tonal"
+            class="text-capitalize"
+          >
+            {{ item.class }}
+          </VChip>
+        </template>
+
+        <template #item.number="{ item }">
+          <a class="text-body-1" :href="`tel:${item.number}`">{{ item.number }}</a>
+        </template>
+
+        <template #item.connections="{ item }">
+          <div class="d-flex flex-column gap-1">
+            <div
+              v-for="connection in connectionPreview(item.connections)"
+              :key="`${item.id}-${connection.contactId}`"
+              class="text-xs"
+            >
+              <span class="font-weight-medium">{{ connection.contactName }}</span>
+              <span class="text-medium-emphasis">
+                - {{ connection.relation }}
+                <span v-if="connection.isPrimary" class="text-primary">(Primary)</span>
+              </span>
+            </div>
+            <span
+              v-if="connectionOverflow(item.connections) > 0"
+              class="text-xs text-medium-emphasis"
+            >
+              +{{ connectionOverflow(item.connections) }} more
+            </span>
+          </div>
+        </template>
+
+        <template #item.status="{ item }">
+          <VChip
+            :color="resolveStatusColor(item.status)"
+            size="small"
+            label
+            class="text-capitalize"
+          >
+            {{ item.status }}
+          </VChip>
+        </template>
+
+        <template #item.channel="{ item }">
+          <VChip :color="channelColor(item.channel)" size="small" variant="tonal">
+            {{ item.channel }}
+          </VChip>
+        </template>
+
+        <template #item.actions="{ item }">
+          <IconBtn @click="openEditDialog(item.id)" :disabled="loading">
+            <VIcon icon="tabler-edit" />
+          </IconBtn>
+
+          <VBtn icon variant="text" color="medium-emphasis">
+            <VIcon icon="tabler-dots-vertical" />
+            <VMenu activator="parent">
+              <VList>
+                <VListItem @click="deleteContact(item.id)">
+                  <template #prepend>
+                    <VIcon icon="tabler-trash" />
+                  </template>
+                  <VListItemTitle>Delete</VListItemTitle>
+                </VListItem>
+              </VList>
+            </VMenu>
+          </VBtn>
+        </template>
+
+        <template #bottom>
+          <TablePagination
+            v-model:page="page"
+            :items-per-page="itemsPerPage"
+            :total-items="totalContacts"
+          />
+        </template>
+      </VDataTableServer>
+    </VCard>
+
+    <AddNewUserDrawer
+      v-model:is-drawer-open="isAddNewUserDrawerVisible"
+      @user-data="addNewContact"
+    />
+
+    <ContactEditDialog
+      v-if="isContactEditDialogVisible && selectedContact"
+      v-model:is-dialog-visible="isContactEditDialogVisible"
+      :contact="selectedContact"
+      :loading="loading"
+      :error="error"
+      @submit="saveEditedContact"
+    />
+  </section>
+</template>
+
+
+
+
+
+
+
+
+
+
+
