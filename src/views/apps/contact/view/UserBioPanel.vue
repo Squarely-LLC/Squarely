@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import type {
+  ContactConnection,
+  ContactProperties,
+} from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useContactsStore } from "@/stores/contacts";
 import { computed, ref } from "vue";
-import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 
 import ContactEditDialog from "@/views/apps/contact/list/ContactEditDialog.vue";
 
@@ -77,11 +81,216 @@ const avatarText = (name?: string | null) => {
 };
 
 const connectionList = computed(() => props.userData.connections ?? []);
+
+// local override so UI updates instantly when adding a connection
+const localConnections = ref<ContactConnection[] | null>(null);
+
+const resolvedConnectionList = computed(() => {
+  const source = localConnections.value ?? connectionList.value;
+  return source.map((c) => {
+    const linked = contactsStore.byId(c.contactId);
+    return {
+      ...c,
+      picture: c.picture ?? linked?.picture,
+      contactName: c.contactName ?? linked?.fullName,
+    };
+  });
+});
+
 const primaryConnections = computed(() =>
-  connectionList.value.filter((connection) => connection.isPrimary)
+  resolvedConnectionList.value.filter((connection) => connection.isPrimary)
 );
 const secondaryConnections = computed(() =>
-  connectionList.value.filter((connection) => !connection.isPrimary)
+  resolvedConnectionList.value.filter((connection) => !connection.isPrimary)
+);
+
+const contactsStore = useContactsStore();
+
+// Menu actions for connections (kept minimal — expand as needed)
+const moreList = [
+  { title: "Add Connection", value: "Add Connection" },
+  { title: "Manage", value: "Manage" },
+];
+
+const isAddConnectionDialogVisible = ref(false);
+
+// tooltip label for accessibility / localization fallback
+const addConnectionTooltip = (() => {
+  try {
+    // try to use the global i18n if present
+    // @ts-ignore
+    const { t } = useI18n ? useI18n() : { t: undefined };
+    // if t exists use it; otherwise fallback
+    // @ts-ignore
+    return (t && t("Add Connection")) || "Add connection";
+  } catch (e) {
+    return "Add connection";
+  }
+})();
+
+const handleMoreAction = (val: string) => {
+  switch (val) {
+    case "Add Connection":
+      isAddConnectionDialogVisible.value = true;
+      break;
+    case "Manage":
+      console.log("Manage connections for", props.userData.fullName);
+      break;
+    default:
+      console.log("Unhandled action:", val);
+  }
+};
+
+const makePrimary = (contactId: number) => {
+  // choose the source array (local override if present) so UI updates instantly
+  const source = localConnections.value ?? connectionList.value;
+  const updated = source.map((c) => ({
+    ...c,
+    isPrimary: c.contactId === contactId,
+  }));
+
+  // update local override so UI reflects the change immediately
+  localConnections.value = [...updated];
+
+  // Persist the change via the contacts store so parent views update
+  try {
+    contactsStore.updateContact(props.userData.id, { connections: updated });
+  } catch (err) {
+    console.error("Failed to set primary connection:", err);
+  }
+  // highlight the promoted contact briefly
+  highlightedContactId.value = contactId;
+  setTimeout(() => (highlightedContactId.value = null), 2200);
+};
+
+// snackbar state for feedback
+const showSnackbar = ref(false);
+const snackbarMessage = ref("");
+// highlighted contact id for temporary visual highlight
+const highlightedContactId = ref<number | null>(null);
+
+// delete confirmation dialog state
+const confirmDeleteDialogVisible = ref(false);
+const deleteCandidateId = ref<number | null>(null);
+
+const askDeleteConnection = (contactId: number) => {
+  deleteCandidateId.value = contactId;
+  confirmDeleteDialogVisible.value = true;
+};
+
+const performDeleteConnection = () => {
+  const id = deleteCandidateId.value;
+  if (id === null) return;
+
+  // remove from local override first for instant UI feedback
+  const source = localConnections.value ?? connectionList.value ?? [];
+  const updated = source.filter((c) => c.contactId !== id);
+  localConnections.value = [...updated];
+
+  // persist via store
+  try {
+    contactsStore.updateContact(props.userData.id, { connections: updated });
+  } catch (err) {
+    console.error("Failed to delete connection:", err);
+    snackbarMessage.value = "Failed to remove connection";
+    showSnackbar.value = true;
+    confirmDeleteDialogVisible.value = false;
+    deleteCandidateId.value = null;
+    return;
+  }
+
+  snackbarMessage.value = "Connection removed";
+  showSnackbar.value = true;
+  confirmDeleteDialogVisible.value = false;
+  deleteCandidateId.value = null;
+};
+
+// handler for AddConnectionDialog emitted payload
+const onAddConnection = (payload: {
+  contactId: number | string;
+  relation?: string;
+}) => {
+  const contactIdNum = Number(payload.contactId);
+  const newConn: ContactConnection = {
+    contactId: contactIdNum,
+    contactName: contactsStore.byId(contactIdNum)?.fullName || "",
+    isPrimary: false,
+    relation: payload.relation || "",
+  };
+
+  // update localConnections so UI updates instantly
+  localConnections.value = [
+    ...(localConnections.value ?? connectionList.value),
+    newConn,
+  ];
+
+  // persist via store
+  try {
+    const updated = [...(connectionList.value ?? []), newConn];
+    contactsStore.updateContact(props.userData.id, { connections: updated });
+  } catch (err) {
+    console.error("Failed to persist new connection:", err);
+    snackbarMessage.value = "Failed to add connection";
+    showSnackbar.value = true;
+    return;
+  }
+
+  snackbarMessage.value = `${
+    newConn.contactName || "Contact"
+  } added to connections`;
+  showSnackbar.value = true;
+};
+
+// Edit relation dialog state and handlers (missing definitions were causing template errors)
+const editRelationDialogVisible = ref(false);
+const editCandidateId = ref<number | null>(null);
+const editRelation = ref("");
+
+const openEditRelation = (contactId: number) => {
+  const source = localConnections.value ?? connectionList.value ?? [];
+  const existing = source.find((c) => c.contactId === contactId);
+  editCandidateId.value = contactId;
+  editRelation.value = existing?.relation ?? "";
+  editRelationDialogVisible.value = true;
+};
+
+const closeEditRelation = () => {
+  editRelationDialogVisible.value = false;
+  editCandidateId.value = null;
+};
+
+const saveEditRelation = () => {
+  const id = editCandidateId.value;
+  if (id === null) return;
+
+  const source = localConnections.value ?? connectionList.value ?? [];
+  const updated = source.map((c) =>
+    c.contactId === id ? { ...c, relation: editRelation.value } : c
+  );
+
+  localConnections.value = [...updated];
+
+  try {
+    contactsStore.updateContact(props.userData.id, { connections: updated });
+  } catch (err) {
+    console.error("Failed to update connection relation:", err);
+    snackbarMessage.value = "Failed to update relation";
+    showSnackbar.value = true;
+    editRelationDialogVisible.value = false;
+    editCandidateId.value = null;
+    return;
+  }
+
+  snackbarMessage.value = "Relation updated";
+  showSnackbar.value = true;
+  editRelationDialogVisible.value = false;
+  editCandidateId.value = null;
+};
+
+const editCandidate = computed(() =>
+  editCandidateId.value == null
+    ? null
+    : contactsStore.byId(editCandidateId.value)
 );
 </script>
 
@@ -93,7 +302,11 @@ const secondaryConnections = computed(() =>
           <VAvatar
             rounded
             :size="100"
-            :color="!props.userData.picture ? classVariant(props.userData.class).color : undefined"
+            :color="
+              !props.userData.picture
+                ? classVariant(props.userData.class).color
+                : undefined
+            "
             :variant="!props.userData.picture ? 'tonal' : undefined"
           >
             <VImg v-if="props.userData.picture" :src="props.userData.picture" />
@@ -131,87 +344,140 @@ const secondaryConnections = computed(() =>
               label
               size="small"
               class="text-capitalize"
-              :color="channelColor(props.userData.channel)"
+              color="secondary"
               variant="tonal"
             >
-              {{ props.userData.channel }}
+              {{ props.userData.type }}
             </VChip>
           </div>
         </VCardText>
 
         <VCardText>
-          <VList class="py-0">
+          <h5 class="text-h5">Details</h5>
+
+          <VDivider class="my-4" />
+          <VList class="py-0 card-list details-list">
             <VListItem>
-              <VListItemTitle>Email</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.email }}</VListItemSubtitle>
-            </VListItem>
-
-            <VListItem>
-              <VListItemTitle>Phone</VListItemTitle>
-              <VListItemSubtitle>
-                <a :href="`tel:${props.userData.number}`">{{ props.userData.number }}</a>
-              </VListItemSubtitle>
-            </VListItem>
-
-            <VListItem>
-              <VListItemTitle>Type</VListItemTitle>
-              <VListItemSubtitle class="text-capitalize">
-                {{ props.userData.type }}
-              </VListItemSubtitle>
-            </VListItem>
-
-            <VListItem>
-              <VListItemTitle>Category</VListItemTitle>
-              <VListItemSubtitle class="text-capitalize">
-                {{ props.userData.category }}
-              </VListItemSubtitle>
-            </VListItem>
-
-            <VListItem v-if="props.userData.language">
-              <VListItemTitle>Language</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.language }}</VListItemSubtitle>
-            </VListItem>
-
-            <VListItem v-if="props.userData.country">
-              <VListItemTitle>Country</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.country }}</VListItemSubtitle>
-            </VListItem>
-
-            <VListItem v-if="props.userData.city">
-              <VListItemTitle>City</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.city }}</VListItemSubtitle>
-            </VListItem>
-
-            <VListItem v-if="props.userData.address">
-              <VListItemTitle>Address</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.address }}</VListItemSubtitle>
-            </VListItem>
-
-            <VListItem v-if="props.userData.poBox">
-              <VListItemTitle>PO Box</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.poBox }}</VListItemSubtitle>
-            </VListItem>
-
-            <VListItem>
-              <VListItemTitle>Works in sales</VListItemTitle>
-              <VListItemSubtitle>
-                {{ props.userData.worksInSales ? "Yes" : "No" }}
-              </VListItemSubtitle>
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Email:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.email }}
+                  </div>
+                </h6>
+              </VListItemTitle>
             </VListItem>
 
             <VListItem v-if="props.userData.accounting?.taxId">
-              <VListItemTitle>Tax ID</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.accounting.taxId }}</VListItemSubtitle>
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Tax ID:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.accounting.taxId }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem>
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Contact:
+                  <div class="d-inline-block text-body-1">
+                    <a :href="`tel:${props.userData.number}`">{{
+                      props.userData.number
+                    }}</a>
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.language">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Language:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.language }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.country">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Country:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.country }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.city">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  City:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.city }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.address">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Address:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.address }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.poBox">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  PO Box:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.poBox }}
+                  </div>
+                </h6>
+              </VListItemTitle>
             </VListItem>
 
             <VListItem v-if="props.userData.accounting?.crn">
-              <VListItemTitle>CRN</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.accounting.crn }}</VListItemSubtitle>
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  CRN:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.accounting.crn }}
+                  </div>
+                </h6>
+              </VListItemTitle>
             </VListItem>
 
             <VListItem v-if="props.userData.accounting?.vatNumber">
-              <VListItemTitle>VAT Number</VListItemTitle>
-              <VListItemSubtitle>{{ props.userData.accounting.vatNumber }}</VListItemSubtitle>
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  VAT Number:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.accounting.vatNumber }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem>
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Works in sales:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.worksInSales ? "Yes" : "No" }}
+                  </div>
+                </h6>
+              </VListItemTitle>
             </VListItem>
           </VList>
         </VCardText>
@@ -225,33 +491,268 @@ const secondaryConnections = computed(() =>
 
     <VCol cols="12">
       <VCard title="Connections">
-        <VCardText>
-          <VList class="py-0">
-            <template v-if="connectionList.length">
-              <VSubheader inset v-if="primaryConnections.length">
-                Primary
-              </VSubheader>
-              <VListItem
-                v-for="connection in primaryConnections"
-                :key="`primary-${connection.contactId}`"
-              >
-                <VListItemTitle>{{ connection.contactName }}</VListItemTitle>
-                <VListItemSubtitle>{{ connection.relation }}</VListItemSubtitle>
-              </VListItem>
+        <template #append>
+          <div>
+            <!-- Single Add Connection button replaces the settings menu -->
+            <VBtn
+              icon
+              variant="text"
+              @click="isAddConnectionDialogVisible = true"
+            >
+              <VIcon icon="tabler-user-plus" color="secondary" />
+              <VTooltip activator="parent" location="top">{{
+                addConnectionTooltip
+              }}</VTooltip>
+            </VBtn>
+          </div>
+        </template>
 
-              <VSubheader inset v-if="secondaryConnections.length">
-                Secondary
-              </VSubheader>
-              <VListItem
-                v-for="connection in secondaryConnections"
-                :key="`secondary-${connection.contactId}`"
-              >
-                <VListItemTitle>{{ connection.contactName }}</VListItemTitle>
-                <VListItemSubtitle>{{ connection.relation }}</VListItemSubtitle>
+        <VCardText>
+          <VList class="card-list">
+            <template v-if="!resolvedConnectionList.length">
+              <VListItem>
+                <VListItemTitle class="text-center w-100 text-medium-emphasis">
+                  No connections yet.
+                </VListItemTitle>
               </VListItem>
             </template>
-            <VListItem v-else>
-              <VListItemSubtitle>No recorded connections.</VListItemSubtitle>
+            <template v-else>
+              <!-- Primary connections first -->
+              <template v-if="primaryConnections.length">
+                <VListItem
+                  v-for="conn in primaryConnections"
+                  :key="`primary-` + conn.contactId"
+                  :class="{
+                    'connection-highlight':
+                      highlightedContactId === conn.contactId,
+                  }"
+                >
+                  <template #prepend>
+                    <VAvatar
+                      size="38"
+                      :color="!conn.picture ? 'primary' : undefined"
+                      :variant="!conn.picture ? 'tonal' : undefined"
+                    >
+                      <VImg v-if="conn.picture" :src="conn.picture" />
+                      <span v-else class="text-sm font-weight-medium">{{
+                        avatarText(conn.contactName)
+                      }}</span>
+                    </VAvatar>
+                  </template>
+
+                  <VListItemContent>
+                    <VListItemTitle
+                      class="font-weight-medium d-flex align-center gap-2"
+                    >
+                      <span>{{ conn.contactName }}</span>
+                      <VChip
+                        v-if="conn.isPrimary"
+                        size="small"
+                        label
+                        color="primary"
+                        variant="tonal"
+                        >Primary</VChip
+                      >
+                    </VListItemTitle>
+                    <VListItemSubtitle>{{ conn.relation }}</VListItemSubtitle>
+                  </VListItemContent>
+
+                  <template #append>
+                    <div class="d-flex align-center">
+                      <VBtn icon variant="text" color="medium-emphasis">
+                        <VIcon icon="tabler-dots-vertical" />
+                        <VMenu activator="parent">
+                          <VList>
+                            <VListItem
+                              @click="askDeleteConnection(conn.contactId)"
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-trash" />
+                              </template>
+                              <VListItemTitle>Delete</VListItemTitle>
+                            </VListItem>
+
+                            <VListItem
+                              v-if="!conn.isPrimary"
+                              @click="makePrimary(conn.contactId)"
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-pentagon-number-1" />
+                              </template>
+                              <VListItemTitle>Make Primary</VListItemTitle>
+                            </VListItem>
+
+                            <VListItem
+                              @click="openEditRelation(conn.contactId)"
+                              link
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-edit" />
+                              </template>
+                              <VListItemTitle>Edit</VListItemTitle>
+                            </VListItem>
+                          </VList>
+                        </VMenu>
+                      </VBtn>
+
+                      <VBtn icon variant="text" color="medium-emphasis">
+                        <VIcon icon="tabler-send-2" />
+                        <VMenu activator="parent">
+                          <VList>
+                            <VListItem link>
+                              <template #prepend>
+                                <VIcon icon="tabler-notes" />
+                              </template>
+                              <VListItemTitle>To Do</VListItemTitle>
+                            </VListItem>
+
+                            <VListItem>
+                              <template #prepend>
+                                <VIcon icon="tabler-calendar-plus" />
+                              </template>
+                              <VListItemTitle>Meeting</VListItemTitle>
+                            </VListItem>
+
+                            <VListItem>
+                              <template #prepend>
+                                <VIcon icon="tabler-mail" />
+                              </template>
+                              <VListItemTitle>Email</VListItemTitle>
+                            </VListItem>
+
+                            <VListItem>
+                              <template #prepend>
+                                <VIcon icon="tabler-phone" />
+                              </template>
+                              <VListItemTitle>Call</VListItemTitle>
+                            </VListItem>
+                          </VList>
+                        </VMenu>
+                      </VBtn>
+                    </div>
+                  </template>
+                </VListItem>
+              </template>
+
+              <VDivider
+                class="mb-5"
+                v-if="primaryConnections.length && secondaryConnections.length"
+              />
+
+              <!-- Secondary connections -->
+              <template
+                v-for="conn in secondaryConnections"
+                :key="conn.contactId"
+              >
+                <VListItem
+                  :class="{
+                    'connection-highlight':
+                      highlightedContactId === conn.contactId,
+                  }"
+                >
+                  <template #prepend>
+                    <VAvatar
+                      size="38"
+                      :color="!conn.picture ? 'primary' : undefined"
+                      :variant="!conn.picture ? 'tonal' : undefined"
+                    >
+                      <VImg v-if="conn.picture" :src="conn.picture" />
+                      <span v-else class="text-sm font-weight-medium">{{
+                        avatarText(conn.contactName)
+                      }}</span>
+                    </VAvatar>
+                  </template>
+
+                  <VListItemContent>
+                    <VListItemTitle class="font-weight-medium">
+                      {{ conn.contactName }}
+                    </VListItemTitle>
+                    <VListItemSubtitle>{{ conn.relation }}</VListItemSubtitle>
+                  </VListItemContent>
+
+                  <template #append>
+                    <div class="d-flex align-center">
+                      <VBtn icon variant="text" color="medium-emphasis">
+                        <VIcon icon="tabler-dots-vertical" />
+                        <VMenu activator="parent">
+                          <VList>
+                            <VListItem
+                              v-if="!conn.isPrimary"
+                              @click="makePrimary(conn.contactId)"
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-pentagon-number-1" />
+                              </template>
+                              <VListItemTitle>Make Primary</VListItemTitle>
+                            </VListItem>
+
+                            <VDivider></VDivider>
+
+                            <VListItem
+                              @click="openEditRelation(conn.contactId)"
+                              link
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-edit" />
+                              </template>
+                              <VListItemTitle>Edit</VListItemTitle>
+                            </VListItem>
+
+                            <VListItem
+                              @click="askDeleteConnection(conn.contactId)"
+                              link
+                            >
+                              <template #prepend>
+                                <VIcon color="error" icon="tabler-trash" />
+                              </template>
+                              <VListItemTitle>Delete</VListItemTitle>
+                            </VListItem>
+                          </VList>
+                        </VMenu>
+                      </VBtn>
+                    </div>
+                    <VBtn icon variant="text" color="medium-emphasis">
+                      <VIcon icon="tabler-send-2" />
+                      <VMenu activator="parent">
+                        <VList>
+                          <VListItem link>
+                            <template #prepend>
+                              <VIcon icon="tabler-notes" />
+                            </template>
+                            <VListItemTitle>To Do</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem>
+                            <template #prepend>
+                              <VIcon icon="tabler-calendar-plus" />
+                            </template>
+                            <VListItemTitle>Meeting</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem>
+                            <template #prepend>
+                              <VIcon icon="tabler-mail" />
+                            </template>
+                            <VListItemTitle>Email</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem>
+                            <template #prepend>
+                              <VIcon icon="tabler-phone" />
+                            </template>
+                            <VListItemTitle>Call</VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
+                    </VBtn>
+                  </template>
+                </VListItem>
+              </template>
+            </template>
+            <VListItem>
+              <VListItemTitle class="pt-2 text-center">
+                <!-- Keep as-is / link removed in your snippet -->
+              </VListItemTitle>
             </VListItem>
           </VList>
         </VCardText>
@@ -263,7 +764,97 @@ const secondaryConnections = computed(() =>
     v-model:is-dialog-visible="isContactEditDialogVisible"
     :contact="props.userData"
   />
+  <AddConnectionDialog
+    v-model:is-dialog-visible="isAddConnectionDialogVisible"
+    :current-contact-id="props.userData.id"
+    :existing-connections="connectionList.map((c) => c.contactId)"
+    @add-connection="onAddConnection"
+  />
+  <VDialog v-model="confirmDeleteDialogVisible" persistent max-width="400">
+    <VCard>
+      <VCardText> Are you sure you want to remove this connection? </VCardText>
+      <VCardActions>
+        <VBtn
+          variant="text"
+          @click="
+            () => {
+              confirmDeleteDialogVisible = false;
+              deleteCandidateId = null;
+            }
+          "
+          >Cancel</VBtn
+        >
+        <VBtn color="error" variant="tonal" @click="performDeleteConnection"
+          >Delete</VBtn
+        >
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="editRelationDialogVisible" max-width="480">
+    <VCard>
+      <VCardTitle>Edit Connection</VCardTitle>
+      <VCardText>
+        <div class="mb-4">
+          <strong>Contact: </strong>
+          <span>
+            {{ editCandidate?.fullName || "Unknown" }}
+          </span>
+        </div>
+        <VTextField v-model="editRelation" label="Relation" />
+      </VCardText>
+      <VCardActions>
+        <VBtn variant="text" @click="closeEditRelation">Cancel</VBtn>
+        <VBtn color="primary" variant="tonal" @click="saveEditRelation"
+          >Save</VBtn
+        >
+      </VCardActions>
+    </VCard>
+  </VDialog>
+  <VSnackbar
+    v-model="showSnackbar"
+    timeout="3000"
+    color="success"
+    variant="tonal"
+  >
+    <div class="d-flex align-center">
+      <VIcon icon="tabler-check" class="me-2" />
+      {{ snackbarMessage }}
+    </div>
+  </VSnackbar>
 </template>
 
+<style scoped>
+.connection-highlight {
+  border-radius: 6px;
+  animation: highlight-anim 2s ease-in-out;
+}
 
+.card-list {
+  --v-card-list-gap: 0.5rem;
+}
 
+@keyframes highlight-anim {
+  0% {
+    background-color: rgb(16 185 129 / 0%);
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 0%);
+  }
+
+  10% {
+    background-color: rgb(16 185 129 / 12%);
+    box-shadow: 0 0 0 6px rgb(16 185 129 / 12%);
+  }
+
+  70% {
+    background-color: rgb(16 185 129 / 6%);
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 4%);
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+/* Compact details list: reduce vertical gaps and tighten lines */
+</style>

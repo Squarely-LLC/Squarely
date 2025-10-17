@@ -1,23 +1,41 @@
-import avatar1 from "@images/avatars/avatar-1.png";
-import avatar2 from "@images/avatars/avatar-2.png";
-import avatar3 from "@images/avatars/avatar-3.png";
+import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
 import type { ContactRef, Meeting, ToDo } from "./schema";
 
 export const nowISO = () => new Date().toISOString();
 
-// === paste your contacts map here (C) ===
-export const Contacts: Record<string, ContactRef> = {
-  ted: { id: 1, name: "Ted Samaha", avatarUrl: avatar1 },
-  dana: { id: 2, name: "Diana Trix", avatarUrl: avatar2 },
-  pierre: { id: 3, name: "Pierre Tannous", avatarUrl: avatar3 },
-  alex: { id: 4, name: "Alex Chi" }, // no image
-  nora: { id: 5, name: "Nora Farouk" }, // no image
-  omar: { id: 6, name: "Omar Haddad" }, // no image
-  lina: { id: 7, name: "Lina Azar" }, // no image
+// === helper to resolve contact refs from the canonical contacts DB ===
+// Keep no contact objects in this file; only the small name->id map and a runtime resolver.
+// Use explicit IDs from the contacts DB so mapping is done by id only.
+const byId = (id: number) => db.users.find((u) => Number(u.id) === Number(id));
+
+const contactRef = (id: number): ContactRef => {
+  const u = byId(id);
+  return u
+    ? { id: u.id, name: u.fullName, avatarUrl: u.picture || undefined }
+    : { id, name: `User ${id}` };
 };
 
-// expose the short alias you used in the array
-export const C = Contacts;
+// Minimal name -> id map only; this file contains NO contact objects/data.
+const nameToId: Record<string, number> = {
+  ted: 11,
+  dana: 12,
+  pierre: 13,
+  alex: 14,
+  nora: 15,
+  omar: 16,
+  lina: 17,
+};
+
+// `C.<name>` resolves dynamically to a ContactRef from the canonical DB at runtime.
+const C: Record<string, ContactRef> = new Proxy(
+  {},
+  {
+    get(_, prop: string) {
+      const id = nameToId[prop];
+      return id ? contactRef(id) : undefined;
+    },
+  }
+) as Record<string, ContactRef>;
 
 // 1 day in ms
 const DAY = 86400000;
@@ -2853,6 +2871,12 @@ const atMin = (mins: number) => {
   return d.toISOString();
 };
 
+const endAtFrom = (startISO: string, mins: number) => {
+  const d = new Date(startISO);
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
+};
+
 export const SeedMeetings: Meeting[] = [
   {
     id: 1,
@@ -2867,7 +2891,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.dana.id, name: C.dana.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
-    endAt: "",
+    endAt: endAtFrom(atMin(60), 45),
   },
   {
     id: 2,
@@ -2882,7 +2906,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.pierre.id, name: C.pierre.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
-    endAt: "",
+    endAt: endAtFrom(atMin(24 * 60), 30),
   },
   {
     id: 3,
@@ -2897,6 +2921,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.omar.id, name: C.omar.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(2 * 24 * 60 + 9 * 60), 90),
   },
   {
     id: 4,
@@ -2911,6 +2936,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.lina.id, name: C.lina.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(3 * 24 * 60 + 14 * 60), 60),
   },
   {
     id: 5,
@@ -2925,6 +2951,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.ted.id, name: C.ted.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(-6 * 60), 30),
   },
   {
     id: 6,
@@ -2939,6 +2966,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.nora.id, name: C.nora.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(48 * 60 + 10 * 60), 50),
   },
   {
     id: 7,
@@ -2953,6 +2981,7 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.pierre.id, name: C.pierre.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(5 * 24 * 60 + 9 * 60 + 30), 75),
   },
   {
     id: 8,
@@ -2967,5 +2996,6 @@ export const SeedMeetings: Meeting[] = [
     requestedBy: { id: C.dana.id, name: C.dana.name },
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(7 * 24 * 60 + 15 * 60), 40),
   },
 ];

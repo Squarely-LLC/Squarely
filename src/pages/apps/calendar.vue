@@ -7,6 +7,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 
 import type { ToDo } from "@/data/schema";
+import { useContactsStore } from "@/stores/contacts";
+import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { useCalendarOptions } from "@/views/apps/calendar/useCalendar";
 import { useCalendarStore } from "@/views/apps/calendar/useCalendarStore";
@@ -15,7 +17,6 @@ import AddMeetingDrawer, {
 } from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
-import { db } from "@db/apps/todos/db";
 
 function fmtMinutes(total?: number) {
   if (!total || total <= 0) return "0m";
@@ -78,6 +79,20 @@ const store = useCalendarStore();
 const todos = useTodos();
 const display = useDisplay();
 todos.init();
+
+// contacts for dropdowns
+const contactsStore = useContactsStore();
+contactsStore.init();
+const contactsOptions = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture,
+  }))
+);
+
+// legacy alias used in the template/components
+const collaboratorsOptions = contactsOptions;
 
 /* ========================= UI State ============================== */
 const refCalendar = ref<any>(null);
@@ -163,6 +178,8 @@ async function handleCreate(payload: NewTodoPayload) {
     const d = new Date(payload.dueAt);
     if (!isNaN(d.getTime())) api?.gotoDate(d);
   }
+  // show notification (snackbar) when a To-do is created from the calendar
+  useNotificationsStore().push("To-do created", "success", 3000);
 }
 
 // Open drawer explicitly (e.g., "+ New Meeting" button)
@@ -209,6 +226,9 @@ const onCreateMeeting = async (m: NewMeetingPayload) => {
   // Refresh calendar
   const api = refCalendar.value?.getApi?.();
   api?.refetchEvents?.();
+
+  // show notification
+  useNotificationsStore().push("Meeting created", "success", 3000);
 };
 
 /* ========================= Date Jump ============================= */
@@ -220,7 +240,6 @@ function jumpToDateFn(val: string) {
 /* ========================= Drawers =============================== */
 const isEditOpen = ref(false);
 const selectedId = ref<number | string | null>(null);
-const collaboratorsOptions = computed(() => Object.values(db.contacts ?? {}));
 const selectedTodo = computed(() =>
   selectedId.value != null ? todos.byId(selectedId.value) ?? null : null
 );
@@ -656,7 +675,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
               </VBtn>
               <VBtn
                 class="w-50"
-                color="warning"
+                color="success"
                 prepend-icon="tabler-plus"
                 @click="openAddMeeting()"
               >

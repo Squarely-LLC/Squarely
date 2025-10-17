@@ -135,6 +135,10 @@ const withDialAttached = (digitsOnly: string, countryDial: string) => {
   return `${countryDial} ${dig}`;
 };
 
+import { useNotificationsStore } from "@/stores/notifications";
+
+const notifications = useNotificationsStore();
+
 const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
@@ -146,6 +150,8 @@ const onSubmit = async () => {
 
   emit("submit", { ...localContact.value });
   emit("update:isDialogVisible", false);
+  // show a brief snackbar confirming creation
+  notifications.push("Contact created", "success", 3000);
   nextTick(() => resetForm());
 };
 

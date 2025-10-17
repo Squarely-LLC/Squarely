@@ -10,10 +10,18 @@ import avatar8 from "@images/avatars/avatar-8.png";
 
 interface Props {
   isDialogVisible: boolean;
+  // optional: id of the contact we're adding connections for — used to exclude self
+  currentContactId?: number | string;
+  // optional: list of already connected contact ids to exclude from the selector
+  existingConnections?: Array<number | string>;
 }
 
 interface Emit {
   (e: "update:isDialogVisible", val: boolean): void;
+  (
+    e: "add-connection",
+    payload: { contactId: number | string; relation?: string }
+  ): void;
 }
 
 const props = defineProps<Props>();
@@ -83,12 +91,102 @@ const membersList: Member[] = [
     permission: "Can Edit",
   },
 ];
+
+// Use contacts store when available to present real contacts (exclude self and already connected)
+import { useContactsStore } from "@/stores/contacts";
+import { computed } from "vue";
+import { useDisplay } from "vuetify";
+
+const contactsStore = useContactsStore();
+
+// Vuetify display composable (replaces $vuetify.display usage)
+const display = useDisplay();
+
+const availableMembers = computed(() => {
+  // If store isn't initialized or has no items, fallback to static membersList
+  const all =
+    contactsStore.items && contactsStore.items.length
+      ? contactsStore.items
+      : null;
+  if (!all) return membersList;
+
+  const excludeIds = new Set(
+    (props.existingConnections || []).map((id) => String(id))
+  );
+  if (props.currentContactId) excludeIds.add(String(props.currentContactId));
+
+  // map ContactProperties -> Member shape
+  return all
+    .filter((c) => !excludeIds.has(String(c.id)))
+    .map((c) => ({
+      id: c.id,
+      avatar: c.picture || "",
+      name: c.fullName,
+      email: c.email || "",
+      permission: "Can View" as Permission,
+    }));
+});
+
+import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useNotificationsStore } from "@/stores/notifications";
+import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
+import { ref } from "vue";
+
+// currently selected member id from autocomplete
+const selectedMemberId = ref<number | string | null>(null);
+
+// relation input
+const relation = ref("");
+
+// Add-new-contact dialog state
+const isAddNewUserDialogVisible = ref(false);
+
+// When AddNewUserDialog submits a new contact, add it to the store and select it
+const onAddNewUserSubmit = (payload: Partial<ContactProperties>) => {
+  // add to store and receive the normalized contact back (with id)
+  const created = contactsStore.addContact(payload);
+
+  // select the newly created contact in the autocomplete
+  selectedMemberId.value = created.id;
+
+  // close the add-new dialog
+  isAddNewUserDialogVisible.value = false;
+  // notify user
+  useNotificationsStore().push("Contact created", "success", 3000);
+};
+
+const addConnection = () => {
+  if (!selectedMemberId.value) return;
+  emit("add-connection", {
+    contactId: selectedMemberId.value,
+    relation: relation.value || undefined,
+  });
+  emit("update:isDialogVisible", false);
+  // reset local state
+  selectedMemberId.value = null;
+  relation.value = "";
+  useNotificationsStore().push("Connection added", "success", 2500);
+};
+
+// helper to render initials for names without avatar
+const avatarInitials = (name?: string | null) => {
+  const safeName = (name ?? "").trim();
+  if (!safeName) return "??";
+  const initials = safeName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return initials || safeName.slice(0, 2).toUpperCase();
+};
 </script>
 
 <template>
   <VDialog
     :model-value="props.isDialogVisible"
-    :width="$vuetify.display.smAndDown ? 'auto' : 900"
+    :width="$vuetify.display.smAndDown ? '600' : 600"
     @update:model-value="dialogVisibleUpdate"
   >
     <!-- 👉 Dialog close btn -->
@@ -99,35 +197,79 @@ const membersList: Member[] = [
         <h4 class="text-h4 text-center mb-2">Add Connection</h4>
         <p class="text-body-1 text-center mb-6"></p>
 
-        <AppAutocomplete
-          label="Add Connection"
-          :items="membersList"
-          item-title="name"
-          item-value="name"
-          placeholder="Add contact connection..."
-        >
-          <template #item="{ props: listItemProp, item }">
-            <VListItem v-bind="listItemProp">
-              <template #prepend>
-                <VAvatar :image="item.raw.avatar" size="30" />
-              </template>
-            </VListItem>
-          </template>
-        </AppAutocomplete>
+        <div class="d-flex align-center gap-3 autocomplete-add-wrap">
+          <div class="autocomplete-grow">
+            <AppAutocomplete
+              label="Add Connection"
+              :items="availableMembers"
+              item-title="name"
+              item-value="id"
+              v-model="selectedMemberId"
+              placeholder="Add contact connection..."
+            >
+              <template #item="{ props: listItemProp, item }">
+                <VListItem v-bind="listItemProp">
+                  <template #prepend>
+                    <VAvatar
+                      size="30"
+                      :color="item.raw.avatar ? undefined : 'primary'"
+                    >
+                      <template v-if="item.raw.avatar">
+                        <VImg :src="item.raw.avatar" />
+                      </template>
+                      <template v-else>
+                        <span class="font-weight-medium">{{
+                          avatarInitials(item.raw.name)
+                        }}</span>
+                      </template>
+                    </VAvatar>
+                  </template>
 
-        <AppTextField label="Relation" placeholder="Relation/Position" />
+                  <VListItemSubtitle class="text-body-2">{{
+                    item.raw.email
+                  }}</VListItemSubtitle>
+                </VListItem>
+              </template>
+            </AppAutocomplete>
+          </div>
+        </div>
+
+        <VBtn
+          variant="text"
+          color="primary"
+          @click="isAddNewUserDialogVisible = true"
+        >
+          <VIcon start icon="tabler-plus" /> Add New Contact
+          <VTooltip activator="parent" location="top">Add new contact</VTooltip>
+        </VBtn>
+
+        <AppTextField
+          class="mt-3"
+          v-model="relation"
+          label="Relation"
+          placeholder="Relation/Position"
+        />
 
         <div
           class="d-flex align-center justify-center justify-sm-space-between flex-wrap gap-3 mt-6"
         >
-          <VBtn
-            @click="$emit('update:isDialogVisible', false)"
-            class="text-capitalize"
-            prepend-icon="tabler-link"
-          >
-            Add Connection
-          </VBtn>
+          <div class="d-flex gap-2">
+            <VBtn
+              @click="addConnection"
+              class="text-capitalize"
+              prepend-icon="tabler-link"
+              :disabled="!selectedMemberId"
+            >
+              Add Connection
+            </VBtn>
+          </div>
         </div>
+
+        <!-- Add new contact dialog (when user can't find the contact) -->
+        <AddNewUserDialog
+          v-model:is-dialog-visible="isAddNewUserDialogVisible"
+          @submit="onAddNewUserSubmit"
+        />
       </VCardText>
     </VCard>
   </VDialog>
@@ -138,5 +280,15 @@ const membersList: Member[] = [
   .card-list {
     --v-card-list-gap: 1rem;
   }
+}
+</style>
+
+<style scoped>
+.autocomplete-add-wrap {
+  align-items: center;
+}
+
+.autocomplete-grow {
+  flex: 1 1 auto;
 }
 </style>

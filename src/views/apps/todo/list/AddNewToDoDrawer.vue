@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useContactsStore } from "@/stores/contacts";
 import type { CustomInputContent } from "@core/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -73,8 +74,21 @@ const statusRadios: CustomInputContent[] = [
 const selectedStatus = ref<Exclude<Status, "completed">>("pending");
 
 /* ===== Helpers ===== */
+// Fallback to canonical contacts store when parent didn't provide options
+const contactsStore = useContactsStore();
+contactsStore.init();
+
+// Always use canonical contacts for dropdown data to avoid stale static lists
+const effectiveOptions = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture,
+  }))
+);
+
 const idToContact = computed(
-  () => new Map(props.collaboratorsOptions.map((c) => [c.id, c] as const))
+  () => new Map(effectiveOptions.value.map((c) => [c.id, c] as const))
 );
 const selectedCollaborators = computed<ContactRef[]>(
   () =>
@@ -168,7 +182,7 @@ async function onSubmit() {
                 <VAutocomplete
                   v-model="selectedCollaboratorIds"
                   v-model:search="collabSearch"
-                  :items="props.collaboratorsOptions"
+                  :items="effectiveOptions"
                   item-title="name"
                   item-value="id"
                   label="Collaborators"

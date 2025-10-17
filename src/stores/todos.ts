@@ -1,5 +1,6 @@
 import type { Meeting, ToDo } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
+import { useContactsStore } from "@/stores/contacts";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY_MEETINGS = "app.meetings.v1";
@@ -75,6 +76,14 @@ export const useTodos = defineStore("todos", {
   },
   actions: {
     init() {
+      // ensure contacts are seeded/initialized first so we can resolve collaborator refs
+      try {
+        const contactsStore = useContactsStore();
+        contactsStore.init();
+      } catch (error) {
+        // swallow — if pinia isn't ready yet this will be retried later when UI initializes
+        // console.warn('contacts store init failed during todos init:', error)
+      }
       const seeded = localStorage.getItem(STORAGE_KEY_MEETINGS_SEEDED) === "1";
       const stored = loadMeetingsFromStorage();
       this.meetings =
@@ -82,12 +91,60 @@ export const useTodos = defineStore("todos", {
       localStorage.setItem(STORAGE_KEY_MEETINGS_SEEDED, "1");
       if (this.initialized) return;
 
-      // todos
+      // todos: load and normalize collaborator references to use canonical contact refs
       const storedTodos = loadFromStorage();
-      this.items =
+      const rawTodos =
         storedTodos && Array.isArray(storedTodos)
           ? storedTodos
           : [...SeedTodos];
+
+      // map collaborator/author refs to contact store entries when possible
+      const contactsStore = useContactsStore();
+      const resolveRef = (ref: any) => {
+        if (!ref) return ref;
+        const id = ref.id ?? ref;
+
+        // Only match by id — seeded todos should reference contact IDs directly.
+        const byId = contactsStore.byId(id);
+        if (byId) {
+          return {
+            id: byId.id,
+            name: byId.fullName,
+            avatarUrl: byId.picture || undefined,
+          };
+        }
+
+        // fallback: keep existing ContactRef-like object or create a minimal one
+        if (typeof ref === "object" && ref.name) return ref;
+        return { id, name: String(ref) };
+      };
+
+      const normalizeTodo = (t: any) => {
+        const copy = { ...t } as any;
+        copy.collaborators = Array.isArray(t.collaborators)
+          ? t.collaborators.map((c: any) => resolveRef(c))
+          : [];
+        copy.steps = Array.isArray(t.steps)
+          ? t.steps.map((s: any) => ({
+              ...s,
+              collaborators: Array.isArray(s.collaborators)
+                ? s.collaborators.map((c: any) => resolveRef(c))
+                : [],
+            }))
+          : [];
+        copy.activities = Array.isArray(t.activities)
+          ? t.activities.map((a: any) => ({
+              ...a,
+              author: resolveRef(a.author),
+            }))
+          : [];
+        copy.messages = Array.isArray(t.messages)
+          ? t.messages.map((m: any) => ({ ...m, author: resolveRef(m.author) }))
+          : [];
+        return copy as ToDo;
+      };
+
+      this.items = rawTodos.map(normalizeTodo);
 
       // meetings
       const storedMeetings = loadMeetingsFromStorage();
@@ -114,13 +171,10 @@ export const useTodos = defineStore("todos", {
 
     addTodo(todo: Partial<ToDo>) {
       const now = new Date().toISOString();
-      const maxExistingId = this.items.reduce<number>(
-        (max, item) => {
-          const numericId = Number(item.id);
-          return Number.isFinite(numericId) && numericId > max ? numericId : max;
-        },
-        0
-      );
+      const maxExistingId = this.items.reduce<number>((max, item) => {
+        const numericId = Number(item.id);
+        return Number.isFinite(numericId) && numericId > max ? numericId : max;
+      }, 0);
       const nextId = maxExistingId + 1;
       const newTodo: ToDo = {
         id: nextId,
@@ -251,7 +305,10 @@ export const useTodos = defineStore("todos", {
               await this.pushTodoToMockApi(todo);
             }
           } catch (error) {
-            console.warn(`Failed to sync todo ${todo.id} with mock API:`, error);
+            console.warn(
+              `Failed to sync todo ${todo.id} with mock API:`,
+              error
+            );
           }
         })
       );

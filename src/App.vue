@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppSnackbar from "@/components/AppSnackbar.vue";
 import { useTodos } from "@/stores/todos";
 import ScrollToTop from "@core/components/ScrollToTop.vue";
 import initCore from "@core/initCore";
@@ -26,6 +27,7 @@ const configStore = useConfigStore();
       )}`"
     >
       <RouterView />
+      <AppSnackbar />
       <ScrollToTop />
     </VApp>
   </VLocaleProvider>

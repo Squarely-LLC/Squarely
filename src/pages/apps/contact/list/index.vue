@@ -1,5 +1,7 @@
 <!-- Contacts page -->
 <script setup lang="ts">
+import { useNotificationsStore } from "@/stores/notifications";
+import { useTodos } from "@/stores/todos";
 import { computed, ref, toRaw, watch } from "vue";
 
 import type {
@@ -206,8 +208,12 @@ const decorateConnections = (
   if (!Array.isArray(connections) || !connections.length) return [];
 
   const directory = connectionDirectory.value;
+  // ensure primary connections come first so the first avatar is always the primary
+  const primaries = connections.filter((c) => c.isPrimary);
+  const others = connections.filter((c) => !c.isPrimary);
+  const ordered = [...primaries, ...others];
 
-  return connections.map((connection) => {
+  return ordered.map((connection) => {
     const entry = directory.get(String(connection.contactId));
     return {
       ...connection,
@@ -334,20 +340,234 @@ const isContactEditDialogVisible = ref(false);
 const selectedContact = ref<ContactProperties | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const isConfirmDeleteVisible = ref(false);
+const deleteCandidateId = ref<number | null>(null);
+const deleteBlockingReasons = ref<string[]>([]);
+const notifications = useNotificationsStore();
 
-const addNewContact = (contact: ContactProperties) => {
+const addNewContact = (contact: Partial<ContactProperties>) => {
   // debug: log incoming payload before storing
   // eslint-disable-next-line no-console
   console.log("addNewContact received:", JSON.parse(JSON.stringify(contact)));
+
+  // The store expects a Partial<ContactProperties> for addContact.
+  // Ensure we pass the payload through directly so the store assigns an id and defaults.
   contactsStore.addContact(contact);
   isAddNewUserDrawerVisible.value = false;
 };
 
-const deleteContact = (id: number) => {
+// Synchronous low-risk check for references to a contact id across todos, meetings and other contacts' connections
+const findDeleteBlockingReasons = (id: number): string[] => {
+  const reasons: string[] = [];
+  try {
+    const todosStore = useTodos();
+    // ensure todos initialized
+    todosStore.init();
+
+    // check todos - top-level collaborators
+    const referencingTodos = todosStore.items.filter(
+      (t) =>
+        Array.isArray(t.collaborators) &&
+        t.collaborators.some((c) => Number(c.id) === Number(id))
+    );
+    if (referencingTodos.length) {
+      reasons.push(
+        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`
+      );
+    }
+
+    // check todo steps collaborators
+    const stepRefs = todosStore.items
+      .flatMap((t) => t.steps || [])
+      .filter(
+        (s) =>
+          Array.isArray(s.collaborators) &&
+          s.collaborators.some((c) => Number(c.id) === Number(id))
+      );
+    if (stepRefs.length) {
+      reasons.push(
+        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`
+      );
+    }
+
+    // check activities/messages authors
+    const activityRefs = todosStore.items
+      .flatMap((t) => t.activities || [])
+      .filter((a) => a && a.author && Number(a.author.id) === Number(id));
+    if (activityRefs.length) {
+      reasons.push(`Author on ${activityRefs.length} activity item(s)`);
+    }
+
+    const messageRefs = todosStore.items
+      .flatMap((t) => t.messages || [])
+      .filter(
+        (m) => m && m.author && Number((m.author as any).id) === Number(id)
+      );
+    if (messageRefs.length) {
+      reasons.push(`Author on ${messageRefs.length} message(s)`);
+    }
+
+    // meetings: requestedBy, linkedTo (by id) and notes authors
+    const meetingsStore = todosStore;
+    const referencingMeetings = meetingsStore.meetings.filter((m) => {
+      if (m.requestedBy && Number(m.requestedBy.id) === Number(id)) return true;
+      if (
+        Array.isArray(m.linkedTo) &&
+        m.linkedTo.some((l) => Number(l.id) === Number(id))
+      )
+        return true;
+      if (
+        Array.isArray(m.notes) &&
+        m.notes.some(
+          (n: any) => n && n.author && Number(n.author.id) === Number(id)
+        )
+      )
+        return true;
+      return false;
+    });
+    if (referencingMeetings.length) {
+      reasons.push(`Referenced in ${referencingMeetings.length} meeting(s)`);
+    }
+
+    // connections: referenced as connection.contactId in other contacts
+    const referencedInConnections = contactsStore.all.filter(
+      (c) =>
+        Array.isArray(c.connections) &&
+        c.connections.some((conn) => Number(conn.contactId) === Number(id))
+    );
+    if (referencedInConnections.length) {
+      reasons.push(
+        `Connected to ${referencedInConnections.length} other contact(s)`
+      );
+    }
+  } catch (e) {
+    // If anything goes wrong, be conservative and block deletion with a generic reason
+    reasons.push(
+      "Unable to guarantee safe deletion due to internal check failure"
+    );
+  }
+
+  return reasons;
+};
+
+const confirmDeleteCandidate = (id: number) => {
+  deleteCandidateId.value = id;
+  deleteBlockingReasons.value = findDeleteBlockingReasons(id);
+  isConfirmDeleteVisible.value = true;
+};
+
+const performDelete = () => {
+  const id = deleteCandidateId.value;
+  if (id === null) return;
+  // double-check before deleting
+  const reasons = findDeleteBlockingReasons(id);
+  if (reasons.length) {
+    deleteBlockingReasons.value = reasons;
+    // keep dialog open and prevent deletion
+    return;
+  }
+
   contactsStore.removeContact(id);
   const index = selectedRows.value.findIndex((row) => row === id);
   if (index !== -1) selectedRows.value.splice(index, 1);
+
+  // notify success
+  notifications.push("Contact deleted", "success", 3500);
+
+  // reset dialog state
+  deleteCandidateId.value = null;
+  deleteBlockingReasons.value = [];
+  isConfirmDeleteVisible.value = false;
 };
+
+const cancelDelete = () => {
+  isConfirmDeleteVisible.value = false;
+  deleteCandidateId.value = null;
+  deleteBlockingReasons.value = [];
+};
+
+// Remove references to a contact across todos, meetings and other contacts, then delete
+const cleanupAndDelete = () => {
+  const id = deleteCandidateId.value;
+  if (id === null) return;
+
+  const todosStore = useTodos();
+  try {
+    todosStore.init();
+  } catch (e) {
+    // continue — init might be a no-op
+  }
+
+  // Remove from top-level collaborators
+  todosStore.items = todosStore.items.map((t) => {
+    const collaborators = (t.collaborators || []).filter(
+      (c) => Number(c.id) !== Number(id)
+    );
+
+    // steps
+    const steps = (t.steps || []).map((s) => ({
+      ...s,
+      collaborators: (s.collaborators || []).filter(
+        (c) => Number(c.id) !== Number(id)
+      ),
+    }));
+
+    // activities: remove those authored by the contact
+    const activities = (t.activities || []).filter(
+      (a) => !(a && a.author && Number(a.author.id) === Number(id))
+    );
+
+    // messages: remove authored messages
+    const messages = (t.messages || []).filter(
+      (m) =>
+        !(m && (m.author as any) && Number((m.author as any).id) === Number(id))
+    );
+
+    return { ...t, collaborators, steps, activities, messages };
+  });
+
+  // Meetings: remove linkedTo and requestedBy and notes authored by contact
+  todosStore.meetings = todosStore.meetings.map((m) => {
+    const requestedBy =
+      m.requestedBy && Number(m.requestedBy.id) === Number(id)
+        ? null
+        : m.requestedBy;
+    const linkedTo = (m.linkedTo || []).filter(
+      (l) => Number(l.id) !== Number(id)
+    );
+    const notes = (m.notes || []).filter(
+      (n: any) => !(n && n.author && Number(n.author.id) === Number(id))
+    );
+    return { ...m, requestedBy, linkedTo, notes };
+  });
+
+  // Remove connections pointing to this contact
+  contactsStore.items = contactsStore.items.map((c) => {
+    const connections = (c.connections || []).filter(
+      (conn) => Number(conn.contactId) !== Number(id)
+    );
+    return { ...c, connections };
+  });
+
+  // Finally delete the contact
+  contactsStore.removeContact(id);
+  const idx = selectedRows.value.findIndex((row) => row === id);
+  if (idx !== -1) selectedRows.value.splice(idx, 1);
+
+  notifications.push("References removed and contact deleted", "success", 3500);
+
+  // reset dialog
+  deleteCandidateId.value = null;
+  deleteBlockingReasons.value = [];
+  isConfirmDeleteVisible.value = false;
+};
+
+const deleteCandidateName = computed(() => {
+  const id = deleteCandidateId.value;
+  if (id === null) return "";
+  const c = contactsStore.byId(id);
+  return c?.fullName ?? String(id);
+});
 
 const fetchContactDetails = (id: number | string) => {
   loading.value = true;
@@ -396,6 +616,11 @@ const updateOptions = (options: any) => {
     (opt) => opt.value.key === sortBy.value && opt.value.order === orderBy.value
   );
   selectedSort.value = found?.value;
+};
+
+// Called from the template when the items-per-page selector changes.
+const updateItemsPerPage = (value: number | string) => {
+  itemsPerPage.value = Number(value);
 };
 </script>
 
@@ -464,7 +689,7 @@ const updateOptions = (options: any) => {
               { value: -1, title: 'All' },
             ]"
             style="inline-size: 6.25rem"
-            @update:model-value="(value) => (itemsPerPage = Number(value))"
+            @update:model-value="updateItemsPerPage"
           />
         </div>
 
@@ -606,25 +831,25 @@ const updateOptions = (options: any) => {
                   </div>
                 </VTooltip>
               </VAvatar>
+
+              <VAvatar
+                v-if="decorateConnections(item.connections).length > 3"
+                color="secondary"
+                :size="40"
+                class="font-weight-medium text-white"
+              >
+                +{{ decorateConnections(item.connections).length - 3 }}
+                <VTooltip activator="parent" location="top">
+                  {{
+                    decorateConnections(item.connections)
+                      .slice(3)
+                      .map((connection) => connection.displayName)
+                      .join(", ")
+                  }}
+                </VTooltip>
+              </VAvatar>
             </div>
             <span v-else class="text-medium-emphasis">-</span>
-
-            <VAvatar
-              v-if="decorateConnections(item.connections).length > 3"
-              color="secondary"
-              :size="40"
-              class="font-weight-medium text-white"
-            >
-              +{{ decorateConnections(item.connections).length - 3 }}
-              <VTooltip activator="parent" location="top">
-                {{
-                  decorateConnections(item.connections)
-                    .slice(3)
-                    .map((connection) => connection.displayName)
-                    .join(", ")
-                }}
-              </VTooltip>
-            </VAvatar>
           </div>
         </template>
 
@@ -658,7 +883,7 @@ const updateOptions = (options: any) => {
             <VIcon icon="tabler-dots-vertical" />
             <VMenu activator="parent">
               <VList>
-                <VListItem @click="deleteContact(item.id)">
+                <VListItem @click="confirmDeleteCandidate(item.id)">
                   <template #prepend>
                     <VIcon icon="tabler-trash" />
                   </template>
@@ -692,6 +917,54 @@ const updateOptions = (options: any) => {
       :error="error"
       @submit="saveEditedContact"
     />
+
+    <VDialog v-model="isConfirmDeleteVisible" max-width="540">
+      <VCard>
+        <VCardTitle>Delete contact</VCardTitle>
+        <VCardText>
+          <div v-if="deleteBlockingReasons.length">
+            <p>
+              This contact cannot be deleted because it is referenced elsewhere:
+            </p>
+            <ul>
+              <li v-for="(r, idx) in deleteBlockingReasons" :key="idx">
+                {{ r }}
+              </li>
+            </ul>
+            <p>Please remove these references before deleting the contact.</p>
+          </div>
+          <div v-else>
+            <p>
+              Are you sure you want to permanently delete
+              <strong>{{ deleteCandidateName }}</strong
+              >?
+            </p>
+          </div>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" color="secondary" @click="cancelDelete">
+            Cancel
+          </VBtn>
+          <VBtn
+            v-if="deleteBlockingReasons.length"
+            variant="tonal"
+            color="warning"
+            @click="cleanupAndDelete"
+          >
+            Remove references & Delete
+          </VBtn>
+          <VBtn
+            v-if="!deleteBlockingReasons.length"
+            variant="tonal"
+            color="error"
+            @click="performDelete"
+          >
+            Delete
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </section>
 </template>
 <style scoped>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useContactsStore } from "@/stores/contacts";
+import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { storeToRefs } from "pinia";
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
@@ -66,6 +68,17 @@ const isMsgDialogOpen = ref(false);
 const msgTodo: any = ref(null);
 const todosStore = useTodos();
 todosStore.init(); // load from localStorage or seeds
+
+// contacts for dropdowns
+const contactsStore = useContactsStore();
+contactsStore.init();
+const contactsOptions = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture,
+  }))
+);
 const { all } = storeToRefs(todosStore); // reactive list from store
 
 // optional: current author to display (use an email as the name to match the screenshot)
@@ -405,6 +418,7 @@ const toggleImportant = (t: ToDo) => todosStore.toggleImportant(t.id);
 const addNewToDo = (payload: Partial<ToDo>) => {
   todosStore.addTodo(payload);
   isAddNewToDoDrawerVisible.value = false;
+  useNotificationsStore().push("To-do created", "success", 3000);
 };
 
 // REPLACE the whole function with:
@@ -1094,14 +1108,14 @@ function onRowClick(e: MouseEvent, payload: any) {
     <!-- same list as table -->
     <AddNewToDoDrawer
       v-model:is-drawer-open="isAddNewToDoDrawerVisible"
-      :collaborators-options="Object.values(C)"
+      :collaborators-options="contactsOptions"
       @user-data="addNewToDo"
     />
 
     <EditToDoDrawer
       :is-drawer-open="isEditDrawerOpen"
       :todo="editingToDo"
-      :collaborators-options="Object.values(C)"
+      :collaborators-options="contactsOptions"
       @update:isDrawerOpen="isEditDrawerOpen = $event"
       @save="applyEdit"
       @saveSteps="saveStepsForTodo"
@@ -1111,7 +1125,7 @@ function onRowClick(e: MouseEvent, payload: any) {
     <StepEditDialog
       v-model="isEditStepDialogOpen"
       :step="editStepDialogModel"
-      :collaborators-options="Object.values(C)"
+      :collaborators-options="contactsOptions"
       title="Edit Subtask"
       @save="onEditStepSave"
       @close="onEditStepClose"

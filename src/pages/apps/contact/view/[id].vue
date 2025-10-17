@@ -105,11 +105,11 @@ watch(
         :touch="false"
       >
         <VWindowItem>
-          <UserTabBillingsPlans />
+          <UserTabAccount :user="contact" />
         </VWindowItem>
 
         <VWindowItem>
-          <UserTabAccount />
+          <UserTabBillingsPlans />
         </VWindowItem>
 
         <VWindowItem>
