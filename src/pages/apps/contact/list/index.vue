@@ -346,7 +346,6 @@ const deleteBlockingReasons = ref<string[]>([]);
 const notifications = useNotificationsStore();
 
 const addNewContact = (contact: Partial<ContactProperties>) => {
-  // debug: log incoming payload before storing
   // eslint-disable-next-line no-console
   console.log("addNewContact received:", JSON.parse(JSON.stringify(contact)));
 
@@ -727,18 +726,39 @@ const updateItemsPerPage = (value: number | string) => {
       >
         <template #item.user="{ item }">
           <div class="d-flex align-center gap-x-4 pb-2 pt-2">
-            <VAvatar
-              size="40"
-              :variant="!item.picture ? 'tonal' : undefined"
-              :color="
-                !item.picture
-                  ? resolveClassVariant(item.class).color
-                  : undefined
-              "
-            >
-              <VImg v-if="item.picture" :src="item.picture" />
-              <span v-else>{{ avatarText(item.fullName) }}</span>
-            </VAvatar>
+            <template v-if="item.id !== null && item.id !== undefined">
+              <RouterLink
+                :to="{ name: 'apps-contact-view-id', params: { id: item.id } }"
+                class="d-inline-block"
+              >
+                <VAvatar
+                  size="40"
+                  :variant="!item.picture ? 'tonal' : undefined"
+                  :color="
+                    !item.picture
+                      ? resolveClassVariant(item.class).color
+                      : undefined
+                  "
+                >
+                  <VImg v-if="item.picture" :src="item.picture" />
+                  <span v-else>{{ avatarText(item.fullName) }}</span>
+                </VAvatar>
+              </RouterLink>
+            </template>
+            <template v-else>
+              <VAvatar
+                size="40"
+                :variant="!item.picture ? 'tonal' : undefined"
+                :color="
+                  !item.picture
+                    ? resolveClassVariant(item.class).color
+                    : undefined
+                "
+              >
+                <VImg v-if="item.picture" :src="item.picture" />
+                <span v-else>{{ avatarText(item.fullName) }}</span>
+              </VAvatar>
+            </template>
             <div class="d-flex flex-column">
               <h6 class="text-base d-flex align-center gap-1">
                 <VIcon
@@ -797,40 +817,94 @@ const updateItemsPerPage = (value: number | string) => {
               v-if="decorateConnections(item.connections).length"
               class="v-avatar-group demo-avatar-group"
             >
-              <VAvatar
+              <template
                 v-for="connection in decorateConnections(
                   item.connections
                 ).slice(0, 3)"
                 :key="`${item.id}-${connection.contactId}`"
-                :size="40"
-                :color="connection.avatar ? undefined : 'primary'"
-                :class="[
-                  connection.avatar ? null : 'text-white font-weight-medium',
-                  connection.isPrimary ? 'contact-primary-border' : null,
-                ]"
               >
-                <template v-if="connection.avatar">
-                  <VImg :src="connection.avatar" />
+                <template
+                  v-if="
+                    connection.contactId !== null &&
+                    connection.contactId !== undefined
+                  "
+                >
+                  <RouterLink
+                    :to="{
+                      name: 'apps-contact-view-id',
+                      params: { id: connection.contactId },
+                    }"
+                    class="d-inline-block"
+                  >
+                    <VAvatar
+                      :size="40"
+                      :color="connection.avatar ? undefined : 'primary'"
+                      :class="[
+                        connection.avatar
+                          ? null
+                          : 'text-white font-weight-medium',
+                        connection.isPrimary ? 'contact-primary-border' : null,
+                      ]"
+                    >
+                      <template v-if="connection.avatar">
+                        <VImg :src="connection.avatar" />
+                      </template>
+                      <template v-else>
+                        <span>{{ avatarText(connection.displayName) }}</span>
+                      </template>
+
+                      <VTooltip activator="parent" location="top">
+                        <div class="d-flex flex-column gap-1">
+                          <span class="font-weight-medium">
+                            {{ connection.displayName }}
+                          </span>
+
+                          <span
+                            v-if="connection.isPrimary"
+                            class="text-body-2 text-medium-emphasis"
+                          >
+                            <span class="text-primary">(Primary)</span>
+                          </span>
+                        </div>
+                      </VTooltip>
+                    </VAvatar>
+                  </RouterLink>
                 </template>
                 <template v-else>
-                  <span>{{ avatarText(connection.displayName) }}</span>
+                  <VAvatar
+                    :size="40"
+                    :color="connection.avatar ? undefined : 'primary'"
+                    :class="[
+                      connection.avatar
+                        ? null
+                        : 'text-white font-weight-medium',
+                      connection.isPrimary ? 'contact-primary-border' : null,
+                    ]"
+                  >
+                    <template v-if="connection.avatar">
+                      <VImg :src="connection.avatar" />
+                    </template>
+                    <template v-else>
+                      <span>{{ avatarText(connection.displayName) }}</span>
+                    </template>
+
+                    <VTooltip activator="parent" location="top">
+                      <div class="d-flex flex-column gap-1">
+                        <span class="font-weight-medium">
+                          {{ connection.displayName }}
+                        </span>
+
+                        <span
+                          v-if="connection.isPrimary"
+                          class="text-body-2 text-medium-emphasis"
+                        >
+                          <span class="text-primary">(Primary)</span>
+                        </span>
+                      </div>
+                    </VTooltip>
+                  </VAvatar>
                 </template>
-
-                <VTooltip activator="parent" location="top">
-                  <div class="d-flex flex-column gap-1">
-                    <span class="font-weight-medium">
-                      {{ connection.displayName }}
-                    </span>
-
-                    <span
-                      v-if="connection.isPrimary"
-                      class="text-body-2 text-medium-emphasis"
-                    >
-                      <span class="text-primary">(Primary)</span>
-                    </span>
-                  </div>
-                </VTooltip>
-              </VAvatar>
+              </template>
 
               <VAvatar
                 v-if="decorateConnections(item.connections).length > 3"

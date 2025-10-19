@@ -1,12 +1,6 @@
 <script lang="ts" setup>
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { useTodos } from "@/stores/todos";
-import { computed, onMounted } from "vue";
-import UserInvoiceTable from "./UserInvoiceTable.vue";
-
-const props = defineProps<{ user: ContactProperties | null }>();
-
-// Images
 import avatar1 from "@images/avatars/avatar-1.png";
 import avatar2 from "@images/avatars/avatar-2.png";
 import avatar3 from "@images/avatars/avatar-3.png";
@@ -22,12 +16,13 @@ import react from "@images/icons/project-icons/react.png";
 import sketch from "@images/icons/project-icons/sketch.png";
 import vue from "@images/icons/project-icons/vue.png";
 import xamarin from "@images/icons/project-icons/xamarin.png";
+import { computed, onMounted, ref } from "vue";
+
+const props = defineProps<{ user: ContactProperties | null }>();
 
 // Project Table Header
 const projectTableHeaders = [
   { title: "PROJECT", key: "project" },
-  { title: "LEADER", key: "leader" },
-  { title: "Team", key: "team" },
   { title: "PROGRESS", key: "progress" },
   { title: "Action", key: "Action", sortable: false },
 ];
@@ -312,6 +307,59 @@ const activities = computed(() => {
   return filtered;
 });
 
+// Event filter state and options (dropdown in the card header)
+// default to empty (All) so all events are shown initially
+const selectedEventFilter = ref<string | null>("");
+const eventFilterOptions = [
+  { title: "All", value: "" },
+  { title: "Steps", value: "todo-step" },
+  { title: "Meetings", value: "meeting" },
+  { title: "Messages", value: "todo-message" },
+  { title: "Call", value: "Call" },
+  { title: "Todo", value: "Todo" },
+  { title: "Meeting", value: "Meeting" },
+  { title: "Sentmail", value: "Sentmail" },
+  { title: "Receipt", value: "Receipt" },
+  { title: "Refund", value: "Refund" },
+  { title: "Sales", value: "Sales" },
+  { title: "Leadstatus", value: "Leadstatus" },
+];
+
+const filteredActivities = computed(() => {
+  const list = activities.value || [];
+  const sel = (selectedEventFilter.value || "").toString().trim();
+  if (!sel) return list;
+
+  const s = sel.toLowerCase();
+
+  return list.filter((act: any) => {
+    try {
+      // direct kind match
+      if (act.kind && act.kind.toString().toLowerCase() === s) return true;
+
+      // map some common labels to kinds
+      const kindMap: Record<string, string> = {
+        todo: "todo",
+        meeting: "meeting",
+        comment: "todo-message",
+        note: "meeting-note",
+        step: "todo-step",
+      };
+      if (kindMap[s] && act.kind === kindMap[s]) return true;
+
+      // fallback: match against title/body text
+      const hay = ((act.title || "") + " " + (act.body || ""))
+        .toString()
+        .toLowerCase();
+      if (hay.includes(s)) return true;
+
+      return false;
+    } catch {
+      return false;
+    }
+  });
+});
+
 function labelColorName(kind: string) {
   return kind === "meeting" || kind === "meeting-note"
     ? "success"
@@ -393,34 +441,225 @@ function todoCollaborators(act: any) {
     return [];
   }
 }
+
+// Summary metrics for the current contact
+const contactId = computed(() => props.user?.id ?? null);
+
+const contactTodos = computed(() => {
+  const id = contactId.value;
+  if (!id) return [] as any[];
+  return (todosStore.items || []).filter((t: any) =>
+    Array.isArray(t.collaborators)
+      ? t.collaborators.some((c: any) => String(c?.id) === String(id))
+      : false
+  );
+});
+
+const totalTodos = computed(() => contactTodos.value.length);
+
+// Scheduled todos: dueAt in the future
+const scheduledTodos = computed(() => {
+  const now = Date.now();
+  return contactTodos.value.filter((t: any) => {
+    try {
+      const ts = t?.dueAt ? new Date(t.dueAt).getTime() : NaN;
+      return !Number.isNaN(ts) && ts > now && t.status !== "completed";
+    } catch {
+      return false;
+    }
+  }).length;
+});
+
+const pendingTodos = computed(
+  () => contactTodos.value.filter((t: any) => t.status === "pending").length
+);
+
+// Average time for todos — measured as average (updatedAt - createdAt) in minutes
+const averageTodoTimeMinutes = computed(() => {
+  const list = contactTodos.value.filter(
+    (t: any) => t?.createdAt && t?.updatedAt && t.createdAt !== t.updatedAt
+  );
+  if (!list.length) return 0;
+  let sum = 0;
+  for (const t of list) {
+    try {
+      const c = new Date(t.createdAt).getTime();
+      const u = new Date(t.updatedAt).getTime();
+      if (!Number.isNaN(c) && !Number.isNaN(u) && u >= c) {
+        sum += (u - c) / 60000; // minutes
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return Math.round(sum / list.length);
+});
+
+// Meetings linked to this contact
+const contactMeetings = computed(() => {
+  const id = contactId.value;
+  if (!id) return [] as any[];
+  return (todosStore.meetings || []).filter((m: any) => {
+    const linked = Array.isArray(m.linkedTo)
+      ? m.linkedTo.some((l: any) => String(l?.id) === String(id))
+      : false;
+    const requested = m.requestedBy && String(m.requestedBy?.id) === String(id);
+    return linked || requested;
+  });
+});
+
+// helper: format minutes to human (e.g., "1h 30m")
+function formatMinutesHuman(mins?: number) {
+  if (mins == null || numsIsNaN(mins)) return "0m";
+  const m = Math.round(mins);
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return h ? `${h}h ${r}m` : `${r}m`;
+}
+
+function numsIsNaN(n: any) {
+  return typeof n !== "number" || Number.isNaN(n);
+}
+
+// Todos breakdown
+const completedTodos = computed(
+  () => contactTodos.value.filter((t: any) => t.status === "completed").length
+);
+
+// Meetings metrics
+const averageMeetingDurationMinutes = computed(() => {
+  const list = contactMeetings.value || [];
+  if (!list.length) return 0;
+  const nums: number[] = list
+    .map((m: any) => (typeof m.duration === "number" ? m.duration : 0))
+    .filter((d) => !Number.isNaN(d) && d > 0);
+  if (!nums.length) return 0;
+  const sum = nums.reduce((s, v) => s + v, 0);
+  return Math.round(sum / nums.length);
+});
+
+const scheduledMeetings = computed(() => {
+  const now = Date.now();
+  return (contactMeetings.value || []).filter((m: any) => {
+    try {
+      const ts = m?.startAt ? new Date(m.startAt).getTime() : NaN;
+      return !Number.isNaN(ts) && ts > now;
+    } catch {
+      return false;
+    }
+  }).length;
+});
+
+// Calls average sentiment (derived from meeting.summary.sentiment when present)
+const sentimentMap: Record<string, number> = {
+  very_poor: 1,
+  poor: 2,
+  acceptable: 3,
+  good: 4,
+  very_good: 5,
+};
+
+const callsAverageSentimentValue = computed(() => {
+  const list = (contactMeetings.value || [])
+    .map((m: any) => m?.summary?.sentiment)
+    .filter(Boolean);
+  if (!list.length) return 0;
+  const nums = list
+    .map((s: any) => sentimentMap[s] || 0)
+    .filter((n: number) => n > 0);
+  if (!nums.length) return 0;
+  const avg = nums.reduce((s: number, v: number) => s + v, 0) / nums.length;
+  return Math.round(avg * 10) / 10; // one decimal
+});
+
+function sentimentLabelFromValue(v: number) {
+  if (v <= 0) return "—";
+  if (v <= 1.5) return "Very poor";
+  if (v <= 2.5) return "Poor";
+  if (v <= 3.5) return "Acceptable";
+  if (v <= 4.5) return "Good";
+  return "Very good";
+}
+
+const totalMeetings = computed(() => (contactMeetings.value || []).length);
+
+// Total calls: heuristic - meetings whose subject includes 'call' or that have a summary.sentiment
+const totalCalls = computed(() => {
+  const list = contactMeetings.value || [];
+  return list.filter((m: any) => {
+    try {
+      const subj = (m.subject || "").toString().toLowerCase();
+      if (subj.includes("call")) return true;
+      if (m?.summary && m.summary?.sentiment) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }).length;
+});
+
+// whether there are any timeline activities for this user
+const hasAnyActivities = computed(() => (activities.value || []).length > 0);
+
+// current selected filter's display title (falls back to raw value or 'All')
+const currentFilterLabel = computed(() => {
+  const v = (selectedEventFilter.value || "").toString();
+  const found = eventFilterOptions.find((o: any) => String(o.value) === v);
+  if (found) return found.title;
+  return v || "All";
+});
 </script>
 
 <template>
   <VRow>
     <VCol cols="12">
       <!-- 👉 User Activity timeline -->
-      <VCard title="Contact Activity Timeline" class="activity-card">
-        <VCardText class="activity-card__body">
-          <VTimeline
-            side="end"
-            align="start"
-            line-inset="8"
-            truncate-line="start"
-            density="compact"
-          >
-            <template v-if="activities.length === 0">
-              <VTimelineItem size="x-small">
-                <div
-                  class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
-                >
-                  <span class="app-timeline-title">No recent activity</span>
-                </div>
-              </VTimelineItem>
-            </template>
+      <VCard
+        title="Contact Activity Timeline"
+        :class="hasAnyActivities ? 'activity-card' : ''"
+      >
+        <template #append>
+          <div>
+            <AppSelect
+              v-model="selectedEventFilter"
+              :items="eventFilterOptions"
+              item-title="title"
+              item-value="value"
+              placeholder="Filter"
+              clearable
+              :disabled="!hasAnyActivities"
+              style="min-inline-size: 10rem"
+            />
+          </div>
+        </template>
+        <VCardText :class="hasAnyActivities ? 'activity-card__body' : ''">
+          <template v-if="!hasAnyActivities">
+            <div class="d-flex justify-center align-center pa-6">
+              <div class="text-subtitle-1">No recent activity</div>
+            </div>
+          </template>
 
-            <template v-else>
+          <template v-else-if="filteredActivities.length === 0">
+            <div class="d-flex justify-center align-center pa-6">
+              <div class="text-subtitle-1">
+                No recent activity
+                <span class="text-sm text-medium-emphasis"
+                  >— {{ currentFilterLabel }}</span
+                >
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <VTimeline
+              side="end"
+              align="start"
+              line-inset="8"
+              truncate-line="start"
+              density="compact"
+            >
               <VTimelineItem
-                v-for="(act, idx) in activities"
+                v-for="(act, idx) in filteredActivities"
                 :key="
                   act.kind +
                   '-' +
@@ -568,14 +807,78 @@ function todoCollaborators(act: any) {
                   </div>
                 </div>
               </VTimelineItem>
-            </template>
-          </VTimeline>
+            </VTimeline>
+          </template>
         </VCardText>
       </VCard>
     </VCol>
 
     <VCol cols="12">
-      <UserInvoiceTable />
+      <!-- Statistics-style Summary card (Calls / Meetings / To-Dos) -->
+      <VCard title="Summary" class="summary-card mt-4">
+        <template #append>
+          <span class="text-sm text-disabled">Updated 1 month ago</span>
+        </template>
+
+        <VCardText>
+          <VRow>
+            <VCol cols="12" md="4">
+              <div class="d-flex align-center gap-4 mt-md-4 mt-0">
+                <VAvatar color="warning" variant="tonal" rounded size="40">
+                  <VIcon icon="tabler-list-check" />
+                </VAvatar>
+
+                <div class="d-flex flex-column">
+                  <div class="d-flex align-baseline gap-2">
+                    <div class="text-h6">{{ totalTodos }}</div>
+                    <div class="text-sm text-medium-emphasis">To-Dos</div>
+                  </div>
+                  <div class="text-sm mt-1">Pending: {{ pendingTodos }}</div>
+                </div>
+              </div>
+            </VCol>
+
+            <VCol cols="12" md="4">
+              <div class="d-flex align-center gap-4 mt-md-4 mt-0">
+                <VAvatar color="success" variant="tonal" rounded size="40">
+                  <VIcon icon="tabler-calendar" />
+                </VAvatar>
+
+                <div class="d-flex flex-column">
+                  <div class="d-flex align-baseline gap-2">
+                    <div class="text-h6">{{ totalMeetings }}</div>
+                    <div class="text-sm text-medium-emphasis">Meetings</div>
+                  </div>
+                  <div class="text-sm mt-1">
+                    Avg time:
+                    {{ formatMinutesHuman(averageMeetingDurationMinutes) }}
+                  </div>
+                </div>
+              </div>
+            </VCol>
+
+            <VCol cols="12" md="4">
+              <div class="d-flex align-center gap-4 mt-md-4 mt-0">
+                <VAvatar color="primary" variant="tonal" rounded size="40">
+                  <VIcon icon="tabler-phone" />
+                </VAvatar>
+
+                <div class="d-flex flex-column">
+                  <div class="d-flex align-baseline gap-2">
+                    <div class="text-h6">{{ totalCalls }}</div>
+                    <div class="text-sm text-medium-emphasis">Calls</div>
+                  </div>
+                  <div class="text-sm mt-1">
+                    Avg sentiment: {{ callsAverageSentimentValue }} ({{
+                      sentimentLabelFromValue(callsAverageSentimentValue)
+                    }})
+                  </div>
+                </div>
+              </div>
+            </VCol>
+          </VRow>
+        </VCardText>
+      </VCard>
     </VCol>
   </VRow>
 </template>
@@ -586,7 +889,7 @@ function todoCollaborators(act: any) {
   flex-direction: column;
 
   /* fixed height while remaining responsive on small screens */
-  block-size: 420px;
+  block-size: 39rem;
 }
 
 .activity-card__body {
