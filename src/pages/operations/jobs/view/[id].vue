@@ -42,10 +42,13 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 
 const contactDirectory = computed(() => {
-  const map = new Map<number, { name: string }>();
+  const map = new Map<number, { name: string; picture: string | null }>();
   contactsStore.all.forEach((contact) => {
     if (contact?.id === null || contact?.id === undefined) return;
-    map.set(Number(contact.id), { name: contact.fullName });
+    map.set(Number(contact.id), {
+      name: contact.fullName,
+      picture: contact.picture || null,
+    });
   });
   return map;
 });

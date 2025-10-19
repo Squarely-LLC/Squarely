@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import type { VForm } from "vuetify/components/VForm";
-
-import {
-  requiredValidator,
-} from "@/@core/utils/validators";
+import { requiredValidator } from "@/@core/utils/validators";
 import type {
   JobFlag,
   JobProperties,
@@ -12,32 +7,27 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
-
+import { computed, nextTick, ref, watch } from "vue";
+import type { VForm } from "vuetify/components/VForm";
 interface Props {
   isDialogVisible: boolean;
 }
-
 interface Emit {
   (e: "submit", value: Partial<JobProperties>): void;
   (e: "update:isDialogVisible", value: boolean): void;
 }
-
 const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
-
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
-
 const contactsStore = useContactsStore();
 contactsStore.init();
-
 const stageOptions: JobStage[] = [
   "PRPSL",
   "In Review",
   "Project | In Progress",
   "RFI",
 ];
-
 const typeOptions: JobType[] = [
   "Architecture",
   "Interior",
@@ -48,19 +38,17 @@ const typeOptions: JobType[] = [
   "Internal",
   "Other",
 ];
-
 const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
-
 const contactOptions = computed(() =>
   contactsStore.all.map((contact) => ({
     title: contact.fullName,
     value: contact.id,
   }))
 );
-
 const localJob = ref<Partial<JobProperties>>({
   name: "",
   code: "",
+  avatar: "",
   startDate: undefined,
   location: "",
   stage: "PRPSL",
@@ -70,17 +58,16 @@ const localJob = ref<Partial<JobProperties>>({
   collaborators: [],
   note: "",
 });
-
 const dialogModelValueUpdate = (value: boolean) => {
   emit("update:isDialogVisible", value);
 };
-
 const resetForm = () => {
   refForm.value?.reset();
   refForm.value?.resetValidation();
   localJob.value = {
     name: "",
     code: "",
+    avatar: "",
     startDate: undefined,
     location: "",
     stage: "PRPSL",
@@ -94,7 +81,6 @@ const resetForm = () => {
     refForm.value?.resetValidation();
   });
 };
-
 watch(
   () => props.isDialogVisible,
   (visible) => {
@@ -104,22 +90,18 @@ watch(
     });
   }
 );
-
 const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
-
   emit("submit", { ...localJob.value });
   emit("update:isDialogVisible", false);
   nextTick(() => resetForm());
 };
-
 const onCancel = () => {
   resetForm();
   emit("update:isDialogVisible", false);
 };
 </script>
-
 <template>
   <VDialog
     :width="$vuetify.display.smAndDown ? 'auto' : 680"
@@ -127,14 +109,12 @@ const onCancel = () => {
     @update:model-value="dialogModelValueUpdate"
   >
     <DialogCloseBtn @click="dialogModelValueUpdate(false)" />
-
     <VCard class="pa-sm-8 pa-4">
       <VCardText>
         <h4 class="text-h5 text-center mb-2">Add New Job</h4>
         <p class="text-body-2 text-center mb-6">
           Capture the key information for a new job record.
         </p>
-
         <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
           <VRow>
             <VCol cols="12" md="6">
@@ -145,7 +125,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localJob.code"
@@ -153,7 +132,15 @@ const onCancel = () => {
                 placeholder="P-1234"
               />
             </VCol>
-
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localJob.avatar"
+                label="Avatar URL"
+                placeholder="https://example.com/image.png"
+                hint="Provide an image URL for the project avatar"
+                persistent-hint
+              />
+            </VCol>
             <VCol cols="12" md="6">
               <AppDateTimePicker
                 v-model="localJob.startDate"
@@ -162,7 +149,6 @@ const onCancel = () => {
                 clearable
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localJob.location"
@@ -170,7 +156,6 @@ const onCancel = () => {
                 placeholder="Beirut, Lebanon"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.stage"
@@ -180,7 +165,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.type"
@@ -190,7 +174,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.flag"
@@ -200,7 +183,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.relatedTo"
@@ -211,7 +193,6 @@ const onCancel = () => {
                 clear-icon="tabler-x"
               />
             </VCol>
-
             <VCol cols="12">
               <AppSelect
                 v-model="localJob.collaborators"
@@ -224,7 +205,6 @@ const onCancel = () => {
                 clear-icon="tabler-x"
               />
             </VCol>
-
             <VCol cols="12">
               <AppTextarea
                 v-model="localJob.note"
@@ -234,7 +214,6 @@ const onCancel = () => {
                 rows="3"
               />
             </VCol>
-
             <VCol cols="12" class="d-flex flex-wrap justify-center gap-4 mt-4">
               <VBtn type="submit">Submit</VBtn>
               <VBtn variant="tonal" color="secondary" @click="onCancel">

@@ -1,11 +1,5 @@
 export type JobFlag = "Low" | "Normal" | "High";
-
-export type JobStage =
-  | "PRPSL"
-  | "In Review"
-  | "Project | In Progress"
-  | "RFI";
-
+export type JobStage = "PRPSL" | "In Review" | "Project | In Progress" | "RFI";
 export type JobType =
   | "Architecture"
   | "Interior"
@@ -15,13 +9,11 @@ export type JobType =
   | "Full Scope"
   | "Internal"
   | "Other";
-
 export interface JobStakeholder {
   id: number;
   contactId: number | null;
   role: string;
 }
-
 export interface JobMilestone {
   id: number;
   name: string;
@@ -30,7 +22,6 @@ export interface JobMilestone {
   priority: JobFlag;
   note?: string | null;
 }
-
 export interface JobGoal {
   id: number;
   milestoneId: number | null;
@@ -40,11 +31,11 @@ export interface JobGoal {
   priority: JobFlag;
   note?: string | null;
 }
-
 export interface JobProperties {
   id: number;
   name: string;
   code?: string | null;
+  avatar?: string | null;
   startDate?: string | null;
   location?: string | null;
   stage: JobStage;

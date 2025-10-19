@@ -21,6 +21,41 @@ export interface ContactConnection {
   picture?: string;
 }
 
+export type DocumentCategory = "JPG" | "PNG" | "PDF" | "EXCEL" | "WORD";
+
+export type DocumentType =
+  | "Contract"
+  | "Passport"
+  | "Visa"
+  | "ID Card"
+  | "Labor Card"
+  | "Health Card"
+  | "Insurance Card"
+  | "Residency Card"
+  | "Other"
+  | "Tax Registration"
+  | "Trade License"
+  | "VAT Certificate"
+  | "VAT ,License"
+  | "Tax License"
+  | "Payslip"
+  | "Reimbursements Invoice"
+  | "Bank Details"
+  | "SOPs"
+  | "Proposals";
+
+export interface ContactDocument {
+  id: number;
+  category?: DocumentCategory; // file attachment category (JPG/PNG/PDF/EXCEL/WORD)
+  type?: DocumentType; // restrict to screenshot values
+  name: string;
+  expiry?: string | null; // ISO date string
+  expiryReminder?: boolean; // whether reminder is set
+  note?: string;
+  fileUrl?: string; // attachment URL or link
+  createdAt?: string;
+}
+
 export interface ContactAccounting {
   taxId?: string;
   crn?: string;
@@ -39,6 +74,7 @@ export interface ContactProperties {
   picture?: string;
   connections: ContactConnection[];
   accounting: ContactAccounting;
+  documents?: ContactDocument[];
   address?: string;
   poBox?: string;
   country?: string;

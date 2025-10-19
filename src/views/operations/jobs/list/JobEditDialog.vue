@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, toRaw, watch } from "vue";
-import type { VForm } from "vuetify/components/VForm";
-
 import { requiredValidator } from "@/@core/utils/validators";
 import type {
   JobFlag,
@@ -10,44 +7,38 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
-
+import { computed, nextTick, ref, toRaw, watch } from "vue";
+import type { VForm } from "vuetify/components/VForm";
 interface Props {
   job?: JobProperties | null;
   isDialogVisible: boolean;
   loading?: boolean;
   error?: string | null;
 }
-
 interface Emit {
   (e: "submit", value: JobProperties): void;
   (e: "update:isDialogVisible", value: boolean): void;
 }
-
 const props = withDefaults(defineProps<Props>(), {
   job: null,
   loading: false,
   error: null,
 });
-
 const emit = defineEmits<Emit>();
-
 const contactsStore = useContactsStore();
 contactsStore.init();
-
 const contactOptions = computed(() =>
   contactsStore.all.map((contact) => ({
     title: contact.fullName,
     value: contact.id,
   }))
 );
-
 const stageOptions: JobStage[] = [
   "PRPSL",
   "In Review",
   "Project | In Progress",
   "RFI",
 ];
-
 const typeOptions: JobType[] = [
   "Architecture",
   "Interior",
@@ -58,15 +49,11 @@ const typeOptions: JobType[] = [
   "Internal",
   "Other",
 ];
-
 const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
-
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
-
 const sanitiseJob = (job: JobProperties | null) => {
   if (!job) return null;
-
   const raw = toRaw(job) as JobProperties;
   return {
     ...raw,
@@ -75,9 +62,7 @@ const sanitiseJob = (job: JobProperties | null) => {
       : [],
   } satisfies JobProperties;
 };
-
 const localJob = ref<JobProperties | null>(sanitiseJob(props.job));
-
 watch(
   () => props.job,
   (value) => {
@@ -87,25 +72,20 @@ watch(
     });
   }
 );
-
 const dialogModelValueUpdate = (value: boolean) => {
   emit("update:isDialogVisible", value);
 };
-
 const onSubmit = async () => {
   if (!localJob.value) return;
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
-
   emit("submit", { ...localJob.value });
 };
-
 const onCancel = () => {
   localJob.value = sanitiseJob(props.job ?? null);
   emit("update:isDialogVisible", false);
 };
 </script>
-
 <template>
   <VDialog
     :width="$vuetify.display.smAndDown ? 'auto' : 700"
@@ -113,14 +93,12 @@ const onCancel = () => {
     @update:model-value="dialogModelValueUpdate"
   >
     <DialogCloseBtn @click="dialogModelValueUpdate(false)" />
-
     <VCard class="pa-sm-8 pa-4">
       <VCardText>
         <h4 class="text-h5 text-center mb-2">Edit Job</h4>
         <p class="text-body-2 text-center mb-6">
           Update the project information and save your changes.
         </p>
-
         <VAlert
           v-if="error"
           type="error"
@@ -130,7 +108,6 @@ const onCancel = () => {
         >
           {{ error }}
         </VAlert>
-
         <VForm
           v-if="localJob"
           ref="refForm"
@@ -146,7 +123,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localJob.code"
@@ -154,7 +130,15 @@ const onCancel = () => {
                 placeholder="P-1234"
               />
             </VCol>
-
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localJob.avatar"
+                label="Avatar URL"
+                placeholder="https://example.com/image.png"
+                hint="Provide an image URL for the project avatar"
+                persistent-hint
+              />
+            </VCol>
             <VCol cols="12" md="6">
               <AppDateTimePicker
                 v-model="localJob.startDate"
@@ -163,7 +147,6 @@ const onCancel = () => {
                 clearable
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localJob.location"
@@ -171,7 +154,6 @@ const onCancel = () => {
                 placeholder="Beirut, Lebanon"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.stage"
@@ -181,7 +163,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.type"
@@ -191,7 +172,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.flag"
@@ -201,7 +181,6 @@ const onCancel = () => {
                 :rules="[requiredValidator]"
               />
             </VCol>
-
             <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.relatedTo"
@@ -212,7 +191,6 @@ const onCancel = () => {
                 clear-icon="tabler-x"
               />
             </VCol>
-
             <VCol cols="12">
               <AppSelect
                 v-model="localJob.collaborators"
@@ -225,7 +203,6 @@ const onCancel = () => {
                 clear-icon="tabler-x"
               />
             </VCol>
-
             <VCol cols="12">
               <AppTextarea
                 v-model="localJob.note"
@@ -235,7 +212,6 @@ const onCancel = () => {
                 rows="3"
               />
             </VCol>
-
             <VCol cols="12" class="d-flex flex-wrap justify-center gap-4 mt-4">
               <VBtn :loading="loading" type="submit">Save</VBtn>
               <VBtn variant="tonal" color="secondary" @click="onCancel">
@@ -244,7 +220,6 @@ const onCancel = () => {
             </VCol>
           </VRow>
         </VForm>
-
         <VAlert v-else type="warning" variant="tonal">
           Unable to load job details.
         </VAlert>

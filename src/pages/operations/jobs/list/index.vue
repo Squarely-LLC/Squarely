@@ -2,11 +2,22 @@
 import { computed, ref, watch } from "vue";
 
 import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
-import { useJobsStore } from "@/stores/jobs";
 import { useContactsStore } from "@/stores/contacts";
+import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import AddJobDialog from "@/views/operations/jobs/list/AddJobDialog.vue";
 import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
+
+type SortKey = "name" | "createdAt" | "stage" | "type" | "flag";
+type SortOrder = "asc" | "desc";
+
+type DecoratedStakeholder = {
+  id: number;
+  name: string;
+  role: string;
+  avatar: string | null;
+  isPrimary: boolean;
+};
 
 const jobsStore = useJobsStore();
 jobsStore.init();
@@ -44,9 +55,6 @@ const headers = [
   { title: "Actions", key: "actions", sortable: false },
 ];
 
-type SortKey = "name" | "createdAt" | "stage" | "type" | "flag";
-type SortOrder = "asc" | "desc";
-
 const stageOptions = [
   { title: "PRPSL", value: "PRPSL" },
   { title: "In Review", value: "In Review" },
@@ -77,6 +85,10 @@ watch(selectedSort, (value) => {
   page.value = 1;
 });
 
+watch([selectedStage, selectedType, selectedFlag, searchQuery], () => {
+  page.value = 1;
+});
+
 const cloneJob = (job: JobProperties) => {
   if (typeof structuredClone === "function") {
     try {
@@ -94,14 +106,39 @@ const cloneJob = (job: JobProperties) => {
   }
 };
 
+const avatarText = (name?: string | null) => {
+  const safeName = (name ?? "").trim();
+  if (!safeName) return "??";
+
+  const initials = safeName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return initials || safeName.slice(0, 2).toUpperCase();
+};
+
 const contactDirectory = computed(() => {
-  const map = new Map<number, { name: string }>();
+  const map = new Map<number, { name: string; picture: string | null }>();
   contactsStore.all.forEach((contact) => {
     if (contact?.id === null || contact?.id === undefined) return;
-    map.set(Number(contact.id), { name: contact.fullName });
+    map.set(Number(contact.id), {
+      name: contact.fullName,
+      picture: contact.picture || null,
+    });
   });
   return map;
 });
+
+const getContactEntry = (id: number | string | null | undefined) => {
+  if (id === null || id === undefined) return null;
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId)) return null;
+  return contactDirectory.value.get(numericId) ?? null;
+};
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
@@ -178,23 +215,23 @@ const displayedJobs = computed<JobProperties[]>(() => {
 
 const totalJobs = computed(() => sortedJobs.value.length);
 
-const formatStakeholders = (job: JobProperties) => {
-  if (!Array.isArray(job.stakeholders) || !job.stakeholders.length)
-    return "No stakeholders";
-  const names = job.stakeholders
-    .map((stakeholder) =>
-      stakeholder.contactId
-        ? contactDirectory.value.get(Number(stakeholder.contactId))?.name ??
-          "Unknown"
-        : stakeholder.role
-    )
-    .filter(Boolean);
-  if (!names.length) return "No stakeholders";
-  if (names.length === 1) return names[0] as string;
-  const [first, second, ...rest] = names;
-  if (!second) return first as string;
-  const extra = rest.length ? ` +${rest.length}` : "";
-  return `${first}, ${second}${extra}`;
+const decorateStakeholders = (job: JobProperties): DecoratedStakeholder[] => {
+  if (!Array.isArray(job.stakeholders)) return [];
+
+  return job.stakeholders.map((stakeholder, index) => {
+    const contact = stakeholder.contactId
+      ? getContactEntry(stakeholder.contactId)
+      : null;
+    const name = contact?.name || stakeholder.role || "Unassigned";
+
+    return {
+      id: stakeholder.id,
+      name,
+      role: stakeholder.role || "--",
+      avatar: contact?.picture || null,
+      isPrimary: index === 0,
+    };
+  });
 };
 
 const resolveFlagColor = (flag: JobProperties["flag"]) => {
@@ -209,10 +246,12 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
   }
 };
 
-const relatedContactName = (job: JobProperties) =>
-  job.relatedTo
-    ? contactDirectory.value.get(Number(job.relatedTo))?.name ?? "--"
-    : "--";
+const jobAvatarColor = (flag: JobProperties["flag"]) => resolveFlagColor(flag);
+
+const relatedContactName = (job: JobProperties) => {
+  const entry = getContactEntry(job.relatedTo);
+  return entry?.name ?? "--";
+};
 
 const isAddJobDialogVisible = ref(false);
 const isJobEditDialogVisible = ref(false);
@@ -274,27 +313,42 @@ const confirmDelete = (id: number) => {
 
 const performDelete = () => {
   if (deleteCandidateId.value === null) return;
+
   jobsStore.removeJob(deleteCandidateId.value);
-  const index = selectedRows.value.findIndex((row) => row === deleteCandidateId.value);
+
+  const index = selectedRows.value.findIndex(
+    (row) => row === deleteCandidateId.value
+  );
   if (index !== -1) selectedRows.value.splice(index, 1);
+
   notifications.push("Job deleted", "success", 3000);
   deleteCandidateId.value = null;
   isConfirmDeleteVisible.value = false;
 };
 
-const updateOptions = (options: any) => {
-  sortBy.value = options.sortBy?.[0]?.key ?? sortBy.value;
-  orderBy.value = options.sortBy?.[0]?.order ?? orderBy.value;
+const updateOptions = (options: {
+  sortBy?: Array<{ key: SortKey; order: SortOrder }>;
+}) => {
+  const [sort] = options.sortBy ?? [];
+  if (sort) {
+    sortBy.value = sort.key;
+    orderBy.value = sort.order;
+  }
 
   const matched = sortOptions.find(
-    (option) => option.value.key === sortBy.value && option.value.order === orderBy.value
+    (option) =>
+      option.value.key === sortBy.value && option.value.order === orderBy.value
   );
 
   if (matched) selectedSort.value = matched.value;
 };
 
 const updateItemsPerPage = (value: number | string) => {
-  itemsPerPage.value = Number(value);
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return;
+
+  itemsPerPage.value = numeric;
+  page.value = 1;
 };
 </script>
 
@@ -399,22 +453,49 @@ const updateItemsPerPage = (value: number | string) => {
         @update:options="updateOptions"
       >
         <template #item.project="{ item }">
-          <div class="d-flex flex-column">
-            <RouterLink
-              :to="{
-                name: 'operations-jobs-view-id',
-                params: { id: item.id },
-              }"
-              class="text-link font-weight-medium"
+          <div class="d-flex align-center gap-x-4 py-2">
+            <VAvatar
+              size="40"
+              :variant="!item.avatar ? 'tonal' : undefined"
+              :color="!item.avatar ? jobAvatarColor(item.flag) : undefined"
             >
-              {{ item.name }}
-            </RouterLink>
-            <div class="text-sm text-medium-emphasis">
-              <span v-if="item.code">{{ item.code }}</span>
-              <span v-if="item.code && item.location"> â€¢ </span>
-              <span v-if="item.location">{{ item.location }}</span>
+              <VImg v-if="item.avatar" :src="item.avatar" />
+              <span v-else>{{ avatarText(item.name) }}</span>
+            </VAvatar>
+
+            <div class="d-flex flex-column gap-1">
+              <h6 class="text-base d-flex align-center gap-1 mb-0">
+                <VIcon icon="tabler-briefcase" size="16" color="primary" />
+                <RouterLink
+                  :to="{
+                    name: 'operations-jobs-view-id',
+                    params: { id: item.id },
+                  }"
+                  class="font-weight-medium text-link"
+                >
+                  {{ item.name }}
+                </RouterLink>
+              </h6>
+
+              <div class="text-sm text-medium-emphasis">
+                <span v-if="item.code">{{ item.code }}</span>
+                <span v-if="item.code && item.location"> • </span>
+                <span v-if="item.location">{{ item.location }}</span>
+              </div>
+
+              <div class="d-flex align-center gap-2 text-xs text-medium-emphasis">
+                <VAvatar
+                  v-if="getContactEntry(item.relatedTo)?.picture"
+                  size="24"
+                >
+                  <VImg :src="getContactEntry(item.relatedTo)?.picture || ''" />
+                </VAvatar>
+                <span>
+                  Related:
+                  <span class="text-high-emphasis">{{ relatedContactName(item) }}</span>
+                </span>
+              </div>
             </div>
-            <div class="text-xs text-medium-emphasis">Related: {{ relatedContactName(item) }}</div>
           </div>
         </template>
 
@@ -433,9 +514,64 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.stakeholders="{ item }">
-          <span class="text-body-1 text-high-emphasis">
-            {{ formatStakeholders(item) }}
-          </span>
+          <div class="d-flex align-center gap-2">
+            <div
+              v-if="decorateStakeholders(item).length"
+              class="v-avatar-group demo-avatar-group"
+            >
+              <VAvatar
+                v-for="stakeholder in decorateStakeholders(item).slice(0, 3)"
+                :key="`${item.id}-${stakeholder.id}`"
+                :size="40"
+                :variant="!stakeholder.avatar ? 'tonal' : undefined"
+                :color="!stakeholder.avatar ? 'primary' : undefined"
+                :class="[
+                  !stakeholder.avatar ? 'text-white font-weight-medium' : null,
+                  stakeholder.isPrimary ? 'job-primary-border' : null,
+                ]"
+              >
+                <template v-if="stakeholder.avatar">
+                  <VImg :src="stakeholder.avatar" />
+                </template>
+                <template v-else>
+                  <span>{{ avatarText(stakeholder.name) }}</span>
+                </template>
+
+                <VTooltip activator="parent" location="top">
+                  <div class="d-flex flex-column gap-1">
+                    <span class="font-weight-medium">{{ stakeholder.name }}</span>
+                    <span class="text-body-2 text-medium-emphasis">
+                      {{ stakeholder.role }}
+                    </span>
+                    <span
+                      v-if="stakeholder.isPrimary"
+                      class="text-body-2 text-primary"
+                    >
+                      Primary
+                    </span>
+                  </div>
+                </VTooltip>
+              </VAvatar>
+
+              <VAvatar
+                v-if="decorateStakeholders(item).length > 3"
+                color="secondary"
+                :size="40"
+                class="font-weight-medium text-white"
+              >
+                +{{ decorateStakeholders(item).length - 3 }}
+                <VTooltip activator="parent" location="top">
+                  {{
+                    decorateStakeholders(item)
+                      .slice(3)
+                      .map((entry) => entry.name)
+                      .join(", ")
+                  }}
+                </VTooltip>
+              </VAvatar>
+            </div>
+            <span v-else class="text-medium-emphasis">No stakeholders</span>
+          </div>
         </template>
 
         <template #item.actions="{ item }">
@@ -478,3 +614,20 @@ const updateItemsPerPage = (value: number | string) => {
     />
   </section>
 </template>
+
+<style scoped>
+.job-primary-border {
+  --job-primary-color: rgb(var(--v-theme-primary));
+
+  position: relative;
+}
+
+.job-primary-border::after {
+  position: absolute;
+  border: 2px solid var(--job-primary-color);
+  border-radius: inherit;
+  content: "";
+  inset: -2px;
+  pointer-events: none;
+}
+</style>

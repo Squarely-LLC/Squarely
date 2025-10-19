@@ -1,15 +1,17 @@
+import avatar10 from "@images/avatars/avatar-10.png";
+import avatar12 from "@images/avatars/avatar-12.png";
+import avatar7 from "@images/avatars/avatar-7.png";
 import type { JobProperties } from "./types";
-
 interface DB {
   jobs: JobProperties[];
 }
-
 export const db: DB = {
   jobs: [
     {
       id: 1,
       name: "Ted's Project",
       code: "P-1234",
+      avatar: avatar7,
       startDate: "2024-04-01T09:00:00Z",
       location: "Beirut, Lebanon",
       stage: "PRPSL",
@@ -67,6 +69,7 @@ export const db: DB = {
       id: 2,
       name: "Expo Pavilion",
       code: "EV-204",
+      avatar: avatar10,
       startDate: "2024-02-12T08:00:00Z",
       location: "Dubai, UAE",
       stage: "Project | In Progress",
@@ -124,6 +127,7 @@ export const db: DB = {
       id: 3,
       name: "Headquarters Renovation",
       code: "INT-88",
+      avatar: avatar12,
       startDate: "2024-06-10T09:30:00Z",
       location: "Doha, Qatar",
       stage: "In Review",

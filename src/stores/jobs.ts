@@ -1,19 +1,15 @@
-import { toRaw } from "vue";
-import { defineStore } from "pinia";
-
+import { db } from "@/plugins/fake-api/handlers/operations/jobs/db";
 import type {
   JobGoal,
   JobMilestone,
   JobProperties,
   JobStakeholder,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
-import { db } from "@/plugins/fake-api/handlers/operations/jobs/db";
-
+import { defineStore } from "pinia";
+import { toRaw } from "vue";
 const STORAGE_KEY = "app.jobs.v1";
-
 function cloneStakeholder(stakeholder: JobStakeholder): JobStakeholder {
   const raw = toRaw(stakeholder) as JobStakeholder;
-
   if (typeof structuredClone === "function") {
     try {
       return structuredClone(raw);
@@ -21,7 +17,6 @@ function cloneStakeholder(stakeholder: JobStakeholder): JobStakeholder {
       console.warn("structuredClone failed while cloning stakeholder:", error);
     }
   }
-
   try {
     return JSON.parse(JSON.stringify(raw)) as JobStakeholder;
   } catch (error) {
@@ -29,10 +24,8 @@ function cloneStakeholder(stakeholder: JobStakeholder): JobStakeholder {
     return { ...raw };
   }
 }
-
 function cloneMilestone(milestone: JobMilestone): JobMilestone {
   const raw = toRaw(milestone) as JobMilestone;
-
   if (typeof structuredClone === "function") {
     try {
       return structuredClone(raw);
@@ -40,7 +33,6 @@ function cloneMilestone(milestone: JobMilestone): JobMilestone {
       console.warn("structuredClone failed while cloning milestone:", error);
     }
   }
-
   try {
     return JSON.parse(JSON.stringify(raw)) as JobMilestone;
   } catch (error) {
@@ -48,10 +40,8 @@ function cloneMilestone(milestone: JobMilestone): JobMilestone {
     return { ...raw };
   }
 }
-
 function cloneGoal(goal: JobGoal): JobGoal {
   const raw = toRaw(goal) as JobGoal;
-
   if (typeof structuredClone === "function") {
     try {
       return structuredClone(raw);
@@ -59,7 +49,6 @@ function cloneGoal(goal: JobGoal): JobGoal {
       console.warn("structuredClone failed while cloning goal:", error);
     }
   }
-
   try {
     return JSON.parse(JSON.stringify(raw)) as JobGoal;
   } catch (error) {
@@ -67,10 +56,8 @@ function cloneGoal(goal: JobGoal): JobGoal {
     return { ...raw };
   }
 }
-
 function cloneJob(job: JobProperties): JobProperties {
   const raw = toRaw(job) as JobProperties;
-
   if (typeof structuredClone === "function") {
     try {
       return structuredClone(raw);
@@ -78,7 +65,6 @@ function cloneJob(job: JobProperties): JobProperties {
       console.warn("structuredClone failed while cloning job:", error);
     }
   }
-
   try {
     return JSON.parse(JSON.stringify(raw)) as JobProperties;
   } catch (error) {
@@ -91,33 +77,27 @@ function cloneJob(job: JobProperties): JobProperties {
     };
   }
 }
-
 function cloneJobsArray(jobs: JobProperties[]) {
   return jobs.map((job) => cloneJob(job));
 }
-
 function ensureStakeholders(
   stakeholders: JobStakeholder[] | undefined | null
 ): JobStakeholder[] {
   if (!Array.isArray(stakeholders)) return [];
   return stakeholders.map((stakeholder) => cloneStakeholder(stakeholder));
 }
-
 function ensureMilestones(
   milestones: JobMilestone[] | undefined | null
 ): JobMilestone[] {
   if (!Array.isArray(milestones)) return [];
   return milestones.map((milestone) => cloneMilestone(milestone));
 }
-
 function ensureGoals(goals: JobGoal[] | undefined | null): JobGoal[] {
   if (!Array.isArray(goals)) return [];
   return goals.map((goal) => cloneGoal(goal));
 }
-
 function loadFromStorage(): JobProperties[] | null {
   if (typeof window === "undefined") return null;
-
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -129,27 +109,27 @@ function loadFromStorage(): JobProperties[] | null {
     return null;
   }
 }
-
 function saveToStorage(jobs: JobProperties[]) {
   if (typeof window === "undefined") return;
-
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
   } catch (error) {
     console.warn("Failed to save jobs to storage:", error);
   }
 }
-
 function normaliseJob(
   payload: Partial<JobProperties>,
   assignedId: number
 ): JobProperties {
   const now = new Date().toISOString();
-
   return {
     id: assignedId,
     name: payload.name?.trim() || "Untitled Job",
     code: payload.code?.trim() || undefined,
+    avatar:
+      typeof payload.avatar === "string"
+        ? payload.avatar.trim() || null
+        : payload.avatar ?? null,
     startDate: payload.startDate || undefined,
     location: payload.location?.trim() || undefined,
     stage: payload.stage ?? "PRPSL",
@@ -166,7 +146,6 @@ function normaliseJob(
     createdAt: payload.createdAt ?? now,
   };
 }
-
 function mergeJob(
   original: JobProperties,
   patch: Partial<JobProperties>
@@ -183,12 +162,12 @@ function mergeJob(
     milestones: ensureMilestones(patch.milestones ?? original.milestones),
     goals: ensureGoals(patch.goals ?? original.goals),
   };
-
+  if (typeof merged.avatar === "string") {
+    merged.avatar = merged.avatar.trim() || null;
+  }
   if (!merged.createdAt) merged.createdAt = original.createdAt;
-
   return cloneJob(merged);
 }
-
 function nextJobId(items: JobProperties[]) {
   const numericIds = items
     .map((job) => Number(job.id))
@@ -196,7 +175,6 @@ function nextJobId(items: JobProperties[]) {
   if (!numericIds.length) return 1;
   return Math.max(...numericIds) + 1;
 }
-
 function nextNestedId(collection: Array<{ id: number }>) {
   const numericIds = collection
     .map((item) => Number(item.id))
@@ -204,9 +182,7 @@ function nextNestedId(collection: Array<{ id: number }>) {
   if (!numericIds.length) return 1;
   return Math.max(...numericIds) + 1;
 }
-
 const seedJobs = () => cloneJobsArray(db.jobs);
-
 export const useJobsStore = defineStore("jobs", {
   state: () => ({
     items: [] as JobProperties[],
@@ -220,18 +196,14 @@ export const useJobsStore = defineStore("jobs", {
   actions: {
     init(force = false) {
       if (this.initialized && !force) return;
-
       const stored = loadFromStorage();
-
       if (stored && stored.length) {
         this.items = cloneJobsArray(stored);
       } else {
         this.items = seedJobs();
         saveToStorage(this.items);
       }
-
       this.initialized = true;
-
       if (typeof window !== "undefined") {
         this.$subscribe(
           (_mutation, state) => {
@@ -241,7 +213,6 @@ export const useJobsStore = defineStore("jobs", {
         );
       }
     },
-
     addJob(payload: Partial<JobProperties>) {
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
@@ -250,47 +221,44 @@ export const useJobsStore = defineStore("jobs", {
       this.items.unshift(normalised);
       return normalised;
     },
-
     updateJob(id: number | string, patch: Partial<JobProperties>) {
-      const index = this.items.findIndex((job) => String(job.id) === String(id));
+      const index = this.items.findIndex(
+        (job) => String(job.id) === String(id)
+      );
       if (index === -1) return null;
-
       const updated = mergeJob(this.items[index], patch);
       this.items.splice(index, 1, updated);
       return updated;
     },
-
     removeJob(id: number | string) {
-      const index = this.items.findIndex((job) => String(job.id) === String(id));
+      const index = this.items.findIndex(
+        (job) => String(job.id) === String(id)
+      );
       if (index === -1) return;
       this.items.splice(index, 1);
     },
-
     nextId() {
       return nextJobId(this.items);
     },
-
     addMilestone(jobId: number | string, milestone: Partial<JobMilestone>) {
       const job = this.byId(jobId);
       if (!job) return null;
-
       const nextIdValue = nextNestedId(job.milestones);
       const normalized: JobMilestone = {
-        id: milestone.id && Number(milestone.id) > 0
-          ? Number(milestone.id)
-          : nextIdValue,
+        id:
+          milestone.id && Number(milestone.id) > 0
+            ? Number(milestone.id)
+            : nextIdValue,
         name: milestone.name?.trim() || "Untitled Milestone",
         startDate: milestone.startDate || undefined,
         dueDate: milestone.dueDate || undefined,
         priority: milestone.priority ?? "Normal",
         note: milestone.note?.trim() || undefined,
       };
-
       const updatedMilestones = [normalized, ...job.milestones];
       this.updateJob(jobId, { milestones: updatedMilestones });
       return normalized;
     },
-
     updateMilestone(
       jobId: number | string,
       milestoneId: number | string,
@@ -298,12 +266,10 @@ export const useJobsStore = defineStore("jobs", {
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
-
       const index = job.milestones.findIndex(
         (milestone) => String(milestone.id) === String(milestoneId)
       );
       if (index === -1) return null;
-
       const existing = job.milestones[index];
       const updated: JobMilestone = {
         ...existing,
@@ -311,17 +277,14 @@ export const useJobsStore = defineStore("jobs", {
         name: patch.name?.trim() || existing.name,
         note: patch.note?.trim() || existing.note,
       };
-
       const milestones = [...job.milestones];
       milestones.splice(index, 1, updated);
       this.updateJob(jobId, { milestones });
       return updated;
     },
-
     removeMilestone(jobId: number | string, milestoneId: number | string) {
       const job = this.byId(jobId);
       if (!job) return;
-
       const milestones = job.milestones.filter(
         (milestone) => String(milestone.id) !== String(milestoneId)
       );
@@ -332,11 +295,9 @@ export const useJobsStore = defineStore("jobs", {
       );
       this.updateJob(jobId, { milestones, goals });
     },
-
     addGoal(jobId: number | string, goal: Partial<JobGoal>) {
       const job = this.byId(jobId);
       if (!job) return null;
-
       const nextIdValue = nextNestedId(job.goals);
       const normalized: JobGoal = {
         id: goal.id && Number(goal.id) > 0 ? Number(goal.id) : nextIdValue,
@@ -352,12 +313,10 @@ export const useJobsStore = defineStore("jobs", {
         priority: goal.priority ?? "Normal",
         note: goal.note?.trim() || undefined,
       };
-
       const updatedGoals = [normalized, ...job.goals];
       this.updateJob(jobId, { goals: updatedGoals });
       return normalized;
     },
-
     updateGoal(
       jobId: number | string,
       goalId: number | string,
@@ -365,12 +324,10 @@ export const useJobsStore = defineStore("jobs", {
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
-
       const index = job.goals.findIndex(
         (goal) => String(goal.id) === String(goalId)
       );
       if (index === -1) return null;
-
       const existing = job.goals[index];
       const updated: JobGoal = {
         ...existing,
@@ -384,30 +341,25 @@ export const useJobsStore = defineStore("jobs", {
             ? null
             : Number(patch.milestoneId),
       };
-
       const goals = [...job.goals];
       goals.splice(index, 1, updated);
       this.updateJob(jobId, { goals });
       return updated;
     },
-
     removeGoal(jobId: number | string, goalId: number | string) {
       const job = this.byId(jobId);
       if (!job) return;
-
       const goals = job.goals.filter(
         (goal) => String(goal.id) !== String(goalId)
       );
       this.updateJob(jobId, { goals });
     },
-
     addStakeholder(
       jobId: number | string,
       stakeholder: Partial<JobStakeholder>
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
-
       const nextIdValue = nextNestedId(job.stakeholders);
       const normalized: JobStakeholder = {
         id:
@@ -420,12 +372,10 @@ export const useJobsStore = defineStore("jobs", {
             : Number(stakeholder.contactId),
         role: stakeholder.role?.trim() || "Stakeholder",
       };
-
       const updatedStakeholders = [normalized, ...job.stakeholders];
       this.updateJob(jobId, { stakeholders: updatedStakeholders });
       return normalized;
     },
-
     updateStakeholder(
       jobId: number | string,
       stakeholderId: number | string,
@@ -433,12 +383,10 @@ export const useJobsStore = defineStore("jobs", {
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
-
       const index = job.stakeholders.findIndex(
         (stakeholder) => String(stakeholder.id) === String(stakeholderId)
       );
       if (index === -1) return null;
-
       const existing = job.stakeholders[index];
       const updated: JobStakeholder = {
         ...existing,
@@ -451,23 +399,19 @@ export const useJobsStore = defineStore("jobs", {
             ? null
             : Number(patch.contactId),
       };
-
       const stakeholders = [...job.stakeholders];
       stakeholders.splice(index, 1, updated);
       this.updateJob(jobId, { stakeholders });
       return updated;
     },
-
     removeStakeholder(jobId: number | string, stakeholderId: number | string) {
       const job = this.byId(jobId);
       if (!job) return;
-
       const stakeholders = job.stakeholders.filter(
         (stakeholder) => String(stakeholder.id) !== String(stakeholderId)
       );
       this.updateJob(jobId, { stakeholders });
     },
-
     replaceAll(jobs: JobProperties[]) {
       this.items = cloneJobsArray(jobs);
     },

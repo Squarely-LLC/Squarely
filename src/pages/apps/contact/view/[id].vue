@@ -6,7 +6,7 @@ import { useContactsStore } from "@/stores/contacts";
 
 import UserBioPanel from "@/views/apps/contact/view/UserBioPanel.vue";
 import UserTabAccount from "@/views/apps/contact/view/UserTabAccount.vue";
-import UserTabBillingsPlans from "@/views/apps/contact/view/UserTabBillingsPlans.vue";
+import UserTabDocuments from "@/views/apps/contact/view/UserTabDocuments.vue";
 import UserTabNotifications from "@/views/apps/contact/view/UserTabNotifications.vue";
 import UserTabSecurity from "@/views/apps/contact/view/UserTabSecurity.vue";
 import UserTabConnections from "@/views/apps/user/view/UserTabConnections.vue";
@@ -62,7 +62,7 @@ const userTab = ref(null);
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
-  { icon: "tabler-bookmark", title: "Billing & Plan" },
+  { icon: "tabler-file", title: "Documents" },
   { icon: "tabler-lock", title: "Security" },
 
   { icon: "tabler-bell", title: "Notifications" },
@@ -109,7 +109,7 @@ watch(
         </VWindowItem>
 
         <VWindowItem>
-          <UserTabBillingsPlans />
+          <UserTabDocuments :user="contact" />
         </VWindowItem>
 
         <VWindowItem>
