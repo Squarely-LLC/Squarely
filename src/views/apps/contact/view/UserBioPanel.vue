@@ -4,7 +4,10 @@ import type {
   ContactProperties,
 } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { useContactsStore } from "@/stores/contacts";
+import { useNotificationsStore } from "@/stores/notifications";
+import { useTodos } from "@/stores/todos";
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import ContactEditDialog from "@/views/apps/contact/list/ContactEditDialog.vue";
 
@@ -169,7 +172,7 @@ const snackbarMessage = ref("");
 // highlighted contact id for temporary visual highlight
 const highlightedContactId = ref<number | null>(null);
 
-// delete confirmation dialog state
+// delete confirmation dialog state for connections (existing)
 const confirmDeleteDialogVisible = ref(false);
 const deleteCandidateId = ref<number | null>(null);
 
@@ -203,6 +206,222 @@ const performDeleteConnection = () => {
   showSnackbar.value = true;
   confirmDeleteDialogVisible.value = false;
   deleteCandidateId.value = null;
+};
+
+// --- Contact delete (mirror list page logic) ---
+const notifications = useNotificationsStore();
+const todosStore = useTodos();
+const router = useRouter();
+
+const confirmDeleteContactVisible = ref(false);
+const deleteContactCandidateId = ref<number | null>(null);
+const deleteContactBlockingReasons = ref<string[]>([]);
+
+const findDeleteBlockingReasonsForContact = (id: number): string[] => {
+  const reasons: string[] = [];
+  try {
+    try {
+      todosStore.init();
+    } catch (e) {
+      /* ignore */
+    }
+
+    // top-level todos where contact is collaborator
+    const referencingTodos = (todosStore.items || []).filter(
+      (t: any) =>
+        Array.isArray(t.collaborators) &&
+        t.collaborators.some((c: any) => Number(c.id) === Number(id))
+    );
+    if (referencingTodos.length) {
+      reasons.push(
+        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`
+      );
+    }
+
+    const stepRefs = (todosStore.items || [])
+      .flatMap((t: any) => t.steps || [])
+      .filter(
+        (s: any) =>
+          Array.isArray(s.collaborators) &&
+          s.collaborators.some((c: any) => Number(c.id) === Number(id))
+      );
+    if (stepRefs.length) {
+      reasons.push(
+        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`
+      );
+    }
+
+    const activityRefs = (todosStore.items || [])
+      .flatMap((t: any) => t.activities || [])
+      .filter((a: any) => a && a.author && Number(a.author.id) === Number(id));
+    if (activityRefs.length) {
+      reasons.push(`Author on ${activityRefs.length} activity item(s)`);
+    }
+
+    const messageRefs = (todosStore.items || [])
+      .flatMap((t: any) => t.messages || [])
+      .filter(
+        (m: any) => m && m.author && Number((m.author as any).id) === Number(id)
+      );
+    if (messageRefs.length) {
+      reasons.push(`Author on ${messageRefs.length} message(s)`);
+    }
+
+    const referencingMeetings = (todosStore.meetings || []).filter((m: any) => {
+      if (m.requestedBy && Number(m.requestedBy.id) === Number(id)) return true;
+      if (
+        Array.isArray(m.linkedTo) &&
+        m.linkedTo.some((l: any) => Number(l.id) === Number(id))
+      )
+        return true;
+      if (
+        Array.isArray(m.notes) &&
+        m.notes.some(
+          (n: any) => n && n.author && Number(n.author.id) === Number(id)
+        )
+      )
+        return true;
+      return false;
+    });
+    if (referencingMeetings.length) {
+      reasons.push(`Referenced in ${referencingMeetings.length} meeting(s)`);
+    }
+
+    // connections in other contacts
+    const referencedInConnections = contactsStore.all.filter(
+      (c: any) =>
+        Array.isArray(c.connections) &&
+        c.connections.some((conn: any) => Number(conn.contactId) === Number(id))
+    );
+    if (referencedInConnections.length) {
+      reasons.push(
+        `Connected to ${referencedInConnections.length} other contact(s)`
+      );
+    }
+  } catch (e) {
+    reasons.push(
+      "Unable to guarantee safe deletion due to internal check failure"
+    );
+  }
+
+  return reasons;
+};
+
+const confirmDeleteContact = () => {
+  const id = Number(props.userData.id);
+  deleteContactCandidateId.value = id;
+  deleteContactBlockingReasons.value = findDeleteBlockingReasonsForContact(id);
+  confirmDeleteContactVisible.value = true;
+};
+
+const performDeleteContact = () => {
+  const id = deleteContactCandidateId.value;
+  if (id === null) return;
+
+  const reasons = findDeleteBlockingReasonsForContact(id);
+  if (reasons.length) {
+    deleteContactBlockingReasons.value = reasons;
+    // keep dialog open and prevent deletion
+    return;
+  }
+
+  try {
+    contactsStore.removeContact(id);
+  } catch (e) {
+    console.error("Failed to delete contact:", e);
+  }
+
+  notifications.push("Contact deleted", "success", 3500);
+  // redirect back to contact list after successful delete
+  try {
+    router.push({ name: "apps-contact-list" });
+  } catch (e) {
+    /* ignore */
+  }
+  deleteContactCandidateId.value = null;
+  deleteContactBlockingReasons.value = [];
+  confirmDeleteContactVisible.value = false;
+};
+
+const cleanupAndDeleteContact = () => {
+  const id = deleteContactCandidateId.value;
+  if (id === null) return;
+
+  try {
+    try {
+      todosStore.init();
+    } catch (e) {
+      /* ignore */
+    }
+
+    // Remove from top-level collaborators
+    todosStore.items = (todosStore.items || []).map((t: any) => {
+      const collaborators = (t.collaborators || []).filter(
+        (c: any) => Number(c.id) !== Number(id)
+      );
+      const steps = (t.steps || []).map((s: any) => ({
+        ...s,
+        collaborators: (s.collaborators || []).filter(
+          (c: any) => Number(c.id) !== Number(id)
+        ),
+      }));
+      const activities = (t.activities || []).filter(
+        (a: any) => !(a && a.author && Number(a.author.id) === Number(id))
+      );
+      const messages = (t.messages || []).filter(
+        (m: any) =>
+          !(
+            m &&
+            (m.author as any) &&
+            Number((m.author as any).id) === Number(id)
+          )
+      );
+      return { ...t, collaborators, steps, activities, messages };
+    });
+
+    // Meetings: remove linkedTo and requestedBy and notes authored by contact
+    todosStore.meetings = (todosStore.meetings || []).map((m: any) => {
+      const requestedBy =
+        m.requestedBy && Number(m.requestedBy.id) === Number(id)
+          ? null
+          : m.requestedBy;
+      const linkedTo = (m.linkedTo || []).filter(
+        (l: any) => Number(l.id) !== Number(id)
+      );
+      const notes = (m.notes || []).filter(
+        (n: any) => !(n && n.author && Number(n.author.id) === Number(id))
+      );
+      return { ...m, requestedBy, linkedTo, notes };
+    });
+
+    // Remove connections pointing to this contact
+    contactsStore.items = contactsStore.items.map((c: any) => {
+      const connections = (c.connections || []).filter(
+        (conn: any) => Number(conn.contactId) !== Number(id)
+      );
+      return { ...c, connections };
+    });
+
+    // Finally delete the contact
+    contactsStore.removeContact(id);
+    notifications.push(
+      "References removed and contact deleted",
+      "success",
+      3500
+    );
+    // redirect back to contact list after cleanup+delete
+    try {
+      router.push({ name: "apps-contact-list" });
+    } catch (e) {
+      /* ignore */
+    }
+  } catch (e) {
+    console.error("cleanupAndDeleteContact failed:", e);
+  }
+
+  deleteContactCandidateId.value = null;
+  deleteContactBlockingReasons.value = [];
+  confirmDeleteContactVisible.value = false;
 };
 
 // handler for AddConnectionDialog emitted payload
@@ -484,7 +703,9 @@ const editCandidate = computed(() =>
 
         <VCardText class="d-flex justify-center gap-4">
           <VBtn @click="isContactEditDialogVisible = true">Edit</VBtn>
-          <VBtn variant="tonal" color="error">Suspend</VBtn>
+          <VBtn variant="tonal" color="error" @click="confirmDeleteContact"
+            >Delete</VBtn
+          >
         </VCardText>
       </VCard>
     </VCol>
@@ -787,6 +1008,63 @@ const editCandidate = computed(() =>
         <VBtn color="error" variant="tonal" @click="performDeleteConnection"
           >Delete</VBtn
         >
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <!-- Contact delete dialog -->
+  <VDialog v-model="confirmDeleteContactVisible" max-width="540">
+    <VCard>
+      <VCardTitle>Delete contact</VCardTitle>
+      <VCardText>
+        <div v-if="deleteContactBlockingReasons.length">
+          <p>
+            This contact cannot be deleted because it is referenced elsewhere:
+          </p>
+          <ul>
+            <li v-for="(r, idx) in deleteContactBlockingReasons" :key="idx">
+              {{ r }}
+            </li>
+          </ul>
+          <p>Please remove these references before deleting the contact.</p>
+        </div>
+        <div v-else>
+          <p>
+            Are you sure you want to permanently delete
+            <strong>{{ props.userData.fullName }}</strong
+            >?
+          </p>
+        </div>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="
+            () => {
+              confirmDeleteContactVisible = false;
+              deleteContactCandidateId = null;
+            }
+          "
+          >Cancel</VBtn
+        >
+        <VBtn
+          v-if="deleteContactBlockingReasons.length"
+          variant="tonal"
+          color="error"
+          @click="cleanupAndDeleteContact"
+        >
+          Remove references & Delete
+        </VBtn>
+        <VBtn
+          v-else
+          variant="tonal"
+          color="error"
+          @click="performDeleteContact"
+        >
+          Delete
+        </VBtn>
       </VCardActions>
     </VCard>
   </VDialog>

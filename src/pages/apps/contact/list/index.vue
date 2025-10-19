@@ -1023,7 +1023,7 @@ const updateItemsPerPage = (value: number | string) => {
           <VBtn
             v-if="deleteBlockingReasons.length"
             variant="tonal"
-            color="warning"
+            color="error"
             @click="cleanupAndDelete"
           >
             Remove references & Delete
