@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
 
+import { emailValidator, requiredValidator } from "@/@core/utils/validators";
+import type { ContactProperties } from "@db/apps/contact/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
-
-import type { ContactProperties } from "@db/apps/contact/types";
 
 interface Emit {
   (e: "update:isDrawerOpen", value: boolean): void;

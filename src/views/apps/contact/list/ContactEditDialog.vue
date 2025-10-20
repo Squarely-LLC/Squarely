@@ -67,9 +67,9 @@ watch(
 // Stepper state
 const currentStep = ref(0);
 const numberedSteps = [
-  { title: "Account Details" },
-  { title: "Additional Info" },
-  { title: "Legal" },
+  { title: "Contact Details", icon: "tabler-user" },
+  { title: "Additional Info", icon: "tabler-user-plus" },
+  { title: "Legal", icon: "tabler-file-description" },
 ];
 
 const classOptions = ["Lead", "Client", "Supplier", "Contact", "Owner"];
@@ -154,6 +154,7 @@ const onReset = () => {
           <AppStepper
             v-model:current-step="currentStep"
             :items="numberedSteps"
+            icon-size="24"
             class="stepper-icon-step-bg"
           />
         </div>
@@ -169,7 +170,7 @@ const onReset = () => {
             <VWindowItem>
               <VRow>
                 <VCol cols="12">
-                  <h6 class="text-h6 font-weight-medium">Account Details</h6>
+                  <h6 class="text-h6 font-weight-medium">Contact Details</h6>
                   <p class="mb-0">Enter the contact account details</p>
                 </VCol>
 
@@ -240,6 +241,7 @@ const onReset = () => {
 
                 <VCol cols="12" md="6">
                   <VSwitch
+                    class="mt-5"
                     v-model="localContact.worksInSales"
                     label="Works in sales?"
                     color="primary"
@@ -369,6 +371,7 @@ const onReset = () => {
               </VBtn>
 
               <VBtn
+                variant="tonal"
                 v-if="numberedSteps.length - 1 !== currentStep"
                 @click="currentStep++"
               >
