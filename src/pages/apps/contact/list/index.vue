@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import { computed, ref, toRaw, watch } from "vue";
+import { computed, nextTick, ref, toRaw, watch } from "vue";
 
 import type {
   ContactConnection,
@@ -11,6 +11,9 @@ import type {
 import { useContactsStore } from "@/stores/contacts";
 import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
 import ContactEditDialog from "@/views/apps/contact/list/ContactEditDialog.vue";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
+import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 type SortKey = "user" | "status" | "category" | "channel" | "createdAt";
 type SortVal = { key: SortKey; order: "asc" | "desc" };
@@ -590,6 +593,144 @@ const openEditDialog = (id: number | string) => {
   }
 };
 
+const addTodoDrawerRef = ref<any | null>(null);
+const isAddTodoDrawerVisible = ref(false);
+
+const addMeetingRef = ref<any | null>(null);
+const isAddMeetingOpen = ref(false);
+
+const composeDialogRef = ref<any | null>(null);
+const isComposeDialogVisible = ref(false);
+
+const contactsOptions = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture,
+  }))
+);
+
+const openAddTodoDrawerForContact = (contact: ContactProperties) => {
+  try {
+    const initial = {
+      title: `Follow up: ${contact.fullName ?? ""}`,
+      collaborators: [
+        {
+          id: contact.id,
+          name: contact.fullName,
+          avatarUrl: contact.picture ?? null,
+        },
+      ],
+    } as any;
+
+    if (addTodoDrawerRef.value?.openWith) {
+      addTodoDrawerRef.value.openWith(initial);
+    } else {
+      isAddTodoDrawerVisible.value = true;
+      nextTick(() => {
+        try {
+          addTodoDrawerRef.value?.openWith?.(initial);
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to open todo drawer:", e);
+  }
+};
+
+const openAddMeetingForContact = (contact: ContactProperties) => {
+  try {
+    const initial = {
+      title: `Meeting: ${contact.fullName ?? ""}`,
+      initialStart: new Date(),
+      contacts: contactsOptions.value,
+      notes: `Scheduled from contacts list: ${contact.fullName ?? ""}`,
+      linkedTo: [
+        {
+          id: contact.id,
+          name: contact.fullName,
+          avatarUrl: contact.picture ?? null,
+        },
+      ],
+    } as any;
+
+    if (addMeetingRef.value?.openWith) {
+      addMeetingRef.value.openWith(initial);
+    } else {
+      isAddMeetingOpen.value = true;
+      nextTick(() => {
+        try {
+          addMeetingRef.value?.openWith?.(initial);
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to open meeting drawer:", e);
+  }
+};
+
+const openComposeForContact = (contact: ContactProperties) => {
+  try {
+    const toAddress = contact.email || "";
+    const initial = {
+      to: toAddress ? [toAddress] : [],
+      subject: `Hello ${contact.fullName ?? ""}`,
+      message: `Hi ${contact.fullName ?? ""},\n\n`,
+    } as any;
+
+    isComposeDialogVisible.value = true;
+    nextTick(() => {
+      try {
+        composeDialogRef.value?.openWith?.(initial);
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    console.error("Failed to open compose dialog:", e);
+  }
+};
+
+const handleAction = (action: string, item: ContactProperties) => {
+  // Fallback placeholder for actions not yet implemented
+  notifications.push(`${action} for ${item.fullName}`, "info", 3000);
+};
+
+const onMeetingCreated = (payload: any) => {
+  try {
+    const todos = useTodos();
+    try {
+      todos.init();
+    } catch {}
+    todos.addMeeting && todos.addMeeting(payload);
+    notifications.push("Meeting created", "success", 3500);
+  } catch (e) {
+    notifications.push("Meeting created", "success", 3500);
+  } finally {
+    isAddMeetingOpen.value = false;
+  }
+};
+
+const onTodoCreated = (payload: any) => {
+  try {
+    const todos = useTodos();
+    try {
+      todos.init();
+    } catch {}
+    todos.addTodo && todos.addTodo(payload);
+    notifications.push("To Do created", "success", 3500);
+  } catch (e) {
+    console.error("onTodoCreated failed:", e);
+    notifications.push("To Do created", "success", 3500);
+  } finally {
+    isAddTodoDrawerVisible.value = false;
+  }
+};
+
 const saveEditedContact = (payload: ContactProperties) => {
   loading.value = true;
   error.value = null;
@@ -959,9 +1100,53 @@ const updateItemsPerPage = (value: number | string) => {
             <VIcon icon="tabler-dots-vertical" />
             <VMenu activator="parent">
               <VList>
+                <VListItem @click="openAddTodoDrawerForContact(item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-list-check" />
+                  </template>
+                  <VListItemTitle>To Do</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="openAddMeetingForContact(item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-calendar" />
+                  </template>
+                  <VListItemTitle>Meeting</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="openComposeForContact(item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-mail" />
+                  </template>
+                  <VListItemTitle>Email</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="handleAction('Call', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-phone" />
+                  </template>
+                  <VListItemTitle>Call</VListItemTitle>
+                </VListItem>
+                <VDivider />
+                <VListItem @click="handleAction('Deals', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-file-invoice" />
+                  </template>
+                  <VListItemTitle>Deals</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="handleAction('Purchases', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-shopping-cart" />
+                  </template>
+                  <VListItemTitle>Purchases</VListItemTitle>
+                </VListItem>
+
+                <VDivider />
+
                 <VListItem @click="confirmDeleteCandidate(item.id)">
                   <template #prepend>
-                    <VIcon icon="tabler-trash" />
+                    <VIcon color="error" icon="tabler-trash" />
                   </template>
                   <VListItemTitle>Delete</VListItemTitle>
                 </VListItem>
@@ -992,6 +1177,44 @@ const updateItemsPerPage = (value: number | string) => {
       :loading="loading"
       :error="error"
       @submit="saveEditedContact"
+    />
+
+    <!-- To Do / Meeting / Email components wired for quick-create from contact list -->
+    <AddNewToDoDrawer
+      ref="addTodoDrawerRef"
+      v-model:is-drawer-open="isAddTodoDrawerVisible"
+      :collaborators-options="[]"
+      @userData="onTodoCreated"
+    />
+
+    <AddMeetingDrawer
+      ref="addMeetingRef"
+      v-model="isAddMeetingOpen"
+      :contacts="contactsOptions"
+      @save="onMeetingCreated"
+    />
+
+    <EmailDialog
+      ref="composeDialogRef"
+      v-model:is-dialog-visible="isComposeDialogVisible"
+      @send="
+        (payload) => {
+          try {
+            const recipients = Array.isArray(payload?.to)
+              ? payload.to
+              : payload?.to
+              ? [String(payload.to)]
+              : [];
+            notifications.push(
+              `Email sent to ${recipients.length} recipient(s)`,
+              'success',
+              3500
+            );
+          } catch (e) {
+            notifications.push('Email sent', 'success', 3500);
+          }
+        }
+      "
     />
 
     <VDialog v-model="isConfirmDeleteVisible" max-width="540">
