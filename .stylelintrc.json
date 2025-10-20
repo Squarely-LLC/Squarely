@@ -42,6 +42,15 @@
         ]
       }
     ],
-    "media-feature-range-notation": null
+    "media-feature-range-notation": null,
+    "selector-pseudo-class-no-unknown": [
+      true,
+      {
+        "ignorePseudoClasses": [
+          "deep",
+          "v-deep"
+        ]
+      }
+    ]
   }
 }
