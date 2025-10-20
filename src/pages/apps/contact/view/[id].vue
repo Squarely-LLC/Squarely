@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, toRaw, watch } from "vue";
+import { useRouter } from "vue-router";
 
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { useContactsStore } from "@/stores/contacts";
@@ -12,6 +13,7 @@ import UserTabSecurity from "@/views/apps/contact/view/UserTabSecurity.vue";
 import UserTabConnections from "@/views/apps/user/view/UserTabConnections.vue";
 
 const route = useRoute("apps-contact-view-id");
+const router = useRouter();
 const contactsStore = useContactsStore();
 contactsStore.init();
 
@@ -58,7 +60,16 @@ const resolveContact = () => {
   loading.value = false;
 };
 
-const userTab = ref(null);
+const userTab = ref<number | null>(null);
+
+// stable keys for tabs used in the URL query param (order must match `tabs`)
+const tabKeys = [
+  "account",
+  "documents",
+  "security",
+  "notifications",
+  "connections",
+] as const;
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
@@ -69,7 +80,20 @@ const tabs = [
   { icon: "tabler-link", title: "Connections" },
 ] as const;
 
-onMounted(resolveContact);
+const setTabFromQuery = () => {
+  try {
+    const q = String(route.query.tab || tabKeys[0]);
+    const idx = (tabKeys as readonly string[]).indexOf(q);
+    userTab.value = idx === -1 ? 0 : idx;
+  } catch (e) {
+    userTab.value = 0;
+  }
+};
+
+onMounted(() => {
+  resolveContact();
+  setTabFromQuery();
+});
 watch(() => route.params.id, resolveContact);
 watch(
   () => contactsStore.byId(route.params.id),
@@ -81,6 +105,33 @@ watch(
     }
     contact.value = cloneContact(value);
     error.value = null;
+  }
+);
+
+// keep userTab in sync with the route query param
+watch(
+  () => route.query.tab,
+  () => {
+    setTabFromQuery();
+  }
+);
+
+// update the route when the user changes tabs
+watch(
+  () => userTab.value,
+  (val) => {
+    if (val == null) return;
+    const key = (tabKeys as readonly string[])[val] || tabKeys[0];
+    if (String(route.query.tab) === key) return;
+    try {
+      router.replace({
+        name: route.name as any,
+        params: route.params,
+        query: { ...(route.query || {}), tab: key },
+      });
+    } catch (e) {
+      // ignore router replace errors
+    }
   }
 );
 </script>
