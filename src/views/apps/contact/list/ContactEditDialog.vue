@@ -24,19 +24,26 @@ const countries = (Country.getAllCountries() ?? [])
 // reactive city options (strings)
 const cityOptions = ref<string[]>([]);
 
-const updateCitiesForCountry = (countryLabel?: string | null) => {
-  const label = (countryLabel ?? "").toString().trim();
-  if (!label) {
+const updateCitiesForCountry = (countryKey?: string | null) => {
+  const key = (countryKey ?? "").toString().trim();
+  if (!key) {
     cityOptions.value = [];
     return;
   }
 
-  const matched = countries.find(
-    (c) => c.label.toLowerCase() === label.toLowerCase()
-  );
+  // try matching by ISO code first (e.g., 'US', 'GB'), then by label
+  const matched =
+    countries.find((c) => c.code.toLowerCase() === key.toLowerCase()) ||
+    countries.find((c) => c.label.toLowerCase() === key.toLowerCase());
+
   if (!matched) {
     cityOptions.value = [];
     return;
+  }
+
+  // ensure the UI shows the country label (in case the model stored the ISO code)
+  if (localContact.value && localContact.value.country !== matched.label) {
+    localContact.value.country = matched.label;
   }
 
   try {
@@ -47,6 +54,18 @@ const updateCitiesForCountry = (countryLabel?: string | null) => {
       .sort((a: string, b: string) => a.localeCompare(b));
   } catch (e) {
     cityOptions.value = [];
+  }
+
+  // If we already have a city value on the contact, ensure it's present in cityOptions
+  const existingCity = localContact.value?.city;
+  if (existingCity) {
+    const exists = cityOptions.value.find(
+      (c) => c.toLowerCase() === existingCity.toLowerCase()
+    );
+    if (!exists) {
+      // put existing city at the top so it's selectable and visible
+      cityOptions.value = [existingCity, ...cityOptions.value];
+    }
   }
 };
 
@@ -193,6 +212,9 @@ const sanitizeContact = (contact: ContactProperties | null) => {
 const localContact = ref<ContactProperties | null>(
   sanitizeContact(props.contact)
 );
+
+// preload city dropdown when editing an existing contact
+updateCitiesForCountry(localContact.value?.country);
 
 // Stepper state
 const currentStep = ref(0);
