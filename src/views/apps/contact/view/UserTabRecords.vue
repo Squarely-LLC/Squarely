@@ -38,11 +38,14 @@ const recordsList = computed(() => {
 });
 
 const itemsPerPage = ref(10);
+const page = ref(1);
 const searchQuery = ref("");
 const isAddRecordOpen = ref(false);
 const isEditRecordOpen = ref(false);
 const editingRecord = ref<any | null>(null);
-
+// delete confirm dialog state
+const isConfirmDeleteVisible = ref(false);
+const deleteCandidate = ref<any | null>(null);
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
 // simple filtering of records by title/type
@@ -55,6 +58,13 @@ const filteredRecords = computed(() => {
       .map((v: any) => String(v).toLowerCase());
     return hay.some((h: string) => h.includes(q));
   });
+});
+
+const totalItems = computed(() => filteredRecords.value.length);
+const paged = computed(() => {
+  if (itemsPerPage.value === -1) return filteredRecords.value;
+  const start = (page.value - 1) * itemsPerPage.value;
+  return filteredRecords.value.slice(start, start + itemsPerPage.value);
 });
 
 function updateItemsPerPage(val: any) {
@@ -88,9 +98,7 @@ async function deleteRecord(record: any) {
   const id = contactId.value;
   if (id == null) return;
 
-  if (!window.confirm("Delete this record? This cannot be undone.")) return;
-
-  // If the record doesn't exist on this contact locally, remove it locally and skip calling the API
+  // If the record doesn't exist on this contact locally, remove it locally and skip showing dialog
   const existsOnThisContact = recordsList.value.some(
     (r: any) => String(r.id) === String(record.id)
   );
@@ -107,32 +115,44 @@ async function deleteRecord(record: any) {
     return;
   }
 
+  // otherwise show delete confirmation dialog
+  deleteCandidate.value = record;
+  isConfirmDeleteVisible.value = true;
+}
+
+async function performRemoveConfirmed() {
+  const record = deleteCandidate.value;
+  if (!record) return;
+  const id = contactId.value;
+  if (id == null) return;
+
   try {
     const response = await fetch(
       `/api/apps/contacts/${id}/records/${record.id}`,
-      {
-        method: "DELETE",
-      }
+      { method: "DELETE" }
     );
 
     if (response.ok) {
       contactsStore.removeRecord(id as any, record.id);
-      return;
-    }
-
-    if (response.status === 404) {
-      // remove locally to keep UI consistent
+    } else if (response.status === 404) {
       contactsStore.removeRecord(id as any, record.id);
-      return;
+    } else {
+      const text = await response.text();
+      console.warn("Failed to delete record", response.status, text);
+      alert("Failed to delete record: " + (text || response.statusText));
     }
-
-    const text = await response.text();
-    console.warn("Failed to delete record", response.status, text);
-    alert("Failed to delete record: " + (text || response.statusText));
   } catch (err) {
     console.warn("Error deleting record", err);
     alert("Network error deleting record");
+  } finally {
+    deleteCandidate.value = null;
+    isConfirmDeleteVisible.value = false;
   }
+}
+
+function cancelRemove() {
+  deleteCandidate.value = null;
+  isConfirmDeleteVisible.value = false;
 }
 
 async function handleSaveRecord(payload: any) {
@@ -270,10 +290,6 @@ function onDrawerUpdate(v: boolean) {
               }}
             </td>
             <td>
-              <IconBtn @click.stop="viewRecord(item)">
-                <VIcon icon="tabler-eye" />
-              </IconBtn>
-
               <IconBtn @click.stop="editRecord(item)">
                 <VIcon icon="tabler-edit" />
               </IconBtn>
@@ -288,8 +304,13 @@ function onDrawerUpdate(v: boolean) {
             </td>
           </tr>
         </template>
+
         <template #bottom>
-          <!-- empty pagination area for consistency -->
+          <TablePagination
+            v-model:page="page"
+            :items-per-page="itemsPerPage"
+            :total-items="totalItems"
+          />
         </template>
       </VDataTableServer>
     </VCard>
@@ -308,4 +329,25 @@ function onDrawerUpdate(v: boolean) {
     @update:isDrawerOpen="(v) => (isEditRecordOpen = v)"
     @save="handleSaveRecord"
   />
+  <VDialog v-model="isConfirmDeleteVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Delete record</VCardTitle>
+      <VCardText>
+        <div v-if="deleteCandidate">
+          Are you sure you want to permanently delete
+          <strong>{{ deleteCandidate.title || deleteCandidate.id }}</strong>
+          ?
+        </div>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn variant="text" color="secondary" @click="cancelRemove"
+          >Cancel</VBtn
+        >
+        <VBtn variant="tonal" color="error" @click="performRemoveConfirmed"
+          >Delete</VBtn
+        >
+      </VCardActions>
+    </VCard>
+  </VDialog>
 </template>
