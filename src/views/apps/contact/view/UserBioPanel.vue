@@ -680,6 +680,19 @@ function onEmailSend(payload: any) {
     isComposeDialogVisible.value = false;
   }
 }
+
+// Handler when ContactEditDialog inside profile saves
+function onContactEditSubmit(payload: ContactProperties) {
+  try {
+    contactsStore.updateContact(payload.id, payload);
+    notifications.push(`${payload.fullName} updated`, "success", 3000);
+  } catch (e) {
+    console.error("Failed to update contact from profile edit:", e);
+    notifications.push("Failed to update contact", "error", 3000);
+  } finally {
+    isContactEditDialogVisible.value = false;
+  }
+}
 </script>
 
 <template>
@@ -1174,6 +1187,7 @@ function onEmailSend(payload: any) {
   <ContactEditDialog
     v-model:is-dialog-visible="isContactEditDialogVisible"
     :contact="props.userData"
+    @submit="onContactEditSubmit"
   />
   <AddConnectionDialog
     v-model:is-dialog-visible="isAddConnectionDialogVisible"

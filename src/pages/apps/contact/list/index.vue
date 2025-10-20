@@ -601,6 +601,8 @@ const saveEditedContact = (payload: ContactProperties) => {
     return;
   }
 
+  // notify and close
+  notifications.push(`${payload.fullName} updated`, "success", 3000);
   isContactEditDialogVisible.value = false;
   selectedContact.value = null;
   loading.value = false;
