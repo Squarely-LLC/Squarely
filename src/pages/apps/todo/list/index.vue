@@ -4,6 +4,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { storeToRefs } from "pinia";
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 /* 👉 Drawers/Dialogs */
 import AddColaboratorDialog from "@/components/dialogs/AddColaboratorDialog.vue";
@@ -93,6 +94,7 @@ function openMessageDialog(t: ToDo) {
 
 /* ================== Demo/static data ================== */
 const theme = useTheme();
+const router = useRouter();
 const nowISO = () => new Date().toISOString();
 const priorityColor = (p: Priority) =>
   p === "low" ? "secondary" : p === "normal" ? "primary" : "error";
@@ -196,6 +198,14 @@ const initials = (name: string) => {
   const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
   return (first + last).toUpperCase() || first.toUpperCase() || "?";
 };
+
+function goToContact(contact: ContactRef) {
+  try {
+    router.push({ name: "apps-contact-view-id", params: { id: contact.id } });
+  } catch (e) {
+    // ignore navigation errors in dev/mock environment
+  }
+}
 
 const startOfDay = (d: Date) =>
   new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -416,9 +426,29 @@ const markForReview = (t: ToDo) => todosStore.setStatus(t.id, "for_review");
 const toggleImportant = (t: ToDo) => todosStore.toggleImportant(t.id);
 
 const addNewToDo = (payload: Partial<ToDo>) => {
-  todosStore.addTodo(payload);
-  isAddNewToDoDrawerVisible.value = false;
-  useNotificationsStore().push("To-do created", "success", 3000);
+  try {
+    const created = todosStore.addTodo(payload);
+    isAddNewToDoDrawerVisible.value = false;
+    try {
+      const rawTitle =
+        (created && created.title) || payload?.title || "Untitled";
+      const safeTitle =
+        String(rawTitle).length > 60
+          ? String(rawTitle).slice(0, 57) + "..."
+          : String(rawTitle);
+      useNotificationsStore().push(
+        `To-do '${safeTitle}' created`,
+        "success",
+        3000
+      );
+    } catch {}
+  } catch (e) {
+    // fallback: still close drawer
+    isAddNewToDoDrawerVisible.value = false;
+    try {
+      useNotificationsStore().push("To-do created", "success", 3000);
+    } catch {}
+  }
 };
 
 // REPLACE the whole function with:
@@ -731,7 +761,11 @@ function onRowClick(e: MouseEvent, payload: any) {
         <VSpacer />
         <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
           <div style="inline-size: 15.625rem">
-            <AppTextField v-model="searchQuery" placeholder="Search To Do" />
+            <AppTextField
+              v-model="searchQuery"
+              placeholder="Search To Do"
+              clearable
+            />
           </div>
           <VBtn variant="tonal" color="secondary" prepend-icon="tabler-upload">
             Export
@@ -862,6 +896,8 @@ function onRowClick(e: MouseEvent, payload: any) {
               v-for="c in item.collaborators.slice(0, 3)"
               :key="c.id"
               :size="40"
+              @click.stop="goToContact(c)"
+              style="cursor: pointer"
             >
               <template v-if="c.avatarUrl">
                 <VImg :src="c.avatarUrl" />
@@ -1016,6 +1052,8 @@ function onRowClick(e: MouseEvent, payload: any) {
                           v-for="c in s.collaborators.slice(0, 3)"
                           :key="c.id"
                           :size="32"
+                          @click.stop="goToContact(c)"
+                          style="cursor: pointer"
                         >
                           <template v-if="c.avatarUrl">
                             <VImg :src="c.avatarUrl" />

@@ -76,7 +76,6 @@ export interface ContactProperties {
   accounting: ContactAccounting;
   documents?: ContactDocument[];
   address?: string;
-  poBox?: string;
   country?: string;
   city?: string;
   language?: string;

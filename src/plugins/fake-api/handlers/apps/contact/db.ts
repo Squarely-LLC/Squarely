@@ -44,7 +44,6 @@ export const db: DB = {
       },
       documents: [],
       address: "123 Downtown Street",
-      poBox: "POB 2245",
       country: "Lebanon",
       city: "Beirut",
       language: "Arabic",
@@ -84,7 +83,6 @@ export const db: DB = {
       },
       documents: [],
       address: "Jumeirah 3, Commercial Tower 9",
-      poBox: "POB 82311",
       country: "United Arab Emirates",
       city: "Dubai",
       language: "English",
@@ -124,7 +122,6 @@ export const db: DB = {
       },
       documents: [],
       address: "Squarely Center, Level 11",
-      poBox: "POB 1100",
       country: "Lebanon",
       city: "Beirut",
       language: "Arabic",
@@ -160,7 +157,6 @@ export const db: DB = {
       accounting: {},
       documents: [],
       address: "Ashrafieh, Building 24",
-      poBox: "",
       country: "Lebanon",
       city: "Beirut",
       language: "French",
@@ -200,7 +196,6 @@ export const db: DB = {
       },
       documents: [],
       address: "Pearl District, Tower 2",
-      poBox: "POB 43111",
       country: "Qatar",
       city: "Doha",
       language: "Arabic",
@@ -238,7 +233,7 @@ export const db: DB = {
       },
       documents: [],
       address: "21 Baker Street",
-      poBox: "",
+
       country: "United Kingdom",
       city: "London",
       language: "English",
@@ -278,7 +273,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Dbayeh Highway, Bloc 6",
-      poBox: "POB 5522",
+
       country: "Lebanon",
       city: "Dbayeh",
       language: "Arabic",
@@ -318,7 +313,7 @@ export const db: DB = {
       },
       documents: [],
       address: "The Gate Mall Offices",
-      poBox: "",
+
       country: "Qatar",
       city: "Doha",
       language: "English",
@@ -358,7 +353,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Verdun Street 12",
-      poBox: "POB 7788",
+
       country: "Lebanon",
       city: "Beirut",
       language: "Arabic",
@@ -396,7 +391,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Furn El Chebbak, Block 4",
-      poBox: "",
+
       country: "Lebanon",
       city: "Beirut",
       language: "Arabic",
@@ -437,7 +432,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Flat 5B, Gemmayzeh Road, Beirut",
-      poBox: "POB 9900",
+
       country: "Lebanon",
       city: "Beirut",
       language: "English",
@@ -477,7 +472,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Office 1203, Marina Plaza, Dubai",
-      poBox: "POB 82311",
+
       country: "United Arab Emirates",
       city: "Dubai",
       language: "English",
@@ -517,7 +512,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Rmeil St, Downtown Beirut, Office 7",
-      poBox: "POB 6600",
+
       country: "Lebanon",
       city: "Beirut",
       language: "French",
@@ -553,7 +548,7 @@ export const db: DB = {
       accounting: {},
       documents: [],
       address: "Unit 4, King's Cross Business Centre, London",
-      poBox: "",
+
       country: "United Kingdom",
       city: "London",
       language: "English",
@@ -593,7 +588,7 @@ export const db: DB = {
       },
       documents: [],
       address: "Sea View Tower, Furn El Chebbak, Apt 22",
-      poBox: "POB 2246",
+
       country: "Lebanon",
       city: "Beirut",
       language: "Arabic",
@@ -629,7 +624,7 @@ export const db: DB = {
       accounting: {},
       documents: [],
       address: "Mar Mikhael, Building 12, Beirut",
-      poBox: "",
+
       country: "Lebanon",
       city: "Beirut",
       language: "Arabic",
@@ -665,7 +660,7 @@ export const db: DB = {
       accounting: {},
       documents: [],
       address: "Jounieh Highway, Bloc C, Apt 3",
-      poBox: "POB 7777",
+
       country: "Lebanon",
       city: "Jounieh",
       language: "Arabic",

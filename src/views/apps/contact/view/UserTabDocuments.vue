@@ -4,14 +4,88 @@ import type {
   ContactProperties,
 } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { useContactsStore } from "@/stores/contacts";
-import { getFileObjectUrl } from "@/utils/fileStore";
-import { computed, reactive, ref, watch } from "vue";
+import { useNotificationsStore } from "@/stores/notifications";
+import { useTodos } from "@/stores/todos";
+import { deleteFile, getFileObjectUrl } from "@/utils/fileStore";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import type { PropType } from "vue";
+import { computed, defineComponent, reactive, ref, watch } from "vue";
 import UserDocumentDialog from "./UserDocumentDialog.vue";
 
 const props = defineProps<{ user: ContactProperties | null }>();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
+
+const AutoOpenGroups = defineComponent({
+  name: "AutoOpenGroups",
+  props: {
+    groupedItems: {
+      type: Array as PropType<ReadonlyArray<any>>,
+      required: true,
+    },
+    toggleGroup: {
+      type: Function as PropType<(group: any) => void>,
+      required: true,
+    },
+    isGroupOpen: {
+      type: Function as PropType<(group: any) => boolean>,
+      required: true,
+    },
+  },
+  setup(props) {
+    type GroupEntry = {
+      id?: string;
+      type?: string;
+      items?: unknown[];
+    } & Record<string, unknown>;
+
+    const autoOpened = new Set<string>();
+
+    const expandGroups = (
+      entries: unknown[],
+      present: Set<string> = new Set<string>()
+    ) => {
+      for (const entry of entries) {
+        if (!entry || typeof entry !== "object") continue;
+        const group = entry as GroupEntry;
+        if (group.type === "group") {
+          const groupId = typeof group.id === "string" ? group.id : undefined;
+          if (groupId) present.add(groupId);
+          if (
+            groupId &&
+            !autoOpened.has(groupId) &&
+            !props.isGroupOpen(group)
+          ) {
+            props.toggleGroup(group);
+            autoOpened.add(groupId);
+          } else if (groupId && props.isGroupOpen(group)) {
+            autoOpened.add(groupId);
+          }
+          if (Array.isArray(group.items) && group.items.length) {
+            expandGroups(group.items, present);
+          }
+        }
+      }
+      return present;
+    };
+
+    watch(
+      () => props.groupedItems,
+      (items) => {
+        if (!Array.isArray(items)) return;
+        const present = expandGroups(items);
+        for (const id of Array.from(autoOpened)) {
+          if (!present.has(id)) autoOpened.delete(id);
+        }
+      },
+      { immediate: true, deep: true }
+    );
+
+    return () => null;
+  },
+});
 
 // UI state
 const selectedType = ref<string>("");
@@ -98,6 +172,76 @@ const isDialogVisible = ref(false);
 const editing = ref<ContactDocument | null>(null);
 const dialogOpen = ref(false);
 const dialogDoc = ref<ContactDocument | null>(null);
+// delete confirmation for individual documents
+const isConfirmDeleteVisible = ref(false);
+const deleteCandidate = ref<ContactDocument | null>(null);
+const todosStore = useTodos();
+todosStore.init();
+const notifications = useNotificationsStore();
+
+// Email dialog state
+const isEmailDialogVisible = ref(false);
+const emailDialogRef = ref<any | null>(null);
+
+function onEmailSend(payload: any) {
+  try {
+    const recipients = Array.isArray(payload?.to)
+      ? payload.to.filter(Boolean)
+      : payload?.to
+      ? [String(payload.to)]
+      : [];
+    const subject = String(payload?.subject || "(no subject)");
+    const count = recipients.length;
+    notifications.push(
+      `Email sent${
+        count ? ` to ${count} recipient${count > 1 ? "s" : ""}` : ""
+      }: ${subject}`,
+      "success",
+      3500
+    );
+  } catch (e) {
+    try {
+      notifications.push("Email sent", "success", 3500);
+    } catch {}
+  } finally {
+    // close the dialog
+    isEmailDialogVisible.value = false;
+  }
+}
+
+const todoCollaboratorOptions = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture,
+  }))
+);
+
+// Drawer for creating a todo (prefilled from a document)
+const isAddTodoDrawerVisible = ref(false);
+const addTodoInitial = ref<any | null>(null);
+const addTodoDrawerRef = ref<any | null>(null);
+
+function openAddTodoDrawerForDocument(d: ContactDocument) {
+  const initial: any = {
+    title: `Review document: ${d.name || "Untitled"}`,
+    collaborators: props.user
+      ? [{ id: props.user.id, name: props.user.fullName }]
+      : [],
+    notes: `Created from document: ${d.name || String(d.id)}`,
+    dueAt: new Date().toISOString(),
+    priority: "normal",
+    status: "pending",
+  };
+  addTodoInitial.value = initial;
+  // call the drawer's exposed method to open with initial data reliably
+  try {
+    addTodoDrawerRef.value?.openWith(initial);
+  } catch (e) {
+    // fallback to v-model if the exposed method is not available
+    isAddTodoDrawerVisible.value = true;
+  }
+}
 
 const form = reactive<Partial<ContactDocument>>({
   id: undefined,
@@ -303,8 +447,199 @@ function removeDocument(d: ContactDocument) {
   if (!props.user) return;
   const current = contactsStore.byId(props.user.id);
   if (!current) return;
+
+  // if the doc references an idb: pointer, attempt to delete the stored blob
+  try {
+    const raw = String(d.fileUrl || "").trim();
+    if (raw.startsWith("idb:")) {
+      const without = raw.slice(4);
+      const [key] = without.split("|");
+      if (key) {
+        // best-effort delete; don't block UI on failure
+        deleteFile(key).catch((err) => {
+          try {
+            // eslint-disable-next-line no-console
+            console.warn("Failed to delete idb file for key", key, err);
+          } catch {}
+        });
+      }
+    }
+  } catch {}
+
   const existing = (current.documents || []).filter((x) => x.id !== d.id);
   contactsStore.updateContact(props.user.id, { documents: existing });
+}
+
+function confirmRemoveDocument(d: ContactDocument) {
+  deleteCandidate.value = d;
+  isConfirmDeleteVisible.value = true;
+}
+
+function performRemoveConfirmed() {
+  if (!deleteCandidate.value) return;
+  removeDocument(deleteCandidate.value);
+  deleteCandidate.value = null;
+  isConfirmDeleteVisible.value = false;
+}
+
+function cancelRemove() {
+  deleteCandidate.value = null;
+  isConfirmDeleteVisible.value = false;
+}
+
+function createTodoForDocument(d: ContactDocument) {
+  // open the drawer prefilled instead of auto-saving
+  openAddTodoDrawerForDocument(d);
+}
+
+function onAddTodoSaved(payload: any) {
+  try {
+    const created = todosStore.addTodo(payload);
+    // notify user of success, include title (truncate to 60 chars)
+    try {
+      const rawTitle =
+        (created && created.title) || payload?.title || "Untitled";
+      const safeTitle =
+        String(rawTitle).length > 60
+          ? String(rawTitle).slice(0, 57) + "..."
+          : String(rawTitle);
+      notifications.push(`To-do '${safeTitle}' created`, "success", 3000);
+    } catch {}
+  } catch (e) {
+    // ignore
+  }
+}
+
+function emailUserForDocument(_d: ContactDocument) {
+  // open compose dialog with prefilled recipient and optionally attach the document file
+  openEmailForDocument(_d).catch(() => {
+    // fallback: try mailto if dialog fail
+    const mail = String(props.user?.email || "").trim();
+    if (!mail) return;
+    try {
+      window.location.href = `mailto:${mail}`;
+    } catch {}
+  });
+}
+
+async function openEmailForDocument(d: ContactDocument) {
+  if (!props.user) return;
+
+  // When composing from a document we prefer an empty recipient so user can choose
+  // who to send the document to explicitly.
+  const to = "";
+  const subject = `Document: ${d.name || d.id || "Document"}`;
+  const message = `Hi ${
+    props.user.fullName || ""
+  },\n\nPlease find the document '${d.name || d.id}' attached.\n\nRegards,`;
+
+  // build attachments array; try to resolve idb: pointers to object URLs
+  const attachments: Array<{ name: string; url?: string; id?: string }> = [];
+  try {
+    const raw = String(d.fileUrl || "").trim();
+    if (raw) {
+      if (/^idb:/.test(raw)) {
+        const without = raw.slice(4);
+        const [key, encodedName] = without.split("|");
+        const name = encodedName
+          ? decodeURIComponent(encodedName)
+          : d.name || key;
+        let url: string | undefined;
+        try {
+          const got = await getFileObjectUrl(key);
+          url = got ?? undefined;
+        } catch (e) {
+          url = undefined;
+        }
+        attachments.push({ name: name || String(d.name || key), url, id: key });
+      } else if (
+        /^https?:\/\//i.test(raw) ||
+        /^blob:/.test(raw) ||
+        /^data:/.test(raw)
+      ) {
+        attachments.push({
+          name: d.name || raw.split("/").pop() || raw,
+          url: raw,
+        });
+      } else if (/^\//.test(raw)) {
+        const absolute = window.location.origin + raw;
+        attachments.push({
+          name: d.name || raw.split("/").pop() || raw,
+          url: absolute,
+        });
+      } else {
+        // plain identifier/filename - attach as info only (no URL)
+        attachments.push({ name: d.name || raw, id: raw });
+      }
+    }
+  } catch (e) {
+    // ignore attachment resolution errors
+  }
+
+  // open dialog and prefill
+  isEmailDialogVisible.value = true;
+  await nextTick();
+  try {
+    emailDialogRef.value?.openWith?.({
+      to,
+      subject,
+      message,
+      attachments,
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
+import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
+
+async function whatsappUserForDocument(d: ContactDocument) {
+  const notifications = useNotificationsStore();
+
+  // prefer sharing the actual fileUrl if present
+  let url: string | undefined = undefined;
+  if (d && d.fileUrl) {
+    const raw = String(d.fileUrl || "").trim();
+    if (/^https?:\/\//.test(raw)) url = raw;
+    else if (/^\//.test(raw)) url = window.location.origin + raw;
+    else url = raw; // could be an id or other; best-effort
+  }
+
+  try {
+    // If we have a direct URL, attempt to fetch as blob and convert to File for Web Share API
+    if (url) {
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          // create a File so navigator.share can use it
+          const filename =
+            (d && d.name) || url.split("/").pop() || "attachment";
+          const file = new File([blob], filename, {
+            type: blob.type || "application/octet-stream",
+          });
+          await shareToWhatsApp({
+            file,
+            url,
+            text: `Sharing document: ${d?.name || filename}`,
+          });
+          return;
+        }
+      } catch (err) {
+        // ignore fetch errors and fall back to URL-only share
+      }
+    }
+
+    // No fetchable file; open WhatsApp with URL or a message
+    const text = d ? `Sharing document: ${d.name || d.id}` : "Sharing document";
+    await shareToWhatsApp({ url, text });
+  } catch (err: any) {
+    notifications.push(
+      "Failed to share to WhatsApp: " + String(err ?? "unknown"),
+      "error",
+      4000
+    );
+  }
 }
 
 function onDialogSave(payload: ContactDocument) {
@@ -437,22 +772,34 @@ watch(
             { title: '', key: 'select' },
             { title: 'Name', key: 'name' },
             { title: 'Type', key: 'type' },
-            { title: 'Number', key: 'number' },
-            { title: 'Expiry', key: 'expiry' },
-            { title: 'Status', key: 'status' },
+
+            { title: 'Category', key: 'category' },
             { title: 'Actions', key: 'actions', sortable: false },
           ]"
+          :group-by="[{ key: 'category' }]"
           class="text-no-wrap"
         >
+          <template #body.prepend="{ groupedItems, toggleGroup, isGroupOpen }">
+            <AutoOpenGroups
+              :grouped-items="groupedItems"
+              :toggle-group="toggleGroup"
+              :is-group-open="isGroupOpen"
+            />
+          </template>
+
           <template #item.name="{ item }">
             <div>
               <a class="text-link">{{ item.name }}</a>
               <div class="text-sm text-medium-emphasis">
                 {{
-                  item.createdAt
-                    ? new Date(String(item.createdAt)).toLocaleDateString()
+                  item.expiry
+                    ? "Expiry: " +
+                      new Date(String(item.expiry)).toLocaleDateString()
                     : ""
-                }}{{ item.note ? " | " + item.note : "" }}
+                }}
+              </div>
+              <div class="text-sm text-medium-emphasis">
+                {{ item.note ? item.note : "" }}
               </div>
             </div>
           </template>
@@ -489,25 +836,46 @@ watch(
               <VIcon icon="tabler-edit" />
             </IconBtn>
 
-            <IconBtn
-              v-if="
-                item.fileUrl &&
-                (String(item.fileUrl).startsWith('data:') ||
-                  String(item.fileUrl).startsWith('blob:') ||
-                  String(item.fileUrl).startsWith('idb:') ||
-                  /^https?:\/\//i.test(String(item.fileUrl)) ||
-                  String(item.fileUrl).startsWith('/'))
-              "
-              @click="openPreview(item)"
-              title="Preview"
-            >
-              <VIcon icon="tabler-eye" />
-            </IconBtn>
-
             <VBtn icon variant="text" color="medium-emphasis">
+              <VIcon icon="tabler-dots-vertical" />
               <VMenu activator="parent">
                 <VList>
-                  <VListItem @click="removeDocument(item)">
+                  <VListItem
+                    @click.prevent="openPreview(item)"
+                    v-if="item.fileUrl"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-eye" />
+                    </template>
+                    <VListItemTitle>View</VListItemTitle>
+                  </VListItem>
+
+                  <VListItem @click.prevent="emailUserForDocument(item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-mail" />
+                    </template>
+                    <VListItemTitle>Email</VListItemTitle>
+                  </VListItem>
+
+                  <VListItem @click.prevent="whatsappUserForDocument(item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-brand-whatsapp" />
+                    </template>
+                    <VListItemTitle>WhatsApp</VListItemTitle>
+                  </VListItem>
+
+                  <VDivider />
+
+                  <VListItem @click.prevent="createTodoForDocument(item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-list-check" />
+                    </template>
+                    <VListItemTitle>Todo</VListItemTitle>
+                  </VListItem>
+
+                  <VDivider />
+
+                  <VListItem @click.prevent="confirmRemoveDocument(item)">
                     <template #prepend>
                       <VIcon icon="tabler-trash" color="error" />
                     </template>
@@ -537,6 +905,41 @@ watch(
       :fileCategories="fileCategories"
       @save="onDialogSave"
     />
+    <EmailDialog
+      ref="emailDialogRef"
+      v-model:is-dialog-visible="isEmailDialogVisible"
+      @send="onEmailSend"
+    />
+    <!-- Add ToDo Drawer (open prefilled when creating from a document) -->
+    <AddNewToDoDrawer
+      ref="addTodoDrawerRef"
+      v-model:is-drawer-open="isAddTodoDrawerVisible"
+      :collaborators-options="todoCollaboratorOptions"
+      :initial="addTodoInitial"
+      :autofocus-due="true"
+      @user-data="onAddTodoSaved"
+    />
+    <VDialog v-model="isConfirmDeleteVisible" max-width="480">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Delete document</VCardTitle>
+        <VCardText>
+          <div v-if="deleteCandidate">
+            Are you sure you want to permanently delete
+            <strong>{{ deleteCandidate.name || deleteCandidate.id }}</strong>
+            ?
+          </div>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" color="secondary" @click="cancelRemove"
+            >Cancel</VBtn
+          >
+          <VBtn variant="tonal" color="error" @click="performRemoveConfirmed"
+            >Delete</VBtn
+          >
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VRow>
 </template>
 

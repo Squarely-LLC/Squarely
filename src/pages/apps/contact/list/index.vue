@@ -31,7 +31,7 @@ const sortOptions: { title: string; value: SortVal }[] = [
 
 const selectedSort = ref<SortVal | undefined>(sortOptions[2].value);
 
-const itemsPerPage = ref(15);
+const itemsPerPage = ref(13);
 const page = ref(1);
 const sortBy = ref<string | undefined>(selectedSort.value?.key);
 const orderBy = ref<"asc" | "desc" | undefined>(selectedSort.value?.order);
@@ -681,7 +681,7 @@ const updateItemsPerPage = (value: number | string) => {
           <AppSelect
             :model-value="itemsPerPage"
             :items="[
-              { value: 15, title: '15' },
+              { value: 13, title: '13' },
               { value: 25, title: '25' },
               { value: 50, title: '50' },
               { value: 100, title: '100' },
@@ -993,7 +993,7 @@ const updateItemsPerPage = (value: number | string) => {
     />
 
     <VDialog v-model="isConfirmDeleteVisible" max-width="540">
-      <VCard>
+      <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Delete contact</VCardTitle>
         <VCardText>
           <div v-if="deleteBlockingReasons.length">
@@ -1005,7 +1005,9 @@ const updateItemsPerPage = (value: number | string) => {
                 {{ r }}
               </li>
             </ul>
-            <p>Please remove these references before deleting the contact.</p>
+            <p class="mt-5">
+              Please review these references before deleting the contact.
+            </p>
           </div>
           <div v-else>
             <p>

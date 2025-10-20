@@ -1,61 +1,73 @@
 <script lang="ts" setup>
 defineEmits<{
-  (e: 'close'): void
-}>()
+  (e: "close"): void;
+}>();
 
-const content = ref('')
+const content = ref("");
 
-const to = ref('')
-const subject = ref('')
-const message = ref('')
+const to = ref("");
+const subject = ref("");
+const message = ref("");
 
-const cc = ref('')
-const bcc = ref('')
-const isEmailCc = ref(false)
-const isEmailBcc = ref(false)
+const cc = ref("");
+const bcc = ref("");
+const isEmailCc = ref(false);
+const isEmailBcc = ref(false);
 
 const resetValues = () => {
-  to.value = subject.value = message.value = ''
+  to.value = subject.value = message.value = "";
+};
+
+// Allow parent to prefill fields programmatically before showing
+function openWith(initial?: {
+  to?: string;
+  subject?: string;
+  message?: string;
+  cc?: string;
+  bcc?: string;
+  showCc?: boolean;
+  showBcc?: boolean;
+}) {
+  if (!initial) return;
+  to.value = initial.to ?? to.value;
+  subject.value = initial.subject ?? subject.value;
+  message.value = initial.message ?? message.value;
+  cc.value = initial.cc ?? cc.value;
+  bcc.value = initial.bcc ?? bcc.value;
+  isEmailCc.value = !!initial.showCc;
+  isEmailBcc.value = !!initial.showBcc;
 }
+
+defineExpose({ openWith });
 </script>
 
 <template>
-  <VCard
-    class="email-compose-dialog"
-    elevation="10"
-    max-width="30vw"
-  >
+  <VCard class="email-compose-dialog" elevation="10" max-width="30vw">
     <VCardItem class="py-3 px-6">
       <div class="d-flex align-center">
-        <h5 class="text-h5">
-          Compose Mail
-        </h5>
+        <h5 class="text-h5">Compose Mail</h5>
         <VSpacer />
 
         <div class="d-flex align-center gap-x-2">
-          <IconBtn
-            size="small"
-            icon="tabler-minus"
-            @click="$emit('close')"
-          />
+          <IconBtn size="small" icon="tabler-minus" @click="$emit('close')" />
           <IconBtn
             size="small"
             icon="tabler-x"
-            @click="$emit('close'); resetValues(); isEmailCc = false; isEmailBcc = false;"
+            @click="
+              $emit('close');
+              resetValues();
+              isEmailCc = false;
+              isEmailBcc = false;
+            "
           />
         </div>
       </div>
     </VCardItem>
 
     <div class="px-1 pe-6 py-1">
-      <VTextField
-        v-model="to"
-        density="compact"
-      >
+      <VTextField v-model="to" density="compact">
         <template #prepend-inner>
-          <div class="text-base font-weight-medium text-disabled">
-            To:
-          </div>
+          <div class="text-base font-weight-medium text-disabled">To:</div>
         </template>
         <template #append>
           <span class="cursor-pointer">
@@ -72,14 +84,9 @@ const resetValues = () => {
         <VDivider />
 
         <div class="px-1 pe-6 py-1">
-          <VTextField
-            v-model="cc"
-            density="compact"
-          >
+          <VTextField v-model="cc" density="compact">
             <template #prepend-inner>
-              <div class="text-disabled font-weight-medium">
-                Cc:
-              </div>
+              <div class="text-disabled font-weight-medium">Cc:</div>
             </template>
           </VTextField>
         </div>
@@ -91,14 +98,9 @@ const resetValues = () => {
         <VDivider />
 
         <div class="px-1 pe-6 py-1">
-          <VTextField
-            v-model="bcc"
-            density="compact"
-          >
+          <VTextField v-model="bcc" density="compact">
             <template #prepend-inner>
-              <div class="text-disabled font-weight-medium">
-                Bcc:
-              </div>
+              <div class="text-disabled font-weight-medium">Bcc:</div>
             </template>
           </VTextField>
         </div>
@@ -107,14 +109,9 @@ const resetValues = () => {
 
     <VDivider />
     <div class="px-1 pe-6 py-1">
-      <VTextField
-        v-model="subject"
-        density="compact"
-      >
+      <VTextField v-model="subject" density="compact">
         <template #prepend-inner>
-          <div class="text-base font-weight-medium text-disabled">
-            Subject:
-          </div>
+          <div class="text-base font-weight-medium text-disabled">Subject:</div>
         </template>
       </VTextField>
     </div>
@@ -122,10 +119,7 @@ const resetValues = () => {
     <VDivider />
 
     <!-- 👉 Tiptap Editor  -->
-    <TiptapEditor
-      v-model="content"
-      placeholder="Message"
-    />
+    <TiptapEditor v-model="content" placeholder="Message" />
 
     <div class="d-flex align-center px-6 py-4">
       <VBtn
@@ -133,7 +127,13 @@ const resetValues = () => {
         class="me-4"
         append-icon="tabler-send"
         :disabled="to === '' ? true : false"
-        @click="$emit('close'); content = ''; resetValues(); isEmailCc = false; isEmailBcc = false;"
+        @click="
+          $emit('close');
+          content = '';
+          resetValues();
+          isEmailCc = false;
+          isEmailBcc = false;
+        "
       >
         send
       </VBtn>
@@ -144,16 +144,19 @@ const resetValues = () => {
 
       <VSpacer />
 
-      <IconBtn
-        size="small"
-        class="me-2"
-      >
+      <IconBtn size="small" class="me-2">
         <VIcon icon="tabler-dots-vertical" />
       </IconBtn>
 
       <IconBtn
         size="small"
-        @click="$emit('close'); resetValues(); content = ''; isEmailCc = false; isEmailBcc = false;"
+        @click="
+          $emit('close');
+          resetValues();
+          content = '';
+          isEmailCc = false;
+          isEmailBcc = false;
+        "
       >
         <VIcon icon="tabler-trash" />
       </IconBtn>
@@ -171,11 +174,6 @@ const resetValues = () => {
 
   .v-field--prepended {
     padding-inline-start: 20px;
-  }
-
-  .v-field__prepend-inner {
-    align-items: center;
-    padding: 0;
   }
 
   .v-field__prepend-inner {

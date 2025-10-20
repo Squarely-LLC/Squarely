@@ -1,12 +1,12 @@
-import { toRaw } from "vue";
 import { defineStore } from "pinia";
+import { toRaw } from "vue";
 
+import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
 import type {
   ContactAccounting,
   ContactConnection,
   ContactProperties,
 } from "@/plugins/fake-api/handlers/apps/contact/types";
-import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
 
 const STORAGE_KEY = "app.contacts.v2";
 
@@ -140,7 +140,6 @@ function normaliseContact(
     connections: ensureConnections(payload.connections),
     accounting: ensureAccounting(payload.accounting),
     address: payload.address || undefined,
-    poBox: payload.poBox || undefined,
     country: payload.country || undefined,
     city: payload.city || undefined,
     language: payload.language || undefined,
@@ -274,4 +273,3 @@ export const useContactsStore = defineStore("contacts", {
     },
   },
 });
-

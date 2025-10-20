@@ -816,10 +816,6 @@ const currentFilterLabel = computed(() => {
     <VCol cols="12">
       <!-- Statistics-style Summary card (Calls / Meetings / To-Dos) -->
       <VCard title="Summary" class="summary-card mt-4">
-        <template #append>
-          <span class="text-sm text-disabled">Updated 1 month ago</span>
-        </template>
-
         <VCardText>
           <VRow>
             <VCol cols="12" md="4">

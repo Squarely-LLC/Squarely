@@ -33,7 +33,6 @@ const country = ref("");
 const city = ref("");
 const language = ref("");
 const address = ref("");
-const poBox = ref("");
 const birthdate = ref<string | null>(null);
 const worksInSales = ref(false);
 const taxId = ref("");
@@ -52,7 +51,6 @@ const resetForm = () => {
   city.value = "";
   language.value = "";
   address.value = "";
-  poBox.value = "";
   birthdate.value = null;
   worksInSales.value = false;
   taxId.value = "";
@@ -66,8 +64,7 @@ const closeNavigationDrawer = () => {
 };
 
 const onSubmit = async () => {
-  const { valid } =
-    (await refForm.value?.validate()) ?? { valid: true };
+  const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
 
   emit("userData", {
@@ -87,7 +84,6 @@ const onSubmit = async () => {
       vatNumber: vatNumber.value || undefined,
     },
     address: address.value || undefined,
-    poBox: poBox.value || undefined,
     country: country.value || undefined,
     city: city.value || undefined,
     language: language.value || undefined,
@@ -116,7 +112,10 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
     :model-value="props.isDrawerOpen"
     @update:model-value="handleDrawerModelValueUpdate"
   >
-    <AppDrawerHeaderSection title="Add New Contact" @cancel="closeNavigationDrawer" />
+    <AppDrawerHeaderSection
+      title="Add New Contact"
+      @cancel="closeNavigationDrawer"
+    />
 
     <VDivider />
 
@@ -214,12 +213,21 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   label="Country"
                   placeholder="Select country"
                   clearable
-                  :items="['Lebanon', 'United Arab Emirates', 'Qatar', 'United Kingdom']"
+                  :items="[
+                    'Lebanon',
+                    'United Arab Emirates',
+                    'Qatar',
+                    'United Kingdom',
+                  ]"
                 />
               </VCol>
 
               <VCol cols="12">
-                <AppTextField v-model="city" label="City" placeholder="Beirut" />
+                <AppTextField
+                  v-model="city"
+                  label="City"
+                  placeholder="Beirut"
+                />
               </VCol>
 
               <VCol cols="12">
@@ -231,11 +239,11 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
               </VCol>
 
               <VCol cols="12">
-                <AppTextField v-model="poBox" label="PO Box" placeholder="POB 2245" />
-              </VCol>
-
-              <VCol cols="12">
-                <AppTextField v-model="language" label="Language" placeholder="Arabic" />
+                <AppTextField
+                  v-model="language"
+                  label="Language"
+                  placeholder="Arabic"
+                />
               </VCol>
 
               <VCol cols="12">
@@ -257,10 +265,18 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
               </VCol>
 
               <VCol cols="12" md="4">
-                <AppTextField v-model="taxId" label="Tax ID" placeholder="TAX-123456" />
+                <AppTextField
+                  v-model="taxId"
+                  label="Tax ID"
+                  placeholder="TAX-123456"
+                />
               </VCol>
               <VCol cols="12" md="4">
-                <AppTextField v-model="crn" label="CRN" placeholder="CRN-9981" />
+                <AppTextField
+                  v-model="crn"
+                  label="CRN"
+                  placeholder="CRN-9981"
+                />
               </VCol>
               <VCol cols="12" md="4">
                 <AppTextField
@@ -272,7 +288,11 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
 
               <VCol cols="12">
                 <VBtn type="submit" class="me-3">Submit</VBtn>
-                <VBtn variant="tonal" color="error" @click="closeNavigationDrawer">
+                <VBtn
+                  variant="tonal"
+                  color="error"
+                  @click="closeNavigationDrawer"
+                >
                   Cancel
                 </VBtn>
               </VCol>

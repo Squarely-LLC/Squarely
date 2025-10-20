@@ -24,6 +24,14 @@ export interface NewMeetingPayload {
   meetingType: string;
   linkedTo: ContactRef[];
   attachmentFile?: File | null;
+  // compatibility aliases for other consumers (todos store expects these)
+  subject?: string;
+  startAt?: string;
+  duration?: number;
+  type?: string;
+  note?: string;
+  attachments?: any[];
+  requestedBy?: any;
 }
 
 const props = withDefaults(
@@ -58,6 +66,50 @@ const locationPreset = ref("");
 const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
+
+// pending initial payload applied when the drawer opens
+const pendingInitial = ref<any | null>(null);
+
+function applyInitial(initial?: any) {
+  if (!initial) return;
+  try {
+    if (initial.title) subject.value = String(initial.title);
+    if (initial.initialStart || initial.start)
+      startAt.value = toDateTimeLocalString(
+        initial.initialStart || initial.start
+      );
+    if (initial.durationMins) durationMins.value = Number(initial.durationMins);
+    if (initial.meetingType) meetingType.value = String(initial.meetingType);
+    if (initial.notes) notes.value = String(initial.notes);
+    if (initial.location) {
+      const loc = String(initial.location);
+      if (loc.includes(" - ")) {
+        const parts = loc.split(" - ");
+        locationPreset.value = parts[0] || "";
+        locationDetails.value = parts.slice(1).join(" - ") || "";
+      } else {
+        // put full value into details when no preset match
+        locationDetails.value = loc;
+      }
+    }
+    if (Array.isArray(initial.linkedTo)) {
+      selectedLinkedIds.value = initial.linkedTo.map((l: any) => l.id);
+    }
+    if (initial.attachmentFile)
+      attachmentFile.value = initial.attachmentFile as File;
+  } catch (e) {
+    // best-effort only
+    console.error("applyInitial failed:", e);
+  }
+}
+
+function openWith(initial?: any) {
+  // store pending initial then open drawer — watcher will apply it
+  pendingInitial.value = initial ?? null;
+  emit("update:modelValue", true);
+}
+
+defineExpose({ openWith });
 
 const meetingTypeItems = [
   { title: "Sales", value: "Sales" },
@@ -120,6 +172,11 @@ watch(
   (open) => {
     if (open) {
       initialiseForm();
+      // if there is a pending initial payload, apply it after initialisation
+      if (pendingInitial.value) {
+        applyInitial(pendingInitial.value);
+        pendingInitial.value = null;
+      }
       nextTick(() => {
         refForm.value?.resetValidation();
       });
@@ -175,6 +232,7 @@ async function onSubmit() {
 
   const payload: NewMeetingPayload = {
     id: `${Date.now()}`,
+    // primary fields used by this drawer
     title: subject.value.trim(),
     start: startDate.toISOString(),
     end: endDate.toISOString(),
@@ -188,6 +246,14 @@ async function onSubmit() {
     meetingType: meetingType.value,
     linkedTo: linkedContacts.value,
     attachmentFile: attachmentFile.value,
+    // compatibility fields expected by todos store and other consumers
+    subject: subject.value.trim(),
+    startAt: startDate.toISOString(),
+    duration: Number(durationMins.value),
+    type: meetingType.value,
+    note: notes.value.trim() || undefined,
+    attachments: attachmentFile.value ? [attachmentFile.value] : [],
+    requestedBy: null,
   };
 
   emit("save", payload);

@@ -41,7 +41,9 @@ const sanitizeContact = (contact: ContactProperties | null) => {
   } satisfies ContactProperties;
 };
 
-const localContact = ref<ContactProperties | null>(sanitizeContact(props.contact));
+const localContact = ref<ContactProperties | null>(
+  sanitizeContact(props.contact)
+);
 
 watch(
   () => props.contact,
@@ -213,9 +215,7 @@ const onReset = () => {
               />
             </VCol>
 
-            <VCol cols="12" md="6">
-              <AppTextField v-model="localContact.poBox" label="PO Box" placeholder="POB 2245" />
-            </VCol>
+            <VCol cols="12" md="6"> </VCol>
 
             <VCol cols="12" md="6">
               <AppTextField
@@ -261,7 +261,9 @@ const onReset = () => {
 
             <VCol cols="12" class="d-flex flex-wrap justify-center gap-4 mt-4">
               <VBtn :loading="loading" type="submit">Save</VBtn>
-              <VBtn variant="tonal" color="secondary" @click="onReset">Cancel</VBtn>
+              <VBtn variant="tonal" color="secondary" @click="onReset"
+                >Cancel</VBtn
+              >
             </VCol>
           </VRow>
         </VForm>

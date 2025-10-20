@@ -6,10 +6,13 @@ import type {
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, nextTick, ref } from "vue";
+import { RouterLink, useRouter } from "vue-router";
 
 import ContactEditDialog from "@/views/apps/contact/list/ContactEditDialog.vue";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
+import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 interface Props {
   userData: ContactProperties;
@@ -108,6 +111,14 @@ const secondaryConnections = computed(() =>
 );
 
 const contactsStore = useContactsStore();
+
+const contactsOptions = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture,
+  }))
+);
 
 // Menu actions for connections (kept minimal — expand as needed)
 const moreList = [
@@ -511,6 +522,164 @@ const editCandidate = computed(() =>
     ? null
     : contactsStore.byId(editCandidateId.value)
 );
+
+// Drawer for creating a todo prefilled from a connection
+const isAddTodoDrawerVisible = ref(false);
+const addTodoDrawerRef = ref<any | null>(null);
+
+// AddMeeting drawer state
+const isAddMeetingOpen = ref(false);
+const addMeetingRef = ref<any | null>(null);
+
+function openAddMeetingForContact(conn: any) {
+  try {
+    const initial = {
+      title: `Meeting: ${conn.contactName ?? ""}`,
+      initialStart: new Date(),
+      contacts: contactsOptions.value,
+      // prefill a contextual note referencing the current contact page name
+      notes: `schedule from contact : ${props.userData.fullName ?? ""}`,
+      // preselect the linked contact
+      linkedTo: [
+        {
+          id: conn.contactId,
+          name: conn.contactName ?? "",
+          avatarUrl: conn.picture ?? null,
+        },
+      ],
+    } as any;
+
+    if (addMeetingRef.value?.openWith) {
+      addMeetingRef.value.openWith(initial);
+    } else {
+      isAddMeetingOpen.value = true;
+      nextTick(() => {
+        try {
+          addMeetingRef.value?.openWith?.(initial);
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to open meeting drawer:", e);
+  }
+}
+
+function onMeetingCreated(payload: any) {
+  try {
+    // add to todos store
+    try {
+      todosStore.addMeeting && todosStore.addMeeting(payload);
+    } catch (err) {
+      // fallback: push directly into todos store meetings array
+      if (Array.isArray((todosStore as any).meetings)) {
+        (todosStore as any).meetings = [
+          ...(todosStore as any).meetings,
+          payload,
+        ];
+      }
+    }
+
+    notifications.push("Meeting created", "success", 3500);
+  } catch (e) {
+    console.error("onMeetingCreated failed:", e);
+    notifications.push("Meeting created", "success", 3500);
+  } finally {
+    isAddMeetingOpen.value = false;
+  }
+}
+
+function openAddTodoDrawerForContact(conn: any) {
+  try {
+    const initial = {
+      title: `Follow up: ${conn.contactName ?? ""}`,
+      collaborators: [
+        {
+          id: conn.contactId,
+          name: conn.contactName ?? "",
+          avatarUrl: conn.picture ?? null,
+        },
+      ],
+    };
+
+    // If the component exposes openWith, use it; otherwise set visible and rely on prop handling
+    if (addTodoDrawerRef.value?.openWith) {
+      addTodoDrawerRef.value.openWith(initial);
+    } else {
+      // fallback: set initial via prop and open
+      isAddTodoDrawerVisible.value = true;
+      nextTick(() => {
+        try {
+          addTodoDrawerRef.value?.openWith?.(initial);
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to open todo drawer:", e);
+  }
+}
+
+// Compose email drawer
+const isComposeDialogVisible = ref(false);
+const composeDialogRef = ref<any | null>(null);
+
+function openComposeForContact(conn: any) {
+  try {
+    // Prefer canonical contact record email when available
+    const linked = contactsStore.byId?.(conn.contactId as number | string);
+    const toAddress =
+      linked?.email ||
+      conn.email ||
+      (conn.contactName && conn.contactName.includes("@")
+        ? conn.contactName
+        : "");
+
+    const initial = {
+      to: toAddress || "",
+      subject: `Hello ${conn.contactName ?? ""}`,
+      message: `Hi ${conn.contactName ?? ""},\n\n`,
+    };
+
+    isComposeDialogVisible.value = true;
+    nextTick(() => {
+      try {
+        composeDialogRef.value?.openWith?.(initial);
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    console.error("Failed to open compose dialog:", e);
+  }
+}
+
+function onEmailSend(payload: any) {
+  try {
+    const recipients = Array.isArray(payload?.to)
+      ? payload.to.filter(Boolean)
+      : payload?.to
+      ? [String(payload.to)]
+      : [];
+    const subject = String(payload?.subject || "(no subject)");
+    const count = recipients.length;
+    notifications.push(
+      `Email sent${
+        count ? ` to ${count} recipient${count > 1 ? "s" : ""}` : ""
+      }: ${subject}`,
+      "success",
+      3500
+    );
+  } catch (e) {
+    try {
+      notifications.push("Email sent", "success", 3500);
+    } catch {}
+  } finally {
+    isComposeDialogVisible.value = false;
+  }
+}
 </script>
 
 <template>
@@ -655,17 +824,6 @@ const editCandidate = computed(() =>
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.poBox">
-              <VListItemTitle>
-                <h6 class="text-h6">
-                  PO Box:
-                  <div class="d-inline-block text-body-1">
-                    {{ props.userData.poBox }}
-                  </div>
-                </h6>
-              </VListItemTitle>
-            </VListItem>
-
             <VListItem v-if="props.userData.accounting?.crn">
               <VListItemTitle>
                 <h6 class="text-h6">
@@ -749,21 +907,30 @@ const editCandidate = computed(() =>
                   }"
                 >
                   <template #prepend>
-                    <VAvatar
-                      size="38"
-                      :color="!conn.picture ? 'primary' : undefined"
-                      :variant="!conn.picture ? 'tonal' : undefined"
+                    <RouterLink
+                      :to="{
+                        name: 'apps-contact-view-id',
+                        params: { id: conn.contactId },
+                      }"
+                      class="avatar-link"
                     >
-                      <VImg v-if="conn.picture" :src="conn.picture" />
-                      <span v-else class="text-sm font-weight-medium">{{
-                        avatarText(conn.contactName)
-                      }}</span>
-                    </VAvatar>
+                      <VAvatar
+                        class="me-3"
+                        size="38"
+                        :color="!conn.picture ? 'primary' : undefined"
+                        :variant="!conn.picture ? 'tonal' : undefined"
+                      >
+                        <VImg v-if="conn.picture" :src="conn.picture" />
+                        <span v-else class="text-sm font-weight-medium">{{
+                          avatarText(conn.contactName)
+                        }}</span>
+                      </VAvatar>
+                    </RouterLink>
                   </template>
 
                   <VListItemContent>
                     <VListItemTitle
-                      class="font-weight-medium d-flex align-center gap-2"
+                      class="font-weight-medium d-flex align-center"
                     >
                       <span>{{ conn.contactName }}</span>
                       <VChip
@@ -785,15 +952,6 @@ const editCandidate = computed(() =>
                         <VMenu activator="parent">
                           <VList>
                             <VListItem
-                              @click="askDeleteConnection(conn.contactId)"
-                            >
-                              <template #prepend>
-                                <VIcon icon="tabler-trash" />
-                              </template>
-                              <VListItemTitle>Delete</VListItemTitle>
-                            </VListItem>
-
-                            <VListItem
                               v-if="!conn.isPrimary"
                               @click="makePrimary(conn.contactId)"
                             >
@@ -812,6 +970,15 @@ const editCandidate = computed(() =>
                               </template>
                               <VListItemTitle>Edit</VListItemTitle>
                             </VListItem>
+
+                            <VListItem
+                              @click="askDeleteConnection(conn.contactId)"
+                            >
+                              <template #prepend>
+                                <VIcon color="error" icon="tabler-trash" />
+                              </template>
+                              <VListItemTitle>Delete</VListItemTitle>
+                            </VListItem>
                           </VList>
                         </VMenu>
                       </VBtn>
@@ -820,21 +987,28 @@ const editCandidate = computed(() =>
                         <VIcon icon="tabler-send-2" />
                         <VMenu activator="parent">
                           <VList>
-                            <VListItem link>
+                            <VListItem
+                              link
+                              @click.prevent="openAddTodoDrawerForContact(conn)"
+                            >
                               <template #prepend>
                                 <VIcon icon="tabler-notes" />
                               </template>
                               <VListItemTitle>To Do</VListItemTitle>
                             </VListItem>
 
-                            <VListItem>
+                            <VListItem
+                              @click.prevent="openAddMeetingForContact(conn)"
+                            >
                               <template #prepend>
                                 <VIcon icon="tabler-calendar-plus" />
                               </template>
                               <VListItemTitle>Meeting</VListItemTitle>
                             </VListItem>
 
-                            <VListItem>
+                            <VListItem
+                              @click.prevent="openComposeForContact(conn)"
+                            >
                               <template #prepend>
                                 <VIcon icon="tabler-mail" />
                               </template>
@@ -872,16 +1046,25 @@ const editCandidate = computed(() =>
                   }"
                 >
                   <template #prepend>
-                    <VAvatar
-                      size="38"
-                      :color="!conn.picture ? 'primary' : undefined"
-                      :variant="!conn.picture ? 'tonal' : undefined"
+                    <RouterLink
+                      :to="{
+                        name: 'apps-contact-view-id',
+                        params: { id: conn.contactId },
+                      }"
+                      class="avatar-link"
                     >
-                      <VImg v-if="conn.picture" :src="conn.picture" />
-                      <span v-else class="text-sm font-weight-medium">{{
-                        avatarText(conn.contactName)
-                      }}</span>
-                    </VAvatar>
+                      <VAvatar
+                        class="me-3"
+                        size="38"
+                        :color="!conn.picture ? 'primary' : undefined"
+                        :variant="!conn.picture ? 'tonal' : undefined"
+                      >
+                        <VImg v-if="conn.picture" :src="conn.picture" />
+                        <span v-else class="text-sm font-weight-medium">{{
+                          avatarText(conn.contactName)
+                        }}</span>
+                      </VAvatar>
+                    </RouterLink>
                   </template>
 
                   <VListItemContent>
@@ -936,21 +1119,28 @@ const editCandidate = computed(() =>
                       <VIcon icon="tabler-send-2" />
                       <VMenu activator="parent">
                         <VList>
-                          <VListItem link>
+                          <VListItem
+                            link
+                            @click.prevent="openAddTodoDrawerForContact(conn)"
+                          >
                             <template #prepend>
                               <VIcon icon="tabler-notes" />
                             </template>
                             <VListItemTitle>To Do</VListItemTitle>
                           </VListItem>
 
-                          <VListItem>
+                          <VListItem
+                            @click.prevent="openAddMeetingForContact(conn)"
+                          >
                             <template #prepend>
                               <VIcon icon="tabler-calendar-plus" />
                             </template>
                             <VListItemTitle>Meeting</VListItemTitle>
                           </VListItem>
 
-                          <VListItem>
+                          <VListItem
+                            @click.prevent="openComposeForContact(conn)"
+                          >
                             <template #prepend>
                               <VIcon icon="tabler-mail" />
                             </template>
@@ -991,8 +1181,25 @@ const editCandidate = computed(() =>
     :existing-connections="connectionList.map((c) => c.contactId)"
     @add-connection="onAddConnection"
   />
+  <!-- Add ToDo Drawer (open prefilled when creating from a connection) -->
+  <AddNewToDoDrawer
+    ref="addTodoDrawerRef"
+    v-model:is-drawer-open="isAddTodoDrawerVisible"
+    :collaborators-options="[]"
+  />
+  <AddMeetingDrawer
+    ref="addMeetingRef"
+    v-model="isAddMeetingOpen"
+    :contacts="contactsOptions"
+    @save="onMeetingCreated"
+  />
+  <EmailDialog
+    ref="composeDialogRef"
+    v-model:is-dialog-visible="isComposeDialogVisible"
+    @send="onEmailSend"
+  />
   <VDialog v-model="confirmDeleteDialogVisible" persistent max-width="400">
-    <VCard>
+    <VCard class="pa-sm-8 pa-4">
       <VCardText> Are you sure you want to remove this connection? </VCardText>
       <VCardActions>
         <VBtn
@@ -1014,7 +1221,7 @@ const editCandidate = computed(() =>
 
   <!-- Contact delete dialog -->
   <VDialog v-model="confirmDeleteContactVisible" max-width="540">
-    <VCard>
+    <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete contact</VCardTitle>
       <VCardText>
         <div v-if="deleteContactBlockingReasons.length">
@@ -1026,7 +1233,9 @@ const editCandidate = computed(() =>
               {{ r }}
             </li>
           </ul>
-          <p>Please remove these references before deleting the contact.</p>
+          <p class="mt-5">
+            Please review these references before deleting the contact.
+          </p>
         </div>
         <div v-else>
           <p>
@@ -1135,4 +1344,11 @@ const editCandidate = computed(() =>
 }
 
 /* Compact details list: reduce vertical gaps and tighten lines */
+
+.avatar-link {
+  display: inline-block;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
 </style>

@@ -1,30 +1,33 @@
 <script lang="ts" setup>
 defineOptions({
-  name: 'AppTextField',
+  name: "AppTextField",
   inheritAttrs: false,
-})
+});
 
-const elementId = computed (() => {
-  const attrs = useAttrs()
-  const _elementIdToken = attrs.id
-  const _id = useId()
+const elementId = computed(() => {
+  const attrs = useAttrs();
+  const _elementIdToken = attrs.id;
+  const _id = useId();
 
-  return _elementIdToken ? `app-text-field-${_elementIdToken}` : _id
-})
+  return _elementIdToken ? `app-text-field-${_elementIdToken}` : _id;
+});
 
-const label = computed(() => useAttrs().label as string | undefined)
+const label = computed(() => useAttrs().label as string | undefined);
+
+// expose emits so the wrapper can forward inner VTextField events
+const emit = defineEmits(["update:modelValue"]);
+
+const onUpdateModelValue = (v: any) => emit("update:modelValue", v);
+const onClickClear = () => emit("update:modelValue", "");
 </script>
 
 <template>
-  <div
-    class="app-text-field flex-grow-1"
-    :class="$attrs.class"
-  >
+  <div class="app-text-field flex-grow-1" :class="$attrs.class">
     <VLabel
       v-if="label"
       :for="elementId"
       class="mb-1 text-body-2 text-wrap"
-      style="line-height: 15px;"
+      style="line-height: 15px"
       :text="label"
     />
     <VTextField
@@ -35,15 +38,12 @@ const label = computed(() => useAttrs().label as string | undefined)
         variant: 'outlined',
         id: elementId,
       }"
+      @update:modelValue="onUpdateModelValue"
+      @update:model-value="onUpdateModelValue"
+      @click:clear="onClickClear"
     >
-      <template
-        v-for="(_, name) in $slots"
-        #[name]="slotProps"
-      >
-        <slot
-          :name="name"
-          v-bind="slotProps || {}"
-        />
+      <template v-for="(_, name) in $slots" #[name]="slotProps">
+        <slot :name="name" v-bind="slotProps || {}" />
       </template>
     </VTextField>
   </div>

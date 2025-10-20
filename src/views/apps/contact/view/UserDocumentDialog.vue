@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ContactDocument } from "@/plugins/fake-api/handlers/apps/contact/types";
-import { saveFile } from "@/utils/fileStore";
+import { getFileInfo, saveFile } from "@/utils/fileStore";
 import { computed, reactive, ref, watch } from "vue";
 
 const props = defineProps<{
@@ -46,7 +46,16 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 // unified getter/setter: expose string for the UI. When a file is selected we show the filename.
 const fileOrLink = computed<string | null>({
   get() {
-    if (form.fileAttachment) return (form.fileAttachment as File).name;
+    if (form.fileAttachment) {
+      const f = form.fileAttachment as File;
+      return `${f.name} (${formatBytes(f.size)})`;
+    }
+    // if we have an idb pointer stored in fileUrlBlob, show the friendly name+size instead of the raw id
+    if (form.fileUrlBlob && String(form.fileUrlBlob).startsWith("idb:")) {
+      const name = (form as any)._attachedName || form.name || null;
+      const size = (form as any)._attachedSize || null;
+      return size ? `${name} (${formatBytes(size)})` : name;
+    }
     if (form.linkUrl) return form.linkUrl;
     return null;
   },
@@ -56,7 +65,19 @@ const fileOrLink = computed<string | null>({
       clearFile();
       return;
     }
-    // treat setter text always as a link
+    // If there's no attached file (and no stored blob), only allow links with acceptable extensions.
+    const hasAttached = !!form.fileAttachment || !!form.fileUrlBlob;
+    if (!hasAttached) {
+      if (!isAcceptableLink(v)) {
+        fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
+          ", "
+        )}`;
+        // do not set the link if invalid
+        return;
+      }
+    }
+    // accept link (in edit mode we allow replacing stored/attached file by a link)
+    fileError.value = null;
     form.linkUrl = v;
     clearFile();
   },
@@ -108,48 +129,95 @@ function formatBytes(bytes?: number | null) {
   return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 
+function isAcceptableLink(url?: string | null) {
+  if (!url) return false;
+  const trimmed = String(url).trim();
+  // allow data/blob/idb pointers as they are handled elsewhere
+  if (/^data:/.test(trimmed) || /^blob:/.test(trimmed) || /^idb:/.test(trimmed))
+    return true;
+  // allow relative root paths
+  try {
+    const parsed = new URL(trimmed, window.location.href);
+    const pathname = parsed.pathname || "";
+    const lower = pathname.toLowerCase();
+    return ACCEPTED_EXT.some((ext) => lower.endsWith(ext));
+  } catch {
+    // if URL parsing fails, fallback to simple string check
+    const lower = trimmed.toLowerCase();
+    return ACCEPTED_EXT.some((ext) => lower.split(/[?#]/)[0].endsWith(ext));
+  }
+}
+
 // UI: expansion panel state for expiry (null = closed, 0 = opened)
 const expiryExpanded = ref<number | null>(null);
 
+function resetForm() {
+  Object.assign(form, {
+    id: undefined,
+    category: undefined,
+    type: undefined,
+    name: "",
+    expiry: undefined,
+    expiryReminder: false,
+    note: "",
+    fileUrl: undefined,
+    linkUrl: undefined,
+    fileAttachment: undefined,
+    fileUrlBlob: undefined,
+  });
+  expiryExpanded.value = null;
+  fileError.value = null;
+}
+
+function populateForm(d: ContactDocument | null | undefined) {
+  if (!d) {
+    resetForm();
+    return;
+  }
+  Object.assign(form, { ...d });
+  // populate helper fields when editing an existing doc
+  // prioritize idb: pointers (persisted files) so we show friendly name+size
+  if (d.fileUrl && String(d.fileUrl).startsWith("idb:")) {
+    form.linkUrl = undefined;
+    form.fileUrlBlob = undefined;
+    const without = String(d.fileUrl).slice(4);
+    const [key, encodedName] = without.split("|");
+    if (encodedName) {
+      const name = decodeURIComponent(encodedName || "");
+      try {
+        getFileInfo(key).then((info) => {
+          if (info) {
+            form.fileUrlBlob = `idb:${key}`;
+            (form as any)._attachedName = name;
+            (form as any)._attachedSize = info.size;
+          }
+        });
+      } catch {}
+    }
+  } else if (
+    d.fileUrl &&
+    (String(d.fileUrl).startsWith("blob:") ||
+      String(d.fileUrl).startsWith("data:"))
+  ) {
+    // blob or data URI
+    form.fileUrlBlob = String(d.fileUrl);
+    form.linkUrl = undefined;
+  } else {
+    form.linkUrl = d.fileUrl;
+    form.fileUrlBlob = undefined;
+  }
+  // open expiry panel when editing a doc that already has an expiry
+  expiryExpanded.value = d.expiry ? 0 : null;
+}
+
+// ensure form is populated when dialog opens and reset when no doc provided
 watch(
   () => props.doc,
-  (d) => {
-    if (d) {
-      Object.assign(form, { ...d });
-      // populate helper fields when editing an existing doc
-      // If stored fileUrl is a blob: or data: URI, treat it as a file blob for preview
-      if (
-        d.fileUrl &&
-        (String(d.fileUrl).startsWith("blob:") ||
-          String(d.fileUrl).startsWith("data:"))
-      ) {
-        form.fileUrlBlob = String(d.fileUrl);
-        form.linkUrl = undefined;
-      } else {
-        form.linkUrl = d.fileUrl;
-        form.fileUrlBlob = undefined;
-      }
-      // open expiry panel when editing a doc that already has an expiry
-      expiryExpanded.value = d.expiry ? 0 : null;
-    } else {
-      Object.assign(form, {
-        id: undefined,
-        category: undefined,
-        type: undefined,
-        name: "",
-        expiry: undefined,
-        expiryReminder: false,
-        note: "",
-        fileUrl: undefined,
-        linkUrl: undefined,
-        fileAttachment: undefined,
-        fileUrlBlob: undefined,
-      });
-      expiryExpanded.value = null;
-    }
-  },
+  (d) => populateForm(d),
   { immediate: true }
 );
+
+// When dialog is opened, we'll populate/reset the form — watch moved lower where `open` is defined.
 
 function close() {
   emits("update:modelValue", false);
@@ -160,9 +228,24 @@ const open = computed({
   set: (v: boolean) => emits("update:modelValue", v),
 });
 
-// validation
+// When dialog is opened, always populate the form from props.doc (or reset for add).
+watch(open, (isOpen) => {
+  if (isOpen) {
+    populateForm(props.doc);
+  } else {
+    // on close: reset the form for a clean add state. This keeps the dialog predictable
+    // when reopened for add and prevents stale data when switching between edits.
+    resetForm();
+  }
+});
+
+// validation: require category, name and an attachment (fileAttachment or stored blob or link)
+const hasAttachment = computed(() => {
+  return !!form.fileAttachment || !!form.fileUrlBlob || !!form.linkUrl;
+});
+
 const isValid = computed(() => {
-  return !!form.name && !!form.type;
+  return !!form.name && !!form.category && hasAttachment.value;
 });
 
 const uploading = ref(false);
@@ -207,6 +290,16 @@ async function save() {
     }
   }
 
+  // if link is present, ensure it's acceptable before saving
+  if (!form.fileAttachment && form.linkUrl) {
+    if (!isAcceptableLink(form.linkUrl)) {
+      fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
+        ", "
+      )}`;
+      return;
+    }
+  }
+
   emits("save", payload);
   // debug log: emitted payload
   try {
@@ -238,6 +331,14 @@ const showLinkInput = computed(() => {
   return !form.fileAttachment && !form.fileUrlBlob;
 });
 
+const attachedName = computed(() => {
+  return (form as any)._attachedName || form.name || null;
+});
+
+const attachedSize = computed<number | null>(() => {
+  return (form as any)._attachedSize ?? null;
+});
+
 // when VFileInput updates form.fileAttachment create blob URL and infer category
 watch(
   () => form.fileAttachment,
@@ -262,6 +363,11 @@ function clearFile() {
   }
   form.fileAttachment = undefined;
   form.fileUrlBlob = undefined;
+  // clear helper fields
+  try {
+    (form as any)._attachedSize = undefined;
+    (form as any)._attachedName = undefined;
+  } catch {}
 }
 
 // ensure mutual exclusivity: when linkUrl is set, clear file; when fileAttachment is set, clear linkUrl
@@ -270,9 +376,17 @@ watch(
   (v) => {
     if (v) {
       clearFile();
-      // infer category from link extension
-      const inferred = inferCategoryFromFilename(v);
-      if (inferred) form.category = inferred as any;
+      // validate that link matches accepted file types
+      if (!isAcceptableLink(v)) {
+        fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
+          ", "
+        )}`;
+      } else {
+        fileError.value = null;
+        // infer category from link extension
+        const inferred = inferCategoryFromFilename(v);
+        if (inferred) form.category = inferred as any;
+      }
     }
   }
 );
@@ -396,8 +510,11 @@ watch(
                   <span>({{ formatBytes(form.fileAttachment.size) }})</span>
                 </template>
                 <template v-else>
-                  <!-- avoid rendering whole data URI; show a friendly label -->
-                  {{ form.name || "Attached file" }}
+                  <!-- show attached name and size for idb-stored files or friendly label -->
+                  {{ attachedName || "Attached file" }}
+                  <span v-if="attachedSize"
+                    >({{ formatBytes(attachedSize) }})</span
+                  >
                   <span class="text-xs text-muted">(preview available)</span>
                 </template>
                 <VBtn small variant="text" color="error" @click="clearFile"
@@ -406,6 +523,12 @@ watch(
               </div>
               <div v-if="fileError" class="text-error text-sm mt-2">
                 {{ fileError }}
+              </div>
+              <div
+                v-else-if="!hasAttachment"
+                class="text-sm text-medium-emphasis mt-2"
+              >
+                Attachment is required.
               </div>
             </div>
           </VCol>

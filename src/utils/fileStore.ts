@@ -73,6 +73,17 @@ export async function getFileObjectUrl(key: string): Promise<string | null> {
   }
 }
 
+export async function getFileInfo(
+  key: string
+): Promise<{ name?: string; size?: number } | null> {
+  const rec = await getFileRecord(key);
+  if (!rec) return null;
+  return {
+    name: rec.name,
+    size: rec.blob ? (rec.blob as Blob).size : undefined,
+  };
+}
+
 export async function deleteFile(key: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, "readwrite");
