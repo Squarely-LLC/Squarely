@@ -189,6 +189,9 @@ const emit = defineEmits<Emit>();
 const initialPhoneMeta = splitNumberByDial(props.contact?.number ?? "");
 const selectedCountry = ref<CountryOption>(initialPhoneMeta.country);
 
+// flag to indicate the dialog initiated a save so watcher can merge instead of overwrite
+const justSaved = ref(false);
+
 const sanitizeContact = (contact: ContactProperties | null) => {
   if (!contact) return null;
 
@@ -206,6 +209,7 @@ const sanitizeContact = (contact: ContactProperties | null) => {
       crn: raw.accounting?.crn ?? "",
       vatNumber: raw.accounting?.vatNumber ?? "",
     },
+    website: raw.website ?? "",
   } as ContactProperties;
 };
 
@@ -227,7 +231,19 @@ const numberedSteps = [
 watch(
   () => props.contact,
   (value) => {
-    localContact.value = sanitizeContact(value);
+    const sanitized = sanitizeContact(value);
+    if (justSaved.value) {
+      // merge the stored fields from the persisted contact into current local model
+      // so we don't lose unsaved edits on other steps
+      localContact.value = {
+        ...(localContact.value ?? {}),
+        ...(sanitized ?? {}),
+      } as ContactProperties;
+      justSaved.value = false;
+    } else {
+      localContact.value = sanitized;
+    }
+
     selectedCountry.value = splitNumberByDial(value?.number ?? "").country;
     countrySearch.value = "";
     // populate cities dropdown based on loaded contact country
@@ -284,9 +300,21 @@ const requiredValidator = (v: any) =>
 const emailValidator = (v: any) =>
   !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v)) || "Invalid email";
 
+// simple website validator: allow empty or basic URL forms (with or without scheme)
+const websiteValidator = (v: any) => {
+  if (!v) return true;
+  const s = String(v).trim();
+  // basic regex: optional http(s)://, then domain with at least one dot, optional port/path
+  const re = /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(:\d+)?(\/\S*)?$/i;
+  return re.test(s) || "Invalid website";
+};
+
 const dialogModelValueUpdate = (value: boolean) => {
   emit("update:isDialogVisible", value);
 };
+
+// form ref used for programmatic validation
+const formRef = ref<any | null>(null);
 
 /**
  * Keep digits-only input while editing.
@@ -300,8 +328,23 @@ const onPhoneInput = (val: string) => {
  * Save the contact. If `closeAfter` is true the dialog will be closed after saving.
  * When saving mid-step we keep the dialog open so the user can continue editing.
  */
-const saveContact = (closeAfter = false) => {
+const saveContact = async (closeAfter = false) => {
   if (!localContact.value) return;
+
+  // validate the form programmatically before saving
+  try {
+    if (formRef.value && typeof formRef.value.validate === "function") {
+      const validationResult = await formRef.value.validate();
+      const isValid =
+        typeof validationResult === "boolean"
+          ? validationResult
+          : (validationResult?.valid ?? false);
+
+      if (!isValid) return;
+    }
+  } catch (e) {
+    // if validation throws or is unavailable, proceed cautiously
+  }
 
   const payload: ContactProperties = {
     ...localContact.value,
@@ -310,7 +353,8 @@ const saveContact = (closeAfter = false) => {
       selectedCountry.value.dial
     ),
   };
-
+  // mark that we're saving from this dialog so prop updates don't clobber local edits
+  justSaved.value = true;
   emit("submit", payload);
   if (closeAfter) emit("update:isDialogVisible", false);
 };
@@ -379,7 +423,11 @@ const onReset = () => {
 
       <VCardText>
         <!-- 👉 stepper content -->
-        <VForm v-if="localContact" @submit.prevent="() => saveContact(true)">
+        <VForm
+          v-if="localContact"
+          ref="formRef"
+          @submit.prevent="() => saveContact(true)"
+        >
           <VWindow v-model="currentStep" class="disable-tab-transition">
             <!-- Account Details -->
             <VWindowItem>
@@ -581,6 +629,15 @@ const onReset = () => {
                     v-model="localContact.language"
                     label="Language"
                     placeholder="English"
+                  />
+                </VCol>
+
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="localContact.website"
+                    label="Website"
+                    placeholder="https://example.com"
+                    :rules="[websiteValidator]"
                   />
                 </VCol>
 

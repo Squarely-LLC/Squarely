@@ -804,6 +804,23 @@ function onContactEditSubmit(payload: ContactProperties) {
               </VListItemTitle>
             </VListItem>
 
+            <VListItem v-if="props.userData.website">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Website:
+                  <div class="d-inline-block text-body-1">
+                    <a
+                      :href="props.userData.website || ''"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {{ props.userData.website }}
+                    </a>
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
             <VListItem v-if="props.userData.country">
               <VListItemTitle>
                 <h6 class="text-h6">

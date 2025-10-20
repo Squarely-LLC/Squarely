@@ -79,6 +79,7 @@ export interface ContactProperties {
   country?: string;
   city?: string;
   language?: string;
+  website?: string;
   channel: ContactChannel;
   birthdate?: string;
   worksInSales: boolean;
