@@ -44,6 +44,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "123 Downtown Street",
       country: "Lebanon",
       city: "Beirut",
@@ -85,6 +86,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Jumeirah 3, Commercial Tower 9",
       country: "United Arab Emirates",
       city: "Dubai",
@@ -126,6 +128,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Squarely Center, Level 11",
       country: "Lebanon",
       city: "Beirut",
@@ -163,6 +166,7 @@ export const db: DB = {
       accounting: {},
       documents: [],
       records: [],
+      transactions: [],
       address: "Ashrafieh, Building 24",
       country: "Lebanon",
       city: "Beirut",
@@ -281,6 +285,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Dbayeh Highway, Bloc 6",
 
       country: "Lebanon",
@@ -322,6 +327,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "The Gate Mall Offices",
 
       country: "Qatar",
@@ -363,6 +369,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Verdun Street 12",
 
       country: "Lebanon",
@@ -402,6 +409,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Furn El Chebbak, Block 4",
 
       country: "Lebanon",
@@ -444,6 +452,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Flat 5B, Gemmayzeh Road, Beirut",
 
       country: "Lebanon",
@@ -485,6 +494,7 @@ export const db: DB = {
       },
       documents: [],
       records: [],
+      transactions: [],
       address: "Office 1203, Marina Plaza, Dubai",
 
       country: "United Arab Emirates",

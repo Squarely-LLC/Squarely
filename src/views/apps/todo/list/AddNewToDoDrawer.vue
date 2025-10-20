@@ -238,19 +238,21 @@ async function onSubmit() {
 </script>
 
 <template>
-  <VNavigationDrawer
-    data-allow-mismatch
-    temporary
-    :width="400"
-    location="end"
-    class="scrollable-content"
-    :model-value="props.isDrawerOpen"
-    @update:model-value="handleDrawerModelValueUpdate"
-  >
-    <AppDrawerHeaderSection
-      title="Add New To Do"
-      @cancel="closeNavigationDrawer"
-    />
+  <teleport to="body">
+    <VNavigationDrawer
+      data-allow-mismatch
+      temporary
+      :width="400"
+      location="end"
+      class="scrollable-content"
+      :model-value="props.isDrawerOpen"
+      :scrim="true"
+      @update:model-value="handleDrawerModelValueUpdate"
+    >
+      <AppDrawerHeaderSection
+        title="Add New To Do"
+        @cancel="closeNavigationDrawer"
+      />
 
     <VDivider />
 
@@ -410,7 +412,8 @@ async function onSubmit() {
         </VCardText>
       </VCard>
     </PerfectScrollbar>
-  </VNavigationDrawer>
+    </VNavigationDrawer>
+  </teleport>
 </template>
 
 <style scoped>

@@ -150,110 +150,117 @@ defineExpose({ openWith });
 </script>
 
 <template>
-  <VNavigationDrawer
-    data-allow-mismatch
-    temporary
-    :width="400"
-    location="end"
-    class="scrollable-content"
-    v-model="drawerOpen"
-    @update:model-value="handleModelUpdate"
-  >
-    <AppDrawerHeaderSection title="Add Record" @cancel="closeDrawer" />
+  <teleport to="body">
+    <VNavigationDrawer
+      data-allow-mismatch
+      temporary
+      :width="400"
+      location="end"
+      class="scrollable-content"
+      v-model="drawerOpen"
+      :scrim="true"
+      @update:model-value="handleModelUpdate"
+    >
+      <AppDrawerHeaderSection title="Add Record" @cancel="closeDrawer" />
 
-    <VDivider />
+      <VDivider />
 
-    <PerfectScrollbar :options="{ wheelPropagation: false }">
-      <VCard flat>
-        <VCardText>
-          <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
-            <VRow>
-              <VCol cols="12">
-                <VAutocomplete
-                  v-model="category"
-                  :items="categories"
-                  label="Select category"
-                  clearable
-                  hide-no-data
-                  solo
-                />
-              </VCol>
-
-              <!-- only show the rest when a category is chosen -->
-              <template v-if="category">
-                <template v-if="category === 'Event Management'">
-                  <VCol cols="12">
-                    <VAutocomplete
-                      v-model="eventType"
-                      :items="eventTypes"
-                      label="Event type"
-                      clearable
-                      solo
-                    />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppTextField v-model="eventDate" label="Date" />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppTextField
-                      v-model="eventGuests"
-                      label="Number of guests"
-                    />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <VAutocomplete
-                      v-model="eventCity"
-                      :items="cityOptions"
-                      label="City"
-                      clearable
-                      solo
-                    />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppTextarea v-model="brief" label="Brief" auto-grow />
-                  </VCol>
-                </template>
-
-                <template v-else>
-                  <VCol cols="12">
-                    <AppSelect
-                      v-model="type"
-                      label="Type"
-                      :items="[
-                        { title: 'Note', value: 'note' },
-                        { title: 'Call', value: 'call' },
-                        { title: 'Email', value: 'email' },
-                        { title: 'Document', value: 'document' },
-                      ]"
-                    />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppTextField v-model="title" label="Title" />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppTextarea v-model="body" label="Body" auto-grow />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppTextField v-model="createdAt" label="Created At" />
-                  </VCol>
-                </template>
-
-                <VCol cols="12" class="d-flex justify-end" v-if="category">
-                  <VBtn type="submit" class="me-3">Save</VBtn>
-                  <VBtn variant="tonal" @click="closeDrawer">Cancel</VBtn>
+      <PerfectScrollbar :options="{ wheelPropagation: false }">
+        <VCard flat>
+          <VCardText>
+            <VForm
+              ref="refForm"
+              v-model="isFormValid"
+              @submit.prevent="onSubmit"
+            >
+              <VRow>
+                <VCol cols="12">
+                  <VAutocomplete
+                    v-model="category"
+                    :items="categories"
+                    label="Select category"
+                    clearable
+                    hide-no-data
+                    solo
+                  />
                 </VCol>
-              </template>
-            </VRow>
-          </VForm>
-        </VCardText>
-      </VCard>
-    </PerfectScrollbar>
-  </VNavigationDrawer>
+
+                <!-- only show the rest when a category is chosen -->
+                <template v-if="category">
+                  <template v-if="category === 'Event Management'">
+                    <VCol cols="12">
+                      <VAutocomplete
+                        v-model="eventType"
+                        :items="eventTypes"
+                        label="Event type"
+                        clearable
+                        solo
+                      />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <AppTextField v-model="eventDate" label="Date" />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <AppTextField
+                        v-model="eventGuests"
+                        label="Number of guests"
+                      />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <VAutocomplete
+                        v-model="eventCity"
+                        :items="cityOptions"
+                        label="City"
+                        clearable
+                        solo
+                      />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <AppTextarea v-model="brief" label="Brief" auto-grow />
+                    </VCol>
+                  </template>
+
+                  <template v-else>
+                    <VCol cols="12">
+                      <AppSelect
+                        v-model="type"
+                        label="Type"
+                        :items="[
+                          { title: 'Note', value: 'note' },
+                          { title: 'Call', value: 'call' },
+                          { title: 'Email', value: 'email' },
+                          { title: 'Document', value: 'document' },
+                        ]"
+                      />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <AppTextField v-model="title" label="Title" />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <AppTextarea v-model="body" label="Body" auto-grow />
+                    </VCol>
+
+                    <VCol cols="12">
+                      <AppTextField v-model="createdAt" label="Created At" />
+                    </VCol>
+                  </template>
+
+                  <VCol cols="12" class="d-flex justify-end" v-if="category">
+                    <VBtn type="submit" class="me-3">Save</VBtn>
+                    <VBtn variant="tonal" @click="closeDrawer">Cancel</VBtn>
+                  </VCol>
+                </template>
+              </VRow>
+            </VForm>
+          </VCardText>
+        </VCard>
+      </PerfectScrollbar>
+    </VNavigationDrawer>
+  </teleport>
 </template>

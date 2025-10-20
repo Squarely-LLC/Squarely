@@ -951,7 +951,7 @@ function onContactEditSubmit(payload: ContactProperties) {
                         :variant="!conn.picture ? 'tonal' : undefined"
                       >
                         <VImg v-if="conn.picture" :src="conn.picture" />
-                        <span v-else class="text-sm font-weight-medium">{{
+                        <span v-else class="text-m font-weight-medium">{{
                           avatarText(conn.contactName)
                         }}</span>
                       </VAvatar>
@@ -963,6 +963,7 @@ function onContactEditSubmit(payload: ContactProperties) {
                   >
                     <span>{{ conn.contactName }}</span>
                     <VChip
+                      class="ms-3"
                       v-if="conn.isPrimary"
                       size="small"
                       label

@@ -66,6 +66,17 @@ export interface ContactRecord {
   createdAt: string;
 }
 
+export interface ContactTransaction {
+  id: number;
+  amount: number;
+  currency?: string; // e.g. USD, EUR, LBP
+  type?: "credit" | "debit" | "refund" | "other";
+  date: string; // ISO date string representing transaction date
+  description?: string;
+  reference?: string; // external reference or invoice number
+  createdAt?: string;
+}
+
 export interface ContactAccounting {
   taxId?: string;
   crn?: string;
@@ -86,6 +97,7 @@ export interface ContactProperties {
   accounting: ContactAccounting;
   documents?: ContactDocument[];
   records?: ContactRecord[];
+  transactions?: ContactTransaction[];
   address?: string;
   country?: string;
   city?: string;
