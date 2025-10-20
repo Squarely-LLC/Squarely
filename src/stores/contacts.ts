@@ -1,12 +1,14 @@
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
+import { db } from "../plugins/fake-api/handlers/apps/contact/db";
 import type {
   ContactAccounting,
   ContactConnection,
   ContactProperties,
-} from "@/plugins/fake-api/handlers/apps/contact/types";
+} from "../plugins/fake-api/handlers/apps/contact/types";
+
+import type { ContactRecord } from "../plugins/fake-api/handlers/apps/contact/types";
 
 const STORAGE_KEY = "app.contacts.v2";
 
@@ -70,6 +72,9 @@ function cloneContact(contact: ContactProperties): ContactProperties {
         ? raw.connections.map((connection) => ({ ...connection }))
         : [],
       accounting: raw.accounting ? { ...raw.accounting } : {},
+      records: Array.isArray(raw.records)
+        ? raw.records.map((r) => ({ ...r }))
+        : [],
     };
   }
 }
@@ -121,6 +126,21 @@ function ensureAccounting(
   };
 }
 
+function ensureRecords(
+  records: ContactRecord[] | undefined | null
+): ContactRecord[] {
+  if (!Array.isArray(records)) return [];
+  return records.map((r) => ({
+    id: Number(r.id) || 0,
+    type: r.type || "note",
+    title: r.title || undefined,
+    body: r.body || undefined,
+    author: r.author || null,
+    attachments: Array.isArray(r.attachments) ? [...r.attachments] : [],
+    createdAt: r.createdAt || new Date().toISOString(),
+  }));
+}
+
 function normaliseContact(
   payload: Partial<ContactProperties>,
   assignedId: number
@@ -139,6 +159,7 @@ function normaliseContact(
     picture: payload.picture || undefined,
     connections: ensureConnections(payload.connections),
     accounting: ensureAccounting(payload.accounting),
+    records: ensureRecords(payload.records),
     address: payload.address || undefined,
     country: payload.country || undefined,
     city: payload.city || undefined,
@@ -164,6 +185,7 @@ function mergeContact(
       ...(original.accounting ?? {}),
       ...(patch.accounting ?? {}),
     }),
+    records: ensureRecords(patch.records ?? original.records ?? []),
   };
 
   if (!merged.createdAt) merged.createdAt = original.createdAt;
@@ -252,6 +274,65 @@ export const useContactsStore = defineStore("contacts", {
       if (index === -1) return null;
 
       const updated = mergeContact(this.items[index], patch);
+      this.items.splice(index, 1, updated);
+      return updated;
+    },
+
+    /**
+     * Add a record to a contact's records array. New records are prepended.
+     * Returns the updated contact or null if contact not found.
+     */
+    addRecord(contactId: number | string, record: ContactRecord) {
+      const index = this.items.findIndex(
+        (contact) => String(contact.id) === String(contactId)
+      );
+      if (index === -1) return null;
+
+      const original = this.items[index];
+      const existing = Array.isArray(original.records) ? original.records : [];
+      const newRecords = [record, ...existing];
+
+      const updated = mergeContact(original, { records: newRecords });
+      this.items.splice(index, 1, updated);
+      return updated;
+    },
+
+    /**
+     * Update an existing record for a contact. Matches by record.id.
+     */
+    updateRecord(contactId: number | string, record: ContactRecord) {
+      const index = this.items.findIndex(
+        (contact) => String(contact.id) === String(contactId)
+      );
+      if (index === -1) return null;
+
+      const original = this.items[index];
+      const existing = Array.isArray(original.records) ? original.records : [];
+      const updatedRecords = existing.map((r) =>
+        String(r.id) === String(record.id) ? { ...r, ...record } : r
+      );
+
+      const updated = mergeContact(original, { records: updatedRecords });
+      this.items.splice(index, 1, updated);
+      return updated;
+    },
+
+    /**
+     * Remove a record from a contact by id.
+     */
+    removeRecord(contactId: number | string, recordId: number | string) {
+      const index = this.items.findIndex(
+        (contact) => String(contact.id) === String(contactId)
+      );
+      if (index === -1) return null;
+
+      const original = this.items[index];
+      const existing = Array.isArray(original.records) ? original.records : [];
+      const updatedRecords = existing.filter(
+        (r) => String(r.id) !== String(recordId)
+      );
+
+      const updated = mergeContact(original, { records: updatedRecords });
       this.items.splice(index, 1, updated);
       return updated;
     },

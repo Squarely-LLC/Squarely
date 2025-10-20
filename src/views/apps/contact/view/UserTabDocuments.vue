@@ -753,9 +753,7 @@ watch(
             class="app-user-search-filter d-flex align-center flex-wrap gap-4"
           >
             <div class="d-flex align-center">
-              <VBtn prepend-icon="tabler-plus" @click="openAdd"
-                >Add Document</VBtn
-              >
+              <VBtn prepend-icon="tabler-plus" @click="openAdd">Document</VBtn>
             </div>
           </div>
         </VCardText>

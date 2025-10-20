@@ -1,10 +1,10 @@
+import { paginateArray } from "@api-utils/paginateArray";
+import { db } from "@db/apps/contact/db";
 import is from "@sindresorhus/is";
 import { destr } from "destr";
 import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
-import { db } from "@db/apps/contact/db";
 import type { ContactProperties } from "./types";
-import { paginateArray } from "@api-utils/paginateArray";
 
 const normalizeConnections = (
   connections?: ContactProperties["connections"]
@@ -81,9 +81,7 @@ export const handlerAppsContacts = [
         user.email.toLowerCase().includes(queryLower) ||
         user.number.toLowerCase().includes(queryLower);
 
-      const matchesClass = contactClass
-        ? user.class === contactClass
-        : true;
+      const matchesClass = contactClass ? user.class === contactClass : true;
       const matchesType = contactType ? user.type === contactType : true;
       const matchesCategory = category ? user.category === category : true;
       const matchesStatus = status ? user.status === status : true;
@@ -109,8 +107,7 @@ export const handlerAppsContacts = [
       }
       if (sortByLocal === "class") {
         filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === "asc")
-            return a.class.localeCompare(b.class);
+          if (orderByLocal === "asc") return a.class.localeCompare(b.class);
           return b.class.localeCompare(a.class);
         });
       }
@@ -128,15 +125,13 @@ export const handlerAppsContacts = [
       }
       if (sortByLocal === "email") {
         filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === "asc")
-            return a.email.localeCompare(b.email);
+          if (orderByLocal === "asc") return a.email.localeCompare(b.email);
           return b.email.localeCompare(a.email);
         });
       }
       if (sortByLocal === "status") {
         filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === "asc")
-            return a.status.localeCompare(b.status);
+          if (orderByLocal === "asc") return a.status.localeCompare(b.status);
           return b.status.localeCompare(a.status);
         });
       }
@@ -149,8 +144,7 @@ export const handlerAppsContacts = [
       }
       if (sortByLocal === "channel") {
         filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === "asc")
-            return a.channel.localeCompare(b.channel);
+          if (orderByLocal === "asc") return a.channel.localeCompare(b.channel);
           return b.channel.localeCompare(a.channel);
         });
       }
@@ -160,7 +154,8 @@ export const handlerAppsContacts = [
           const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return orderByLocal === "asc" ? aTime - bTime : bTime - aTime;
         });
-      }    }
+      }
+    }
 
     const contactLookup = buildContactLookup();
 
@@ -265,6 +260,119 @@ export const handlerAppsContacts = [
     );
   }),
 
+  http.post("/api/apps/contacts/:id/records", async ({ params, request }) => {
+    const userId = Number(params.id);
+    const payload = (await request.json()) as any;
+
+    const index = db.users.findIndex((entry) => entry.id === userId);
+    if (index === -1)
+      return HttpResponse.json({ message: "User not found" }, { status: 404 });
+
+    const incomingRecord = {
+      id: payload.id ?? Date.now(),
+      type: payload.type ?? "note",
+      title: payload.title ?? undefined,
+      body: payload.body ?? undefined,
+      author: payload.author ?? null,
+      attachments: Array.isArray(payload.attachments)
+        ? payload.attachments
+        : [],
+      createdAt: payload.createdAt || new Date().toISOString(),
+    };
+
+    if (!Array.isArray(db.users[index].records)) db.users[index].records = [];
+    // prepend so newest first
+    db.users[index].records.unshift(incomingRecord);
+
+    const contactLookup = buildContactLookup();
+
+    return HttpResponse.json(
+      {
+        record: incomingRecord,
+        contact: {
+          ...db.users[index],
+          connections: hydrateConnections(
+            db.users[index].connections,
+            contactLookup
+          ),
+        },
+      },
+      { status: 201 }
+    );
+  }),
+
+  http.put(
+    "/api/apps/contacts/:id/records/:rid",
+    async ({ params, request }) => {
+      const userId = Number(params.id);
+      const recordId = Number(params.rid);
+      const payload = (await request.json()) as any;
+
+      const index = db.users.findIndex((entry) => entry.id === userId);
+      if (index === -1)
+        return HttpResponse.json(
+          { message: "User not found" },
+          { status: 404 }
+        );
+
+      if (!Array.isArray(db.users[index].records)) db.users[index].records = [];
+
+      const ridx = db.users[index].records.findIndex(
+        (r) => Number(r.id) === recordId
+      );
+      if (ridx === -1)
+        return HttpResponse.json(
+          { message: "Record not found" },
+          { status: 404 }
+        );
+
+      db.users[index].records[ridx] = {
+        ...db.users[index].records[ridx],
+        ...payload,
+      };
+
+      const contactLookup = buildContactLookup();
+
+      return HttpResponse.json(
+        {
+          record: db.users[index].records[ridx],
+          contact: {
+            ...db.users[index],
+            connections: hydrateConnections(
+              db.users[index].connections,
+              contactLookup
+            ),
+          },
+        },
+        { status: 200 }
+      );
+    }
+  ),
+
+  http.delete("/api/apps/contacts/:id/records/:rid", ({ params }) => {
+    const userId = Number(params.id);
+    const recordId = Number(params.rid);
+
+    const index = db.users.findIndex((entry) => entry.id === userId);
+    if (index === -1)
+      return HttpResponse.json({ message: "User not found" }, { status: 404 });
+
+    if (!Array.isArray(db.users[index].records)) db.users[index].records = [];
+
+    const ridx = db.users[index].records.findIndex(
+      (r) => Number(r.id) === recordId
+    );
+    if (ridx === -1)
+      return HttpResponse.json(
+        { message: "Record not found" },
+        { status: 404 }
+      );
+
+    db.users[index].records.splice(ridx, 1);
+
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.post("/api/apps/contacts", async ({ request }) => {
     const payload = (await request.json()) as any;
 
@@ -292,4 +400,3 @@ export const handlerAppsContacts = [
     return HttpResponse.json({ body: payload }, { status: 201 });
   }),
 ];
-

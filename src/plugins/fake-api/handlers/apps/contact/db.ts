@@ -43,6 +43,7 @@ export const db: DB = {
         vatNumber: "VAT-112233",
       },
       documents: [],
+      records: [],
       address: "123 Downtown Street",
       country: "Lebanon",
       city: "Beirut",
@@ -83,6 +84,7 @@ export const db: DB = {
         vatNumber: "VAT-554433",
       },
       documents: [],
+      records: [],
       address: "Jumeirah 3, Commercial Tower 9",
       country: "United Arab Emirates",
       city: "Dubai",
@@ -123,6 +125,7 @@ export const db: DB = {
         vatNumber: "VAT-009911",
       },
       documents: [],
+      records: [],
       address: "Squarely Center, Level 11",
       country: "Lebanon",
       city: "Beirut",
@@ -159,6 +162,7 @@ export const db: DB = {
       ],
       accounting: {},
       documents: [],
+      records: [],
       address: "Ashrafieh, Building 24",
       country: "Lebanon",
       city: "Beirut",
@@ -276,6 +280,7 @@ export const db: DB = {
         vatNumber: "VAT-334455",
       },
       documents: [],
+      records: [],
       address: "Dbayeh Highway, Bloc 6",
 
       country: "Lebanon",
@@ -316,6 +321,7 @@ export const db: DB = {
         vatNumber: "VAT-667788",
       },
       documents: [],
+      records: [],
       address: "The Gate Mall Offices",
 
       country: "Qatar",
@@ -356,6 +362,7 @@ export const db: DB = {
         vatNumber: "VAT-221144",
       },
       documents: [],
+      records: [],
       address: "Verdun Street 12",
 
       country: "Lebanon",
@@ -394,6 +401,7 @@ export const db: DB = {
         vatNumber: "VAT-909090",
       },
       documents: [],
+      records: [],
       address: "Furn El Chebbak, Block 4",
 
       country: "Lebanon",
@@ -435,6 +443,7 @@ export const db: DB = {
         vatNumber: "VAT-445566",
       },
       documents: [],
+      records: [],
       address: "Flat 5B, Gemmayzeh Road, Beirut",
 
       country: "Lebanon",
@@ -475,6 +484,7 @@ export const db: DB = {
         vatNumber: "VAT-112211",
       },
       documents: [],
+      records: [],
       address: "Office 1203, Marina Plaza, Dubai",
 
       country: "United Arab Emirates",
@@ -515,6 +525,7 @@ export const db: DB = {
         vatNumber: "VAT-776655",
       },
       documents: [],
+      records: [],
       address: "Rmeil St, Downtown Beirut, Office 7",
 
       country: "Lebanon",
@@ -551,6 +562,7 @@ export const db: DB = {
       ],
       accounting: {},
       documents: [],
+      records: [],
       address: "Unit 4, King's Cross Business Centre, London",
 
       country: "United Kingdom",
@@ -591,6 +603,7 @@ export const db: DB = {
         vatNumber: "VAT-223344",
       },
       documents: [],
+      records: [],
       address: "Sea View Tower, Furn El Chebbak, Apt 22",
 
       country: "Lebanon",
@@ -627,6 +640,7 @@ export const db: DB = {
       ],
       accounting: {},
       documents: [],
+      records: [],
       address: "Mar Mikhael, Building 12, Beirut",
 
       country: "Lebanon",
@@ -663,6 +677,7 @@ export const db: DB = {
       ],
       accounting: {},
       documents: [],
+      records: [],
       address: "Jounieh Highway, Bloc C, Apt 3",
 
       country: "Lebanon",

@@ -9,7 +9,7 @@ import UserBioPanel from "@/views/apps/contact/view/UserBioPanel.vue";
 import UserTabAccount from "@/views/apps/contact/view/UserTabAccount.vue";
 import UserTabDocuments from "@/views/apps/contact/view/UserTabDocuments.vue";
 import UserTabNotifications from "@/views/apps/contact/view/UserTabNotifications.vue";
-import UserTabSecurity from "@/views/apps/contact/view/UserTabSecurity.vue";
+import UserTabRecords from "@/views/apps/contact/view/UserTabRecords.vue";
 import UserTabConnections from "@/views/apps/user/view/UserTabConnections.vue";
 
 const route = useRoute("apps-contact-view-id");
@@ -73,8 +73,8 @@ const tabKeys = [
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
-  { icon: "tabler-file", title: "Documents" },
-  { icon: "tabler-lock", title: "Security" },
+  { icon: "tabler-folder", title: "Documents" },
+  { icon: "tabler-file-text", title: "Records" },
 
   { icon: "tabler-bell", title: "Notifications" },
   { icon: "tabler-link", title: "Connections" },
@@ -164,7 +164,7 @@ watch(
         </VWindowItem>
 
         <VWindowItem>
-          <UserTabSecurity />
+          <UserTabRecords :user="contact" />
         </VWindowItem>
 
         <VWindowItem>

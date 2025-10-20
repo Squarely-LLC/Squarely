@@ -1,3 +1,5 @@
+/* stylelint-disable @stylistic/no-eol-whitespace */ /* stylelint-disable
+@stylistic/no-eol-whitespace */
 <script setup lang="ts">
 import type { ContactDocument } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { getFileInfo, saveFile } from "@/utils/fileStore";
@@ -471,6 +473,7 @@ watch(
                     align-items: center;
                     gap: 12px;
                     inline-size: 100%;
+                    /* stylelint-disable-next-line @stylistic/no-eol-whitespace */
                   "
                 >
                   <input

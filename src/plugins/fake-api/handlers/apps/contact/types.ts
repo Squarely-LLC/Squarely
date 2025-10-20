@@ -56,6 +56,16 @@ export interface ContactDocument {
   createdAt?: string;
 }
 
+export interface ContactRecord {
+  id: number;
+  type: string; // e.g., 'note' | 'call' | 'email' | 'document' | 'meeting'
+  title?: string;
+  body?: string;
+  author?: { id: number | string; name: string } | null;
+  attachments?: string[];
+  createdAt: string;
+}
+
 export interface ContactAccounting {
   taxId?: string;
   crn?: string;
@@ -75,6 +85,7 @@ export interface ContactProperties {
   connections: ContactConnection[];
   accounting: ContactAccounting;
   documents?: ContactDocument[];
+  records?: ContactRecord[];
   address?: string;
   country?: string;
   city?: string;
