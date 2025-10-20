@@ -342,12 +342,10 @@ const scheduleMeeting = () => {
                 <VAvatar size="38" :image="data.avatar" />
               </template>
 
-              <VListItemContent>
-                <VListItemTitle class="font-weight-medium">
-                  {{ data.name }}
-                </VListItemTitle>
-                <VListItemSubtitle>{{ data.title }}</VListItemSubtitle>
-              </VListItemContent>
+              <VListItemTitle class="font-weight-medium">
+                {{ data.name }}
+              </VListItemTitle>
+              <VListItemSubtitle>{{ data.title }}</VListItemSubtitle>
 
               <template #append>
                 <VBtn icon variant="text" color="medium-emphasis">

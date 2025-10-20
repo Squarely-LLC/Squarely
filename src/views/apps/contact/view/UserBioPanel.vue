@@ -941,22 +941,20 @@ function onContactEditSubmit(payload: ContactProperties) {
                     </RouterLink>
                   </template>
 
-                  <VListItemContent>
-                    <VListItemTitle
-                      class="font-weight-medium d-flex align-center"
+                  <VListItemTitle
+                    class="font-weight-medium d-flex align-center"
+                  >
+                    <span>{{ conn.contactName }}</span>
+                    <VChip
+                      v-if="conn.isPrimary"
+                      size="small"
+                      label
+                      color="primary"
+                      variant="tonal"
+                      >Primary</VChip
                     >
-                      <span>{{ conn.contactName }}</span>
-                      <VChip
-                        v-if="conn.isPrimary"
-                        size="small"
-                        label
-                        color="primary"
-                        variant="tonal"
-                        >Primary</VChip
-                      >
-                    </VListItemTitle>
-                    <VListItemSubtitle>{{ conn.relation }}</VListItemSubtitle>
-                  </VListItemContent>
+                  </VListItemTitle>
+                  <VListItemSubtitle>{{ conn.relation }}</VListItemSubtitle>
 
                   <template #append>
                     <div class="d-flex align-center">
@@ -1080,12 +1078,10 @@ function onContactEditSubmit(payload: ContactProperties) {
                     </RouterLink>
                   </template>
 
-                  <VListItemContent>
-                    <VListItemTitle class="font-weight-medium">
-                      {{ conn.contactName }}
-                    </VListItemTitle>
-                    <VListItemSubtitle>{{ conn.relation }}</VListItemSubtitle>
-                  </VListItemContent>
+                  <VListItemTitle class="font-weight-medium">
+                    {{ conn.contactName }}
+                  </VListItemTitle>
+                  <VListItemSubtitle>{{ conn.relation }}</VListItemSubtitle>
 
                   <template #append>
                     <div class="d-flex align-center">

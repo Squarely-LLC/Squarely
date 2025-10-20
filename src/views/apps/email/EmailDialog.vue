@@ -475,21 +475,17 @@ function onDiscard() {
               <template #prepend>
                 <VIcon icon="tabler-paperclip" />
               </template>
-              <VListItemContent>
-                <VListItemTitle>
-                  <a
-                    v-if="att.url"
-                    :href="att.url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >{{ att.name }}</a
-                  >
-                  <span v-else>{{ att.name }}</span>
-                </VListItemTitle>
-                <VListItemSubtitle v-if="att.id">{{
-                  att.id
-                }}</VListItemSubtitle>
-              </VListItemContent>
+              <VListItemTitle>
+                <a
+                  v-if="att.url"
+                  :href="att.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >{{ att.name }}</a
+                >
+                <span v-else>{{ att.name }}</span>
+              </VListItemTitle>
+              <VListItemSubtitle v-if="att.id">{{ att.id }}</VListItemSubtitle>
 
               <template #append>
                 <VBtn icon size="small" @click.prevent="removeAttachment(idx)">

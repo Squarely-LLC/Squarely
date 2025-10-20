@@ -1,7 +1,7 @@
-import { createPinia } from "pinia";
 import { createApp } from "vue";
 
 import App from "@/App.vue";
+import { store } from "@/plugins/2.pinia";
 import { registerPlugins } from "@core/utils/plugins";
 
 // Styles
@@ -14,10 +14,6 @@ const app = createApp(App);
 // Register plugins
 registerPlugins(app);
 
-// Pinia
-const pinia = createPinia();
-app.use(pinia);
-
 // Centralized contacts initialization (seed canonical DB only if store is empty)
 // Keep this here so pages don't perform destructive seeding.
 try {
@@ -29,7 +25,7 @@ try {
     const { db: contactsDb } =
       require("@/plugins/fake-api/handlers/apps/contact/db") as any;
 
-    const contactsStore = useContactsStore(pinia);
+    const contactsStore = useContactsStore(store);
     // init reads from localStorage or seeds from db.users; safe to call
     contactsStore.init();
     if (
