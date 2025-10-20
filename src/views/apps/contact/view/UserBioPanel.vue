@@ -859,7 +859,7 @@ function onContactEditSubmit(payload: ContactProperties) {
               </VListItemTitle>
             </VListItem>
 
-            <VListItem>
+            <VListItem v-if="props.userData.worksInSales">
               <VListItemTitle>
                 <h6 class="text-h6">
                   Works in sales:
