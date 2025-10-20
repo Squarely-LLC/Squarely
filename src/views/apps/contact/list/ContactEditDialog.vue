@@ -2,6 +2,7 @@
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
 import { ref, toRaw, watch } from "vue";
+import { Country, City } from "country-state-city";
 
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 
@@ -12,6 +13,40 @@ type CountryOption = {
 };
 
 const countrySearch = ref("");
+
+// build countries list from country-state-city (ISO code + label)
+const countries = (
+  Country.getAllCountries() ?? []
+).map((c: any) => ({ code: c.isoCode as string, label: c.name as string }))
+  .filter((c: any) => c.code && c.label)
+  .sort((a: any, b: any) => a.label.localeCompare(b.label));
+
+// reactive city options (strings)
+const cityOptions = ref<string[]>([]);
+
+const updateCitiesForCountry = (countryLabel?: string | null) => {
+  const label = (countryLabel ?? "").toString().trim();
+  if (!label) {
+    cityOptions.value = [];
+    return;
+  }
+
+  const matched = countries.find((c) => c.label.toLowerCase() === label.toLowerCase());
+  if (!matched) {
+    cityOptions.value = [];
+    return;
+  }
+
+  try {
+    const cities = City.getCitiesOfCountry(matched.code) || [];
+    cityOptions.value = (cities as any[])
+      .map((x) => x.name)
+      .filter(Boolean)
+      .sort((a: string, b: string) => a.localeCompare(b));
+  } catch (e) {
+    cityOptions.value = [];
+  }
+};
 
 const countryCustomFilter = (value: any, query: string, item: any) => {
   const q = (query ?? "").toString().trim().toLowerCase();
@@ -143,6 +178,8 @@ watch(
     localContact.value = sanitizeContact(value);
     selectedCountry.value = splitNumberByDial(value?.number ?? "").country;
     countrySearch.value = "";
+    // populate cities dropdown based on loaded contact country
+    updateCitiesForCountry(localContact.value?.country);
   }
 );
 
@@ -156,8 +193,23 @@ watch(
         props.contact?.number ?? ""
       ).country;
       countrySearch.value = "";
+      updateCitiesForCountry(localContact.value?.country);
       // ensure the stepper resets to the first tab when dialog is closed
       currentStep.value = 0;
+    }
+  }
+);
+
+// watch for country changes in the Additional Info field and update cities
+watch(
+  () => localContact.value?.country,
+  (c) => {
+    updateCitiesForCountry(c);
+    // if selected city is not available in new list, clear it
+    if (localContact.value && localContact.value.city) {
+      if (!cityOptions.value.includes(localContact.value.city)) {
+        localContact.value.city = "";
+      }
     }
   }
 );
@@ -435,18 +487,30 @@ const onReset = () => {
                 </VCol>
 
                 <VCol cols="12" md="6">
-                  <AppTextField
+                  <VAutocomplete
                     v-model="localContact.country"
+                    :items="countries"
+                    item-title="label"
+                    item-value="label"
+                    :return-object="false"
+                    v-model:search="countrySearch"
+                    :menu-props="{ maxHeight: 360 }"
+                    single-line
                     label="Country"
                     placeholder="Country"
-                  />
+                  >
+                    <template #item="{ item, props }">
+                      <VListItem v-bind="props">{{ item?.raw?.label }}</VListItem>
+                    </template>
+                  </VAutocomplete>
                 </VCol>
 
                 <VCol cols="12" md="6">
-                  <AppTextField
+                  <AppSelect
                     v-model="localContact.city"
                     label="City"
-                    placeholder="City"
+                    placeholder="Select city"
+                    :items="cityOptions"
                   />
                 </VCol>
 

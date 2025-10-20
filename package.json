@@ -31,6 +31,7 @@
     "apexcharts": "3.54.1",
     "chart.js": "4.4.9",
     "cookie-es": "1.2.2",
+    "country-state-city": "^3.2.1",
     "destr": "2.0.5",
     "eslint-plugin-regexp": "2.7.0",
     "flag-icons": "^7.5.0",

@@ -64,6 +64,9 @@ importers:
       cookie-es:
         specifier: 1.2.2
         version: 1.2.2
+      country-state-city:
+        specifier: ^3.2.1
+        version: 3.2.1
       destr:
         specifier: 2.0.5
         version: 2.0.5
@@ -2177,6 +2180,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  country-state-city@3.2.1:
+    resolution: {integrity: sha512-kxbanqMc6izjhc/EHkGPCTabSPZ2G6eG4/97akAYHJUN4stzzFEvQPZoF8oXDQ+10gM/O/yUmISCR1ZVxyb6EA==}
 
   country-telephone-data@0.6.3:
     resolution: {integrity: sha512-3tQLA0vec+NDVlcaHhXGqILq/oQRsv4fRi4EedCfJqUuJUjQGdcSPM8r2IJIT2kZ5yWbiOCkXMgy7YTo8FNS2w==}
@@ -7017,6 +7023,8 @@ snapshots:
       parse-json: 5.2.0
     optionalDependencies:
       typescript: 5.8.3
+
+  country-state-city@3.2.1: {}
 
   country-telephone-data@0.6.3: {}
 
