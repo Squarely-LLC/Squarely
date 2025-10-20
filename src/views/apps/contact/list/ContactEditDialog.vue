@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { City, Country } from "country-state-city";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
 import { ref, toRaw, watch } from "vue";
-import { Country, City } from "country-state-city";
 
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 
@@ -13,11 +13,11 @@ type CountryOption = {
 };
 
 const countrySearch = ref("");
+const citySearch = ref("");
 
 // build countries list from country-state-city (ISO code + label)
-const countries = (
-  Country.getAllCountries() ?? []
-).map((c: any) => ({ code: c.isoCode as string, label: c.name as string }))
+const countries = (Country.getAllCountries() ?? [])
+  .map((c: any) => ({ code: c.isoCode as string, label: c.name as string }))
   .filter((c: any) => c.code && c.label)
   .sort((a: any, b: any) => a.label.localeCompare(b.label));
 
@@ -31,7 +31,9 @@ const updateCitiesForCountry = (countryLabel?: string | null) => {
     return;
   }
 
-  const matched = countries.find((c) => c.label.toLowerCase() === label.toLowerCase());
+  const matched = countries.find(
+    (c) => c.label.toLowerCase() === label.toLowerCase()
+  );
   if (!matched) {
     cityOptions.value = [];
     return;
@@ -45,6 +47,34 @@ const updateCitiesForCountry = (countryLabel?: string | null) => {
       .sort((a: string, b: string) => a.localeCompare(b));
   } catch (e) {
     cityOptions.value = [];
+  }
+};
+
+// When user presses Tab in the autocomplete, pick a sensible match from the list
+const onCountryKeydown = (e: KeyboardEvent) => {
+  if (e.key !== "Tab") return;
+  const q = (countrySearch.value ?? "").toString().trim().toLowerCase();
+  if (!q) return;
+  const match = countries.find(
+    (c) =>
+      c.label.toLowerCase().startsWith(q) || c.label.toLowerCase().includes(q)
+  );
+  if (match && localContact.value) {
+    localContact.value.country = match.label;
+    countrySearch.value = match.label;
+  }
+};
+
+const onCityKeydown = (e: KeyboardEvent) => {
+  if (e.key !== "Tab") return;
+  const q = (citySearch.value ?? "").toString().trim().toLowerCase();
+  if (!q) return;
+  const match = cityOptions.value.find(
+    (s) => s.toLowerCase().startsWith(q) || s.toLowerCase().includes(q)
+  );
+  if (match && localContact.value) {
+    localContact.value.city = match;
+    citySearch.value = match;
   }
 };
 
@@ -495,23 +525,25 @@ const onReset = () => {
                     :return-object="false"
                     v-model:search="countrySearch"
                     :menu-props="{ maxHeight: 360 }"
-                    single-line
                     label="Country"
                     placeholder="Country"
+                    @keydown="onCountryKeydown"
                   >
-                    <template #item="{ item, props }">
-                      <VListItem v-bind="props">{{ item?.raw?.label }}</VListItem>
-                    </template>
                   </VAutocomplete>
                 </VCol>
 
                 <VCol cols="12" md="6">
-                  <AppSelect
+                  <VAutocomplete
                     v-model="localContact.city"
-                    label="City"
-                    placeholder="Select city"
                     :items="cityOptions"
-                  />
+                    :return-object="false"
+                    v-model:search="citySearch"
+                    :menu-props="{ maxHeight: 360 }"
+                    label="City"
+                    placeholder="City"
+                    @keydown="onCityKeydown"
+                  >
+                  </VAutocomplete>
                 </VCol>
 
                 <VCol cols="12">
