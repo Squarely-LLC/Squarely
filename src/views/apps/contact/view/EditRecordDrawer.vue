@@ -159,18 +159,20 @@ defineExpose({ openWith });
 </script>
 
 <template>
-  <VNavigationDrawer
-    data-allow-mismatch
-    temporary
-    :width="400"
-    location="end"
-    class="scrollable-content"
-    v-model="drawerOpen"
-    @update:model-value="handleModelUpdate"
-  >
-    <AppDrawerHeaderSection title="Edit Record" @cancel="closeDrawer" />
+  <teleport to="body">
+    <VNavigationDrawer
+      data-allow-mismatch
+      temporary
+      :width="400"
+      location="end"
+      class="scrollable-content"
+      v-model="drawerOpen"
+      :scrim="true"
+      @update:model-value="handleModelUpdate"
+    >
+      <AppDrawerHeaderSection title="Edit Record" @cancel="closeDrawer" />
 
-    <VDivider />
+      <VDivider />
 
     <PerfectScrollbar :options="{ wheelPropagation: false }">
       <VCard flat>
@@ -235,5 +237,6 @@ defineExpose({ openWith });
         </VCardText>
       </VCard>
     </PerfectScrollbar>
-  </VNavigationDrawer>
+    </VNavigationDrawer>
+  </teleport>
 </template>
