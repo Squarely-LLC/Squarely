@@ -15,6 +15,7 @@ import { handlerAppsPermission } from '@db/apps/permission/index'
 import { handlerAppsUsers } from '@db/apps/users/index'
 import { handlerAuth } from '@db/auth/index'
 import { handlerDashboard } from '@db/dashboard/index'
+import { handlerConfigurations } from '@db/config/index'
 import { handlerPagesDatatable } from '@db/pages/datatable/index'
 import { handlerPagesFaq } from '@db/pages/faq/index'
 import { handlerPagesHelpCenter } from '@db/pages/help-center/index'
@@ -36,6 +37,7 @@ const worker = setupWorker(
   ...handlerPagesFaq,
   ...handlerPagesDatatable,
   ...handlerAppBarSearch,
+  ...handlerConfigurations,
   ...handlerAppLogistics,
   ...handlerAuth,
   ...handlerAppsKanban,

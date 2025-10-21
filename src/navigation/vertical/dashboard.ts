@@ -1,9 +1,8 @@
-
 export default [
   {
-    title: 'Dashboard',
-    icon: { icon: 'tabler-smart-home' },
-    to: 'dashboards-analytics'
+    title: "Dashboard",
+    icon: { icon: "tabler-smart-home" },
+    to: "dashboards-analytics",
     // children: [
     //   {
     //     title: 'Analytics',
@@ -62,67 +61,57 @@ export default [
   // },
 
   {
-    title: 'Reports',
-    icon: { icon: 'tabler-report' },
-    to:'dashboards-crm'
-  
+    title: "Reports",
+    icon: { icon: "tabler-report" },
+    to: "dashboards-crm",
   },
-   { heading: 'Activities' },
-   {
-    title: 'To Do',
-    icon: { icon: 'tabler-list-check' },
-    to: 'apps-todo-list'
-  
+  { heading: "Activities" },
+  {
+    title: "To Do",
+    icon: { icon: "tabler-list-check" },
+    to: "apps-todo-list",
   },
   {
-    title: 'Calendar',
-    icon: { icon: 'tabler-calendar' },
-    to: 'apps-calendar'
-  
+    title: "Calendar",
+    icon: { icon: "tabler-calendar" },
+    to: "apps-calendar",
   },
-   { heading: 'Operations' },
-   {
-    title: 'Contacts',
-    icon: { icon: 'tabler-address-book' },
-    to: 'apps-contact-list'
-  
+  { heading: "Operations" },
+  {
+    title: "Contacts",
+    icon: { icon: "tabler-address-book" },
+    to: "apps-contact-list",
   },
   {
-    title: 'Deals',
-    icon: { icon: 'tabler-contract' },
-    to: ''
-  
+    title: "Deals",
+    icon: { icon: "tabler-contract" },
+    to: "",
   },
   {
-    title: 'Jobs',
-    icon: { icon: 'tabler-briefcase' },
-    to: 'operations-jobs-list'
-  
+    title: "Jobs",
+    icon: { icon: "tabler-briefcase" },
+    to: "operations-jobs-list",
   },
-  { heading: 'Admin' },
-   {
-    title: 'HR',
-    icon: { icon: 'tabler-users-group' },
-    to: ''
-  
+  { heading: "Admin" },
+  {
+    title: "HR",
+    icon: { icon: "tabler-users-group" },
+    to: "",
   },
   {
-    title: 'Finance',
-    icon: { icon: 'tabler-calculator' },
-    to: 'finance-finance'
-  
+    title: "Finance",
+    icon: { icon: "tabler-calculator" },
+    to: "finance-finance",
   },
-   { heading: 'Settings' },
-   {
-    title: 'Catalogue',
-    icon: { icon: 'tabler-library' },
-    to: 'catalogues-list'
-  
+  { heading: "Settings" },
+  {
+    title: "Catalogue",
+    icon: { icon: "tabler-library" },
+    to: "catalogues-list",
   },
   {
-    title: 'Configurations',
-    icon: { icon: 'tabler-settings' },
-    to: ''
-  
+    title: "Configurations",
+    icon: { icon: "tabler-settings" },
+    to: "configuration-configuration",
   },
-]
+];

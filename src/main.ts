@@ -25,6 +25,12 @@ try {
     const { db: contactsDb } =
       require("@/plugins/fake-api/handlers/apps/contact/db") as any;
 
+    // register config fake-api handler so /api/configurations is available
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    try {
+      require("@/plugins/fake-api/handlers/config/index") as any;
+    } catch {}
+
     const contactsStore = useContactsStore(store);
     // init reads from localStorage or seeds from db.users; safe to call
     contactsStore.init();
