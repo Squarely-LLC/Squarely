@@ -39,7 +39,7 @@ watch(drawerOpen, (v) => {
   emit("update:isDrawerOpen", v);
 });
 
-// form fields — mirror AddRecordDrawer but no category selector
+// form fields - mirror AddRecordDrawer but no category selector
 const category = ref<string | null>(null);
 const type = ref<string>("note");
 const title = ref<string>("");
@@ -159,20 +159,18 @@ defineExpose({ openWith });
 </script>
 
 <template>
-  <teleport to="body">
-    <VNavigationDrawer
-      data-allow-mismatch
-      temporary
-      :width="400"
-      location="end"
-      class="scrollable-content"
-      v-model="drawerOpen"
-      :scrim="true"
-      @update:model-value="handleModelUpdate"
-    >
-      <AppDrawerHeaderSection title="Edit Record" @cancel="closeDrawer" />
+  <VNavigationDrawer
+    data-allow-mismatch
+    temporary
+    :width="400"
+    location="end"
+    class="scrollable-content"
+    v-model="drawerOpen"
+    @update:model-value="handleModelUpdate"
+  >
+    <AppDrawerHeaderSection title="Edit Record" @cancel="closeDrawer" />
 
-      <VDivider />
+    <VDivider />
 
     <PerfectScrollbar :options="{ wheelPropagation: false }">
       <VCard flat>
@@ -237,6 +235,5 @@ defineExpose({ openWith });
         </VCardText>
       </VCard>
     </PerfectScrollbar>
-    </VNavigationDrawer>
-  </teleport>
+  </VNavigationDrawer>
 </template>
