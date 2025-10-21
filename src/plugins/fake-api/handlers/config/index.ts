@@ -11,7 +11,32 @@ type HandlerArgs = {
 type HandlerResult = { status: number; data?: any };
 
 const mergeConfigurations = (patch?: Partial<AppConfigurations>) => {
-  db.configurations = { ...db.configurations, ...(patch || {}) };
+  if (!patch) return;
+  // Perform a shallow merge at the top level, but also merge nested
+  // section objects (like `legal`, `financial`, etc.) so callers can
+  // send partial updates for a section without replacing the whole
+  // section object.
+  const existing = db.configurations;
+  const merged: Partial<AppConfigurations> = { ...existing };
+
+  for (const key of Object.keys(patch)) {
+    const k = key as keyof AppConfigurations;
+    const val = (patch as any)[k];
+
+    // If both existing value and patch value are plain objects (not arrays),
+    // merge their properties shallowly. Otherwise, replace.
+    const existingVal = (existing as any)[k];
+    const isPlainObject = (v: any) =>
+      v && typeof v === "object" && !Array.isArray(v);
+
+    if (isPlainObject(existingVal) && isPlainObject(val)) {
+      merged[k] = { ...(existingVal || {}), ...(val || {}) } as any;
+    } else {
+      merged[k] = val as any;
+    }
+  }
+
+  db.configurations = merged as AppConfigurations;
 };
 
 // GET /api/configurations
@@ -33,7 +58,7 @@ export const updateConfigurations = (args: HandlerArgs): HandlerResult => {
     // eslint-disable-next-line no-console
     console.log("[fake-api] PUT /api/configurations", body);
   } catch {}
-  // Shallow merge allows callers to update individual sections without refetching everything
+  // Merge incoming partial sections so callers can update a subset of fields
   mergeConfigurations(body);
   return { status: 200, data: db.configurations };
 };

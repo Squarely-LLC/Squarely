@@ -25,6 +25,31 @@ function saveToStorage(cfg: AppConfigurations) {
   }
 }
 
+const isPlainObject = (value: unknown): value is Record<string, any> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const mergeSection = <T>(current: T, incoming: T): T => {
+  if (isPlainObject(current) && isPlainObject(incoming)) {
+    return { ...(current as any), ...(incoming as any) };
+  }
+  return incoming;
+};
+
+const normalizePatch = (
+  current: AppConfigurations,
+  patch: Partial<AppConfigurations>
+): Partial<AppConfigurations> => {
+  const normalized: Partial<AppConfigurations> = {};
+  const entries = Object.entries(patch ?? {});
+  for (const [key, value] of entries) {
+    const sectionKey = key as keyof AppConfigurations;
+    const currentSection = current?.[sectionKey];
+    normalized[sectionKey] =
+      value === undefined ? undefined : mergeSection(currentSection, value);
+  }
+  return normalized;
+};
+
 export const useConfigStore = defineStore("appConfigurations", {
   state: () => ({
     configurations: seedDb.configurations as AppConfigurations,
@@ -64,10 +89,11 @@ export const useConfigStore = defineStore("appConfigurations", {
 
     async saveRemote(patch: Partial<AppConfigurations>) {
       try {
+        const payload = normalizePatch(this.configurations, patch || {});
         const res = await fetch("/api/configurations", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("Failed to save configurations");
         const data = await res.json();
@@ -81,7 +107,8 @@ export const useConfigStore = defineStore("appConfigurations", {
     },
 
     updateLocal(patch: Partial<AppConfigurations>) {
-      this.configurations = { ...this.configurations, ...(patch || {}) };
+      const merged = normalizePatch(this.configurations, patch || {});
+      this.configurations = { ...this.configurations, ...merged };
       saveToStorage(this.configurations);
     },
   },
