@@ -115,6 +115,9 @@ async function onSubmit() {
     createdAt: createdAt.value,
   };
 
+  const safeTrim = (val: unknown) =>
+    typeof val === "string" ? val.trim() : val == null ? "" : String(val).trim();
+
   if (category.value === "Event Management") {
     payload.category = "Event Management";
     payload.meta = {
@@ -122,12 +125,12 @@ async function onSubmit() {
       date: eventDate.value,
       guests: eventGuests.value,
       city: eventCity.value,
-      brief: brief.value.trim(),
+      brief: safeTrim(brief.value),
     };
   } else {
     payload.type = type.value;
-    payload.title = title.value.trim();
-    payload.body = body.value.trim();
+    payload.title = safeTrim(title.value);
+    payload.body = safeTrim(body.value);
   }
 
   emit("save", payload);

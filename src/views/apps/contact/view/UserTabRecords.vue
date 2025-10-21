@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { computed, defineProps, ref } from "vue";
+import { computed, defineEmits, defineProps, ref } from "vue";
 import { useContactsStore } from "../../../../stores/contacts";
-import AddRecordDrawer from "./AddRecordDrawer.vue";
-import EditRecordDrawer from "./EditRecordDrawer.vue";
 
 const props = defineProps({
   user: { type: Object as () => any, required: false },
@@ -26,6 +24,8 @@ const contactId = computed(() => {
   return (props.user as any).id ?? props.user;
 });
 
+const RECORDS_API_DISABLED_KEY = "app.contacts.records.api.disabled";
+
 const recordsList = computed(() => {
   const id = contactId.value;
   if (id == null) return [] as any[];
@@ -37,12 +37,29 @@ const recordsList = computed(() => {
   ) as any[];
 });
 
+let recordsApiUnavailable =
+  typeof window !== "undefined" &&
+  window.localStorage.getItem(RECORDS_API_DISABLED_KEY) === "1";
+
+const disableRecordsApi = () => {
+  recordsApiUnavailable = true;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(RECORDS_API_DISABLED_KEY, "1");
+    } catch (err) {
+      console.warn("Failed to persist records API disable flag", err);
+    }
+  }
+};
+
+const emit = defineEmits<{
+  (e: "open-add-record"): void;
+  (e: "edit-record", record: any): void;
+}>();
+
 const itemsPerPage = ref(10);
 const page = ref(1);
 const searchQuery = ref("");
-const isAddRecordOpen = ref(false);
-const isEditRecordOpen = ref(false);
-const editingRecord = ref<any | null>(null);
 // delete confirm dialog state
 const isConfirmDeleteVisible = ref(false);
 const deleteCandidate = ref<any | null>(null);
@@ -73,7 +90,7 @@ function updateItemsPerPage(val: any) {
 }
 
 function openAddRecordDrawer() {
-  isAddRecordOpen.value = true;
+  emit("open-add-record");
 }
 
 function viewRecord(record: any) {
@@ -82,9 +99,7 @@ function viewRecord(record: any) {
 }
 
 function editRecord(record: any) {
-  // prepare edit drawer for editing; set initial payload
-  editingRecord.value = record;
-  isEditRecordOpen.value = true;
+  emit("edit-record", record);
 }
 
 function printRecord(record: any) {
@@ -126,6 +141,13 @@ async function performRemoveConfirmed() {
   const id = contactId.value;
   if (id == null) return;
 
+  if (recordsApiUnavailable) {
+    contactsStore.removeRecord(id as any, record.id);
+    deleteCandidate.value = null;
+    isConfirmDeleteVisible.value = false;
+    return;
+  }
+
   try {
     const response = await fetch(
       `/api/apps/contacts/${id}/records/${record.id}`,
@@ -135,6 +157,7 @@ async function performRemoveConfirmed() {
     if (response.ok) {
       contactsStore.removeRecord(id as any, record.id);
     } else if (response.status === 404) {
+      disableRecordsApi();
       contactsStore.removeRecord(id as any, record.id);
     } else {
       const text = await response.text();
@@ -144,6 +167,8 @@ async function performRemoveConfirmed() {
   } catch (err) {
     console.warn("Error deleting record", err);
     alert("Network error deleting record");
+    disableRecordsApi();
+    contactsStore.removeRecord(id as any, record.id);
   } finally {
     deleteCandidate.value = null;
     isConfirmDeleteVisible.value = false;
@@ -159,6 +184,28 @@ async function handleSaveRecord(payload: any) {
   const id = contactId.value;
   if (id == null) return;
 
+  const upsertLocalRecord = (record: any) => {
+    if (!record) return;
+    const normalized = {
+      ...record,
+      id:
+        record.id ??
+        payload?.id ??
+        Date.now(), /* fallback id to keep record addressable locally */
+    };
+    const exists = recordsList.value.some(
+      (r: any) => String(r.id) === String(normalized.id)
+    );
+    if (exists) contactsStore.updateRecord(id as any, normalized);
+    else contactsStore.addRecord(id as any, normalized);
+    return normalized.id;
+  };
+
+  if (recordsApiUnavailable) {
+    upsertLocalRecord(payload);
+    return;
+  }
+
   try {
     let response: Response;
 
@@ -168,24 +215,41 @@ async function handleSaveRecord(payload: any) {
       ? recordsList.value.some((r: any) => String(r.id) === String(payloadId))
       : false;
 
+    const baseRequestInit: RequestInit = {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    };
+
     if (payloadId && existsLocally) {
       response = await fetch(`/api/apps/contacts/${id}/records/${payloadId}`, {
+        ...baseRequestInit,
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
       });
+      if (response.status === 404) {
+        // server does not know this record id (likely client-generated). Fall back to local update.
+        disableRecordsApi();
+        upsertLocalRecord(payload);
+        return;
+      }
     } else {
       response = await fetch(`/api/apps/contacts/${id}/records`, {
+        ...baseRequestInit,
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
       });
+    }
+
+    if (response.status === 404) {
+      // record not found on mock API -- sync local store instead of failing
+      upsertLocalRecord(payload);
+      disableRecordsApi();
+      return;
     }
 
     if (!response.ok) {
       const text = await response.text();
       console.warn("Failed to save record", response.status, text);
       alert("Failed to save record: " + (text || response.statusText));
+      if (response.status >= 400) disableRecordsApi();
       return;
     }
 
@@ -197,12 +261,7 @@ async function handleSaveRecord(payload: any) {
     // records with existing ones to avoid erasing local records that might
     // not be present in the response.
     if (data?.record) {
-      const rec = data.record;
-      const exists = recordsList.value.some(
-        (r: any) => String(r.id) === String(rec.id)
-      );
-      if (exists) contactsStore.updateRecord(id as any, rec);
-      else contactsStore.addRecord(id as any, rec);
+      upsertLocalRecord(data.record);
     } else if (data?.contact) {
       const serverRecords = Array.isArray(data.contact.records)
         ? data.contact.records
@@ -216,20 +275,18 @@ async function handleSaveRecord(payload: any) {
         ...existing.filter((r: any) => !serverIds.has(String(r.id))),
       ];
       contactsStore.updateContact(id as any, { records: merged });
+    } else {
+      upsertLocalRecord(payload);
     }
   } catch (err) {
     console.warn("Error saving record", err);
     alert("Network error saving record");
-  } finally {
-    isAddRecordOpen.value = false;
-    editingRecord.value = null;
+    disableRecordsApi();
+    upsertLocalRecord(payload);
   }
 }
 
-function onDrawerUpdate(v: boolean) {
-  isAddRecordOpen.value = v;
-  if (!v) editingRecord.value = null;
-}
+defineExpose({ handleSaveRecord });
 </script>
 
 <template>
@@ -315,20 +372,6 @@ function onDrawerUpdate(v: boolean) {
       </VDataTableServer>
     </VCard>
   </section>
-
-  <AddRecordDrawer
-    :isDrawerOpen="isAddRecordOpen"
-    :initial="editingRecord"
-    @update:isDrawerOpen="onDrawerUpdate"
-    @save="handleSaveRecord"
-  />
-
-  <EditRecordDrawer
-    :isDrawerOpen="isEditRecordOpen"
-    :initial="editingRecord"
-    @update:isDrawerOpen="(v) => (isEditRecordOpen = v)"
-    @save="handleSaveRecord"
-  />
   <VDialog v-model="isConfirmDeleteVisible" max-width="480">
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete record</VCardTitle>

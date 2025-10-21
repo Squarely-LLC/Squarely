@@ -5,6 +5,8 @@ import { useRouter } from "vue-router";
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { useContactsStore } from "@/stores/contacts";
 
+import AddRecordDrawer from "@/views/apps/contact/view/AddRecordDrawer.vue";
+import EditRecordDrawer from "@/views/apps/contact/view/EditRecordDrawer.vue";
 import UserBioPanel from "@/views/apps/contact/view/UserBioPanel.vue";
 import UserTabAccount from "@/views/apps/contact/view/UserTabAccount.vue";
 import UserTabDocuments from "@/views/apps/contact/view/UserTabDocuments.vue";
@@ -71,6 +73,52 @@ const tabs = [
 
   { icon: "tabler-bell", title: "Notifications" },
 ] as const;
+
+const userTabRecordsRef = ref<InstanceType<typeof UserTabRecords> | null>(null);
+const isAddRecordDrawerOpen = ref(false);
+const addRecordInitial = ref<any | null>(null);
+const isEditRecordDrawerOpen = ref(false);
+const editRecordInitial = ref<any | null>(null);
+
+function handleAddRecordRequest() {
+  addRecordInitial.value = null;
+  isAddRecordDrawerOpen.value = true;
+}
+
+async function handleAddRecordSave(payload: any) {
+  if (!userTabRecordsRef.value) return;
+  try {
+    await userTabRecordsRef.value.handleSaveRecord(payload);
+  } finally {
+    isAddRecordDrawerOpen.value = false;
+    addRecordInitial.value = null;
+  }
+}
+
+function handleAddRecordDrawerUpdate(val: boolean) {
+  isAddRecordDrawerOpen.value = val;
+  if (!val) addRecordInitial.value = null;
+}
+
+function handleEditRecordRequest(record: any) {
+  editRecordInitial.value = record;
+  isEditRecordDrawerOpen.value = true;
+}
+
+async function handleEditRecordSave(payload: any) {
+  if (!userTabRecordsRef.value) return;
+  try {
+    await userTabRecordsRef.value.handleSaveRecord(payload);
+  } finally {
+    isEditRecordDrawerOpen.value = false;
+    editRecordInitial.value = null;
+  }
+}
+
+function handleEditRecordDrawerUpdate(val: boolean) {
+  isEditRecordDrawerOpen.value = val;
+  if (!val) editRecordInitial.value = null;
+}
 
 const setTabFromQuery = () => {
   try {
@@ -156,7 +204,12 @@ watch(
         </VWindowItem>
 
         <VWindowItem>
-          <UserTabRecords :user="contact" />
+          <UserTabRecords
+            ref="userTabRecordsRef"
+            :user="contact"
+            @open-add-record="handleAddRecordRequest"
+            @edit-record="handleEditRecordRequest"
+          />
         </VWindowItem>
 
         <VWindowItem>
@@ -170,4 +223,18 @@ watch(
       Contact with ID {{ route.params.id }} not found!
     </VAlert>
   </div>
+
+  <AddRecordDrawer
+    :isDrawerOpen="isAddRecordDrawerOpen"
+    :initial="addRecordInitial"
+    @update:isDrawerOpen="handleAddRecordDrawerUpdate"
+    @save="handleAddRecordSave"
+  />
+
+  <EditRecordDrawer
+    :isDrawerOpen="isEditRecordDrawerOpen"
+    :initial="editRecordInitial"
+    @update:isDrawerOpen="handleEditRecordDrawerUpdate"
+    @save="handleEditRecordSave"
+  />
 </template>
