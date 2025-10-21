@@ -12,6 +12,7 @@ import UserTabAccount from "@/views/apps/contact/view/UserTabAccount.vue";
 import UserTabDocuments from "@/views/apps/contact/view/UserTabDocuments.vue";
 import UserTabNotifications from "@/views/apps/contact/view/UserTabNotifications.vue";
 import UserTabRecords from "@/views/apps/contact/view/UserTabRecords.vue";
+import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 const route = useRoute("apps-contact-view-id");
 const router = useRouter();
@@ -74,11 +75,55 @@ const tabs = [
   { icon: "tabler-bell", title: "Notifications" },
 ] as const;
 
+const userTabDocumentsRef =
+  ref<InstanceType<typeof UserTabDocuments> | null>(null);
 const userTabRecordsRef = ref<InstanceType<typeof UserTabRecords> | null>(null);
+const addTodoDrawerRef =
+  ref<InstanceType<typeof AddNewToDoDrawer> | null>(null);
+const isAddTodoDrawerOpen = ref(false);
+const addTodoInitial = ref<any | null>(null);
+const addTodoCollaborators = ref<
+  Array<{ id: number | string; name: string; avatarUrl?: string | null }>
+>([]);
 const isAddRecordDrawerOpen = ref(false);
 const addRecordInitial = ref<any | null>(null);
 const isEditRecordDrawerOpen = ref(false);
 const editRecordInitial = ref<any | null>(null);
+
+function handleAddTodoRequest(payload: {
+  initial: Record<string, any>;
+  collaborators: Array<{
+    id: number | string;
+    name: string;
+    avatarUrl?: string | null;
+  }>;
+}) {
+  addTodoInitial.value = payload?.initial ?? null;
+  addTodoCollaborators.value = Array.isArray(payload?.collaborators)
+    ? [...payload.collaborators]
+    : [];
+  isAddTodoDrawerOpen.value = true;
+  try {
+    addTodoDrawerRef.value?.openWith(payload?.initial);
+  } catch (error) {
+    // fallback: rely on v-model toggle
+  }
+}
+
+async function handleAddTodoSave(payload: any) {
+  if (!userTabDocumentsRef.value) return;
+  await userTabDocumentsRef.value.handleAddTodoSaved(payload);
+  isAddTodoDrawerOpen.value = false;
+  addTodoInitial.value = null;
+}
+
+function handleAddTodoDrawerUpdate(val: boolean) {
+  isAddTodoDrawerOpen.value = val;
+  if (!val) {
+    addTodoInitial.value = null;
+    addTodoCollaborators.value = [];
+  }
+}
 
 function handleAddRecordRequest() {
   addRecordInitial.value = null;
@@ -200,7 +245,11 @@ watch(
         </VWindowItem>
 
         <VWindowItem>
-          <UserTabDocuments :user="contact" />
+          <UserTabDocuments
+            ref="userTabDocumentsRef"
+            :user="contact"
+            @open-add-todo="handleAddTodoRequest"
+          />
         </VWindowItem>
 
         <VWindowItem>
@@ -223,6 +272,16 @@ watch(
       Contact with ID {{ route.params.id }} not found!
     </VAlert>
   </div>
+
+  <AddNewToDoDrawer
+    ref="addTodoDrawerRef"
+    :isDrawerOpen="isAddTodoDrawerOpen"
+    :collaborators-options="addTodoCollaborators"
+    :initial="addTodoInitial"
+    :autofocus-due="true"
+    @update:isDrawerOpen="handleAddTodoDrawerUpdate"
+    @user-data="handleAddTodoSave"
+  />
 
   <AddRecordDrawer
     :isDrawerOpen="isAddRecordDrawerOpen"

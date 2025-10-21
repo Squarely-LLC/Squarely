@@ -8,12 +8,25 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { deleteFile, getFileObjectUrl } from "@/utils/fileStore";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import type { PropType } from "vue";
 import { computed, defineComponent, reactive, ref, watch } from "vue";
 import UserDocumentDialog from "./UserDocumentDialog.vue";
 
 const props = defineProps<{ user: ContactProperties | null }>();
+
+const emit = defineEmits<{
+  (
+    e: "open-add-todo",
+    payload: {
+      initial: Record<string, any>;
+      collaborators: Array<{
+        id: number | string;
+        name: string;
+        avatarUrl?: string | null;
+      }>;
+    }
+  ): void;
+}>();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
@@ -217,11 +230,6 @@ const todoCollaboratorOptions = computed(() =>
   }))
 );
 
-// Drawer for creating a todo (prefilled from a document)
-const isAddTodoDrawerVisible = ref(false);
-const addTodoInitial = ref<any | null>(null);
-const addTodoDrawerRef = ref<any | null>(null);
-
 function openAddTodoDrawerForDocument(d: ContactDocument) {
   const initial: any = {
     title: `Review document: ${d.name || "Untitled"}`,
@@ -233,14 +241,10 @@ function openAddTodoDrawerForDocument(d: ContactDocument) {
     priority: "normal",
     status: "pending",
   };
-  addTodoInitial.value = initial;
-  // call the drawer's exposed method to open with initial data reliably
-  try {
-    addTodoDrawerRef.value?.openWith(initial);
-  } catch (e) {
-    // fallback to v-model if the exposed method is not available
-    isAddTodoDrawerVisible.value = true;
-  }
+  emit("open-add-todo", {
+    initial,
+    collaborators: todoCollaboratorOptions.value,
+  });
 }
 
 const form = reactive<Partial<ContactDocument>>({
@@ -687,6 +691,8 @@ watch(
     localDocs.value = null;
   }
 );
+
+defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 </script>
 
 <template>
@@ -907,15 +913,6 @@ watch(
       ref="emailDialogRef"
       v-model:is-dialog-visible="isEmailDialogVisible"
       @send="onEmailSend"
-    />
-    <!-- Add ToDo Drawer (open prefilled when creating from a document) -->
-    <AddNewToDoDrawer
-      ref="addTodoDrawerRef"
-      v-model:is-drawer-open="isAddTodoDrawerVisible"
-      :collaborators-options="todoCollaboratorOptions"
-      :initial="addTodoInitial"
-      :autofocus-due="true"
-      @user-data="onAddTodoSaved"
     />
     <VDialog v-model="isConfirmDeleteVisible" max-width="480">
       <VCard class="pa-sm-8 pa-4">
