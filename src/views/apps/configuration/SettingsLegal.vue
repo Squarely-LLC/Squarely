@@ -172,6 +172,28 @@ const canSaveLogo = computed(
 );
 const canRemoveLogo = computed(() => !!hasLogo.value && !saving.value);
 
+// Company Information: dirty/validation helpers
+const normalizeVal = (v: unknown) => (v == null ? "" : String(v));
+const isCompanyDirty = computed(() => {
+  return COMPANY_FIELDS.some(
+    (key) =>
+      normalizeVal(company.value?.[key]) !==
+      normalizeVal(lastSavedCompany.value?.[key])
+  );
+});
+const companyRequiredValid = computed(() => {
+  const name = normalizeVal(company.value?.companyName).trim();
+  const country = normalizeVal(company.value?.country).trim();
+  return !!name && !!country;
+});
+const canSaveCompany = computed(
+  () =>
+    isCompanyDirty.value && companyRequiredValid.value && !savingCompany.value
+);
+const canCancelCompany = computed(
+  () => isCompanyDirty.value && !savingCompany.value
+);
+
 watch(
   () => company.value.country,
   (val) => {
@@ -511,12 +533,23 @@ async function saveCompany() {
           <div class="me-auto" v-if="companyError">
             <small style="color: #d32f2f">{{ companyError }}</small>
           </div>
-          <VBtn color="primary" @click="saveCompany" :loading="savingCompany"
-            >Save</VBtn
+
+          <VBtn
+            color="error"
+            variant="tonal"
+            @click="resetCompany"
+            :disabled="!canCancelCompany"
           >
-          <VBtn color="error" variant="tonal" @click="resetCompany"
-            >Cancel</VBtn
+            Discard
+          </VBtn>
+          <VBtn
+            color="primary"
+            @click="saveCompany"
+            :loading="savingCompany"
+            :disabled="!canSaveCompany"
           >
+            Save
+          </VBtn>
         </VCol>
       </VRow>
     </VCardText>

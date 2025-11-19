@@ -43,7 +43,11 @@ export interface FinancialConfig {
   invoiceSequence?: string; // pattern or prefix
   referenceFormat?: string;
   skipDeleted?: boolean;
-  paymentReminders?: { enabled: boolean; daysBefore?: number };
+  paymentReminders?: {
+    enabled: boolean;
+    invoiceDaysBefore?: number;
+    purchaseDaysBefore?: number;
+  };
   accounts?: { id: string; name: string }[];
 }
 

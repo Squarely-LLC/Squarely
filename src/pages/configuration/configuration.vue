@@ -1,21 +1,78 @@
 <script setup lang="ts">
+import { onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+
 import SettingsCheckout from "@/views/apps/configuration/SettingsCheckout.vue";
+import SettingsFinancial from "@/views/apps/configuration/SettingsFinancial.vue";
 import SettingsLegal from "@/views/apps/configuration/SettingsLegal.vue";
 import SettingsLocations from "@/views/apps/configuration/SettingsLocations.vue";
 import SettingsNotifications from "@/views/apps/configuration/SettingsNotifications.vue";
-import SettingsPayment from "@/views/apps/configuration/SettingsPayment.vue";
 import SettingsShippingAndDelivery from "@/views/apps/configuration/SettingsShippingAndDelivery.vue";
+
+const route = useRoute();
+const router = useRouter();
 
 const tabsData = [
   { icon: "tabler-gavel", title: "Legal" },
-  { icon: "tabler-credit-card", title: "Payments" },
-  { icon: "tabler-shopping-cart", title: "Checkout" },
+  { icon: "tabler-currency-dollar", title: "Financial" },
+  { icon: "tabler-man", title: "Human Ressources" },
   { icon: "tabler-discount", title: "Shipping & Delivery" },
   { icon: "tabler-map-pin", title: "Location" },
   { icon: "tabler-bell-ringing", title: "Notifications" },
 ];
 
-const activeTab = ref(null);
+// stable keys for tabs used in the URL query param (order must match tabsData)
+const tabKeys = [
+  "legal",
+  "financial",
+  "checkout",
+  "shipping",
+  "location",
+  "notifications",
+] as const;
+
+const activeTab = ref<number | null>(null);
+
+const setTabFromQuery = () => {
+  try {
+    const q = String(route.query.tab || tabKeys[0]);
+    const idx = (tabKeys as readonly string[]).indexOf(q);
+    activeTab.value = idx === -1 ? 0 : idx;
+  } catch (e) {
+    activeTab.value = 0;
+  }
+};
+
+onMounted(() => {
+  setTabFromQuery();
+});
+
+// keep activeTab in sync with the route query param
+watch(
+  () => route.query.tab,
+  () => {
+    setTabFromQuery();
+  }
+);
+
+// update the route when the user changes tabs
+watch(
+  () => activeTab.value,
+  (val) => {
+    if (val == null) return;
+    const key = (tabKeys as readonly string[])[val] || tabKeys[0];
+    if (String(route.query.tab) === key) return;
+    try {
+      router.replace({
+        name: route.name as any,
+        params: route.params,
+        query: { ...(route.query || {}), tab: key },
+      });
+    } catch (e) {
+      // ignore router replace errors
+    }
+  }
+);
 </script>
 
 <template>
@@ -49,7 +106,7 @@ const activeTab = ref(null);
         </VWindowItem>
 
         <VWindowItem>
-          <SettingsPayment />
+          <SettingsFinancial />
         </VWindowItem>
 
         <VWindowItem>
