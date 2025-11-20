@@ -6,6 +6,7 @@
           v-model:model-value="noteVisible[note.id]"
           :color="note.color"
           :timeout="note.timeout"
+          variant="tonal"
           location="bottom"
         >
           {{ note.message }}

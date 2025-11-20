@@ -51,11 +51,18 @@ export interface FinancialConfig {
   accounts?: { id: string; name: string }[];
 }
 
+export interface HrLeavesConfig {
+  types?: string[];
+  policy?: string;
+  countBasis?: string;
+  includeNonWorkingDays?: boolean;
+}
+
 export interface HrConfig {
   deductions?: string[];
   additions?: string[];
   advances?: string[];
-  leaves?: string[];
+  leaves?: HrLeavesConfig;
   departments?: string[];
   requestApproval?: "required" | "one_level" | "two_level" | "none";
   reimbursables?: string[];

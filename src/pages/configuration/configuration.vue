@@ -25,7 +25,7 @@ const tabsData = [
 const tabKeys = [
   "legal",
   "financial",
-  "checkout",
+  "HR",
   "shipping",
   "location",
   "notifications",

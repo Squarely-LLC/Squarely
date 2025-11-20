@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-
-const props = defineProps<{
-  listKey: "additions" | "deductions" | "advances" | "departments";
-  title: string;
-  itemLabel: string;
-}>();
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 const store = useConfigStore();
 store.init();
 const notifications = useNotificationsStore();
 
-const entries = ref<string[]>([]);
-const entriesModel = ref<string[]>([]);
-const lastCommittedModel = ref<string[]>([]);
+const policyOptions = ["Annual leave", "Monthly Accrual"];
+const countBasisOptions = ["Calendar Days", "Working Days"];
+const includeOptions = [
+  { label: "Yes", value: true },
+  { label: "No", value: false },
+];
+
+const types = ref<string[]>([]);
+const typesModel = ref<string[]>([]);
+const lastCommittedTypes = ref<string[]>([]);
 const isSaving = ref(false);
 const searchValue = ref("");
 const lastTypedValue = ref("");
@@ -28,11 +29,13 @@ const editingChipElement = ref<HTMLElement | null>(null);
 const pendingEditDecision = ref<{ formatted: string } | null>(null);
 const isEditConfirmDialogVisible = ref(false);
 
-const cardTitle = computed(() => props.title);
-const itemLabel = computed(() => props.itemLabel);
-const itemLabelLower = computed(() => itemLabel.value.toLowerCase());
-const addPlaceholder = computed(() => `Add ${itemLabelLower.value}s`);
-const removeDialogTitle = computed(() => `Remove ${itemLabelLower.value}`);
+const policy = ref(policyOptions[0]);
+const countBasis = ref(countBasisOptions[0]);
+const includeNonWorkingDays = ref(true);
+const dropdownSnapshot = ref("");
+const isDropdownSaving = ref(false);
+const dropdownWatcherReady = ref(false);
+let dropdownSaveHandle: ReturnType<typeof setTimeout> | null = null;
 
 const clearEditingState = () => {
   editingChip.value = null;
@@ -115,24 +118,38 @@ const shouldIgnoreUpdate = () => {
 };
 
 const setModelValues = (values: string[], commit = false) => {
-  if (commit) lastCommittedModel.value = [...values];
+  if (commit) lastCommittedTypes.value = [...values];
   markProgrammaticUpdate();
-  entriesModel.value = [...values];
+  typesModel.value = [...values];
 };
 
 const revertToLastCommitted = () => {
-  setModelValues(lastCommittedModel.value, false);
+  setModelValues(lastCommittedTypes.value, false);
 };
 
-const loadEntries = () => {
-  const section = store.configurations.hr?.[props.listKey] || [];
-  entries.value = cleanEntries(section);
-  lastCommittedModel.value = [...entries.value];
-  setModelValues(entries.value, false);
-};
-onMounted(loadEntries);
+const takeDropdownSnapshot = () =>
+  JSON.stringify({
+    policy: policy.value,
+    countBasis: countBasis.value,
+    includeNonWorkingDays: includeNonWorkingDays.value,
+  });
 
-// Delete confirmation dialog state
+const loadLeaves = () => {
+  clearEditingState();
+  dropdownWatcherReady.value = false;
+  const leaves = store.configurations.hr?.leaves || {};
+  types.value = cleanEntries(leaves.types || []);
+  lastCommittedTypes.value = [...types.value];
+  setModelValues(types.value, false);
+  policy.value = leaves.policy ?? policyOptions[0];
+  countBasis.value = leaves.countBasis ?? countBasisOptions[0];
+  includeNonWorkingDays.value =
+    leaves.includeNonWorkingDays ?? includeOptions[0].value;
+  dropdownSnapshot.value = takeDropdownSnapshot();
+  dropdownWatcherReady.value = true;
+};
+onMounted(loadLeaves);
+
 const isDeleteDialogVisible = ref(false);
 const pendingDeletion = ref<{
   removedItems: string[];
@@ -152,7 +169,7 @@ const handleChipClose = (name: string) => {
     return;
   }
   const normalizedTarget = normalizeValue(name);
-  const current = [...lastCommittedModel.value];
+  const current = [...lastCommittedTypes.value];
   const nextValues = current.filter(
     (value) => normalizeValue(value) !== normalizedTarget
   );
@@ -172,11 +189,11 @@ const confirmDelete = async () => {
   pendingDeletion.value = null;
   isDeleteDialogVisible.value = false;
   setModelValues(nextValues, true);
-  await saveEntries(nextValues, true);
+  await saveLeaves({ types: nextValues }, true);
 };
 
 const startEditingChip = async (name: string) => {
-  const index = lastCommittedModel.value.findIndex(
+  const index = lastCommittedTypes.value.findIndex(
     (item) => normalizeValue(item) === normalizeValue(name)
   );
   if (index === -1) return;
@@ -197,11 +214,11 @@ const commitChipEdit = async () => {
   if (!editingChip.value) return;
   const formatted = formatEntry(editingValue.value);
   if (!formatted) {
-    notifications.push(`${itemLabel.value} cannot be empty`, "warning", 2000);
+    notifications.push("Leave type cannot be empty", "warning", 2000);
     return;
   }
 
-  const currentList = [...lastCommittedModel.value];
+  const currentList = [...lastCommittedTypes.value];
   const targetIndex = editingChip.value.index;
   const originalNormalized = normalizeValue(editingChip.value.original);
   const nextNormalized = normalizeValue(formatted);
@@ -221,7 +238,7 @@ const commitChipEdit = async () => {
   });
 
   if (duplicateExists) {
-    notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+    notifications.push("Leave type already exists", "warning", 2000);
     editingDuplicate.value = true;
     return;
   }
@@ -234,7 +251,7 @@ const commitChipEdit = async () => {
   currentList[targetIndex] = formatted;
   cancelChipEdit();
   setModelValues(currentList, true);
-  await saveEntries(currentList, false, `${itemLabel.value} updated`);
+  await saveLeaves({ types: currentList }, false, "Leave type updated");
 };
 
 const handleChipBlur = (event: FocusEvent) => {
@@ -261,14 +278,25 @@ const isEditingChip = (name: string) =>
     normalizeValue(editingChip.value.original) === normalizeValue(name)
   );
 
-const resolveElement = (el: any): HTMLElement | null => {
+const resolveElement = (
+  el: Element | ComponentPublicInstance | null
+): HTMLElement | null => {
   if (!el) return null;
   if (el instanceof HTMLElement) return el;
-  if (el?.$el instanceof HTMLElement) return el.$el;
+  if (
+    el &&
+    typeof el === "object" &&
+    "$el" in el &&
+    el.$el instanceof HTMLElement
+  )
+    return el.$el;
   return null;
 };
 
-const registerChipElement = (el: any, name: string) => {
+const registerChipElement = (
+  el: Element | ComponentPublicInstance | null,
+  name: string
+) => {
   const domEl = resolveElement(el);
   if (
     editingChip.value &&
@@ -298,7 +326,7 @@ const isEventInsideEditingChip = (target: EventTarget | null) => {
 const promptEditDecisionIfNeeded = () => {
   if (!editingChip.value || isEditConfirmDialogVisible.value) return;
   if (editingDuplicate.value) {
-    notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+    notifications.push("Leave type already exists", "warning", 2000);
     return;
   }
   const formatted = formatEntry(editingValue.value);
@@ -339,6 +367,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("pointerdown", handleGlobalPointerDown, true);
+  if (dropdownSaveHandle) {
+    clearTimeout(dropdownSaveHandle);
+    dropdownSaveHandle = null;
+  }
 });
 
 watch(
@@ -351,46 +383,54 @@ watch(
   }
 );
 
-// Save to store (only hr.{listKey} section)
-const saveEntries = async (
-  newVals: string[],
+watch([policy, countBasis, includeNonWorkingDays], () => {
+  scheduleDropdownSave();
+});
+
+const saveLeaves = async (
+  update: Partial<{
+    types: string[];
+    policy: string;
+    countBasis: string;
+    includeNonWorkingDays: boolean;
+  }>,
   isDelete = false,
   successMessage?: string
 ) => {
-  const cleaned = cleanEntries(newVals);
-  entries.value = cleaned;
-
   isSaving.value = true;
   const res = await store.saveRemote({
-    hr: { [props.listKey]: cleaned },
+    hr: {
+      leaves: {
+        ...(store.configurations.hr?.leaves || {}),
+        ...update,
+      },
+    },
   } as any);
   isSaving.value = false;
 
   if (res) {
     const message =
-      successMessage ||
-      (isDelete ? `${itemLabel.value} removed` : `${itemLabel.value} saved`);
+      successMessage || (isDelete ? "Leave type removed" : "Leave type saved");
     const color = isDelete ? "error" : "success";
     notifications.push(message, color, 2000);
-    loadEntries();
+    loadLeaves();
   } else {
-    notifications.push(`Failed to save ${itemLabelLower.value}`, "error", 3000);
+    notifications.push("Failed to save leaves", "error", 3000);
   }
 };
 
-// Auto-save when model changes (new entry added or removed)
-const syncModelToEntries = async (vals: string[]) => {
+const syncModelToTypes = async (vals: string[]) => {
   if (shouldIgnoreUpdate()) return;
 
   const cleaned = cleanEntries(vals);
-  const current = [...lastCommittedModel.value];
+  const current = [...lastCommittedTypes.value];
   const cleanedNormalized = cleaned.map(normalizeValue);
   const typedNormalized = normalizeValue(lastTypedValue.value || "");
 
   const hasLocalDuplicates =
     new Set(cleanedNormalized).size !== cleanedNormalized.length;
   if (hasLocalDuplicates) {
-    notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+    notifications.push("Leave type already exists", "warning", 2000);
     lastTypedValue.value = "";
     revertToLastCommitted();
     return;
@@ -403,7 +443,7 @@ const syncModelToEntries = async (vals: string[]) => {
 
   if (sameValues) {
     if (typedNormalized && currentNormalized.includes(typedNormalized)) {
-      notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+      notifications.push("Leave type already exists", "warning", 2000);
       lastTypedValue.value = "";
     }
     revertToLastCommitted();
@@ -422,7 +462,7 @@ const syncModelToEntries = async (vals: string[]) => {
   );
 
   if (duplicateOfExisting) {
-    notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+    notifications.push("Leave type already exists", "warning", 2000);
     lastTypedValue.value = "";
     revertToLastCommitted();
     return;
@@ -434,7 +474,7 @@ const syncModelToEntries = async (vals: string[]) => {
     typedNormalized &&
     normalizeValue(removed[0]) === typedNormalized
   ) {
-    notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+    notifications.push("Leave type already exists", "warning", 2000);
     lastTypedValue.value = "";
     revertToLastCommitted();
     return;
@@ -448,39 +488,107 @@ const syncModelToEntries = async (vals: string[]) => {
 
   setModelValues(cleaned, true);
   lastTypedValue.value = "";
-  await saveEntries(cleaned, false);
+  await saveLeaves({ types: cleaned }, false);
 };
 
 const handleEditInput = () => {
   if (!editingChip.value) return;
   const formatted = formatEntry(editingValue.value);
-  const currentList = [...lastCommittedModel.value];
+  const currentList = [...lastCommittedTypes.value];
   const targetIndex = editingChip.value.index;
   const duplicateExists = currentList.some((item, index) => {
     if (index === targetIndex) return false;
     return normalizeValue(item) === normalizeValue(formatted);
   });
   if (duplicateExists && !editingDuplicate.value) {
-    notifications.push(`${itemLabel.value} already exists`, "warning", 2000);
+    notifications.push("Leave type already exists", "warning", 2000);
   }
   editingDuplicate.value = duplicateExists;
+};
+
+const scheduleDropdownSave = () => {
+  if (!dropdownWatcherReady.value) return;
+  if (takeDropdownSnapshot() === dropdownSnapshot.value) return;
+  if (dropdownSaveHandle) clearTimeout(dropdownSaveHandle);
+  dropdownSaveHandle = setTimeout(() => {
+    dropdownSaveHandle = null;
+    void saveDropdowns();
+  }, 400);
+};
+
+const saveDropdowns = async () => {
+  if (isDropdownSaving.value) return;
+  if (takeDropdownSnapshot() === dropdownSnapshot.value) return;
+  isDropdownSaving.value = true;
+  const res = await store.saveRemote({
+    hr: {
+      leaves: {
+        ...(store.configurations.hr?.leaves || {}),
+        policy: policy.value,
+        countBasis: countBasis.value,
+        includeNonWorkingDays: includeNonWorkingDays.value,
+      },
+    },
+  } as any);
+  isDropdownSaving.value = false;
+  if (res) {
+    dropdownSnapshot.value = takeDropdownSnapshot();
+    notifications.push("Leave settings saved", "success", 2000);
+  } else {
+    notifications.push("Failed to save leave settings", "error", 3000);
+  }
 };
 </script>
 
 <template>
-  <VCard :title="cardTitle" class="mb-6">
+  <VCard title="Leaves" class="mb-6">
     <VCardText>
+      <VRow class="mb-2">
+        <VCol cols="12" md="4">
+          <VSelect
+            v-model="policy"
+            :items="policyOptions"
+            label="Leave Policy"
+          />
+        </VCol>
+        <VCol cols="12" md="4">
+          <VSelect
+            v-model="countBasis"
+            :items="countBasisOptions"
+            label="Leave Count Basis"
+          />
+        </VCol>
+        <VCol cols="12" md="4">
+          <VSelect
+            v-model="includeNonWorkingDays"
+            :items="includeOptions"
+            item-title="label"
+            item-value="value"
+            label="Include Holidays "
+          />
+        </VCol>
+      </VRow>
+
+      <div class="d-flex justify-end mb-4">
+        <VProgressCircular
+          v-if="isDropdownSaving"
+          indeterminate
+          color="primary"
+          size="24"
+        />
+      </div>
+
       <VCombobox
-        v-model="entriesModel"
+        v-model="typesModel"
         multiple
         chips
         hide-details
-        :placeholder="addPlaceholder"
+        placeholder="Add leaves"
         :loading="isSaving"
         :disabled="isSaving"
         class="mb-4"
         v-model:search="searchValue"
-        @update:model-value="syncModelToEntries($event as string[])"
+        @update:model-value="syncModelToTypes($event as string[])"
       >
         <template #chip="{ props, item }">
           <VChip
@@ -496,7 +604,7 @@ const handleEditInput = () => {
             @dblclick.stop.prevent="startEditingChip(item.raw)"
             @blur="handleChipBlur"
             tabindex="0"
-            :ref="(el: any) => registerChipElement(el, item.raw)"
+            :ref="(el: Element | ComponentPublicInstance | null) => registerChipElement(el, item.raw)"
           >
             <template v-if="isEditingChip(item.raw)">
               <input
@@ -534,7 +642,7 @@ const handleEditInput = () => {
 
   <VDialog v-model="isDeleteDialogVisible" max-width="480">
     <VCard class="pa-sm-8 pa-4">
-      <VCardTitle>{{ removeDialogTitle }}</VCardTitle>
+      <VCardTitle>Remove leave</VCardTitle>
       <VCardText>
         <p v-if="pendingDeletion">
           Are you sure you want to permanently remove
@@ -560,9 +668,7 @@ const handleEditInput = () => {
       <VCardText>
         <p>
           Keep the changes to
-          <strong
-            >{{ editingChip?.original }} ->
-            {{ pendingEditDecision?.formatted }}</strong
+          <strong>{{ editingChip?.original }}</strong
           >?
         </p>
       </VCardText>
