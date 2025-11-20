@@ -65,6 +65,14 @@ const lastCommittedChannels = ref<string[]>([]);
 const isSavingChannels = ref(false);
 const channelsSearchValue = ref("");
 const channelsLastTypedValue = ref("");
+const channelsHoveredChip = ref<string | null>(null);
+const channelsEditingChip = ref<{ original: string; index: number } | null>(null);
+const channelsEditingValue = ref("");
+const channelsEditingDuplicate = ref(false);
+const channelsEditingInputRef = ref<HTMLInputElement | null>(null);
+const channelsEditingChipElement = ref<HTMLElement | null>(null);
+const channelsPendingEditDecision = ref<{ formatted: string } | null>(null);
+const isChannelsEditConfirmVisible = ref(false);
 const channelsPendingDeletion = ref<{
   removed: string[];
   next: string[];
@@ -229,6 +237,20 @@ const handleIndChipClose = (name: string) => {
   revertIndCategories();
 };
 
+const startChannelsEditingChip = async (name: string) => {
+  const index = lastCommittedChannels.value.findIndex(
+    (item) => normalizeValue(item) === normalizeValue(name)
+  );
+  if (index === -1) return;
+  channelsHoveredChip.value = null;
+  channelsEditingChip.value = { original: name, index };
+  channelsEditingValue.value = name;
+  channelsEditingDuplicate.value = false;
+  await nextTick();
+  channelsEditingInputRef.value?.focus();
+  channelsEditingInputRef.value?.select();
+};
+
 const startEditingChip = async (name: string) => {
   const index = lastCommittedCategories.value.findIndex(
     (item) => normalizeValue(item) === normalizeValue(name)
@@ -257,6 +279,13 @@ const startIndEditingChip = async (name: string) => {
   indEditingInputRef.value?.select();
 };
 
+const cancelChannelsChipEdit = () => {
+  channelsEditingChip.value = null;
+  channelsEditingValue.value = "";
+  channelsEditingDuplicate.value = false;
+  channelsEditingChipElement.value = null;
+};
+
 const cancelChipEdit = () => {
   editingChip.value = null;
   editingValue.value = "";
@@ -269,6 +298,52 @@ const cancelIndChipEdit = () => {
   indEditingValue.value = "";
   indEditingDuplicate.value = false;
   indEditingChipElement.value = null;
+};
+
+const commitChannelsChipEdit = async () => {
+  if (!channelsEditingChip.value) return;
+  const formatted = formatEntry(channelsEditingValue.value);
+  if (!formatted) {
+    notifications.push("Channel cannot be empty", "warning", 2000);
+    channelsEditingValue.value = channelsEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedChannels.value];
+  const targetIndex = channelsEditingChip.value.index;
+  const originalNormalized = normalizeValue(channelsEditingChip.value.original);
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelChannelsChipEdit();
+    revertChannels();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Channel already exists", "warning", 2000);
+    channelsEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelChannelsChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelChannelsChipEdit();
+  setChannelsModelValues(currentList, true);
+  await saveChannels(currentList);
 };
 
 const commitChipEdit = async () => {
@@ -389,6 +464,19 @@ const handleIndEditKeydown = async (event: KeyboardEvent) => {
   }
 };
 
+const handleChannelsEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    await commitChannelsChipEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelChannelsChipEdit();
+    revertChannels();
+  }
+};
+
 const resolveElement = (el: any): HTMLElement | null => {
   if (!el) return null;
   if (el instanceof HTMLElement) return el;
@@ -430,6 +518,23 @@ const registerIndChipElement = (el: any, name: string) => {
   }
 };
 
+const registerChannelsChipElement = (el: any, name: string) => {
+  const domEl = resolveElement(el);
+  if (
+    channelsEditingChip.value &&
+    normalizeValue(channelsEditingChip.value.original) === normalizeValue(name)
+  ) {
+    channelsEditingChipElement.value = domEl;
+  } else if (
+    !domEl &&
+    channelsEditingChipElement.value &&
+    channelsEditingChip.value &&
+    normalizeValue(channelsEditingChip.value.original) === normalizeValue(name)
+  ) {
+    channelsEditingChipElement.value = null;
+  }
+};
+
 const isEventInsideEditingChip = (target: EventTarget | null) => {
   if (!target) return false;
   const node = target as Node;
@@ -446,6 +551,19 @@ const isEventInsideIndEditingChip = (target: EventTarget | null) => {
   if (indEditingInputRef.value && indEditingInputRef.value.contains(node))
     return true;
   if (indEditingChipElement.value && indEditingChipElement.value.contains(node))
+    return true;
+  return false;
+};
+
+const isEventInsideChannelsEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (channelsEditingInputRef.value && channelsEditingInputRef.value.contains(node))
+    return true;
+  if (
+    channelsEditingChipElement.value &&
+    channelsEditingChipElement.value.contains(node)
+  )
     return true;
   return false;
 };
@@ -480,6 +598,21 @@ const promptIndEditDecisionIfNeeded = () => {
   isIndEditConfirmVisible.value = true;
 };
 
+const promptChannelsEditDecisionIfNeeded = () => {
+  if (!channelsEditingChip.value || isChannelsEditConfirmVisible.value) return;
+  if (channelsEditingDuplicate.value) {
+    notifications.push("Channel already exists", "warning", 2000);
+    return;
+  }
+  const formatted = formatEntry(channelsEditingValue.value);
+  if (formatted === channelsEditingChip.value.original) {
+    cancelChannelsChipEdit();
+    return;
+  }
+  channelsPendingEditDecision.value = { formatted };
+  isChannelsEditConfirmVisible.value = true;
+};
+
 const handleGlobalPointerDown = (event: PointerEvent) => {
   if (!editingChip.value) return;
   if (isEventInsideEditingChip(event.target)) return;
@@ -490,6 +623,12 @@ const handleIndPointerDown = (event: PointerEvent) => {
   if (!indEditingChip.value) return;
   if (isEventInsideIndEditingChip(event.target)) return;
   promptIndEditDecisionIfNeeded();
+};
+
+const handleChannelsPointerDown = (event: PointerEvent) => {
+  if (!channelsEditingChip.value) return;
+  if (isEventInsideChannelsEditingChip(event.target)) return;
+  promptChannelsEditDecisionIfNeeded();
 };
 
 const confirmEditDecision = async () => {
@@ -536,6 +675,28 @@ const cancelIndEditDecision = () => {
   revertIndCategories();
 };
 
+const confirmChannelsEditDecision = async () => {
+  if (!channelsPendingEditDecision.value) return;
+  const { formatted } = channelsPendingEditDecision.value;
+  if (!formatted) {
+    cancelChannelsEditDecision();
+    return;
+  }
+  channelsPendingEditDecision.value = null;
+  isChannelsEditConfirmVisible.value = false;
+  channelsEditingValue.value = formatted;
+  handleChannelsEditInput();
+  if (channelsEditingDuplicate.value) return;
+  await commitChannelsChipEdit();
+};
+
+const cancelChannelsEditDecision = () => {
+  channelsPendingEditDecision.value = null;
+  isChannelsEditConfirmVisible.value = false;
+  cancelChannelsChipEdit();
+  revertChannels();
+};
+
 const cancelDeleteDialog = () => {
   isDeleteDialogVisible.value = false;
   pendingDeletion.value = null;
@@ -569,11 +730,13 @@ const confirmIndDeleteDialog = async () => {
 onMounted(() => {
   document.addEventListener("pointerdown", handleGlobalPointerDown, true);
   document.addEventListener("pointerdown", handleIndPointerDown, true);
+  document.addEventListener("pointerdown", handleChannelsPointerDown, true);
 });
 
 onUnmounted(() => {
   document.removeEventListener("pointerdown", handleGlobalPointerDown, true);
   document.removeEventListener("pointerdown", handleIndPointerDown, true);
+  document.removeEventListener("pointerdown", handleChannelsPointerDown, true);
   if (inactiveSaveHandle) {
     clearTimeout(inactiveSaveHandle);
     inactiveSaveHandle = null;
@@ -600,6 +763,16 @@ watch(
     const formatted = formatEntry(val);
     if (formatted) {
       indLastTypedValue.value = formatted;
+    }
+  }
+);
+
+watch(
+  () => channelsSearchValue.value,
+  (val) => {
+    const formatted = formatEntry(val);
+    if (formatted) {
+      channelsLastTypedValue.value = formatted;
     }
   }
 );
@@ -822,6 +995,21 @@ const handleIndEditInput = () => {
   indEditingDuplicate.value = duplicateExists;
 };
 
+const handleChannelsEditInput = () => {
+  if (!channelsEditingChip.value) return;
+  const formatted = formatEntry(channelsEditingValue.value);
+  const currentList = [...lastCommittedChannels.value];
+  const targetIndex = channelsEditingChip.value.index;
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === normalizeValue(formatted);
+  });
+  if (duplicateExists && !channelsEditingDuplicate.value) {
+    notifications.push("Channel already exists", "warning", 2000);
+  }
+  channelsEditingDuplicate.value = duplicateExists;
+};
+
 const saveFlags = async () => {
   if (isSavingFlags.value) return;
   isSavingFlags.value = true;
@@ -933,6 +1121,11 @@ const revertChannels = () => {
 };
 
 const handleChannelsClose = (name: string) => {
+  if (
+    channelsEditingChip.value &&
+    normalizeValue(channelsEditingChip.value.original) === normalizeValue(name)
+  )
+    return;
   const next = channelsModel.value.filter(
     (val) => normalizeValue(val) !== normalizeValue(name)
   );
@@ -1294,6 +1487,38 @@ const onIndInactiveInput = (event: Event) => {
     </VCardText>
   </VCard>
 
+  <VDialog v-model="isChannelsEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ channelsEditingChip?.original }} ->
+            {{ channelsPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelChannelsEditDecision"
+        >
+          Revert
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          @click="confirmChannelsEditDecision"
+        >
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
   <VDialog v-model="isChannelsDeleteDialogVisible" max-width="480">
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Remove channel</VCardTitle>
@@ -1372,16 +1597,63 @@ const onIndInactiveInput = (event: Event) => {
             v-bind="props"
             size="small"
             class="d-inline-flex align-center"
-            :variant="hoveredChip === item.raw ? 'tonal' : (props.variant as any)"
-            :color="hoveredChip === item.raw ? 'error' : (props.color as string)"
+            :class="{
+              'chip-editing':
+                channelsEditingChip &&
+                normalizeValue(channelsEditingChip.original) ===
+                  normalizeValue(item.raw),
+              duplicate:
+                channelsEditingDuplicate &&
+                channelsEditingChip &&
+                normalizeValue(channelsEditingChip.original) ===
+                  normalizeValue(item.raw),
+            }"
+            :variant="
+              channelsHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+            "
+            :color="
+              channelsHoveredChip === item.raw ? 'error' : (props.color as string)
+            "
+            @dblclick.stop.prevent="startChannelsEditingChip(item.raw)"
+            @blur="promptChannelsEditDecisionIfNeeded"
+            tabindex="0"
+            :ref="(el: any) => registerChannelsChipElement(el, item.raw)"
           >
-            <span class="me-2">{{ item.raw }}</span>
-            <VIcon
-              icon="tabler-x"
-              size="14"
-              class="cursor-pointer"
-              @click.stop.prevent="handleChannelsClose(item.raw)"
-            />
+            <template
+              v-if="
+                channelsEditingChip &&
+                normalizeValue(channelsEditingChip.original) ===
+                  normalizeValue(item.raw)
+              "
+            >
+              <input
+                ref="channelsEditingInputRef"
+                v-model="channelsEditingValue"
+                class="chip-edit-input me-2"
+                @keydown.stop="handleChannelsEditKeydown"
+                @input="handleChannelsEditInput"
+                @click.stop
+                @mousedown.stop
+                @pointerdown.stop
+              />
+              <VIcon
+                icon="tabler-x"
+                size="14"
+                class="cursor-pointer"
+                @click.stop.prevent="cancelChannelsChipEdit"
+              />
+            </template>
+            <template v-else>
+              <span class="me-2">{{ item.raw }}</span>
+              <VIcon
+                icon="tabler-x"
+                size="14"
+                class="cursor-pointer"
+                @mouseenter="channelsHoveredChip = item.raw"
+                @mouseleave="channelsHoveredChip = null"
+                @click.stop.prevent="handleChannelsClose(item.raw)"
+              />
+            </template>
           </VChip>
         </template>
       </VCombobox>

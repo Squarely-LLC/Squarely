@@ -146,7 +146,13 @@ export const db: ConfigDB = {
         "Shipping & Courier",
         "Email Provider",
       ],
-      channels: ["Email", "Phone", "WhatsApp", "In-person"],
+      channels: [
+        "Social Media",
+        "Referral",
+        "Direct Sales",
+        "Website",
+        "Email Campaign",
+      ],
       locations: ["HQ", "Dubai", "Riyadh", "Cairo"],
       documents: [
         { category: "ID", type: "Passport", renewable: true },
