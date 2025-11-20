@@ -1,13 +1,30 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  withDefaults,
+} from "vue";
 
-const props = defineProps<{
-  listKey: "additions" | "deductions" | "advances" | "departments";
-  title: string;
-  itemLabel: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    sectionKey?: "hr" | "crm";
+    listKey:
+      | "additions"
+      | "deductions"
+      | "advances"
+      | "departments"
+      | "organizationCategories";
+    title: string;
+    itemLabel: string;
+  }>(),
+  { sectionKey: "hr" }
+);
 
 const store = useConfigStore();
 store.init();
@@ -31,7 +48,12 @@ const isEditConfirmDialogVisible = ref(false);
 const cardTitle = computed(() => props.title);
 const itemLabel = computed(() => props.itemLabel);
 const itemLabelLower = computed(() => itemLabel.value.toLowerCase());
-const addPlaceholder = computed(() => `Add ${itemLabelLower.value}s`);
+const itemLabelPlural = computed(() => {
+  const lower = itemLabelLower.value;
+  if (lower.endsWith("y")) return `${lower.slice(0, -1)}ies`;
+  return `${lower}s`;
+});
+const addPlaceholder = computed(() => `Add ${itemLabelPlural.value}`);
 const removeDialogTitle = computed(() => `Remove ${itemLabelLower.value}`);
 
 const clearEditingState = () => {
@@ -125,7 +147,8 @@ const revertToLastCommitted = () => {
 };
 
 const loadEntries = () => {
-  const section = store.configurations.hr?.[props.listKey] || [];
+  const section =
+    (store.configurations as any)?.[props.sectionKey]?.[props.listKey] || [];
   entries.value = cleanEntries(section);
   lastCommittedModel.value = [...entries.value];
   setModelValues(entries.value, false);
@@ -362,7 +385,7 @@ const saveEntries = async (
 
   isSaving.value = true;
   const res = await store.saveRemote({
-    hr: { [props.listKey]: cleaned },
+    [props.sectionKey]: { [props.listKey]: cleaned },
   } as any);
   isSaving.value = false;
 

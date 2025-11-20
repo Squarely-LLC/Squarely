@@ -2,12 +2,12 @@
 import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import SettingsCRM from "@/views/apps/configuration/SettingsCRM.vue";
 import SettingsFinancial from "@/views/apps/configuration/SettingsFinancial.vue";
 import SettingsHR from "@/views/apps/configuration/SettingsHR.vue";
 import SettingsLegal from "@/views/apps/configuration/SettingsLegal.vue";
 import SettingsLocations from "@/views/apps/configuration/SettingsLocations.vue";
 import SettingsNotifications from "@/views/apps/configuration/SettingsNotifications.vue";
-import SettingsShippingAndDelivery from "@/views/apps/configuration/SettingsShippingAndDelivery.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -16,7 +16,7 @@ const tabsData = [
   { icon: "tabler-gavel", title: "Legal" },
   { icon: "tabler-currency-dollar", title: "Financial" },
   { icon: "tabler-man", title: "Human Ressources" },
-  { icon: "tabler-discount", title: "Shipping & Delivery" },
+  { icon: "tabler-hierarchy", title: "CRM" },
   { icon: "tabler-map-pin", title: "Location" },
   { icon: "tabler-bell-ringing", title: "Notifications" },
 ];
@@ -26,7 +26,7 @@ const tabKeys = [
   "legal",
   "financial",
   "HR",
-  "shipping",
+  "CRM",
   "location",
   "notifications",
 ] as const;
@@ -114,7 +114,7 @@ watch(
         </VWindowItem>
 
         <VWindowItem>
-          <SettingsShippingAndDelivery />
+          <SettingsCRM />
         </VWindowItem>
 
         <VWindowItem>

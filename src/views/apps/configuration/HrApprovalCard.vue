@@ -58,7 +58,7 @@ loadValue();
 <template>
   <VCard title="Requests Approval" class="mb-6">
     <VCardText>
-      <VSelect
+      <AppSelect
         v-model="model"
         :items="options"
         item-title="label"

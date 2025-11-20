@@ -545,21 +545,21 @@ const saveDropdowns = async () => {
     <VCardText>
       <VRow class="mb-2">
         <VCol cols="12" md="4">
-          <VSelect
+          <AppSelect
             v-model="policy"
             :items="policyOptions"
             label="Leave Policy"
           />
         </VCol>
         <VCol cols="12" md="4">
-          <VSelect
+          <AppSelect
             v-model="countBasis"
             :items="countBasisOptions"
             label="Leave Count Basis"
           />
         </VCol>
         <VCol cols="12" md="4">
-          <VSelect
+          <AppSelect
             v-model="includeNonWorkingDays"
             :items="includeOptions"
             item-title="label"
