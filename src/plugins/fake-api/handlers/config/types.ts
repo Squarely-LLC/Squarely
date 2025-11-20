@@ -75,23 +75,24 @@ export interface CrmEntitySettings {
   inactiveAfterMonths?: number | null; // months after which contact becomes inactive
 }
 
-export interface CrmConfig {
-  // default contact type used across the app: Organization | Individual | Ask Everytime
+interface CrmConfig {
   DefaultContactType?: string;
-  organization?: CrmEntitySettings;
-  individual?: CrmEntitySettings;
-  organizationCategories?: string[];
+  organization?: any;
+  individual?: any;
   individualCategories?: string[];
+  organizationCategories?: string[];
   channels?: string[];
   locations?: string[];
-  documents?: { category?: string; type?: string; renewable?: boolean }[];
+  documentCategories?: string[];
+  documentTypes?: string[];
+  documentRenewable?: string | null;
   callPurposes?: string[];
   sentiment?: string[];
   showContactRecord?: boolean;
   notes?: string[];
   meetings?: string[];
   jobStages?: string[];
-  jobAlert?: { enabled: boolean; days?: number };
+  jobAlert?: { enabled: boolean; days: number };
 }
 
 export interface DealsConfig {
@@ -106,7 +107,7 @@ export interface DealsConfig {
   dealAlert?: { enabled: boolean; days?: number };
 }
 
-export interface AppConfigurations {
+interface AppConfigurations {
   legal?: LegalConfig;
   financial?: FinancialConfig;
   hr?: HrConfig;

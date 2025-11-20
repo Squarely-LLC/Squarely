@@ -66,7 +66,9 @@ const isSavingChannels = ref(false);
 const channelsSearchValue = ref("");
 const channelsLastTypedValue = ref("");
 const channelsHoveredChip = ref<string | null>(null);
-const channelsEditingChip = ref<{ original: string; index: number } | null>(null);
+const channelsEditingChip = ref<{ original: string; index: number } | null>(
+  null
+);
 const channelsEditingValue = ref("");
 const channelsEditingDuplicate = ref(false);
 const channelsEditingInputRef = ref<HTMLInputElement | null>(null);
@@ -78,6 +80,57 @@ const channelsPendingDeletion = ref<{
   next: string[];
 } | null>(null);
 const isChannelsDeleteDialogVisible = ref(false);
+
+// Documents (as comboboxes)
+const docTypes = ref<string[]>([]);
+const docTypesModel = ref<string[]>([]);
+const lastCommittedDocTypes = ref<string[]>([]);
+const isSavingDocTypes = ref(false);
+const docTypesSearchValue = ref("");
+const docTypesLastTypedValue = ref("");
+const docTypesHoveredChip = ref<string | null>(null);
+const docTypesEditingChip = ref<{ original: string; index: number } | null>(
+  null
+);
+const docTypesEditingValue = ref("");
+const docTypesEditingDuplicate = ref(false);
+const docTypesEditingInputRef = ref<HTMLInputElement | null>(null);
+const docTypesEditingChipElement = ref<HTMLElement | null>(null);
+const docTypesPendingEditDecision = ref<{ formatted: string } | null>(null);
+const isDocTypesEditConfirmVisible = ref(false);
+const docTypesPendingDeletion = ref<{
+  removed: string[];
+  next: string[];
+} | null>(null);
+const isDocTypesDeleteDialogVisible = ref(false);
+
+const docCategories = ref<string[]>([]);
+const docCategoriesModel = ref<string[]>([]);
+const lastCommittedDocCategories = ref<string[]>([]);
+const isSavingDocCategories = ref(false);
+const docCategoriesSearchValue = ref("");
+const docCategoriesLastTypedValue = ref("");
+const docCategoriesHoveredChip = ref<string | null>(null);
+const docCategoriesEditingChip = ref<{
+  original: string;
+  index: number;
+} | null>(null);
+const docCategoriesEditingValue = ref("");
+const docCategoriesEditingDuplicate = ref(false);
+const docCategoriesEditingInputRef = ref<HTMLInputElement | null>(null);
+const docCategoriesEditingChipElement = ref<HTMLElement | null>(null);
+const docCategoriesPendingEditDecision = ref<{ formatted: string } | null>(
+  null
+);
+const isDocCategoriesEditConfirmVisible = ref(false);
+const docCategoriesPendingDeletion = ref<{
+  removed: string[];
+  next: string[];
+} | null>(null);
+const isDocCategoriesDeleteDialogVisible = ref(false);
+
+const documentRenewable = ref<boolean | null>(null);
+const isSavingDocuments = ref(false);
 
 const categoryLabel = computed(() => "Category");
 const categoryPlaceholder = computed(
@@ -205,6 +258,48 @@ const loadData = () => {
   channels.value = cleanEntries(ch);
   lastCommittedChannels.value = [...channels.value];
   channelsModel.value = [...channels.value];
+
+  // load documents settings — prefer explicit arrays, fallback to legacy `documents` entry
+  const explicitTypes = (org as any)?.documentTypes;
+  const explicitCats = (org as any)?.documentCategories;
+  if (Array.isArray(explicitTypes) || Array.isArray(explicitCats)) {
+    const typesArr = Array.isArray(explicitTypes) ? explicitTypes : [];
+    docTypes.value = cleanEntries(typesArr);
+    lastCommittedDocTypes.value = [...docTypes.value];
+    docTypesModel.value = [...docTypes.value];
+
+    const catsArr = Array.isArray(explicitCats) ? explicitCats : [];
+    docCategories.value = cleanEntries(catsArr);
+    lastCommittedDocCategories.value = [...docCategories.value];
+    docCategoriesModel.value = [...docCategories.value];
+
+    // documentRenewable: support stored string 'yes'/'no' or boolean
+    const dr = (org as any)?.documentRenewable;
+    if (typeof dr === "string") {
+      documentRenewable.value =
+        dr === "yes" ? true : dr === "no" ? false : null;
+    } else if (typeof dr === "boolean") {
+      documentRenewable.value = dr;
+    } else {
+      documentRenewable.value = null;
+    }
+  } else {
+    // legacy: single documents entry
+    const docs = (org as any)?.documents || [];
+    const docEntry = docs[0] || {};
+    const typesArr = (docEntry.type || "").toString().split(",");
+    docTypes.value = cleanEntries(typesArr);
+    lastCommittedDocTypes.value = [...docTypes.value];
+    docTypesModel.value = [...docTypes.value];
+
+    const catsArr = (docEntry.category || "").toString().split(",");
+    docCategories.value = cleanEntries(catsArr);
+    lastCommittedDocCategories.value = [...docCategories.value];
+    docCategoriesModel.value = [...docCategories.value];
+
+    documentRenewable.value =
+      typeof docEntry.renewable === "boolean" ? docEntry.renewable : null;
+  }
 };
 
 onMounted(loadData);
@@ -277,6 +372,143 @@ const startIndEditingChip = async (name: string) => {
   await nextTick();
   indEditingInputRef.value?.focus();
   indEditingInputRef.value?.select();
+};
+
+// Documents editing helpers - Types
+const startDocTypesEditingChip = async (name: string) => {
+  const index = lastCommittedDocTypes.value.findIndex(
+    (item) => normalizeValue(item) === normalizeValue(name)
+  );
+  if (index === -1) return;
+  docTypesHoveredChip.value = null;
+  docTypesEditingChip.value = { original: name, index };
+  docTypesEditingValue.value = name;
+  docTypesEditingDuplicate.value = false;
+  await nextTick();
+  docTypesEditingInputRef.value?.focus();
+  docTypesEditingInputRef.value?.select();
+};
+
+const startDocCategoriesEditingChip = async (name: string) => {
+  const index = lastCommittedDocCategories.value.findIndex(
+    (item) => normalizeValue(item) === normalizeValue(name)
+  );
+  if (index === -1) return;
+  docCategoriesHoveredChip.value = null;
+  docCategoriesEditingChip.value = { original: name, index };
+  docCategoriesEditingValue.value = name;
+  docCategoriesEditingDuplicate.value = false;
+  await nextTick();
+  docCategoriesEditingInputRef.value?.focus();
+  docCategoriesEditingInputRef.value?.select();
+};
+
+const cancelDocTypesChipEdit = () => {
+  docTypesEditingChip.value = null;
+  docTypesEditingValue.value = "";
+  docTypesEditingDuplicate.value = false;
+  docTypesEditingChipElement.value = null;
+};
+
+const cancelDocCategoriesChipEdit = () => {
+  docCategoriesEditingChip.value = null;
+  docCategoriesEditingValue.value = "";
+  docCategoriesEditingDuplicate.value = false;
+  docCategoriesEditingChipElement.value = null;
+};
+
+const commitDocTypesChipEdit = async () => {
+  if (!docTypesEditingChip.value) return;
+  const formatted = formatEntry(docTypesEditingValue.value);
+  if (!formatted) {
+    notifications.push("Document type cannot be empty", "warning", 2000);
+    docTypesEditingValue.value = docTypesEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedDocTypes.value];
+  const targetIndex = docTypesEditingChip.value.index;
+  const originalNormalized = normalizeValue(docTypesEditingChip.value.original);
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelDocTypesChipEdit();
+    revertDocTypes();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Document type already exists", "warning", 2000);
+    docTypesEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelDocTypesChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelDocTypesChipEdit();
+  setDocTypesModelValues(currentList, true);
+  await saveDocuments();
+};
+
+const commitDocCategoriesChipEdit = async () => {
+  if (!docCategoriesEditingChip.value) return;
+  const formatted = formatEntry(docCategoriesEditingValue.value);
+  if (!formatted) {
+    notifications.push("Document category cannot be empty", "warning", 2000);
+    docCategoriesEditingValue.value = docCategoriesEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedDocCategories.value];
+  const targetIndex = docCategoriesEditingChip.value.index;
+  const originalNormalized = normalizeValue(
+    docCategoriesEditingChip.value.original
+  );
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelDocCategoriesChipEdit();
+    revertDocCategories();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Document category already exists", "warning", 2000);
+    docCategoriesEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelDocCategoriesChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelDocCategoriesChipEdit();
+  setDocCategoriesModelValues(currentList, true);
+  await saveDocuments();
 };
 
 const cancelChannelsChipEdit = () => {
@@ -535,6 +767,42 @@ const registerChannelsChipElement = (el: any, name: string) => {
   }
 };
 
+const registerDocTypesChipElement = (el: any, name: string) => {
+  const domEl = resolveElement(el);
+  if (
+    docTypesEditingChip.value &&
+    normalizeValue(docTypesEditingChip.value.original) === normalizeValue(name)
+  ) {
+    docTypesEditingChipElement.value = domEl;
+  } else if (
+    !domEl &&
+    docTypesEditingChipElement.value &&
+    docTypesEditingChip.value &&
+    normalizeValue(docTypesEditingChip.value.original) === normalizeValue(name)
+  ) {
+    docTypesEditingChipElement.value = null;
+  }
+};
+
+const registerDocCategoriesChipElement = (el: any, name: string) => {
+  const domEl = resolveElement(el);
+  if (
+    docCategoriesEditingChip.value &&
+    normalizeValue(docCategoriesEditingChip.value.original) ===
+      normalizeValue(name)
+  ) {
+    docCategoriesEditingChipElement.value = domEl;
+  } else if (
+    !domEl &&
+    docCategoriesEditingChipElement.value &&
+    docCategoriesEditingChip.value &&
+    normalizeValue(docCategoriesEditingChip.value.original) ===
+      normalizeValue(name)
+  ) {
+    docCategoriesEditingChipElement.value = null;
+  }
+};
+
 const isEventInsideEditingChip = (target: EventTarget | null) => {
   if (!target) return false;
   const node = target as Node;
@@ -558,11 +826,46 @@ const isEventInsideIndEditingChip = (target: EventTarget | null) => {
 const isEventInsideChannelsEditingChip = (target: EventTarget | null) => {
   if (!target) return false;
   const node = target as Node;
-  if (channelsEditingInputRef.value && channelsEditingInputRef.value.contains(node))
+  if (
+    channelsEditingInputRef.value &&
+    channelsEditingInputRef.value.contains(node)
+  )
     return true;
   if (
     channelsEditingChipElement.value &&
     channelsEditingChipElement.value.contains(node)
+  )
+    return true;
+  return false;
+};
+
+const isEventInsideDocTypesEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (
+    docTypesEditingInputRef.value &&
+    docTypesEditingInputRef.value.contains(node)
+  )
+    return true;
+  if (
+    docTypesEditingChipElement.value &&
+    docTypesEditingChipElement.value.contains(node)
+  )
+    return true;
+  return false;
+};
+
+const isEventInsideDocCategoriesEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (
+    docCategoriesEditingInputRef.value &&
+    docCategoriesEditingInputRef.value.contains(node)
+  )
+    return true;
+  if (
+    docCategoriesEditingChipElement.value &&
+    docCategoriesEditingChipElement.value.contains(node)
   )
     return true;
   return false;
@@ -613,6 +916,199 @@ const promptChannelsEditDecisionIfNeeded = () => {
   isChannelsEditConfirmVisible.value = true;
 };
 
+const handleDocTypesEditInput = () => {
+  if (!docTypesEditingChip.value) return;
+  const formatted = formatEntry(docTypesEditingValue.value);
+  const currentList = [...lastCommittedDocTypes.value];
+  const targetIndex = docTypesEditingChip.value.index;
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === normalizeValue(formatted);
+  });
+  if (duplicateExists && !docTypesEditingDuplicate.value) {
+    notifications.push("Document type already exists", "warning", 2000);
+  }
+  docTypesEditingDuplicate.value = duplicateExists;
+};
+
+const handleDocCategoriesEditInput = () => {
+  if (!docCategoriesEditingChip.value) return;
+  const formatted = formatEntry(docCategoriesEditingValue.value);
+  const currentList = [...lastCommittedDocCategories.value];
+  const targetIndex = docCategoriesEditingChip.value.index;
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === normalizeValue(formatted);
+  });
+  if (duplicateExists && !docCategoriesEditingDuplicate.value) {
+    notifications.push("Document category already exists", "warning", 2000);
+  }
+  docCategoriesEditingDuplicate.value = duplicateExists;
+};
+
+const handleDocTypesEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    await commitDocTypesChipEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelDocTypesChipEdit();
+    revertDocTypes();
+  }
+};
+
+const handleDocCategoriesEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    await commitDocCategoriesChipEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelDocCategoriesChipEdit();
+    revertDocCategories();
+  }
+};
+
+const confirmDocTypesEditDecision = async () => {
+  if (!docTypesPendingEditDecision.value) return;
+  const { formatted } = docTypesPendingEditDecision.value;
+  if (!formatted) {
+    cancelDocTypesEditDecision();
+    return;
+  }
+  docTypesPendingEditDecision.value = null;
+  isDocTypesEditConfirmVisible.value = false;
+  docTypesEditingValue.value = formatted;
+  handleDocTypesEditInput();
+  if (docTypesEditingDuplicate.value) return;
+  await commitDocTypesChipEdit();
+};
+
+const cancelDocTypesEditDecision = () => {
+  docTypesPendingEditDecision.value = null;
+  isDocTypesEditConfirmVisible.value = false;
+  cancelDocTypesChipEdit();
+  revertDocTypes();
+};
+
+const confirmDocCategoriesEditDecision = async () => {
+  if (!docCategoriesPendingEditDecision.value) return;
+  const { formatted } = docCategoriesPendingEditDecision.value;
+  if (!formatted) {
+    cancelDocCategoriesEditDecision();
+    return;
+  }
+  docCategoriesPendingEditDecision.value = null;
+  isDocCategoriesEditConfirmVisible.value = false;
+  docCategoriesEditingValue.value = formatted;
+  handleDocCategoriesEditInput();
+  if (docCategoriesEditingDuplicate.value) return;
+  await commitDocCategoriesChipEdit();
+};
+
+const cancelDocCategoriesEditDecision = () => {
+  docCategoriesPendingEditDecision.value = null;
+  isDocCategoriesEditConfirmVisible.value = false;
+  cancelDocCategoriesChipEdit();
+  revertDocCategories();
+};
+
+const cancelDocTypesDeleteDialog = () => {
+  isDocTypesDeleteDialogVisible.value = false;
+  docTypesPendingDeletion.value = null;
+  revertDocTypes();
+};
+
+const confirmDocTypesDeleteDialog = async () => {
+  if (!docTypesPendingDeletion.value) return;
+  const next = docTypesPendingDeletion.value.next;
+  docTypesPendingDeletion.value = null;
+  isDocTypesDeleteDialogVisible.value = false;
+  await saveDocuments();
+  setDocTypesModelValues(next, true);
+};
+
+const cancelDocCategoriesDeleteDialog = () => {
+  isDocCategoriesDeleteDialogVisible.value = false;
+  docCategoriesPendingDeletion.value = null;
+  revertDocCategories();
+};
+
+const confirmDocCategoriesDeleteDialog = async () => {
+  if (!docCategoriesPendingDeletion.value) return;
+  const next = docCategoriesPendingDeletion.value.next;
+  docCategoriesPendingDeletion.value = null;
+  isDocCategoriesDeleteDialogVisible.value = false;
+  await saveDocuments();
+  setDocCategoriesModelValues(next, true);
+};
+
+const handleDocTypesClose = (name: string) => {
+  if (
+    docTypesEditingChip.value &&
+    normalizeValue(docTypesEditingChip.value.original) === normalizeValue(name)
+  )
+    return;
+  const next = docTypesModel.value.filter(
+    (val) => normalizeValue(val) !== normalizeValue(name)
+  );
+  docTypesPendingDeletion.value = { removed: [name], next };
+  isDocTypesDeleteDialogVisible.value = true;
+  revertDocTypes();
+};
+
+const handleDocCategoriesClose = (name: string) => {
+  if (
+    docCategoriesEditingChip.value &&
+    normalizeValue(docCategoriesEditingChip.value.original) ===
+      normalizeValue(name)
+  )
+    return;
+  const next = docCategoriesModel.value.filter(
+    (val) => normalizeValue(val) !== normalizeValue(name)
+  );
+  docCategoriesPendingDeletion.value = { removed: [name], next };
+  isDocCategoriesDeleteDialogVisible.value = true;
+  revertDocCategories();
+};
+
+const promptDocTypesEditDecisionIfNeeded = () => {
+  if (!docTypesEditingChip.value || isDocTypesEditConfirmVisible.value) return;
+  if (docTypesEditingDuplicate.value) {
+    notifications.push("Document type already exists", "warning", 2000);
+    return;
+  }
+  const formatted = formatEntry(docTypesEditingValue.value);
+  if (formatted === docTypesEditingChip.value.original) {
+    cancelDocTypesChipEdit();
+    return;
+  }
+  docTypesPendingEditDecision.value = { formatted };
+  isDocTypesEditConfirmVisible.value = true;
+};
+
+const promptDocCategoriesEditDecisionIfNeeded = () => {
+  if (
+    !docCategoriesEditingChip.value ||
+    isDocCategoriesEditConfirmVisible.value
+  )
+    return;
+  if (docCategoriesEditingDuplicate.value) {
+    notifications.push("Document category already exists", "warning", 2000);
+    return;
+  }
+  const formatted = formatEntry(docCategoriesEditingValue.value);
+  if (formatted === docCategoriesEditingChip.value.original) {
+    cancelDocCategoriesChipEdit();
+    return;
+  }
+  docCategoriesPendingEditDecision.value = { formatted };
+  isDocCategoriesEditConfirmVisible.value = true;
+};
+
 const handleGlobalPointerDown = (event: PointerEvent) => {
   if (!editingChip.value) return;
   if (isEventInsideEditingChip(event.target)) return;
@@ -629,6 +1125,18 @@ const handleChannelsPointerDown = (event: PointerEvent) => {
   if (!channelsEditingChip.value) return;
   if (isEventInsideChannelsEditingChip(event.target)) return;
   promptChannelsEditDecisionIfNeeded();
+};
+
+const handleDocTypesPointerDown = (event: PointerEvent) => {
+  if (!docTypesEditingChip.value) return;
+  if (isEventInsideDocTypesEditingChip(event.target)) return;
+  promptDocTypesEditDecisionIfNeeded();
+};
+
+const handleDocCategoriesPointerDown = (event: PointerEvent) => {
+  if (!docCategoriesEditingChip.value) return;
+  if (isEventInsideDocCategoriesEditingChip(event.target)) return;
+  promptDocCategoriesEditDecisionIfNeeded();
 };
 
 const confirmEditDecision = async () => {
@@ -731,12 +1239,24 @@ onMounted(() => {
   document.addEventListener("pointerdown", handleGlobalPointerDown, true);
   document.addEventListener("pointerdown", handleIndPointerDown, true);
   document.addEventListener("pointerdown", handleChannelsPointerDown, true);
+  document.addEventListener("pointerdown", handleDocTypesPointerDown, true);
+  document.addEventListener(
+    "pointerdown",
+    handleDocCategoriesPointerDown,
+    true
+  );
 });
 
 onUnmounted(() => {
   document.removeEventListener("pointerdown", handleGlobalPointerDown, true);
   document.removeEventListener("pointerdown", handleIndPointerDown, true);
   document.removeEventListener("pointerdown", handleChannelsPointerDown, true);
+  document.removeEventListener("pointerdown", handleDocTypesPointerDown, true);
+  document.removeEventListener(
+    "pointerdown",
+    handleDocCategoriesPointerDown,
+    true
+  );
   if (inactiveSaveHandle) {
     clearTimeout(inactiveSaveHandle);
     inactiveSaveHandle = null;
@@ -1108,6 +1628,140 @@ const saveChannels = async (vals: string[]) => {
     notifications.push("Failed to save channels", "error", 3000);
     loadData();
   }
+};
+
+const saveDocuments = async () => {
+  const types = cleanEntries(docTypesModel.value);
+  const categories = cleanEntries(docCategoriesModel.value);
+
+  isSavingDocuments.value = true;
+  const payload: any = {
+    ...(store.configurations.crm || {}),
+    documentTypes: types,
+    documentCategories: categories,
+    documentRenewable:
+      documentRenewable.value === true
+        ? "yes"
+        : documentRenewable.value === false
+        ? "no"
+        : null,
+  };
+  const res = await store.saveRemote({ crm: payload } as any);
+  isSavingDocuments.value = false;
+  if (res) {
+    notifications.push("Documents saved", "success", 2000);
+    docTypes.value = types;
+    lastCommittedDocTypes.value = [...types];
+    docCategories.value = categories;
+    lastCommittedDocCategories.value = [...categories];
+  } else {
+    notifications.push("Failed to save documents", "error", 3000);
+    loadData();
+  }
+};
+
+const setDocTypesModelValues = (values: string[], commit = false) => {
+  if (commit) lastCommittedDocTypes.value = [...values];
+  markProgrammaticUpdate();
+  docTypesModel.value = [...values];
+};
+
+const revertDocTypes = () => {
+  setDocTypesModelValues(lastCommittedDocTypes.value, false);
+};
+
+const setDocCategoriesModelValues = (values: string[], commit = false) => {
+  if (commit) lastCommittedDocCategories.value = [...values];
+  markProgrammaticUpdate();
+  docCategoriesModel.value = [...values];
+};
+
+const revertDocCategories = () => {
+  setDocCategoriesModelValues(lastCommittedDocCategories.value, false);
+};
+
+const onDocTypesChange = async (vals: string[]) => {
+  if (shouldIgnoreUpdate()) return;
+  const cleaned = cleanEntries(vals);
+  const current = [...lastCommittedDocTypes.value];
+  const cleanedNormalized = cleaned.map(normalizeValue);
+
+  const hasLocalDuplicates =
+    new Set(cleanedNormalized).size !== cleanedNormalized.length;
+  if (hasLocalDuplicates) {
+    notifications.push("Document type already exists", "warning", 2000);
+    revertDocTypes();
+    return;
+  }
+
+  const currentNormalized = current.map(normalizeValue);
+  const sameValues =
+    cleaned.length === current.length &&
+    cleanedNormalized.every((val, idx) => val === currentNormalized[idx]);
+
+  if (sameValues) {
+    revertDocTypes();
+    return;
+  }
+
+  const { added, removed } = diffLists(current, cleaned);
+
+  if (!added.length && !removed.length) {
+    revertDocTypes();
+    return;
+  }
+
+  if (removed.length && !added.length) {
+    docTypesPendingDeletion.value = { removed, next: cleaned };
+    isDocTypesDeleteDialogVisible.value = true;
+    revertDocTypes();
+    return;
+  }
+
+  setDocTypesModelValues(cleaned, true);
+  await saveDocuments();
+};
+
+const onDocCategoriesChange = async (vals: string[]) => {
+  if (shouldIgnoreUpdate()) return;
+  const cleaned = cleanEntries(vals);
+  const current = [...lastCommittedDocCategories.value];
+  const cleanedNormalized = cleaned.map(normalizeValue);
+
+  const hasLocalDuplicates =
+    new Set(cleanedNormalized).size !== cleanedNormalized.length;
+  if (hasLocalDuplicates) {
+    notifications.push("Document category already exists", "warning", 2000);
+    revertDocCategories();
+    return;
+  }
+
+  const currentNormalized = current.map(normalizeValue);
+  const sameValues =
+    cleaned.length === current.length &&
+    cleanedNormalized.every((val, idx) => val === currentNormalized[idx]);
+
+  if (sameValues) {
+    revertDocCategories();
+    return;
+  }
+
+  const { added, removed } = diffLists(current, cleaned);
+
+  if (!added.length && !removed.length) {
+    revertDocCategories();
+    return;
+  }
+
+  if (removed.length && !added.length) {
+    docCategoriesPendingDeletion.value = { removed, next: cleaned };
+    isDocCategoriesDeleteDialogVisible.value = true;
+    revertDocCategories();
+    return;
+  }
+
+  setDocCategoriesModelValues(cleaned, true);
+  await saveDocuments();
 };
 
 const setChannelsModelValues = (values: string[], commit = false) => {
@@ -1564,6 +2218,130 @@ const onIndInactiveInput = (event: Event) => {
     </VCard>
   </VDialog>
 
+  <VDialog v-model="isDocTypesEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ docTypesEditingChip?.original }} ->
+            {{ docTypesPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelDocTypesEditDecision"
+        >
+          Revert
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          @click="confirmDocTypesEditDecision"
+        >
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isDocTypesDeleteDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Remove document type</VCardTitle>
+      <VCardText>
+        <p v-if="docTypesPendingDeletion">
+          Are you sure you want to permanently remove
+          <strong>{{ docTypesPendingDeletion.removed.join(", ") }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelDocTypesDeleteDialog"
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="error"
+          @click="confirmDocTypesDeleteDialog"
+        >
+          Remove
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isDocCategoriesEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ docCategoriesEditingChip?.original }} ->
+            {{ docCategoriesPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelDocCategoriesEditDecision"
+        >
+          Revert
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          @click="confirmDocCategoriesEditDecision"
+        >
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isDocCategoriesDeleteDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Remove document category</VCardTitle>
+      <VCardText>
+        <p v-if="docCategoriesPendingDeletion">
+          Are you sure you want to permanently remove
+          <strong>{{ docCategoriesPendingDeletion.removed.join(", ") }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelDocCategoriesDeleteDialog"
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="error"
+          @click="confirmDocCategoriesDeleteDialog"
+        >
+          Remove
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
   <VCard class="mb-6" title="Default Contact type">
     <VCardText>
       <VSelect
@@ -1657,6 +2435,185 @@ const onIndInactiveInput = (event: Event) => {
           </VChip>
         </template>
       </VCombobox>
+    </VCardText>
+  </VCard>
+
+  <VCard class="mb-6" title="Documents">
+    <VCardText>
+      <div class="mb-4">
+        <h6 class="text-subtitle-1 mb-2">Document Types</h6>
+        <VCombobox
+          v-model="docTypesModel"
+          multiple
+          chips
+          hide-details
+          :placeholder="'Add document types'"
+          :loading="isSavingDocuments"
+          :disabled="isSavingDocuments"
+          class="mb-4"
+          v-model:search="docTypesSearchValue"
+          @update:model-value="onDocTypesChange($event as string[])"
+        >
+          <template #chip="{ props, item }">
+            <VChip
+              v-bind="props"
+              size="small"
+              class="d-inline-flex align-center"
+              :class="{
+                'chip-editing':
+                  docTypesEditingChip &&
+                  normalizeValue(docTypesEditingChip.original) ===
+                    normalizeValue(item.raw),
+                duplicate:
+                  docTypesEditingDuplicate &&
+                  docTypesEditingChip &&
+                  normalizeValue(docTypesEditingChip.original) ===
+                    normalizeValue(item.raw),
+              }"
+              :variant="
+                docTypesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+              "
+              :color="
+                docTypesHoveredChip === item.raw ? 'error' : (props.color as string)
+              "
+              @dblclick.stop.prevent="startDocTypesEditingChip(item.raw)"
+              @blur="promptDocTypesEditDecisionIfNeeded"
+              tabindex="0"
+              :ref="(el: any) => registerDocTypesChipElement(el, item.raw)"
+            >
+              <template
+                v-if="
+                  docTypesEditingChip &&
+                  normalizeValue(docTypesEditingChip.original) ===
+                    normalizeValue(item.raw)
+                "
+              >
+                <input
+                  ref="docTypesEditingInputRef"
+                  v-model="docTypesEditingValue"
+                  class="chip-edit-input me-2"
+                  @keydown.stop="handleDocTypesEditKeydown"
+                  @input="handleDocTypesEditInput"
+                  @click.stop
+                  @mousedown.stop
+                  @pointerdown.stop
+                />
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @click.stop.prevent="cancelDocTypesChipEdit"
+                />
+              </template>
+              <template v-else>
+                <span class="me-2">{{ item.raw }}</span>
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @mouseenter="docTypesHoveredChip = item.raw"
+                  @mouseleave="docTypesHoveredChip = null"
+                  @click.stop.prevent="handleDocTypesClose(item.raw)"
+                />
+              </template>
+            </VChip>
+          </template>
+        </VCombobox>
+      </div>
+
+      <div class="mb-4">
+        <h6 class="text-subtitle-1 mb-2">Document Categories</h6>
+        <VCombobox
+          v-model="docCategoriesModel"
+          multiple
+          chips
+          hide-details
+          :placeholder="'Add document categories'"
+          :loading="isSavingDocuments"
+          :disabled="isSavingDocuments"
+          class="mb-4"
+          v-model:search="docCategoriesSearchValue"
+          @update:model-value="onDocCategoriesChange($event as string[])"
+        >
+          <template #chip="{ props, item }">
+            <VChip
+              v-bind="props"
+              size="small"
+              class="d-inline-flex align-center"
+              :class="{
+                'chip-editing':
+                  docCategoriesEditingChip &&
+                  normalizeValue(docCategoriesEditingChip.original) ===
+                    normalizeValue(item.raw),
+                duplicate:
+                  docCategoriesEditingDuplicate &&
+                  docCategoriesEditingChip &&
+                  normalizeValue(docCategoriesEditingChip.original) ===
+                    normalizeValue(item.raw),
+              }"
+              :variant="
+                docCategoriesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+              "
+              :color="
+                docCategoriesHoveredChip === item.raw ? 'error' : (props.color as string)
+              "
+              @dblclick.stop.prevent="startDocCategoriesEditingChip(item.raw)"
+              @blur="promptDocCategoriesEditDecisionIfNeeded"
+              tabindex="0"
+              :ref="(el: any) => registerDocCategoriesChipElement(el, item.raw)"
+            >
+              <template
+                v-if="
+                  docCategoriesEditingChip &&
+                  normalizeValue(docCategoriesEditingChip.original) ===
+                    normalizeValue(item.raw)
+                "
+              >
+                <input
+                  ref="docCategoriesEditingInputRef"
+                  v-model="docCategoriesEditingValue"
+                  class="chip-edit-input me-2"
+                  @keydown.stop="handleDocCategoriesEditKeydown"
+                  @input="handleDocCategoriesEditInput"
+                  @click.stop
+                  @mousedown.stop
+                  @pointerdown.stop
+                />
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @click.stop.prevent="cancelDocCategoriesChipEdit"
+                />
+              </template>
+              <template v-else>
+                <span class="me-2">{{ item.raw }}</span>
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @mouseenter="docCategoriesHoveredChip = item.raw"
+                  @mouseleave="docCategoriesHoveredChip = null"
+                  @click.stop.prevent="handleDocCategoriesClose(item.raw)"
+                />
+              </template>
+            </VChip>
+          </template>
+        </VCombobox>
+      </div>
+
+      <div>
+        <label class="text-subtitle-2 mb-2 d-block">Document Renewable?</label>
+        <VRadioGroup
+          v-model="documentRenewable"
+          inline
+          class="mb-0"
+          @change="() => saveDocuments()"
+        >
+          <VRadio :value="true" label="Yes" />
+          <VRadio :value="false" label="No" />
+        </VRadioGroup>
+      </div>
     </VCardText>
   </VCard>
 
