@@ -21,8 +21,8 @@ export const db: ConfigDB = {
         "https://linkedin.com/company/squarely",
       ],
       ownership: [
-        { id: 1, contactName: "Jane Doe", contactId: 1 },
-        { id: 2, contactName: "John Smith", contactId: 2 },
+        { contactId: 1, contactName: "Jane Doe" },
+        { contactId: 2, contactName: "John Smith" },
       ],
     },
     financial: {
@@ -64,9 +64,9 @@ export const db: ConfigDB = {
       ],
     },
     hr: {
-      deductions: ["Late Penalty", "Absence"],
-      additions: ["Overtime", "Bonus"],
-      advances: ["Travel Advance", "Salary Advance"],
+      deductions: ["Late Penalty", "Absence", "Salary Adjustment", "Other"],
+      additions: ["Overtime", "Bonus", "Reimbursables", "Other"],
+      advances: ["Travel Advance", "Salary Advance", "Personal", "Other"],
       leaves: ["Annual", "Sick", "Unpaid"],
       departments: ["Sales", "Operations", "Finance", "HR"],
       requestApproval: "one_level",

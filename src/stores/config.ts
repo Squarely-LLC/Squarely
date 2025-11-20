@@ -96,8 +96,17 @@ export const useConfigStore = defineStore("appConfigurations", {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("Failed to save configurations");
-        const data = await res.json();
-        this.configurations = data;
+        const data = (await res.json()) as AppConfigurations;
+        // Only update sections that were part of the payload to avoid
+        // clobbering other in-memory edits from different tabs/views.
+        const keys = Object.keys(payload || {}) as (keyof AppConfigurations)[];
+        const next: AppConfigurations = {
+          ...this.configurations,
+        } as AppConfigurations;
+        for (const k of keys) {
+          (next as any)[k] = (data as any)[k];
+        }
+        this.configurations = next;
         saveToStorage(this.configurations);
         return this.configurations;
       } catch (error) {

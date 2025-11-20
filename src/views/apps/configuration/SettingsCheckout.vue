@@ -1,9 +1,9 @@
 <script setup lang="ts">
-const contactMethod = ref('Phone number')
-const fullName = ref('Only require last name')
-const companyName = ref('Don\'t include')
-const addressLine = ref('Optional')
-const shippingAddress = ref('Optional')
+const contactMethod = ref("Phone number");
+const fullName = ref("Only require last name");
+const companyName = ref("Don't include");
+const addressLine = ref("Optional");
+const shippingAddress = ref("Optional");
 </script>
 
 <template>
@@ -13,24 +13,12 @@ const shippingAddress = ref('Optional')
     class="mb-6"
   >
     <VCardText>
-      <VRadioGroup
-        v-model="contactMethod"
-        class="mb-4"
-      >
-        <VRadio
-          label="Phone number"
-          value="Phone number"
-        />
-        <VRadio
-          label="Email"
-          value="Email"
-        />
+      <VRadioGroup v-model="contactMethod" class="mb-4">
+        <VRadio label="Phone number" value="Phone number" />
+        <VRadio label="Email" value="Email" />
       </VRadioGroup>
 
-      <VAlert
-        type="info"
-        variant="tonal"
-      >
+      <VAlert type="info" variant="tonal">
         <VAlertTitle class="mb-0">
           To send SMS updates, you need to install an SMS App.
         </VAlertTitle>
@@ -38,43 +26,20 @@ const shippingAddress = ref('Optional')
     </VCardText>
   </VCard>
 
-  <VCard
-    title="Customer information"
-    class="mb-6"
-  >
+  <VCard title="Customer information" class="mb-6">
     <VCardText class="customer-info-card">
-      <VRadioGroup
-        v-model="fullName"
-        label="Full name"
-        class="mb-4"
-      >
-        <VRadio
-          value="Only require last name"
-          label="Only require last name"
-        />
+      <VRadioGroup v-model="fullName" label="Full name" class="mb-4">
+        <VRadio value="Only require last name" label="Only require last name" />
         <VRadio
           value="Require first and last name"
           label="Require first and last name"
         />
       </VRadioGroup>
 
-      <VRadioGroup
-        v-model="companyName"
-        label="Company name"
-        class="mb-4"
-      >
-        <VRadio
-          value="Don't include"
-          label="Don't include"
-        />
-        <VRadio
-          value="Optional"
-          label="Optional"
-        />
-        <VRadio
-          value="Required"
-          label="Required"
-        />
+      <VRadioGroup v-model="companyName" label="Company name" class="mb-4">
+        <VRadio value="Don't include" label="Don't include" />
+        <VRadio value="Optional" label="Optional" />
+        <VRadio value="Required" label="Required" />
       </VRadioGroup>
 
       <VRadioGroup
@@ -82,18 +47,9 @@ const shippingAddress = ref('Optional')
         label="Address line 2 (apartment, unit, etc.)"
         class="mb-4"
       >
-        <VRadio
-          value="Don't include"
-          label="Don't include"
-        />
-        <VRadio
-          value="Optional"
-          label="Optional"
-        />
-        <VRadio
-          value="Required"
-          label="Required"
-        />
+        <VRadio value="Don't include" label="Don't include" />
+        <VRadio value="Optional" label="Optional" />
+        <VRadio value="Required" label="Required" />
       </VRadioGroup>
 
       <VRadioGroup
@@ -101,29 +57,15 @@ const shippingAddress = ref('Optional')
         label="Shipping address phone number"
         class="mb-4"
       >
-        <VRadio
-          value="Don't include"
-          label="Don't include"
-        />
-        <VRadio
-          value="Optional"
-          label="Optional"
-        />
-        <VRadio
-          value="Required"
-          label="Required"
-        />
+        <VRadio value="Don't include" label="Don't include" />
+        <VRadio value="Optional" label="Optional" />
+        <VRadio value="Required" label="Required" />
       </VRadioGroup>
     </VCardText>
   </VCard>
 
   <div class="d-flex justify-end gap-x-4">
-    <VBtn
-      variant="tonal"
-      color="secondary"
-    >
-      Discard
-    </VBtn>
+    <VBtn variant="tonal" color="secondary"> Discard </VBtn>
     <VBtn>Save Changes</VBtn>
   </div>
 </template>

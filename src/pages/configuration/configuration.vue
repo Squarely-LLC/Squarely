@@ -2,8 +2,8 @@
 import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
-import SettingsCheckout from "@/views/apps/configuration/SettingsCheckout.vue";
 import SettingsFinancial from "@/views/apps/configuration/SettingsFinancial.vue";
+import SettingsHR from "@/views/apps/configuration/SettingsHR.vue";
 import SettingsLegal from "@/views/apps/configuration/SettingsLegal.vue";
 import SettingsLocations from "@/views/apps/configuration/SettingsLocations.vue";
 import SettingsNotifications from "@/views/apps/configuration/SettingsNotifications.vue";
@@ -110,7 +110,7 @@ watch(
         </VWindowItem>
 
         <VWindowItem>
-          <SettingsCheckout />
+          <SettingsHR />
         </VWindowItem>
 
         <VWindowItem>
