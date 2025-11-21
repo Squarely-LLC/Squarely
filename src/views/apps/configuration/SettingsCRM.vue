@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import EditableChipList from "@/components/EditableChipList.vue";
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -25,6 +25,7 @@ const callPurposes = ref<string[]>([]);
 const sentiments = ref<string[]>([]);
 const notes = ref<string[]>([]);
 const meetings = ref<string[]>([]);
+const jobStages = ref<string[]>([]);
 
 const isSavingCategories = ref(false);
 const isSavingIndCategories = ref(false);
@@ -34,6 +35,7 @@ const isSavingCallPurposes = ref(false);
 const isSavingSentiments = ref(false);
 const isSavingNotes = ref(false);
 const isSavingMeetings = ref(false);
+const isSavingJobStages = ref(false);
 const isSavingFlags = ref(false);
 const isSavingIndFlags = ref(false);
 const isSavingDefaultContactType = ref(false);
@@ -89,11 +91,14 @@ const loadData = () => {
   sentiments.value = cleanEntries((org as any)?.sentiment || []);
   notes.value = cleanEntries((org as any)?.notes || []);
   meetings.value = cleanEntries((org as any)?.meetings || []);
+  jobStages.value = cleanEntries((org as any)?.jobStages || []);
 
   const explicitTypes = (org as any)?.documentTypes;
   const explicitCats = (org as any)?.documentCategories;
   if (Array.isArray(explicitTypes) || Array.isArray(explicitCats)) {
-    docTypes.value = cleanEntries(Array.isArray(explicitTypes) ? explicitTypes : []);
+    docTypes.value = cleanEntries(
+      Array.isArray(explicitTypes) ? explicitTypes : []
+    );
     docCategories.value = cleanEntries(
       Array.isArray(explicitCats) ? explicitCats : []
     );
@@ -248,6 +253,24 @@ const saveMeetings = async (payload: SavePayload) => {
   }
 };
 
+const saveJobStages = async (payload: SavePayload) => {
+  const cleaned = cleanEntries(payload.values);
+  isSavingJobStages.value = true;
+  const res = await store.saveRemote({
+    crm: { ...(store.configurations.crm || {}), jobStages: cleaned },
+  } as any);
+  isSavingJobStages.value = false;
+  if (res) {
+    jobStages.value = cleaned;
+    if (payload.action !== "delete") {
+      notifications.push("Job stages saved", "success", 2000);
+    }
+  } else {
+    notifications.push("Failed to save job stages", "error", 3000);
+    loadData();
+  }
+};
+
 const saveDocuments = async (action: "update" | "delete" = "update") => {
   const types = cleanEntries(docTypes.value);
   const categories = cleanEntries(docCategories.value);
@@ -335,7 +358,10 @@ const saveDefaultContactType = async () => {
   if (isSavingDefaultContactType.value) return;
   isSavingDefaultContactType.value = true;
   const res = await store.saveRemote({
-    crm: { ...(store.configurations.crm || {}), DefaultContactType: defaultContactType.value },
+    crm: {
+      ...(store.configurations.crm || {}),
+      DefaultContactType: defaultContactType.value,
+    },
   } as any);
   isSavingDefaultContactType.value = false;
   if (res) {
@@ -573,7 +599,9 @@ onUnmounted(() => {
           />
 
           <div>
-            <label class="text-subtitle-2 mb-2 d-block">Document Renewable?</label>
+            <label class="text-subtitle-2 mb-2 d-block"
+              >Document Renewable?</label
+            >
             <VRadioGroup
               v-model="documentRenewable"
               inline
@@ -592,7 +620,6 @@ onUnmounted(() => {
   <VCard class="mb-6" title="Activities & Jobs">
     <VCardText>
       <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Call Purposes</h6>
         <EditableChipList
           label="Call purpose"
           :items="callPurposes"
@@ -605,7 +632,6 @@ onUnmounted(() => {
       </div>
 
       <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Sentiments</h6>
         <EditableChipList
           label="Sentiment"
           :items="sentiments"
@@ -618,7 +644,6 @@ onUnmounted(() => {
       </div>
 
       <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Notes</h6>
         <EditableChipList
           label="Note"
           :items="notes"
@@ -631,13 +656,24 @@ onUnmounted(() => {
       </div>
 
       <div>
-        <h6 class="text-subtitle-1 mb-2">Meetings</h6>
         <EditableChipList
           label="Meeting"
           :items="meetings"
           :loading="isSavingMeetings"
           placeholder="Add meetings"
           @save="saveMeetings"
+          @warn="notifyWarn"
+          @error="notifyError"
+        />
+      </div>
+
+      <div class="mt-4">
+        <EditableChipList
+          label="Job stage"
+          :items="jobStages"
+          :loading="isSavingJobStages"
+          placeholder="Add job stages"
+          @save="saveJobStages"
           @warn="notifyWarn"
           @error="notifyError"
         />
