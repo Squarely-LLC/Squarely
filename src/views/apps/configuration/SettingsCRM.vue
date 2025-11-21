@@ -199,6 +199,29 @@ const notesPendingDeletion = ref<{
 } | null>(null);
 const isNotesDeleteDialogVisible = ref(false);
 
+// Meetings state
+const meetings = ref<string[]>([]);
+const meetingsModel = ref<string[]>([]);
+const lastCommittedMeetings = ref<string[]>([]);
+const isSavingMeetings = ref(false);
+const meetingsSearchValue = ref("");
+const meetingsLastTypedValue = ref("");
+const meetingsHoveredChip = ref<string | null>(null);
+const meetingsEditingChip = ref<{ original: string; index: number } | null>(
+  null
+);
+const meetingsEditingValue = ref("");
+const meetingsEditingDuplicate = ref(false);
+const meetingsEditingInputRef = ref<HTMLInputElement | null>(null);
+const meetingsEditingChipElement = ref<HTMLElement | null>(null);
+const meetingsPendingEditDecision = ref<{ formatted: string } | null>(null);
+const isMeetingsEditConfirmVisible = ref(false);
+const meetingsPendingDeletion = ref<{
+  removed: string[];
+  next: string[];
+} | null>(null);
+const isMeetingsDeleteDialogVisible = ref(false);
+
 const categoryLabel = computed(() => "Category");
 const categoryPlaceholder = computed(
   () => `Add ${categoryLabel.value.toLowerCase()}s`
@@ -340,6 +363,11 @@ const loadData = () => {
   notes.value = cleanEntries(nt);
   lastCommittedNotes.value = [...notes.value];
   notesModel.value = [...notes.value];
+
+  const mt = (org as any)?.meetings || [];
+  meetings.value = cleanEntries(mt);
+  lastCommittedMeetings.value = [...meetings.value];
+  meetingsModel.value = [...meetings.value];
 
   // load documents settings — prefer explicit arrays, fallback to legacy `documents` entry
   const explicitTypes = (org as any)?.documentTypes;
@@ -1187,6 +1215,38 @@ const isEventInsideDocCategoriesEditingChip = (target: EventTarget | null) => {
   return false;
 };
 
+const isEventInsideNotesEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (
+    notesEditingInputRef.value &&
+    notesEditingInputRef.value.contains(node)
+  )
+    return true;
+  if (
+    notesEditingChipElement.value &&
+    notesEditingChipElement.value.contains(node)
+  )
+    return true;
+  return false;
+};
+
+const isEventInsideMeetingsEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (
+    meetingsEditingInputRef.value &&
+    meetingsEditingInputRef.value.contains(node)
+  )
+    return true;
+  if (
+    meetingsEditingChipElement.value &&
+    meetingsEditingChipElement.value.contains(node)
+  )
+    return true;
+  return false;
+};
+
 const promptEditDecisionIfNeeded = () => {
   if (!editingChip.value || isEditConfirmDialogVisible.value) return;
   if (editingDuplicate.value) {
@@ -1499,6 +1559,18 @@ const handleDocCategoriesPointerDown = (event: PointerEvent) => {
   promptDocCategoriesEditDecisionIfNeeded();
 };
 
+const handleNotesPointerDown = (event: PointerEvent) => {
+  if (!notesEditingChip.value) return;
+  if (isEventInsideNotesEditingChip(event.target)) return;
+  promptNotesEditDecisionIfNeeded();
+};
+
+const handleMeetingsPointerDown = (event: PointerEvent) => {
+  if (!meetingsEditingChip.value) return;
+  if (isEventInsideMeetingsEditingChip(event.target)) return;
+  promptMeetingsEditDecisionIfNeeded();
+};
+
 const confirmEditDecision = async () => {
   if (!pendingEditDecision.value) return;
   const { formatted } = pendingEditDecision.value;
@@ -1681,6 +1753,8 @@ onMounted(() => {
     handleDocCategoriesPointerDown,
     true
   );
+  document.addEventListener("pointerdown", handleNotesPointerDown, true);
+  document.addEventListener("pointerdown", handleMeetingsPointerDown, true);
 });
 
 onUnmounted(() => {
@@ -1703,6 +1777,8 @@ onUnmounted(() => {
     handleDocCategoriesPointerDown,
     true
   );
+  document.removeEventListener("pointerdown", handleNotesPointerDown, true);
+  document.removeEventListener("pointerdown", handleMeetingsPointerDown, true);
   if (inactiveSaveHandle) {
     clearTimeout(inactiveSaveHandle);
     inactiveSaveHandle = null;
@@ -2675,6 +2751,52 @@ const startNotesEditingChip = (original: string) => {
   });
 };
 
+const commitNotesChipEdit = async () => {
+  if (!notesEditingChip.value) return;
+  const formatted = formatEntry(notesEditingValue.value);
+  if (!formatted) {
+    notifications.push("Note cannot be empty", "warning", 2000);
+    notesEditingValue.value = notesEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedNotes.value];
+  const targetIndex = notesEditingChip.value.index;
+  const originalNormalized = normalizeValue(notesEditingChip.value.original);
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelNotesChipEdit();
+    revertNotes();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Note already exists", "warning", 2000);
+    notesEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelNotesChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelNotesChipEdit();
+  setNotesModelValues(currentList, true);
+  await saveNotes(currentList);
+};
+
 const cancelNotesChipEdit = () => {
   notesEditingChip.value = null;
   notesEditingValue.value = "";
@@ -2702,13 +2824,16 @@ const handleNotesEditInput = () => {
   notesEditingDuplicate.value = isDupe;
 };
 
-const handleNotesEditKeydown = (event: KeyboardEvent) => {
-  if (event.key === "Enter") {
+const handleNotesEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
     event.preventDefault();
-    notesEditingInputRef.value?.blur();
+    event.stopPropagation();
+    await commitNotesChipEdit();
   } else if (event.key === "Escape") {
     event.preventDefault();
+    event.stopPropagation();
     cancelNotesChipEdit();
+    revertNotes();
   }
 };
 
@@ -2748,6 +2873,238 @@ const promptNotesEditDecisionIfNeeded = () => {
 
   notesPendingEditDecision.value = { formatted };
   isNotesEditConfirmVisible.value = true;
+};
+
+// Meetings functions
+const setMeetingsModelValues = (values: string[], commit = false) => {
+  if (commit) lastCommittedMeetings.value = [...values];
+  markProgrammaticUpdate();
+  meetingsModel.value = [...values];
+};
+
+const revertMeetings = () => {
+  setMeetingsModelValues(lastCommittedMeetings.value, false);
+};
+
+const saveMeetings = async (vals: string[]) => {
+  const cleaned = cleanEntries(vals);
+  meetings.value = cleaned;
+
+  isSavingMeetings.value = true;
+  const res = await store.saveRemote({
+    crm: {
+      ...(store.configurations.crm || {}),
+      meetings: cleaned,
+    },
+  } as any);
+  isSavingMeetings.value = false;
+  if (res) {
+    notifications.push("Meetings saved", "success", 2000);
+    meetings.value = cleaned;
+    lastCommittedMeetings.value = [...cleaned];
+  } else {
+    notifications.push("Failed to save meetings", "error", 3000);
+    loadData();
+  }
+};
+
+const handleMeetingsClose = (name: string) => {
+  if (
+    meetingsEditingChip.value &&
+    normalizeValue(meetingsEditingChip.value.original) === normalizeValue(name)
+  )
+    return;
+
+  const cleaned = cleanEntries(
+    meetingsModel.value.filter(
+      (item) => normalizeValue(item) !== normalizeValue(name)
+    )
+  );
+  void syncMeetings(cleaned);
+};
+
+const syncMeetings = async (vals: string[]) => {
+  const cleaned = cleanEntries(vals);
+
+  const prevNormalized = new Set(
+    lastCommittedMeetings.value.map(normalizeValue)
+  );
+  const nextNormalized = new Set(cleaned.map(normalizeValue));
+  const removed: string[] = [];
+  for (const prevNorm of prevNormalized) {
+    if (!nextNormalized.has(prevNorm)) {
+      const original = lastCommittedMeetings.value.find(
+        (v) => normalizeValue(v) === prevNorm
+      );
+      if (original) removed.push(original);
+    }
+  }
+  const added: string[] = [];
+  for (const nextNorm of nextNormalized) {
+    if (!prevNormalized.has(nextNorm)) {
+      const item = cleaned.find((v) => normalizeValue(v) === nextNorm);
+      if (item) added.push(item);
+    }
+  }
+
+  if (removed.length && !added.length) {
+    meetingsPendingDeletion.value = { removed, next: cleaned };
+    isMeetingsDeleteDialogVisible.value = true;
+    revertMeetings();
+    return;
+  }
+
+  setMeetingsModelValues(cleaned, true);
+  meetingsLastTypedValue.value = "";
+  await saveMeetings(cleaned);
+};
+
+const registerMeetingsChipElement = (el: any, itemRaw: string) => {
+  if (
+    meetingsEditingChip.value &&
+    normalizeValue(meetingsEditingChip.value.original) ===
+      normalizeValue(itemRaw)
+  ) {
+    meetingsEditingChipElement.value = el?.$el || el;
+  }
+};
+
+const startMeetingsEditingChip = (original: string) => {
+  const index = meetingsModel.value.findIndex(
+    (v) => normalizeValue(v) === normalizeValue(original)
+  );
+  if (index === -1) return;
+  meetingsEditingChip.value = { original, index };
+  meetingsEditingValue.value = original;
+  meetingsEditingDuplicate.value = false;
+
+  nextTick(() => {
+    meetingsEditingInputRef.value?.focus();
+    meetingsEditingInputRef.value?.select();
+  });
+};
+
+const commitMeetingsChipEdit = async () => {
+  if (!meetingsEditingChip.value) return;
+  const formatted = formatEntry(meetingsEditingValue.value);
+  if (!formatted) {
+    notifications.push("Meeting cannot be empty", "warning", 2000);
+    meetingsEditingValue.value = meetingsEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedMeetings.value];
+  const targetIndex = meetingsEditingChip.value.index;
+  const originalNormalized = normalizeValue(meetingsEditingChip.value.original);
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelMeetingsChipEdit();
+    revertMeetings();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Meeting already exists", "warning", 2000);
+    meetingsEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelMeetingsChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelMeetingsChipEdit();
+  setMeetingsModelValues(currentList, true);
+  await saveMeetings(currentList);
+};
+
+const cancelMeetingsChipEdit = () => {
+  meetingsEditingChip.value = null;
+  meetingsEditingValue.value = "";
+  meetingsEditingDuplicate.value = false;
+  meetingsEditingInputRef.value = null;
+  meetingsEditingChipElement.value = null;
+};
+
+const handleMeetingsEditInput = () => {
+  const formatted = formatEntry(meetingsEditingValue.value);
+  const normalizedFormatted = normalizeValue(formatted);
+
+  const hasDuplicate = meetingsModel.value.some((val, idx) => {
+    if (meetingsEditingChip.value && idx === meetingsEditingChip.value.index)
+      return false;
+    return normalizeValue(val) === normalizedFormatted;
+  });
+
+  meetingsEditingDuplicate.value = hasDuplicate;
+};
+
+const handleMeetingsEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    await commitMeetingsChipEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelMeetingsChipEdit();
+    revertMeetings();
+  }
+};
+
+const confirmMeetingsEditDecision = async () => {
+  isMeetingsEditConfirmVisible.value = false;
+  if (!meetingsPendingEditDecision.value || !meetingsEditingChip.value) return;
+
+  const formatted = meetingsPendingEditDecision.value.formatted;
+  const updated = [...meetingsModel.value];
+  updated[meetingsEditingChip.value.index] = formatted;
+  const cleaned = cleanEntries(updated);
+
+  cancelMeetingsChipEdit();
+  meetingsPendingEditDecision.value = null;
+
+  setMeetingsModelValues(cleaned, true);
+  await saveMeetings(cleaned);
+};
+
+const cancelMeetingsEditDecision = () => {
+  isMeetingsEditConfirmVisible.value = false;
+  meetingsPendingEditDecision.value = null;
+  revertMeetings();
+};
+
+const promptMeetingsEditDecisionIfNeeded = () => {
+  if (!meetingsEditingChip.value) return;
+  const formatted = formatEntry(meetingsEditingValue.value);
+  const normalizedFormatted = normalizeValue(formatted);
+  const normalizedOriginal = normalizeValue(meetingsEditingChip.value.original);
+
+  if (!formatted || normalizedFormatted === normalizedOriginal) {
+    cancelMeetingsChipEdit();
+    return;
+  }
+
+  if (meetingsEditingDuplicate.value) {
+    notifications.push("Meeting already exists", "warning", 2000);
+    cancelMeetingsChipEdit();
+    return;
+  }
+
+  meetingsPendingEditDecision.value = { formatted };
+  isMeetingsEditConfirmVisible.value = true;
 };
 
 const onIndInactiveInput = (event: Event) => {
@@ -3604,6 +3961,83 @@ const onIndInactiveInput = (event: Event) => {
     </VCard>
   </VDialog>
 
+  <VDialog v-model="isMeetingsEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ meetingsEditingChip?.original }} ->
+            {{ meetingsPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelMeetingsEditDecision"
+        >
+          Revert
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          @click="confirmMeetingsEditDecision"
+        >
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isMeetingsDeleteDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Remove meeting</VCardTitle>
+      <VCardText>
+        <p v-if="meetingsPendingDeletion">
+          Are you sure you want to permanently remove
+          <strong>{{ meetingsPendingDeletion.removed.join(", ") }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="
+            () => {
+              isMeetingsDeleteDialogVisible = false;
+              meetingsPendingDeletion = null;
+              revertMeetings();
+            }
+          "
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="error"
+          @click="
+            async () => {
+              if (!meetingsPendingDeletion) return;
+              const next = meetingsPendingDeletion.next;
+              meetingsPendingDeletion = null;
+              isMeetingsDeleteDialogVisible = false;
+              await saveMeetings(next);
+              setMeetingsModelValues(next, true);
+            }
+          "
+        >
+          Remove
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
   <VDialog v-model="isDocTypesEditConfirmVisible" max-width="480">
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Unsaved changes</VCardTitle>
@@ -3966,6 +4400,87 @@ const onIndInactiveInput = (event: Event) => {
                   @mouseenter="notesHoveredChip = item.raw"
                   @mouseleave="notesHoveredChip = null"
                   @click.stop.prevent="handleNotesClose(item.raw)"
+                />
+              </template>
+            </VChip>
+          </template>
+        </VCombobox>
+      </div>
+
+      <div class="mb-4">
+        <h6 class="text-subtitle-1 mb-2">Meetings</h6>
+        <VCombobox
+          v-model="meetingsModel"
+          multiple
+          chips
+          hide-details
+          :placeholder="'Add meetings'"
+          :loading="isSavingMeetings"
+          :disabled="isSavingMeetings"
+          class="mb-4"
+          v-model:search="meetingsSearchValue"
+          @update:model-value="syncMeetings($event as string[])"
+        >
+          <template #chip="{ props, item }">
+            <VChip
+              v-bind="props"
+              size="small"
+              class="d-inline-flex align-center"
+              :class="{
+                'chip-editing':
+                  meetingsEditingChip &&
+                  normalizeValue(meetingsEditingChip.original) ===
+                    normalizeValue(item.raw),
+                duplicate:
+                  meetingsEditingDuplicate &&
+                  meetingsEditingChip &&
+                  normalizeValue(meetingsEditingChip.original) ===
+                    normalizeValue(item.raw),
+              }"
+              :variant="
+                meetingsHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+              "
+              :color="
+                meetingsHoveredChip === item.raw ? 'error' : (props.color as string)
+              "
+              @dblclick.stop.prevent="startMeetingsEditingChip(item.raw)"
+              @blur="promptMeetingsEditDecisionIfNeeded"
+              tabindex="0"
+              :ref="(el: any) => registerMeetingsChipElement(el, item.raw)"
+            >
+              <template
+                v-if="
+                  meetingsEditingChip &&
+                  normalizeValue(meetingsEditingChip.original) ===
+                    normalizeValue(item.raw)
+                "
+              >
+                <input
+                  ref="meetingsEditingInputRef"
+                  v-model="meetingsEditingValue"
+                  class="chip-edit-input me-2"
+                  @keydown.stop="handleMeetingsEditKeydown"
+                  @input="handleMeetingsEditInput"
+                  @click.stop
+                  @mousedown.stop
+                  @pointerdown.stop
+                />
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @click.stop.prevent="cancelMeetingsChipEdit"
+                />
+              </template>
+              <template v-else>
+                <span class="me-2">{{ item.raw }}</span>
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @mouseenter="meetingsHoveredChip = item.raw"
+                  @mouseleave="meetingsHoveredChip = null"
+                  @click.stop.prevent="handleMeetingsClose(item.raw)"
                 />
               </template>
             </VChip>
