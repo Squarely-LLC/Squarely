@@ -132,6 +132,73 @@ const isDocCategoriesDeleteDialogVisible = ref(false);
 const documentRenewable = ref<boolean | null>(null);
 const isSavingDocuments = ref(false);
 
+// Call Purposes
+const callPurposes = ref<string[]>([]);
+const callPurposesModel = ref<string[]>([]);
+const lastCommittedCallPurposes = ref<string[]>([]);
+const isSavingCallPurposes = ref(false);
+const callPurposesSearchValue = ref("");
+const callPurposesLastTypedValue = ref("");
+const callPurposesHoveredChip = ref<string | null>(null);
+const callPurposesEditingChip = ref<{ original: string; index: number } | null>(
+  null
+);
+const callPurposesEditingValue = ref("");
+const callPurposesEditingDuplicate = ref(false);
+const callPurposesEditingInputRef = ref<HTMLInputElement | null>(null);
+const callPurposesEditingChipElement = ref<HTMLElement | null>(null);
+const callPurposesPendingEditDecision = ref<{ formatted: string } | null>(null);
+const isCallPurposesEditConfirmVisible = ref(false);
+const callPurposesPendingDeletion = ref<{
+  removed: string[];
+  next: string[];
+} | null>(null);
+const isCallPurposesDeleteDialogVisible = ref(false);
+
+// Sentiments
+const sentiments = ref<string[]>([]);
+const notes = ref<string[]>([]);
+const sentimentsModel = ref<string[]>([]);
+const lastCommittedSentiments = ref<string[]>([]);
+const isSavingSentiments = ref(false);
+const sentimentsSearchValue = ref("");
+const sentimentsLastTypedValue = ref("");
+const sentimentsHoveredChip = ref<string | null>(null);
+const sentimentsEditingChip = ref<{ original: string; index: number } | null>(
+  null
+);
+const sentimentsEditingValue = ref("");
+const sentimentsEditingDuplicate = ref(false);
+const sentimentsEditingInputRef = ref<HTMLInputElement | null>(null);
+const sentimentsEditingChipElement = ref<HTMLElement | null>(null);
+const sentimentsPendingEditDecision = ref<{ formatted: string } | null>(null);
+const isSentimentsEditConfirmVisible = ref(false);
+const sentimentsPendingDeletion = ref<{
+  removed: string[];
+  next: string[];
+} | null>(null);
+const isSentimentsDeleteDialogVisible = ref(false);
+
+// Notes state
+const notesModel = ref<string[]>([]);
+const lastCommittedNotes = ref<string[]>([]);
+const isSavingNotes = ref(false);
+const notesSearchValue = ref("");
+const notesLastTypedValue = ref("");
+const notesHoveredChip = ref<string | null>(null);
+const notesEditingChip = ref<{ original: string; index: number } | null>(null);
+const notesEditingValue = ref("");
+const notesEditingDuplicate = ref(false);
+const notesEditingInputRef = ref<HTMLInputElement | null>(null);
+const notesEditingChipElement = ref<HTMLElement | null>(null);
+const notesPendingEditDecision = ref<{ formatted: string } | null>(null);
+const isNotesEditConfirmVisible = ref(false);
+const notesPendingDeletion = ref<{
+  removed: string[];
+  next: string[];
+} | null>(null);
+const isNotesDeleteDialogVisible = ref(false);
+
 const categoryLabel = computed(() => "Category");
 const categoryPlaceholder = computed(
   () => `Add ${categoryLabel.value.toLowerCase()}s`
@@ -259,6 +326,21 @@ const loadData = () => {
   lastCommittedChannels.value = [...channels.value];
   channelsModel.value = [...channels.value];
 
+  const cp = (org as any)?.callPurposes || [];
+  callPurposes.value = cleanEntries(cp);
+  lastCommittedCallPurposes.value = [...callPurposes.value];
+  callPurposesModel.value = [...callPurposes.value];
+
+  const st = (org as any)?.sentiment || [];
+  sentiments.value = cleanEntries(st);
+  lastCommittedSentiments.value = [...sentiments.value];
+  sentimentsModel.value = [...sentiments.value];
+
+  const nt = (org as any)?.notes || [];
+  notes.value = cleanEntries(nt);
+  lastCommittedNotes.value = [...notes.value];
+  notesModel.value = [...notes.value];
+
   // load documents settings — prefer explicit arrays, fallback to legacy `documents` entry
   const explicitTypes = (org as any)?.documentTypes;
   const explicitCats = (org as any)?.documentCategories;
@@ -344,6 +426,34 @@ const startChannelsEditingChip = async (name: string) => {
   await nextTick();
   channelsEditingInputRef.value?.focus();
   channelsEditingInputRef.value?.select();
+};
+
+const startCallPurposesEditingChip = async (name: string) => {
+  const index = lastCommittedCallPurposes.value.findIndex(
+    (item) => normalizeValue(item) === normalizeValue(name)
+  );
+  if (index === -1) return;
+  callPurposesHoveredChip.value = null;
+  callPurposesEditingChip.value = { original: name, index };
+  callPurposesEditingValue.value = name;
+  callPurposesEditingDuplicate.value = false;
+  await nextTick();
+  callPurposesEditingInputRef.value?.focus();
+  callPurposesEditingInputRef.value?.select();
+};
+
+const startSentimentsEditingChip = async (name: string) => {
+  const index = lastCommittedSentiments.value.findIndex(
+    (item) => normalizeValue(item) === normalizeValue(name)
+  );
+  if (index === -1) return;
+  sentimentsHoveredChip.value = null;
+  sentimentsEditingChip.value = { original: name, index };
+  sentimentsEditingValue.value = name;
+  sentimentsEditingDuplicate.value = false;
+  await nextTick();
+  sentimentsEditingInputRef.value?.focus();
+  sentimentsEditingInputRef.value?.select();
 };
 
 const startEditingChip = async (name: string) => {
@@ -518,6 +628,20 @@ const cancelChannelsChipEdit = () => {
   channelsEditingChipElement.value = null;
 };
 
+const cancelCallPurposesChipEdit = () => {
+  callPurposesEditingChip.value = null;
+  callPurposesEditingValue.value = "";
+  callPurposesEditingDuplicate.value = false;
+  callPurposesEditingChipElement.value = null;
+};
+
+const cancelSentimentsChipEdit = () => {
+  sentimentsEditingChip.value = null;
+  sentimentsEditingValue.value = "";
+  sentimentsEditingDuplicate.value = false;
+  sentimentsEditingChipElement.value = null;
+};
+
 const cancelChipEdit = () => {
   editingChip.value = null;
   editingValue.value = "";
@@ -576,6 +700,102 @@ const commitChannelsChipEdit = async () => {
   cancelChannelsChipEdit();
   setChannelsModelValues(currentList, true);
   await saveChannels(currentList);
+};
+
+const commitCallPurposesChipEdit = async () => {
+  if (!callPurposesEditingChip.value) return;
+  const formatted = formatEntry(callPurposesEditingValue.value);
+  if (!formatted) {
+    notifications.push("Call purpose cannot be empty", "warning", 2000);
+    callPurposesEditingValue.value = callPurposesEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedCallPurposes.value];
+  const targetIndex = callPurposesEditingChip.value.index;
+  const originalNormalized = normalizeValue(
+    callPurposesEditingChip.value.original
+  );
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelCallPurposesChipEdit();
+    revertCallPurposes();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Call purpose already exists", "warning", 2000);
+    callPurposesEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelCallPurposesChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelCallPurposesChipEdit();
+  setCallPurposesModelValues(currentList, true);
+  await saveCallPurposes(currentList);
+};
+
+const commitSentimentsChipEdit = async () => {
+  if (!sentimentsEditingChip.value) return;
+  const formatted = formatEntry(sentimentsEditingValue.value);
+  if (!formatted) {
+    notifications.push("Sentiment cannot be empty", "warning", 2000);
+    sentimentsEditingValue.value = sentimentsEditingChip.value.original;
+    return;
+  }
+
+  const currentList = [...lastCommittedSentiments.value];
+  const targetIndex = sentimentsEditingChip.value.index;
+  const originalNormalized = normalizeValue(
+    sentimentsEditingChip.value.original
+  );
+  const nextNormalized = normalizeValue(formatted);
+
+  if (
+    targetIndex < 0 ||
+    targetIndex >= currentList.length ||
+    normalizeValue(currentList[targetIndex]) !== originalNormalized
+  ) {
+    cancelSentimentsChipEdit();
+    revertSentiments();
+    return;
+  }
+
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === nextNormalized;
+  });
+
+  if (duplicateExists) {
+    notifications.push("Sentiment already exists", "warning", 2000);
+    sentimentsEditingDuplicate.value = true;
+    return;
+  }
+
+  if (currentList[targetIndex] === formatted) {
+    cancelSentimentsChipEdit();
+    return;
+  }
+
+  currentList[targetIndex] = formatted;
+  cancelSentimentsChipEdit();
+  setSentimentsModelValues(currentList, true);
+  await saveSentiments(currentList);
 };
 
 const commitChipEdit = async () => {
@@ -709,6 +929,32 @@ const handleChannelsEditKeydown = async (event: KeyboardEvent) => {
   }
 };
 
+const handleCallPurposesEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    await commitCallPurposesChipEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelCallPurposesChipEdit();
+    revertCallPurposes();
+  }
+};
+
+const handleSentimentsEditKeydown = async (event: KeyboardEvent) => {
+  if (event.key === "Enter" || event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    await commitSentimentsChipEdit();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelSentimentsChipEdit();
+    revertSentiments();
+  }
+};
+
 const resolveElement = (el: any): HTMLElement | null => {
   if (!el) return null;
   if (el instanceof HTMLElement) return el;
@@ -764,6 +1010,44 @@ const registerChannelsChipElement = (el: any, name: string) => {
     normalizeValue(channelsEditingChip.value.original) === normalizeValue(name)
   ) {
     channelsEditingChipElement.value = null;
+  }
+};
+
+const registerCallPurposesChipElement = (el: any, name: string) => {
+  const domEl = resolveElement(el);
+  if (
+    callPurposesEditingChip.value &&
+    normalizeValue(callPurposesEditingChip.value.original) ===
+      normalizeValue(name)
+  ) {
+    callPurposesEditingChipElement.value = domEl;
+  } else if (
+    !domEl &&
+    callPurposesEditingChipElement.value &&
+    callPurposesEditingChip.value &&
+    normalizeValue(callPurposesEditingChip.value.original) ===
+      normalizeValue(name)
+  ) {
+    callPurposesEditingChipElement.value = null;
+  }
+};
+
+const registerSentimentsChipElement = (el: any, name: string) => {
+  const domEl = resolveElement(el);
+  if (
+    sentimentsEditingChip.value &&
+    normalizeValue(sentimentsEditingChip.value.original) ===
+      normalizeValue(name)
+  ) {
+    sentimentsEditingChipElement.value = domEl;
+  } else if (
+    !domEl &&
+    sentimentsEditingChipElement.value &&
+    sentimentsEditingChip.value &&
+    normalizeValue(sentimentsEditingChip.value.original) ===
+      normalizeValue(name)
+  ) {
+    sentimentsEditingChipElement.value = null;
   }
 };
 
@@ -834,6 +1118,38 @@ const isEventInsideChannelsEditingChip = (target: EventTarget | null) => {
   if (
     channelsEditingChipElement.value &&
     channelsEditingChipElement.value.contains(node)
+  )
+    return true;
+  return false;
+};
+
+const isEventInsideCallPurposesEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (
+    callPurposesEditingInputRef.value &&
+    callPurposesEditingInputRef.value.contains(node)
+  )
+    return true;
+  if (
+    callPurposesEditingChipElement.value &&
+    callPurposesEditingChipElement.value.contains(node)
+  )
+    return true;
+  return false;
+};
+
+const isEventInsideSentimentsEditingChip = (target: EventTarget | null) => {
+  if (!target) return false;
+  const node = target as Node;
+  if (
+    sentimentsEditingInputRef.value &&
+    sentimentsEditingInputRef.value.contains(node)
+  )
+    return true;
+  if (
+    sentimentsEditingChipElement.value &&
+    sentimentsEditingChipElement.value.contains(node)
   )
     return true;
   return false;
@@ -914,6 +1230,38 @@ const promptChannelsEditDecisionIfNeeded = () => {
   }
   channelsPendingEditDecision.value = { formatted };
   isChannelsEditConfirmVisible.value = true;
+};
+
+const promptCallPurposesEditDecisionIfNeeded = () => {
+  if (!callPurposesEditingChip.value || isCallPurposesEditConfirmVisible.value)
+    return;
+  if (callPurposesEditingDuplicate.value) {
+    notifications.push("Call purpose already exists", "warning", 2000);
+    return;
+  }
+  const formatted = formatEntry(callPurposesEditingValue.value);
+  if (formatted === callPurposesEditingChip.value.original) {
+    cancelCallPurposesChipEdit();
+    return;
+  }
+  callPurposesPendingEditDecision.value = { formatted };
+  isCallPurposesEditConfirmVisible.value = true;
+};
+
+const promptSentimentsEditDecisionIfNeeded = () => {
+  if (!sentimentsEditingChip.value || isSentimentsEditConfirmVisible.value)
+    return;
+  if (sentimentsEditingDuplicate.value) {
+    notifications.push("Sentiment already exists", "warning", 2000);
+    return;
+  }
+  const formatted = formatEntry(sentimentsEditingValue.value);
+  if (formatted === sentimentsEditingChip.value.original) {
+    cancelSentimentsChipEdit();
+    return;
+  }
+  sentimentsPendingEditDecision.value = { formatted };
+  isSentimentsEditConfirmVisible.value = true;
 };
 
 const handleDocTypesEditInput = () => {
@@ -1127,6 +1475,18 @@ const handleChannelsPointerDown = (event: PointerEvent) => {
   promptChannelsEditDecisionIfNeeded();
 };
 
+const handleCallPurposesPointerDown = (event: PointerEvent) => {
+  if (!callPurposesEditingChip.value) return;
+  if (isEventInsideCallPurposesEditingChip(event.target)) return;
+  promptCallPurposesEditDecisionIfNeeded();
+};
+
+const handleSentimentsPointerDown = (event: PointerEvent) => {
+  if (!sentimentsEditingChip.value) return;
+  if (isEventInsideSentimentsEditingChip(event.target)) return;
+  promptSentimentsEditDecisionIfNeeded();
+};
+
 const handleDocTypesPointerDown = (event: PointerEvent) => {
   if (!docTypesEditingChip.value) return;
   if (isEventInsideDocTypesEditingChip(event.target)) return;
@@ -1205,6 +1565,50 @@ const cancelChannelsEditDecision = () => {
   revertChannels();
 };
 
+const confirmCallPurposesEditDecision = async () => {
+  if (!callPurposesPendingEditDecision.value) return;
+  const { formatted } = callPurposesPendingEditDecision.value;
+  if (!formatted) {
+    cancelCallPurposesEditDecision();
+    return;
+  }
+  callPurposesPendingEditDecision.value = null;
+  isCallPurposesEditConfirmVisible.value = false;
+  callPurposesEditingValue.value = formatted;
+  handleCallPurposesEditInput();
+  if (callPurposesEditingDuplicate.value) return;
+  await commitCallPurposesChipEdit();
+};
+
+const cancelCallPurposesEditDecision = () => {
+  callPurposesPendingEditDecision.value = null;
+  isCallPurposesEditConfirmVisible.value = false;
+  cancelCallPurposesChipEdit();
+  revertCallPurposes();
+};
+
+const confirmSentimentsEditDecision = async () => {
+  if (!sentimentsPendingEditDecision.value) return;
+  const { formatted } = sentimentsPendingEditDecision.value;
+  if (!formatted) {
+    cancelSentimentsEditDecision();
+    return;
+  }
+  sentimentsPendingEditDecision.value = null;
+  isSentimentsEditConfirmVisible.value = false;
+  sentimentsEditingValue.value = formatted;
+  handleSentimentsEditInput();
+  if (sentimentsEditingDuplicate.value) return;
+  await commitSentimentsChipEdit();
+};
+
+const cancelSentimentsEditDecision = () => {
+  sentimentsPendingEditDecision.value = null;
+  isSentimentsEditConfirmVisible.value = false;
+  cancelSentimentsChipEdit();
+  revertSentiments();
+};
+
 const cancelDeleteDialog = () => {
   isDeleteDialogVisible.value = false;
   pendingDeletion.value = null;
@@ -1235,10 +1639,42 @@ const confirmIndDeleteDialog = async () => {
   setIndModelValues(next, true);
 };
 
+const cancelCallPurposesDeleteDialog = () => {
+  isCallPurposesDeleteDialogVisible.value = false;
+  callPurposesPendingDeletion.value = null;
+  revertCallPurposes();
+};
+
+const confirmCallPurposesDeleteDialog = async () => {
+  if (!callPurposesPendingDeletion.value) return;
+  const next = callPurposesPendingDeletion.value.next;
+  callPurposesPendingDeletion.value = null;
+  isCallPurposesDeleteDialogVisible.value = false;
+  await saveCallPurposes(next);
+  setCallPurposesModelValues(next, true);
+};
+
+const cancelSentimentsDeleteDialog = () => {
+  isSentimentsDeleteDialogVisible.value = false;
+  sentimentsPendingDeletion.value = null;
+  revertSentiments();
+};
+
+const confirmSentimentsDeleteDialog = async () => {
+  if (!sentimentsPendingDeletion.value) return;
+  const next = sentimentsPendingDeletion.value.next;
+  sentimentsPendingDeletion.value = null;
+  isSentimentsDeleteDialogVisible.value = false;
+  await saveSentiments(next);
+  setSentimentsModelValues(next, true);
+};
+
 onMounted(() => {
   document.addEventListener("pointerdown", handleGlobalPointerDown, true);
   document.addEventListener("pointerdown", handleIndPointerDown, true);
   document.addEventListener("pointerdown", handleChannelsPointerDown, true);
+  document.addEventListener("pointerdown", handleCallPurposesPointerDown, true);
+  document.addEventListener("pointerdown", handleSentimentsPointerDown, true);
   document.addEventListener("pointerdown", handleDocTypesPointerDown, true);
   document.addEventListener(
     "pointerdown",
@@ -1251,6 +1687,16 @@ onUnmounted(() => {
   document.removeEventListener("pointerdown", handleGlobalPointerDown, true);
   document.removeEventListener("pointerdown", handleIndPointerDown, true);
   document.removeEventListener("pointerdown", handleChannelsPointerDown, true);
+  document.removeEventListener(
+    "pointerdown",
+    handleCallPurposesPointerDown,
+    true
+  );
+  document.removeEventListener(
+    "pointerdown",
+    handleSentimentsPointerDown,
+    true
+  );
   document.removeEventListener("pointerdown", handleDocTypesPointerDown, true);
   document.removeEventListener(
     "pointerdown",
@@ -1530,6 +1976,36 @@ const handleChannelsEditInput = () => {
   channelsEditingDuplicate.value = duplicateExists;
 };
 
+const handleCallPurposesEditInput = () => {
+  if (!callPurposesEditingChip.value) return;
+  const formatted = formatEntry(callPurposesEditingValue.value);
+  const currentList = [...lastCommittedCallPurposes.value];
+  const targetIndex = callPurposesEditingChip.value.index;
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === normalizeValue(formatted);
+  });
+  if (duplicateExists && !callPurposesEditingDuplicate.value) {
+    notifications.push("Call purpose already exists", "warning", 2000);
+  }
+  callPurposesEditingDuplicate.value = duplicateExists;
+};
+
+const handleSentimentsEditInput = () => {
+  if (!sentimentsEditingChip.value) return;
+  const formatted = formatEntry(sentimentsEditingValue.value);
+  const currentList = [...lastCommittedSentiments.value];
+  const targetIndex = sentimentsEditingChip.value.index;
+  const duplicateExists = currentList.some((item, index) => {
+    if (index === targetIndex) return false;
+    return normalizeValue(item) === normalizeValue(formatted);
+  });
+  if (duplicateExists && !sentimentsEditingDuplicate.value) {
+    notifications.push("Sentiment already exists", "warning", 2000);
+  }
+  sentimentsEditingDuplicate.value = duplicateExists;
+};
+
 const saveFlags = async () => {
   if (isSavingFlags.value) return;
   isSavingFlags.value = true;
@@ -1626,6 +2102,50 @@ const saveChannels = async (vals: string[]) => {
     lastCommittedChannels.value = [...cleaned];
   } else {
     notifications.push("Failed to save channels", "error", 3000);
+    loadData();
+  }
+};
+
+const saveCallPurposes = async (vals: string[]) => {
+  const cleaned = cleanEntries(vals);
+  callPurposes.value = cleaned;
+
+  isSavingCallPurposes.value = true;
+  const res = await store.saveRemote({
+    crm: {
+      ...(store.configurations.crm || {}),
+      callPurposes: cleaned,
+    },
+  } as any);
+  isSavingCallPurposes.value = false;
+  if (res) {
+    notifications.push("Call purposes saved", "success", 2000);
+    callPurposes.value = cleaned;
+    lastCommittedCallPurposes.value = [...cleaned];
+  } else {
+    notifications.push("Failed to save call purposes", "error", 3000);
+    loadData();
+  }
+};
+
+const saveSentiments = async (vals: string[]) => {
+  const cleaned = cleanEntries(vals);
+  sentiments.value = cleaned;
+
+  isSavingSentiments.value = true;
+  const res = await store.saveRemote({
+    crm: {
+      ...(store.configurations.crm || {}),
+      sentiment: cleaned,
+    },
+  } as any);
+  isSavingSentiments.value = false;
+  if (res) {
+    notifications.push("Sentiments saved", "success", 2000);
+    sentiments.value = cleaned;
+    lastCommittedSentiments.value = [...cleaned];
+  } else {
+    notifications.push("Failed to save sentiments", "error", 3000);
     loadData();
   }
 };
@@ -1849,6 +2369,387 @@ const syncChannels = async (vals: string[]) => {
   await saveChannels(cleaned);
 };
 
+const setCallPurposesModelValues = (values: string[], commit = false) => {
+  if (commit) lastCommittedCallPurposes.value = [...values];
+  markProgrammaticUpdate();
+  callPurposesModel.value = [...values];
+};
+
+const revertCallPurposes = () => {
+  setCallPurposesModelValues(lastCommittedCallPurposes.value, false);
+};
+
+const handleCallPurposesClose = (name: string) => {
+  if (
+    callPurposesEditingChip.value &&
+    normalizeValue(callPurposesEditingChip.value.original) ===
+      normalizeValue(name)
+  )
+    return;
+  const next = callPurposesModel.value.filter(
+    (val) => normalizeValue(val) !== normalizeValue(name)
+  );
+  callPurposesPendingDeletion.value = { removed: [name], next };
+  isCallPurposesDeleteDialogVisible.value = true;
+  revertCallPurposes();
+};
+
+const syncCallPurposes = async (vals: string[]) => {
+  if (shouldIgnoreUpdate()) return;
+
+  const cleaned = cleanEntries(vals);
+  const current = [...lastCommittedCallPurposes.value];
+  const cleanedNormalized = cleaned.map(normalizeValue);
+  const typedNormalized = normalizeValue(
+    callPurposesLastTypedValue.value || ""
+  );
+
+  const hasLocalDuplicates =
+    new Set(cleanedNormalized).size !== cleanedNormalized.length;
+  if (hasLocalDuplicates) {
+    notifications.push("Call purpose already exists", "warning", 2000);
+    callPurposesLastTypedValue.value = "";
+    revertCallPurposes();
+    return;
+  }
+
+  const currentNormalized = current.map(normalizeValue);
+  const sameValues =
+    cleaned.length === current.length &&
+    cleanedNormalized.every((val, idx) => val === currentNormalized[idx]);
+
+  if (sameValues) {
+    if (typedNormalized && currentNormalized.includes(typedNormalized)) {
+      notifications.push("Call purpose already exists", "warning", 2000);
+      callPurposesLastTypedValue.value = "";
+    }
+    revertCallPurposes();
+    return;
+  }
+
+  const { added, removed } = diffLists(current, cleaned);
+
+  if (!added.length && !removed.length) {
+    revertCallPurposes();
+    return;
+  }
+
+  const duplicateOfExisting = added.some((item) =>
+    currentNormalized.includes(normalizeValue(item))
+  );
+
+  if (duplicateOfExisting) {
+    notifications.push("Call purpose already exists", "warning", 2000);
+    callPurposesLastTypedValue.value = "";
+    revertCallPurposes();
+    return;
+  }
+
+  if (removed.length && !added.length) {
+    callPurposesPendingDeletion.value = { removed, next: cleaned };
+    isCallPurposesDeleteDialogVisible.value = true;
+    revertCallPurposes();
+    return;
+  }
+
+  setCallPurposesModelValues(cleaned, true);
+  callPurposesLastTypedValue.value = "";
+  await saveCallPurposes(cleaned);
+};
+
+const setSentimentsModelValues = (values: string[], commit = false) => {
+  if (commit) lastCommittedSentiments.value = [...values];
+  markProgrammaticUpdate();
+  sentimentsModel.value = [...values];
+};
+
+const revertSentiments = () => {
+  setSentimentsModelValues(lastCommittedSentiments.value, false);
+};
+
+const handleSentimentsClose = (name: string) => {
+  if (
+    sentimentsEditingChip.value &&
+    normalizeValue(sentimentsEditingChip.value.original) ===
+      normalizeValue(name)
+  )
+    return;
+  const next = sentimentsModel.value.filter(
+    (val) => normalizeValue(val) !== normalizeValue(name)
+  );
+  sentimentsPendingDeletion.value = { removed: [name], next };
+  isSentimentsDeleteDialogVisible.value = true;
+  revertSentiments();
+};
+
+const syncSentiments = async (vals: string[]) => {
+  if (shouldIgnoreUpdate()) return;
+
+  const cleaned = cleanEntries(vals);
+  const current = [...lastCommittedSentiments.value];
+  const cleanedNormalized = cleaned.map(normalizeValue);
+  const typedNormalized = normalizeValue(sentimentsLastTypedValue.value || "");
+
+  const hasLocalDuplicates =
+    new Set(cleanedNormalized).size !== cleanedNormalized.length;
+  if (hasLocalDuplicates) {
+    notifications.push("Sentiment already exists", "warning", 2000);
+    sentimentsLastTypedValue.value = "";
+    revertSentiments();
+    return;
+  }
+
+  const currentNormalized = current.map(normalizeValue);
+  const sameValues =
+    cleaned.length === current.length &&
+    cleanedNormalized.every((val, idx) => val === currentNormalized[idx]);
+
+  if (sameValues) {
+    if (typedNormalized && currentNormalized.includes(typedNormalized)) {
+      notifications.push("Sentiment already exists", "warning", 2000);
+      sentimentsLastTypedValue.value = "";
+    }
+    revertSentiments();
+    return;
+  }
+
+  const { added, removed } = diffLists(current, cleaned);
+
+  if (!added.length && !removed.length) {
+    revertSentiments();
+    return;
+  }
+
+  const duplicateOfExisting = added.some((item) =>
+    currentNormalized.includes(normalizeValue(item))
+  );
+
+  if (duplicateOfExisting) {
+    notifications.push("Sentiment already exists", "warning", 2000);
+    sentimentsLastTypedValue.value = "";
+    revertSentiments();
+    return;
+  }
+
+  if (removed.length && !added.length) {
+    sentimentsPendingDeletion.value = { removed, next: cleaned };
+    isSentimentsDeleteDialogVisible.value = true;
+    revertSentiments();
+    return;
+  }
+
+  setSentimentsModelValues(cleaned, true);
+  sentimentsLastTypedValue.value = "";
+  await saveSentiments(cleaned);
+};
+
+// Notes functions
+const setNotesModelValues = (values: string[], commit = false) => {
+  if (commit) lastCommittedNotes.value = [...values];
+  markProgrammaticUpdate();
+  notesModel.value = [...values];
+};
+
+const revertNotes = () => {
+  setNotesModelValues(lastCommittedNotes.value, false);
+};
+
+const saveNotes = async (vals: string[]) => {
+  const cleaned = cleanEntries(vals);
+  notes.value = cleaned;
+
+  isSavingNotes.value = true;
+  const res = await store.saveRemote({
+    crm: {
+      ...(store.configurations.crm || {}),
+      notes: cleaned,
+    },
+  } as any);
+  isSavingNotes.value = false;
+  if (res) {
+    notifications.push("Notes saved", "success", 2000);
+    notes.value = cleaned;
+    lastCommittedNotes.value = [...cleaned];
+  } else {
+    notifications.push("Failed to save notes", "error", 3000);
+    loadData();
+  }
+};
+
+const handleNotesClose = (name: string) => {
+  if (
+    notesEditingChip.value &&
+    normalizeValue(notesEditingChip.value.original) === normalizeValue(name)
+  )
+    return;
+  const next = notesModel.value.filter(
+    (val) => normalizeValue(val) !== normalizeValue(name)
+  );
+  notesPendingDeletion.value = { removed: [name], next };
+  isNotesDeleteDialogVisible.value = true;
+  revertNotes();
+};
+
+const syncNotes = async (vals: string[]) => {
+  if (shouldIgnoreUpdate()) return;
+
+  const cleaned = cleanEntries(vals);
+  const current = [...lastCommittedNotes.value];
+  const cleanedNormalized = cleaned.map(normalizeValue);
+  const typedNormalized = normalizeValue(notesLastTypedValue.value || "");
+
+  const hasLocalDuplicates =
+    new Set(cleanedNormalized).size !== cleanedNormalized.length;
+  if (hasLocalDuplicates) {
+    notifications.push("Note already exists", "warning", 2000);
+    notesLastTypedValue.value = "";
+    revertNotes();
+    return;
+  }
+
+  const currentNormalized = current.map(normalizeValue);
+  const sameValues =
+    cleaned.length === current.length &&
+    cleanedNormalized.every((val, idx) => val === currentNormalized[idx]);
+
+  if (sameValues) {
+    if (typedNormalized && currentNormalized.includes(typedNormalized)) {
+      notifications.push("Note already exists", "warning", 2000);
+      notesLastTypedValue.value = "";
+    }
+    revertNotes();
+    return;
+  }
+
+  const { added, removed } = diffLists(current, cleaned);
+
+  if (!added.length && !removed.length) {
+    revertNotes();
+    return;
+  }
+
+  const duplicateOfExisting = added.some((item) =>
+    currentNormalized.includes(normalizeValue(item))
+  );
+
+  if (duplicateOfExisting) {
+    notifications.push("Note already exists", "warning", 2000);
+    notesLastTypedValue.value = "";
+    revertNotes();
+    return;
+  }
+
+  if (removed.length && !added.length) {
+    notesPendingDeletion.value = { removed, next: cleaned };
+    isNotesDeleteDialogVisible.value = true;
+    revertNotes();
+    return;
+  }
+
+  setNotesModelValues(cleaned, true);
+  notesLastTypedValue.value = "";
+  await saveNotes(cleaned);
+};
+
+const registerNotesChipElement = (el: any, value: string) => {
+  if (
+    el &&
+    notesEditingChip.value &&
+    normalizeValue(notesEditingChip.value.original) === normalizeValue(value)
+  ) {
+    notesEditingChipElement.value = el.$el || el;
+  }
+};
+
+const startNotesEditingChip = (original: string) => {
+  const idx = notesModel.value.findIndex(
+    (v) => normalizeValue(v) === normalizeValue(original)
+  );
+  if (idx < 0) return;
+  notesEditingChip.value = { original, index: idx };
+  notesEditingValue.value = original;
+  notesEditingDuplicate.value = false;
+  nextTick(() => {
+    notesEditingInputRef.value?.focus();
+    notesEditingInputRef.value?.select();
+  });
+};
+
+const cancelNotesChipEdit = () => {
+  notesEditingChip.value = null;
+  notesEditingValue.value = "";
+  notesEditingDuplicate.value = false;
+  notesPendingEditDecision.value = null;
+};
+
+const handleNotesEditInput = () => {
+  const formatted = formatEntry(notesEditingValue.value);
+  if (!formatted || !notesEditingChip.value) {
+    notesEditingDuplicate.value = false;
+    return;
+  }
+  const normalizedInput = normalizeValue(formatted);
+  const normalizedOriginal = normalizeValue(notesEditingChip.value.original);
+  if (normalizedInput === normalizedOriginal) {
+    notesEditingDuplicate.value = false;
+    return;
+  }
+  const isDupe = notesModel.value.some(
+    (val, i) =>
+      i !== notesEditingChip.value!.index &&
+      normalizeValue(val) === normalizedInput
+  );
+  notesEditingDuplicate.value = isDupe;
+};
+
+const handleNotesEditKeydown = (event: KeyboardEvent) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    notesEditingInputRef.value?.blur();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    cancelNotesChipEdit();
+  }
+};
+
+const confirmNotesEditDecision = async () => {
+  if (!notesPendingEditDecision.value || !notesEditingChip.value) return;
+  const updatedList = [...notesModel.value];
+  updatedList[notesEditingChip.value.index] =
+    notesPendingEditDecision.value.formatted;
+  setNotesModelValues(updatedList, true);
+  cancelNotesChipEdit();
+  isNotesEditConfirmVisible.value = false;
+  await saveNotes(updatedList);
+};
+
+const cancelNotesEditDecision = () => {
+  cancelNotesChipEdit();
+  isNotesEditConfirmVisible.value = false;
+  revertNotes();
+};
+
+const promptNotesEditDecisionIfNeeded = () => {
+  if (!notesEditingChip.value) return;
+  const formatted = formatEntry(notesEditingValue.value);
+  const normalizedFormatted = normalizeValue(formatted);
+  const normalizedOriginal = normalizeValue(notesEditingChip.value.original);
+
+  if (!formatted || normalizedFormatted === normalizedOriginal) {
+    cancelNotesChipEdit();
+    return;
+  }
+
+  if (notesEditingDuplicate.value) {
+    notifications.push("Note already exists", "warning", 2000);
+    cancelNotesChipEdit();
+    return;
+  }
+
+  notesPendingEditDecision.value = { formatted };
+  isNotesEditConfirmVisible.value = true;
+};
+
 const onIndInactiveInput = (event: Event) => {
   const val = parseFloat((event.target as HTMLInputElement).value);
   if (isNaN(val) || val < 0) {
@@ -1865,279 +2766,571 @@ const onIndInactiveInput = (event: Event) => {
 </script>
 
 <template>
-  <VCard class="mb-6" title="Organization">
+  <VCard class="mb-6" title="Contact Configuration">
     <VCardText>
-      <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Categories</h6>
-        <VCombobox
-          v-model="categoriesModel"
-          multiple
-          chips
-          hide-details
-          :placeholder="categoryPlaceholder"
-          :loading="isSavingCategories"
-          :disabled="isSavingCategories"
-          class="mb-4"
-          v-model:search="searchValue"
-          @update:model-value="syncCategories($event as string[])"
-        >
-          <template #chip="{ props, item }">
-            <VChip
-              v-bind="props"
-              size="small"
-              class="d-inline-flex align-center"
-              :class="{
-                'chip-editing':
-                  editingChip &&
-                  normalizeValue(editingChip.original) ===
-                    normalizeValue(item.raw),
-                duplicate:
-                  editingDuplicate &&
-                  editingChip &&
-                  normalizeValue(editingChip.original) ===
-                    normalizeValue(item.raw),
-              }"
-              :variant="hoveredChip === item.raw ? 'tonal' : (props.variant as any)"
-              :color="hoveredChip === item.raw ? 'error' : (props.color as string)"
-              @dblclick.stop.prevent="startEditingChip(item.raw)"
-              @blur="promptEditDecisionIfNeeded"
-              tabindex="0"
-              :ref="(el: any) => registerChipElement(el, item.raw)"
+      <VCard variant="flat" class="mb-4 testTed">
+        <VCardItem>
+          <VCardTitle>Organization</VCardTitle>
+        </VCardItem>
+        <VCardText>
+          <div class="mb-4">
+            <label class="text-caption mb-2 d-block">Categories</label>
+            <VCombobox
+              v-model="categoriesModel"
+              multiple
+              chips
+              hide-details
+              :placeholder="categoryPlaceholder"
+              :loading="isSavingCategories"
+              :disabled="isSavingCategories"
+              class="mb-4"
+              v-model:search="searchValue"
+              @update:model-value="syncCategories($event as string[])"
             >
-              <template
-                v-if="
-                  editingChip &&
-                  normalizeValue(editingChip.original) ===
-                    normalizeValue(item.raw)
-                "
-              >
-                <input
-                  ref="editingInputRef"
-                  v-model="editingValue"
-                  class="chip-edit-input me-2"
-                  @keydown.stop="handleEditKeydown"
-                  @input="handleEditInput"
-                  @click.stop
-                  @mousedown.stop
-                  @pointerdown.stop
-                />
-                <VIcon
-                  icon="tabler-x"
-                  size="14"
-                  class="cursor-pointer"
-                  @click.stop.prevent="cancelChipEdit"
-                />
+              <template #chip="{ props, item }">
+                <VChip
+                  v-bind="props"
+                  size="small"
+                  class="d-inline-flex align-center"
+                  :class="{
+                    'chip-editing':
+                      editingChip &&
+                      normalizeValue(editingChip.original) ===
+                        normalizeValue(item.raw),
+                    duplicate:
+                      editingDuplicate &&
+                      editingChip &&
+                      normalizeValue(editingChip.original) ===
+                        normalizeValue(item.raw),
+                  }"
+                  :variant="hoveredChip === item.raw ? 'tonal' : (props.variant as any)"
+                  :color="hoveredChip === item.raw ? 'error' : (props.color as string)"
+                  @dblclick.stop.prevent="startEditingChip(item.raw)"
+                  @blur="promptEditDecisionIfNeeded"
+                  tabindex="0"
+                  :ref="(el: any) => registerChipElement(el, item.raw)"
+                >
+                  <template
+                    v-if="
+                      editingChip &&
+                      normalizeValue(editingChip.original) ===
+                        normalizeValue(item.raw)
+                    "
+                  >
+                    <input ref="editingInputRef" v-model="editingValue"
+                    class="chip-edit-input me-2"
+                    @keydown.stop="handleEditKeydown" @input="handleEditInput"
+                    @click.stop @mousedown.stop @pointerdown.stop" />
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @click.stop.prevent="cancelChipEdit"
+                    />
+                  </template>
+                  <template v-else>
+                    <span class="me-2">{{ item.raw }}</span>
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @mouseenter="hoveredChip = item.raw"
+                      @mouseleave="hoveredChip = null"
+                      @click.stop.prevent="handleChipClose(item.raw)"
+                    />
+                  </template>
+                </VChip>
               </template>
-              <template v-else>
-                <span class="me-2">{{ item.raw }}</span>
-                <VIcon
-                  icon="tabler-x"
-                  size="14"
-                  class="cursor-pointer"
-                  @mouseenter="hoveredChip = item.raw"
-                  @mouseleave="hoveredChip = null"
-                  @click.stop.prevent="handleChipClose(item.raw)"
-                />
-              </template>
-            </VChip>
-          </template>
-        </VCombobox>
-      </div>
+            </VCombobox>
+          </div>
 
-      <VRow>
-        <VCol cols="12" md="4">
-          <label class="text-subtitle-2 mb-2 d-block">
-            Inactive After (Months)
-          </label>
-          <AppTextField
-            v-model.number="inactiveAfterMonths"
-            type="number"
-            min="0"
+          <VRow>
+            <VCol cols="12" md="4">
+              <label class="text-subtitle-2 mb-2 d-block">
+                Inactive After (Months)
+              </label>
+              <AppTextField
+                v-model.number="inactiveAfterMonths"
+                type="number"
+                min="0"
+                hide-details
+                density="compact"
+                :loading="isSavingFlags"
+                :disabled="isSavingFlags"
+                @keydown="
+                (e: KeyboardEvent) => {
+                  if (
+                    e.key === '-' ||
+                    e.key === 'e' ||
+                    e.key === 'E' ||
+                    e.key === '+'
+                  )
+                    e.preventDefault();
+                }
+              "
+                @input="onInactiveInput"
+              />
+            </VCol>
+            <VCol cols="6" md="4">
+              <VRadioGroup
+                label="Require Phone?"
+                v-model="requirePhone"
+                inline
+                :disabled="isSavingFlags"
+                class="mb-0"
+                @change="onRequirePhoneChange"
+              >
+                <VRadio :value="true" label="Yes" />
+                <VRadio :value="false" label="No" />
+              </VRadioGroup>
+            </VCol>
+            <VCol cols="6" md="4">
+              <VRadioGroup
+                label="Require Email?"
+                v-model="requireEmail"
+                inline
+                :disabled="isSavingFlags"
+                class="mb-0"
+                @change="onRequireEmailChange"
+              >
+                <VRadio :value="true" label="Yes" />
+                <VRadio :value="false" label="No" />
+              </VRadioGroup>
+            </VCol>
+          </VRow>
+        </VCardText>
+      </VCard>
+
+      <VCard variant="flat" class="mb-4 testTed">
+        <VCardItem>
+          <VCardTitle>Individual</VCardTitle>
+        </VCardItem>
+        <VCardText>
+          <div class="mb-4">
+            <label class="text-caption mb-2 d-block">Categories</label>
+            <VCombobox
+              v-model="indCategoriesModel"
+              multiple
+              chips
+              hide-details
+              :placeholder="indCategoryPlaceholder"
+              :loading="isSavingIndCategories"
+              :disabled="isSavingIndCategories"
+              class="mb-4"
+              v-model:search="indSearchValue"
+              @update:model-value="syncIndCategories($event as string[])"
+            >
+              <template #chip="{ props, item }">
+                <VChip
+                  v-bind="props"
+                  size="small"
+                  class="d-inline-flex align-center"
+                  :class="{
+                    'chip-editing':
+                      indEditingChip &&
+                      normalizeValue(indEditingChip.original) ===
+                        normalizeValue(item.raw),
+                    duplicate:
+                      indEditingDuplicate &&
+                      indEditingChip &&
+                      normalizeValue(indEditingChip.original) ===
+                        normalizeValue(item.raw),
+                  }"
+                  :variant="
+                  indHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+                "
+                  :color="
+                  indHoveredChip === item.raw ? 'error' : (props.color as string)
+                "
+                  @dblclick.stop.prevent="startIndEditingChip(item.raw)"
+                  @blur="promptIndEditDecisionIfNeeded"
+                  tabindex="0"
+                  :ref="(el: any) => registerIndChipElement(el, item.raw)"
+                >
+                  <template
+                    v-if="
+                      indEditingChip &&
+                      normalizeValue(indEditingChip.original) ===
+                        normalizeValue(item.raw)
+                    "
+                  >
+                    <input
+                      ref="indEditingInputRef"
+                      v-model="indEditingValue"
+                      class="chip-edit-input me-2"
+                      @keydown.stop="handleIndEditKeydown"
+                      @input="handleIndEditInput"
+                      @click.stop
+                      @mousedown.stop
+                      @pointerdown.stop
+                    />
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @click.stop.prevent="cancelIndChipEdit"
+                    />
+                  </template>
+                  <template v-else>
+                    <span class="me-2">{{ item.raw }}</span>
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @mouseenter="indHoveredChip = item.raw"
+                      @mouseleave="indHoveredChip = null"
+                      @click.stop.prevent="handleIndChipClose(item.raw)"
+                    />
+                  </template>
+                </VChip>
+              </template>
+            </VCombobox>
+          </div>
+
+          <VRow>
+            <VCol cols="12" md="4">
+              <label class="text-subtitle-2 mb-2 d-block">
+                Inactive After (Months)
+              </label>
+              <VTextField
+                v-model.number="indInactiveAfterMonths"
+                type="number"
+                min="0"
+                hide-details
+                density="compact"
+                :loading="isSavingIndFlags"
+                :disabled="isSavingIndFlags"
+                @keydown="
+                (e: KeyboardEvent) => {
+                  if (
+                    e.key === '-' ||
+                    e.key === 'e' ||
+                    e.key === 'E' ||
+                    e.key === '+'
+                  )
+                    e.preventDefault();
+                }
+              "
+                @input="onIndInactiveInput"
+              />
+            </VCol>
+            <VCol cols="6" md="4">
+              <VRadioGroup
+                label="Require Phone?"
+                v-model="indRequirePhone"
+                inline
+                :disabled="isSavingIndFlags"
+                class="mb-0"
+                @change="() => void saveIndFlags()"
+              >
+                <VRadio :value="true" label="Yes" />
+                <VRadio :value="false" label="No" />
+              </VRadioGroup>
+            </VCol>
+            <VCol cols="6" md="4">
+              <VRadioGroup
+                label="Require Email?"
+                v-model="indRequireEmail"
+                inline
+                :disabled="isSavingIndFlags"
+                class="mb-0"
+                @change="() => void saveIndFlags()"
+              >
+                <VRadio :value="true" label="Yes" />
+                <VRadio :value="false" label="No" />
+              </VRadioGroup>
+            </VCol>
+          </VRow>
+        </VCardText>
+      </VCard>
+
+      <VCard variant="flat" class="mb-4 testTed">
+        <VCardItem>
+          <VCardTitle>Default Contact Type</VCardTitle>
+        </VCardItem>
+        <VCardText>
+          <VSelect
+            v-model="defaultContactType"
+            :items="['Organization', 'Individual', 'Ask Everytime']"
             hide-details
             density="compact"
-            :loading="isSavingFlags"
-            :disabled="isSavingFlags"
-            @keydown="
-              (e: KeyboardEvent) => {
-                if (
-                  e.key === '-' ||
-                  e.key === 'e' ||
-                  e.key === 'E' ||
-                  e.key === '+'
-                )
-                  e.preventDefault();
-              }
-            "
-            @input="onInactiveInput"
+            :loading="isSavingDefaultContactType"
+            :disabled="isSavingDefaultContactType"
+            @update:model-value="() => saveDefaultContactType()"
           />
-        </VCol>
-        <VCol cols="6" md="4">
-          <VRadioGroup
-            label="Require Phone?"
-            v-model="requirePhone"
-            inline
-            :disabled="isSavingFlags"
-            class="mb-0"
-            @change="onRequirePhoneChange"
-          >
-            <VRadio :value="true" label="Yes" />
-            <VRadio :value="false" label="No" />
-          </VRadioGroup>
-        </VCol>
-        <VCol cols="6" md="4">
-          <VRadioGroup
-            label="Require Email?"
-            v-model="requireEmail"
-            inline
-            :disabled="isSavingFlags"
-            class="mb-0"
-            @change="onRequireEmailChange"
-          >
-            <VRadio :value="true" label="Yes" />
-            <VRadio :value="false" label="No" />
-          </VRadioGroup>
-        </VCol>
-      </VRow>
-    </VCardText>
-  </VCard>
+        </VCardText>
+      </VCard>
 
-  <VCard class="mb-6" title="Individual">
-    <VCardText>
-      <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Categories</h6>
-        <VCombobox
-          v-model="indCategoriesModel"
-          multiple
-          chips
-          hide-details
-          :placeholder="indCategoryPlaceholder"
-          :loading="isSavingIndCategories"
-          :disabled="isSavingIndCategories"
-          class="mb-4"
-          v-model:search="indSearchValue"
-          @update:model-value="syncIndCategories($event as string[])"
-        >
-          <template #chip="{ props, item }">
-            <VChip
-              v-bind="props"
-              size="small"
-              class="d-inline-flex align-center"
-              :class="{
-                'chip-editing':
-                  indEditingChip &&
-                  normalizeValue(indEditingChip.original) ===
-                    normalizeValue(item.raw),
-                duplicate:
-                  indEditingDuplicate &&
-                  indEditingChip &&
-                  normalizeValue(indEditingChip.original) ===
-                    normalizeValue(item.raw),
-              }"
-              :variant="
-                indHoveredChip === item.raw ? 'tonal' : (props.variant as any)
-              "
-              :color="
-                indHoveredChip === item.raw ? 'error' : (props.color as string)
-              "
-              @dblclick.stop.prevent="startIndEditingChip(item.raw)"
-              @blur="promptIndEditDecisionIfNeeded"
-              tabindex="0"
-              :ref="(el: any) => registerIndChipElement(el, item.raw)"
-            >
-              <template
-                v-if="
-                  indEditingChip &&
-                  normalizeValue(indEditingChip.original) ===
-                    normalizeValue(item.raw)
-                "
-              >
-                <input
-                  ref="indEditingInputRef"
-                  v-model="indEditingValue"
-                  class="chip-edit-input me-2"
-                  @keydown.stop="handleIndEditKeydown"
-                  @input="handleIndEditInput"
-                  @click.stop
-                  @mousedown.stop
-                  @pointerdown.stop
-                />
-                <VIcon
-                  icon="tabler-x"
-                  size="14"
-                  class="cursor-pointer"
-                  @click.stop.prevent="cancelIndChipEdit"
-                />
-              </template>
-              <template v-else>
-                <span class="me-2">{{ item.raw }}</span>
-                <VIcon
-                  icon="tabler-x"
-                  size="14"
-                  class="cursor-pointer"
-                  @mouseenter="indHoveredChip = item.raw"
-                  @mouseleave="indHoveredChip = null"
-                  @click.stop.prevent="handleIndChipClose(item.raw)"
-                />
-              </template>
-            </VChip>
-          </template>
-        </VCombobox>
-      </div>
-
-      <VRow>
-        <VCol cols="12" md="4">
-          <label class="text-subtitle-2 mb-2 d-block">
-            Inactive After (Months)
-          </label>
-          <VTextField
-            v-model.number="indInactiveAfterMonths"
-            type="number"
-            min="0"
+      <VCard variant="flat" class="mb-4 testTed">
+        <VCardItem>
+          <VCardTitle>Channels</VCardTitle>
+        </VCardItem>
+        <VCardText>
+          <VCombobox
+            v-model="channelsModel"
+            multiple
+            chips
             hide-details
-            density="compact"
-            :loading="isSavingIndFlags"
-            :disabled="isSavingIndFlags"
-            @keydown="
-              (e: KeyboardEvent) => {
-                if (
-                  e.key === '-' ||
-                  e.key === 'e' ||
-                  e.key === 'E' ||
-                  e.key === '+'
-                )
-                  e.preventDefault();
-              }
-            "
-            @input="onIndInactiveInput"
-          />
-        </VCol>
-        <VCol cols="6" md="4">
-          <VRadioGroup
-            label="Require Phone?"
-            v-model="indRequirePhone"
-            inline
-            :disabled="isSavingIndFlags"
-            class="mb-0"
-            @change="() => void saveIndFlags()"
+            :placeholder="'Add channels'"
+            :loading="isSavingChannels"
+            :disabled="isSavingChannels"
+            class="mb-4"
+            v-model:search="channelsSearchValue"
+            @update:model-value="syncChannels($event as string[])"
           >
-            <VRadio :value="true" label="Yes" />
-            <VRadio :value="false" label="No" />
-          </VRadioGroup>
-        </VCol>
-        <VCol cols="6" md="4">
-          <VRadioGroup
-            label="Require Email?"
-            v-model="indRequireEmail"
-            inline
-            :disabled="isSavingIndFlags"
-            class="mb-0"
-            @change="() => void saveIndFlags()"
-          >
-            <VRadio :value="true" label="Yes" />
-            <VRadio :value="false" label="No" />
-          </VRadioGroup>
-        </VCol>
-      </VRow>
+            <template #chip="{ props, item }">
+              <VChip
+                v-bind="props"
+                size="small"
+                class="d-inline-flex align-center"
+                :class="{
+                  'chip-editing':
+                    channelsEditingChip &&
+                    normalizeValue(channelsEditingChip.original) ===
+                      normalizeValue(item.raw),
+                  duplicate:
+                    channelsEditingDuplicate &&
+                    channelsEditingChip &&
+                    normalizeValue(channelsEditingChip.original) ===
+                      normalizeValue(item.raw),
+                }"
+                :variant="
+                channelsHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+              "
+                :color="
+                channelsHoveredChip === item.raw ? 'error' : (props.color as string)
+              "
+                @dblclick.stop.prevent="startChannelsEditingChip(item.raw)"
+                @blur="promptChannelsEditDecisionIfNeeded"
+                tabindex="0"
+                :ref="(el: any) => registerChannelsChipElement(el, item.raw)"
+              >
+                <template
+                  v-if="
+                    channelsEditingChip &&
+                    normalizeValue(channelsEditingChip.original) ===
+                      normalizeValue(item.raw)
+                  "
+                >
+                  <input
+                    ref="channelsEditingInputRef"
+                    v-model="channelsEditingValue"
+                    class="chip-edit-input me-2"
+                    @keydown.stop="handleChannelsEditKeydown"
+                    @input="handleChannelsEditInput"
+                    @click.stop
+                    @mousedown.stop
+                    @pointerdown.stop
+                  />
+                  <VIcon
+                    icon="tabler-x"
+                    size="14"
+                    class="cursor-pointer"
+                    @click.stop.prevent="cancelChannelsChipEdit"
+                  />
+                </template>
+                <template v-else>
+                  <span class="me-2">{{ item.raw }}</span>
+                  <VIcon
+                    icon="tabler-x"
+                    size="14"
+                    class="cursor-pointer"
+                    @mouseenter="channelsHoveredChip = item.raw"
+                    @mouseleave="channelsHoveredChip = null"
+                    @click.stop.prevent="handleChannelsClose(item.raw)"
+                  />
+                </template>
+              </VChip>
+            </template>
+          </VCombobox>
+        </VCardText>
+      </VCard>
+
+      <VCard variant="flat" class="testTed">
+        <VCardItem>
+          <VCardTitle>Documents</VCardTitle>
+        </VCardItem>
+        <VCardText>
+          <div class="mb-4">
+            <label class="text-caption mb-2 d-block">Document Types</label>
+            <VCombobox
+              v-model="docTypesModel"
+              multiple
+              chips
+              hide-details
+              :placeholder="'Add document types'"
+              :loading="isSavingDocuments"
+              :disabled="isSavingDocuments"
+              class="mb-4"
+              v-model:search="docTypesSearchValue"
+              @update:model-value="onDocTypesChange($event as string[])"
+            >
+              <template #chip="{ props, item }">
+                <VChip
+                  v-bind="props"
+                  size="small"
+                  class="d-inline-flex align-center"
+                  :class="{
+                    'chip-editing':
+                      docTypesEditingChip &&
+                      normalizeValue(docTypesEditingChip.original) ===
+                        normalizeValue(item.raw),
+                    duplicate:
+                      docTypesEditingDuplicate &&
+                      docTypesEditingChip &&
+                      normalizeValue(docTypesEditingChip.original) ===
+                        normalizeValue(item.raw),
+                  }"
+                  :variant="
+                  docTypesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+                "
+                  :color="
+                  docTypesHoveredChip === item.raw ? 'error' : (props.color as string)
+                "
+                  @dblclick.stop.prevent="startDocTypesEditingChip(item.raw)"
+                  @blur="promptDocTypesEditDecisionIfNeeded"
+                  tabindex="0"
+                  :ref="(el: any) => registerDocTypesChipElement(el, item.raw)"
+                >
+                  <template
+                    v-if="
+                      docTypesEditingChip &&
+                      normalizeValue(docTypesEditingChip.original) ===
+                        normalizeValue(item.raw)
+                    "
+                  >
+                    <input
+                      ref="docTypesEditingInputRef"
+                      v-model="docTypesEditingValue"
+                      class="chip-edit-input me-2"
+                      @keydown.stop="handleDocTypesEditKeydown"
+                      @input="handleDocTypesEditInput"
+                      @click.stop
+                      @mousedown.stop
+                      @pointerdown.stop
+                    />
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @click.stop.prevent="cancelDocTypesChipEdit"
+                    />
+                  </template>
+                  <template v-else>
+                    <span class="me-2">{{ item.raw }}</span>
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @mouseenter="docTypesHoveredChip = item.raw"
+                      @mouseleave="docTypesHoveredChip = null"
+                      @click.stop.prevent="handleDocTypesClose(item.raw)"
+                    />
+                  </template>
+                </VChip>
+              </template>
+            </VCombobox>
+          </div>
+
+          <div class="mb-4">
+            <label class="text-caption mb-2 d-block">Document Categories</label>
+            <VCombobox
+              v-model="docCategoriesModel"
+              multiple
+              chips
+              hide-details
+              :placeholder="'Add document categories'"
+              :loading="isSavingDocuments"
+              :disabled="isSavingDocuments"
+              class="mb-4"
+              v-model:search="docCategoriesSearchValue"
+              @update:model-value="onDocCategoriesChange($event as string[])"
+            >
+              <template #chip="{ props, item }">
+                <VChip
+                  v-bind="props"
+                  size="small"
+                  class="d-inline-flex align-center"
+                  :class="{
+                    'chip-editing':
+                      docCategoriesEditingChip &&
+                      normalizeValue(docCategoriesEditingChip.original) ===
+                        normalizeValue(item.raw),
+                    duplicate:
+                      docCategoriesEditingDuplicate &&
+                      docCategoriesEditingChip &&
+                      normalizeValue(docCategoriesEditingChip.original) ===
+                        normalizeValue(item.raw),
+                  }"
+                  :variant="
+                  docCategoriesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+                "
+                  :color="
+                  docCategoriesHoveredChip === item.raw ? 'error' : (props.color as string)
+                "
+                  @dblclick.stop.prevent="
+                    startDocCategoriesEditingChip(item.raw)
+                  "
+                  @blur="promptDocCategoriesEditDecisionIfNeeded"
+                  tabindex="0"
+                  :ref="(el: any) => registerDocCategoriesChipElement(el, item.raw)"
+                >
+                  <template
+                    v-if="
+                      docCategoriesEditingChip &&
+                      normalizeValue(docCategoriesEditingChip.original) ===
+                        normalizeValue(item.raw)
+                    "
+                  >
+                    <input
+                      ref="docCategoriesEditingInputRef"
+                      v-model="docCategoriesEditingValue"
+                      class="chip-edit-input me-2"
+                      @keydown.stop="handleDocCategoriesEditKeydown"
+                      @input="handleDocCategoriesEditInput"
+                      @click.stop
+                      @mousedown.stop
+                      @pointerdown.stop
+                    />
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @click.stop.prevent="cancelDocCategoriesChipEdit"
+                    />
+                  </template>
+                  <template v-else>
+                    <span class="me-2">{{ item.raw }}</span>
+                    <VIcon
+                      icon="tabler-x"
+                      size="14"
+                      class="cursor-pointer"
+                      @mouseenter="docCategoriesHoveredChip = item.raw"
+                      @mouseleave="docCategoriesHoveredChip = null"
+                      @click.stop.prevent="handleDocCategoriesClose(item.raw)"
+                    />
+                  </template>
+                </VChip>
+              </template>
+            </VCombobox>
+          </div>
+
+          <div>
+            <label class="text-subtitle-2 mb-2 d-block"
+              >Document Renewable?</label
+            >
+            <VRadioGroup
+              v-model="documentRenewable"
+              inline
+              class="mb-0"
+              @change="() => saveDocuments()"
+            >
+              <VRadio :value="true" label="Yes" />
+              <VRadio :value="false" label="No" />
+            </VRadioGroup>
+          </div>
+        </VCardText>
+      </VCard>
     </VCardText>
   </VCard>
 
@@ -2209,6 +3402,199 @@ const onIndInactiveInput = (event: Event) => {
               isChannelsDeleteDialogVisible = false;
               await saveChannels(next);
               setChannelsModelValues(next, true);
+            }
+          "
+        >
+          Remove
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isCallPurposesEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ callPurposesEditingChip?.original }} ->
+            {{ callPurposesPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelCallPurposesEditDecision"
+        >
+          Revert
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          @click="confirmCallPurposesEditDecision"
+        >
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isCallPurposesDeleteDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Remove call purpose</VCardTitle>
+      <VCardText>
+        <p v-if="callPurposesPendingDeletion">
+          Are you sure you want to permanently remove
+          <strong>{{ callPurposesPendingDeletion.removed.join(", ") }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelCallPurposesDeleteDialog"
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="error"
+          @click="confirmCallPurposesDeleteDialog"
+        >
+          Remove
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isSentimentsEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ sentimentsEditingChip?.original }} ->
+            {{ sentimentsPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelSentimentsEditDecision"
+        >
+          Revert
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          @click="confirmSentimentsEditDecision"
+        >
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isSentimentsDeleteDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Remove sentiment</VCardTitle>
+      <VCardText>
+        <p v-if="sentimentsPendingDeletion">
+          Are you sure you want to permanently remove
+          <strong>{{ sentimentsPendingDeletion.removed.join(", ") }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="cancelSentimentsDeleteDialog"
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="error"
+          @click="confirmSentimentsDeleteDialog"
+        >
+          Remove
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isNotesEditConfirmVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Unsaved changes</VCardTitle>
+      <VCardText>
+        <p>
+          Keep the changes to
+          <strong
+            >{{ notesEditingChip?.original }} ->
+            {{ notesPendingEditDecision?.formatted }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn variant="text" color="secondary" @click="cancelNotesEditDecision">
+          Revert
+        </VBtn>
+        <VBtn variant="tonal" color="primary" @click="confirmNotesEditDecision">
+          Keep changes
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isNotesDeleteDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Remove note</VCardTitle>
+      <VCardText>
+        <p v-if="notesPendingDeletion">
+          Are you sure you want to permanently remove
+          <strong>{{ notesPendingDeletion.removed.join(", ") }}</strong
+          >?
+        </p>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="
+            () => {
+              isNotesDeleteDialogVisible = false;
+              notesPendingDeletion = null;
+              revertNotes();
+            }
+          "
+        >
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="error"
+          @click="
+            async () => {
+              if (!notesPendingDeletion) return;
+              const next = notesPendingDeletion.next;
+              notesPendingDeletion = null;
+              isNotesDeleteDialogVisible = false;
+              await saveNotes(next);
+              setNotesModelValues(next, true);
             }
           "
         >
@@ -2342,117 +3728,21 @@ const onIndInactiveInput = (event: Event) => {
     </VCard>
   </VDialog>
 
-  <VCard class="mb-6" title="Default Contact type">
-    <VCardText>
-      <VSelect
-        v-model="defaultContactType"
-        :items="['Organization', 'Individual', 'Ask Everytime']"
-        hide-details
-        density="compact"
-        :loading="isSavingDefaultContactType"
-        :disabled="isSavingDefaultContactType"
-        @update:model-value="() => saveDefaultContactType()"
-      />
-    </VCardText>
-  </VCard>
-
-  <VCard class="mb-6" title="Channels">
-    <VCardText>
-      <VCombobox
-        v-model="channelsModel"
-        multiple
-        chips
-        hide-details
-        :placeholder="'Add channels'"
-        :loading="isSavingChannels"
-        :disabled="isSavingChannels"
-        class="mb-4"
-        v-model:search="channelsSearchValue"
-        @update:model-value="syncChannels($event as string[])"
-      >
-        <template #chip="{ props, item }">
-          <VChip
-            v-bind="props"
-            size="small"
-            class="d-inline-flex align-center"
-            :class="{
-              'chip-editing':
-                channelsEditingChip &&
-                normalizeValue(channelsEditingChip.original) ===
-                  normalizeValue(item.raw),
-              duplicate:
-                channelsEditingDuplicate &&
-                channelsEditingChip &&
-                normalizeValue(channelsEditingChip.original) ===
-                  normalizeValue(item.raw),
-            }"
-            :variant="
-              channelsHoveredChip === item.raw ? 'tonal' : (props.variant as any)
-            "
-            :color="
-              channelsHoveredChip === item.raw ? 'error' : (props.color as string)
-            "
-            @dblclick.stop.prevent="startChannelsEditingChip(item.raw)"
-            @blur="promptChannelsEditDecisionIfNeeded"
-            tabindex="0"
-            :ref="(el: any) => registerChannelsChipElement(el, item.raw)"
-          >
-            <template
-              v-if="
-                channelsEditingChip &&
-                normalizeValue(channelsEditingChip.original) ===
-                  normalizeValue(item.raw)
-              "
-            >
-              <input
-                ref="channelsEditingInputRef"
-                v-model="channelsEditingValue"
-                class="chip-edit-input me-2"
-                @keydown.stop="handleChannelsEditKeydown"
-                @input="handleChannelsEditInput"
-                @click.stop
-                @mousedown.stop
-                @pointerdown.stop
-              />
-              <VIcon
-                icon="tabler-x"
-                size="14"
-                class="cursor-pointer"
-                @click.stop.prevent="cancelChannelsChipEdit"
-              />
-            </template>
-            <template v-else>
-              <span class="me-2">{{ item.raw }}</span>
-              <VIcon
-                icon="tabler-x"
-                size="14"
-                class="cursor-pointer"
-                @mouseenter="channelsHoveredChip = item.raw"
-                @mouseleave="channelsHoveredChip = null"
-                @click.stop.prevent="handleChannelsClose(item.raw)"
-              />
-            </template>
-          </VChip>
-        </template>
-      </VCombobox>
-    </VCardText>
-  </VCard>
-
-  <VCard class="mb-6" title="Documents">
+  <VCard class="mb-6" title="Activities & Jobs">
     <VCardText>
       <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Document Types</h6>
+        <h6 class="text-subtitle-1 mb-2">Call Purposes</h6>
         <VCombobox
-          v-model="docTypesModel"
+          v-model="callPurposesModel"
           multiple
           chips
           hide-details
-          :placeholder="'Add document types'"
-          :loading="isSavingDocuments"
-          :disabled="isSavingDocuments"
+          :placeholder="'Add call purposes'"
+          :loading="isSavingCallPurposes"
+          :disabled="isSavingCallPurposes"
           class="mb-4"
-          v-model:search="docTypesSearchValue"
-          @update:model-value="onDocTypesChange($event as string[])"
+          v-model:search="callPurposesSearchValue"
+          @update:model-value="syncCallPurposes($event as string[])"
         >
           <template #chip="{ props, item }">
             <VChip
@@ -2461,39 +3751,39 @@ const onIndInactiveInput = (event: Event) => {
               class="d-inline-flex align-center"
               :class="{
                 'chip-editing':
-                  docTypesEditingChip &&
-                  normalizeValue(docTypesEditingChip.original) ===
+                  callPurposesEditingChip &&
+                  normalizeValue(callPurposesEditingChip.original) ===
                     normalizeValue(item.raw),
                 duplicate:
-                  docTypesEditingDuplicate &&
-                  docTypesEditingChip &&
-                  normalizeValue(docTypesEditingChip.original) ===
+                  callPurposesEditingDuplicate &&
+                  callPurposesEditingChip &&
+                  normalizeValue(callPurposesEditingChip.original) ===
                     normalizeValue(item.raw),
               }"
               :variant="
-                docTypesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+                callPurposesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
               "
               :color="
-                docTypesHoveredChip === item.raw ? 'error' : (props.color as string)
+                callPurposesHoveredChip === item.raw ? 'error' : (props.color as string)
               "
-              @dblclick.stop.prevent="startDocTypesEditingChip(item.raw)"
-              @blur="promptDocTypesEditDecisionIfNeeded"
+              @dblclick.stop.prevent="startCallPurposesEditingChip(item.raw)"
+              @blur="promptCallPurposesEditDecisionIfNeeded"
               tabindex="0"
-              :ref="(el: any) => registerDocTypesChipElement(el, item.raw)"
+              :ref="(el: any) => registerCallPurposesChipElement(el, item.raw)"
             >
               <template
                 v-if="
-                  docTypesEditingChip &&
-                  normalizeValue(docTypesEditingChip.original) ===
+                  callPurposesEditingChip &&
+                  normalizeValue(callPurposesEditingChip.original) ===
                     normalizeValue(item.raw)
                 "
               >
                 <input
-                  ref="docTypesEditingInputRef"
-                  v-model="docTypesEditingValue"
+                  ref="callPurposesEditingInputRef"
+                  v-model="callPurposesEditingValue"
                   class="chip-edit-input me-2"
-                  @keydown.stop="handleDocTypesEditKeydown"
-                  @input="handleDocTypesEditInput"
+                  @keydown.stop="handleCallPurposesEditKeydown"
+                  @input="handleCallPurposesEditInput"
                   @click.stop
                   @mousedown.stop
                   @pointerdown.stop
@@ -2502,7 +3792,7 @@ const onIndInactiveInput = (event: Event) => {
                   icon="tabler-x"
                   size="14"
                   class="cursor-pointer"
-                  @click.stop.prevent="cancelDocTypesChipEdit"
+                  @click.stop.prevent="cancelCallPurposesChipEdit"
                 />
               </template>
               <template v-else>
@@ -2511,9 +3801,9 @@ const onIndInactiveInput = (event: Event) => {
                   icon="tabler-x"
                   size="14"
                   class="cursor-pointer"
-                  @mouseenter="docTypesHoveredChip = item.raw"
-                  @mouseleave="docTypesHoveredChip = null"
-                  @click.stop.prevent="handleDocTypesClose(item.raw)"
+                  @mouseenter="callPurposesHoveredChip = item.raw"
+                  @mouseleave="callPurposesHoveredChip = null"
+                  @click.stop.prevent="handleCallPurposesClose(item.raw)"
                 />
               </template>
             </VChip>
@@ -2522,18 +3812,18 @@ const onIndInactiveInput = (event: Event) => {
       </div>
 
       <div class="mb-4">
-        <h6 class="text-subtitle-1 mb-2">Document Categories</h6>
+        <h6 class="text-subtitle-1 mb-2">Sentiments</h6>
         <VCombobox
-          v-model="docCategoriesModel"
+          v-model="sentimentsModel"
           multiple
           chips
           hide-details
-          :placeholder="'Add document categories'"
-          :loading="isSavingDocuments"
-          :disabled="isSavingDocuments"
+          :placeholder="'Add sentiments'"
+          :loading="isSavingSentiments"
+          :disabled="isSavingSentiments"
           class="mb-4"
-          v-model:search="docCategoriesSearchValue"
-          @update:model-value="onDocCategoriesChange($event as string[])"
+          v-model:search="sentimentsSearchValue"
+          @update:model-value="syncSentiments($event as string[])"
         >
           <template #chip="{ props, item }">
             <VChip
@@ -2542,39 +3832,39 @@ const onIndInactiveInput = (event: Event) => {
               class="d-inline-flex align-center"
               :class="{
                 'chip-editing':
-                  docCategoriesEditingChip &&
-                  normalizeValue(docCategoriesEditingChip.original) ===
+                  sentimentsEditingChip &&
+                  normalizeValue(sentimentsEditingChip.original) ===
                     normalizeValue(item.raw),
                 duplicate:
-                  docCategoriesEditingDuplicate &&
-                  docCategoriesEditingChip &&
-                  normalizeValue(docCategoriesEditingChip.original) ===
+                  sentimentsEditingDuplicate &&
+                  sentimentsEditingChip &&
+                  normalizeValue(sentimentsEditingChip.original) ===
                     normalizeValue(item.raw),
               }"
               :variant="
-                docCategoriesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+                sentimentsHoveredChip === item.raw ? 'tonal' : (props.variant as any)
               "
               :color="
-                docCategoriesHoveredChip === item.raw ? 'error' : (props.color as string)
+                sentimentsHoveredChip === item.raw ? 'error' : (props.color as string)
               "
-              @dblclick.stop.prevent="startDocCategoriesEditingChip(item.raw)"
-              @blur="promptDocCategoriesEditDecisionIfNeeded"
+              @dblclick.stop.prevent="startSentimentsEditingChip(item.raw)"
+              @blur="promptSentimentsEditDecisionIfNeeded"
               tabindex="0"
-              :ref="(el: any) => registerDocCategoriesChipElement(el, item.raw)"
+              :ref="(el: any) => registerSentimentsChipElement(el, item.raw)"
             >
               <template
                 v-if="
-                  docCategoriesEditingChip &&
-                  normalizeValue(docCategoriesEditingChip.original) ===
+                  sentimentsEditingChip &&
+                  normalizeValue(sentimentsEditingChip.original) ===
                     normalizeValue(item.raw)
                 "
               >
                 <input
-                  ref="docCategoriesEditingInputRef"
-                  v-model="docCategoriesEditingValue"
+                  ref="sentimentsEditingInputRef"
+                  v-model="sentimentsEditingValue"
                   class="chip-edit-input me-2"
-                  @keydown.stop="handleDocCategoriesEditKeydown"
-                  @input="handleDocCategoriesEditInput"
+                  @keydown.stop="handleSentimentsEditKeydown"
+                  @input="handleSentimentsEditInput"
                   @click.stop
                   @mousedown.stop
                   @pointerdown.stop
@@ -2583,7 +3873,7 @@ const onIndInactiveInput = (event: Event) => {
                   icon="tabler-x"
                   size="14"
                   class="cursor-pointer"
-                  @click.stop.prevent="cancelDocCategoriesChipEdit"
+                  @click.stop.prevent="cancelSentimentsChipEdit"
                 />
               </template>
               <template v-else>
@@ -2592,9 +3882,9 @@ const onIndInactiveInput = (event: Event) => {
                   icon="tabler-x"
                   size="14"
                   class="cursor-pointer"
-                  @mouseenter="docCategoriesHoveredChip = item.raw"
-                  @mouseleave="docCategoriesHoveredChip = null"
-                  @click.stop.prevent="handleDocCategoriesClose(item.raw)"
+                  @mouseenter="sentimentsHoveredChip = item.raw"
+                  @mouseleave="sentimentsHoveredChip = null"
+                  @click.stop.prevent="handleSentimentsClose(item.raw)"
                 />
               </template>
             </VChip>
@@ -2603,16 +3893,84 @@ const onIndInactiveInput = (event: Event) => {
       </div>
 
       <div>
-        <label class="text-subtitle-2 mb-2 d-block">Document Renewable?</label>
-        <VRadioGroup
-          v-model="documentRenewable"
-          inline
-          class="mb-0"
-          @change="() => saveDocuments()"
+        <h6 class="text-subtitle-1 mb-2">Notes</h6>
+        <VCombobox
+          v-model="notesModel"
+          multiple
+          chips
+          hide-details
+          :placeholder="'Add notes'"
+          :loading="isSavingNotes"
+          :disabled="isSavingNotes"
+          class="mb-4"
+          v-model:search="notesSearchValue"
+          @update:model-value="syncNotes($event as string[])"
         >
-          <VRadio :value="true" label="Yes" />
-          <VRadio :value="false" label="No" />
-        </VRadioGroup>
+          <template #chip="{ props, item }">
+            <VChip
+              v-bind="props"
+              size="small"
+              class="d-inline-flex align-center"
+              :class="{
+                'chip-editing':
+                  notesEditingChip &&
+                  normalizeValue(notesEditingChip.original) ===
+                    normalizeValue(item.raw),
+                duplicate:
+                  notesEditingDuplicate &&
+                  notesEditingChip &&
+                  normalizeValue(notesEditingChip.original) ===
+                    normalizeValue(item.raw),
+              }"
+              :variant="
+                notesHoveredChip === item.raw ? 'tonal' : (props.variant as any)
+              "
+              :color="
+                notesHoveredChip === item.raw ? 'error' : (props.color as string)
+              "
+              @dblclick.stop.prevent="startNotesEditingChip(item.raw)"
+              @blur="promptNotesEditDecisionIfNeeded"
+              tabindex="0"
+              :ref="(el: any) => registerNotesChipElement(el, item.raw)"
+            >
+              <template
+                v-if="
+                  notesEditingChip &&
+                  normalizeValue(notesEditingChip.original) ===
+                    normalizeValue(item.raw)
+                "
+              >
+                <input
+                  ref="notesEditingInputRef"
+                  v-model="notesEditingValue"
+                  class="chip-edit-input me-2"
+                  @keydown.stop="handleNotesEditKeydown"
+                  @input="handleNotesEditInput"
+                  @click.stop
+                  @mousedown.stop
+                  @pointerdown.stop
+                />
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @click.stop.prevent="cancelNotesChipEdit"
+                />
+              </template>
+              <template v-else>
+                <span class="me-2">{{ item.raw }}</span>
+                <VIcon
+                  icon="tabler-x"
+                  size="14"
+                  class="cursor-pointer"
+                  @mouseenter="notesHoveredChip = item.raw"
+                  @mouseleave="notesHoveredChip = null"
+                  @click.stop.prevent="handleNotesClose(item.raw)"
+                />
+              </template>
+            </VChip>
+          </template>
+        </VCombobox>
       </div>
     </VCardText>
   </VCard>
@@ -2728,5 +4086,10 @@ const onIndInactiveInput = (event: Event) => {
 
 .chip-editing.duplicate {
   border-color: rgb(var(--v-theme-error));
+}
+
+.testTed {
+  /* stylelint-disable-next-line @stylistic/indentation */
+  background-color: rgba(var(--v-theme-background), 0.25);
 }
 </style>
