@@ -127,149 +127,116 @@ onMounted(loadData);
 
 type SavePayload = { values: string[]; action: "update" | "delete" };
 
-const saveCategories = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingCategories.value = true;
-  const res = await store.saveRemote({
-    crm: { organizationCategories: cleaned },
-  } as any);
-  isSavingCategories.value = false;
-  if (res) {
-    categories.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Categories saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save categories", "error", 3000);
-    loadData();
-  }
+type ListSaverOptions = {
+  state: typeof categories;
+  loading: typeof isSavingCategories;
+  successMessage: string;
+  failureMessage: string;
+  payloadBuilder?: (cleaned: string[]) => any;
+  saveFn?: (
+    cleaned: string[],
+    action: SavePayload["action"]
+  ) => Promise<boolean>;
 };
 
-const saveIndCategories = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingIndCategories.value = true;
-  const res = await store.saveRemote({
-    crm: { individualCategories: cleaned },
-  } as any);
-  isSavingIndCategories.value = false;
-  if (res) {
-    indCategories.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Categories saved", "success", 2000);
+const makeListSaver = (options: ListSaverOptions) => {
+  return async (payload: SavePayload) => {
+    const cleaned = cleanEntries(payload.values);
+    options.loading.value = true;
+    let res = false;
+    if (options.saveFn) {
+      res = await options.saveFn(cleaned, payload.action);
+    } else if (options.payloadBuilder) {
+      res = await store.saveRemote(options.payloadBuilder(cleaned));
     }
-  } else {
-    notifications.push("Failed to save categories", "error", 3000);
-    loadData();
-  }
+    options.loading.value = false;
+    if (res) {
+      options.state.value = cleaned;
+      if (payload.action !== "delete") {
+        notifications.push(options.successMessage, "success", 2000);
+      }
+    } else {
+      notifications.push(options.failureMessage, "error", 3000);
+      loadData();
+    }
+  };
 };
 
-const saveChannels = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingChannels.value = true;
-  const res = await store.saveRemote({
+const saveCategories = makeListSaver({
+  state: categories,
+  loading: isSavingCategories,
+  successMessage: "Categories saved",
+  failureMessage: "Failed to save categories",
+  payloadBuilder: (cleaned) => ({ crm: { organizationCategories: cleaned } }),
+});
+
+const saveIndCategories = makeListSaver({
+  state: indCategories,
+  loading: isSavingIndCategories,
+  successMessage: "Categories saved",
+  failureMessage: "Failed to save categories",
+  payloadBuilder: (cleaned) => ({ crm: { individualCategories: cleaned } }),
+});
+
+const saveChannels = makeListSaver({
+  state: channels,
+  loading: isSavingChannels,
+  successMessage: "Channels saved",
+  failureMessage: "Failed to save channels",
+  payloadBuilder: (cleaned) => ({
     crm: { ...(store.configurations.crm || {}), channels: cleaned },
-  } as any);
-  isSavingChannels.value = false;
-  if (res) {
-    channels.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Channels saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save channels", "error", 3000);
-    loadData();
-  }
-};
+  }),
+});
 
-const saveCallPurposes = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingCallPurposes.value = true;
-  const res = await store.saveRemote({
+const saveCallPurposes = makeListSaver({
+  state: callPurposes,
+  loading: isSavingCallPurposes,
+  successMessage: "Call purposes saved",
+  failureMessage: "Failed to save call purposes",
+  payloadBuilder: (cleaned) => ({
     crm: { ...(store.configurations.crm || {}), callPurposes: cleaned },
-  } as any);
-  isSavingCallPurposes.value = false;
-  if (res) {
-    callPurposes.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Call purposes saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save call purposes", "error", 3000);
-    loadData();
-  }
-};
+  }),
+});
 
-const saveSentiments = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingSentiments.value = true;
-  const res = await store.saveRemote({
+const saveSentiments = makeListSaver({
+  state: sentiments,
+  loading: isSavingSentiments,
+  successMessage: "Sentiments saved",
+  failureMessage: "Failed to save sentiments",
+  payloadBuilder: (cleaned) => ({
     crm: { ...(store.configurations.crm || {}), sentiment: cleaned },
-  } as any);
-  isSavingSentiments.value = false;
-  if (res) {
-    sentiments.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Sentiments saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save sentiments", "error", 3000);
-    loadData();
-  }
-};
+  }),
+});
 
-const saveNotes = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingNotes.value = true;
-  const res = await store.saveRemote({
+const saveNotes = makeListSaver({
+  state: notes,
+  loading: isSavingNotes,
+  successMessage: "Notes saved",
+  failureMessage: "Failed to save notes",
+  payloadBuilder: (cleaned) => ({
     crm: { ...(store.configurations.crm || {}), notes: cleaned },
-  } as any);
-  isSavingNotes.value = false;
-  if (res) {
-    notes.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Notes saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save notes", "error", 3000);
-    loadData();
-  }
-};
+  }),
+});
 
-const saveMeetings = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingMeetings.value = true;
-  const res = await store.saveRemote({
+const saveMeetings = makeListSaver({
+  state: meetings,
+  loading: isSavingMeetings,
+  successMessage: "Meetings saved",
+  failureMessage: "Failed to save meetings",
+  payloadBuilder: (cleaned) => ({
     crm: { ...(store.configurations.crm || {}), meetings: cleaned },
-  } as any);
-  isSavingMeetings.value = false;
-  if (res) {
-    meetings.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Meetings saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save meetings", "error", 3000);
-    loadData();
-  }
-};
+  }),
+});
 
-const saveJobStages = async (payload: SavePayload) => {
-  const cleaned = cleanEntries(payload.values);
-  isSavingJobStages.value = true;
-  const res = await store.saveRemote({
+const saveJobStages = makeListSaver({
+  state: jobStages,
+  loading: isSavingJobStages,
+  successMessage: "Job stages saved",
+  failureMessage: "Failed to save job stages",
+  payloadBuilder: (cleaned) => ({
     crm: { ...(store.configurations.crm || {}), jobStages: cleaned },
-  } as any);
-  isSavingJobStages.value = false;
-  if (res) {
-    jobStages.value = cleaned;
-    if (payload.action !== "delete") {
-      notifications.push("Job stages saved", "success", 2000);
-    }
-  } else {
-    notifications.push("Failed to save job stages", "error", 3000);
-    loadData();
-  }
-};
+  }),
+});
 
 const saveDocuments = async (action: "update" | "delete" = "update") => {
   const types = cleanEntries(docTypes.value);
@@ -298,17 +265,30 @@ const saveDocuments = async (action: "update" | "delete" = "update") => {
     notifications.push("Failed to save documents", "error", 3000);
     loadData();
   }
+  return !!res;
 };
 
-const saveDocTypes = async (payload: SavePayload) => {
-  docTypes.value = cleanEntries(payload.values);
-  await saveDocuments(payload.action);
-};
+const saveDocTypes = makeListSaver({
+  state: docTypes,
+  loading: isSavingDocuments,
+  successMessage: "Documents saved",
+  failureMessage: "Failed to save documents",
+  saveFn: async (cleaned, action) => {
+    docTypes.value = cleaned;
+    return await saveDocuments(action);
+  },
+});
 
-const saveDocCategories = async (payload: SavePayload) => {
-  docCategories.value = cleanEntries(payload.values);
-  await saveDocuments(payload.action);
-};
+const saveDocCategories = makeListSaver({
+  state: docCategories,
+  loading: isSavingDocuments,
+  successMessage: "Documents saved",
+  failureMessage: "Failed to save documents",
+  saveFn: async (cleaned, action) => {
+    docCategories.value = cleaned;
+    return await saveDocuments(action);
+  },
+});
 
 const saveFlags = async () => {
   if (isSavingFlags.value) return;

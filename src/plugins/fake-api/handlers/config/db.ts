@@ -193,7 +193,7 @@ export const db: ConfigDB = {
       showContactRecord: true,
       notes: ["General", "Ideas", "Blod Articles", "Meeting Notes"],
       meetings: ["Sales", "Brief", "Site Visit", "Other"],
-      jobStages: ["Lead", "Qualified", "Proposal", "Won", "Lost"],
+      jobStages: ["PRPSL", "In Review", "Project | In Progress", "RFI"],
       jobAlert: { enabled: true, days: 3 },
     },
     deals: {
