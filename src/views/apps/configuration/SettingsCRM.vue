@@ -59,6 +59,8 @@ let quotationLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
 const defaultContactType = ref<string>("Individual");
 const leadLostIn = ref(0);
 const quotationLostIn = ref(0);
+const quotationStartsSeq = ref("");
+const proformaStartSeq = ref("");
 const isSavingDealsSettings = ref(false);
 const documentRenewable = ref<boolean | null>(null);
 
@@ -113,6 +115,8 @@ const loadData = () => {
   const deals = store.configurations.deals || {};
   leadLostIn.value = Number(deals.leadLostIn ?? 0);
   quotationLostIn.value = Number(deals.quotationLostIn ?? 0);
+  quotationStartsSeq.value = String(deals.quotationStartsSeq ?? "");
+  proformaStartSeq.value = String(deals.proformaStartSeq ?? "");
 
   const explicitTypes = (org as any)?.documentTypes;
   const explicitCats = (org as any)?.documentCategories;
@@ -338,6 +342,8 @@ const saveDealsSettings = async () => {
       ...(store.configurations.deals || {}),
       leadLostIn: leadLostIn.value,
       quotationLostIn: quotationLostIn.value,
+      quotationStartsSeq: quotationStartsSeq.value,
+      proformaStartSeq: proformaStartSeq.value,
     },
   } as any);
   isSavingDealsSettings.value = false;
@@ -841,6 +847,36 @@ onUnmounted(() => {
               }
             "
             @input="onQuotationLostInInput"
+          />
+        </VCol>
+        <VCol cols="12" md="6">
+          <label class="text-subtitle-2 mb-2 d-block">
+            Quotation Starts Seq
+          </label>
+          <AppTextField
+            v-model="quotationStartsSeq"
+            type="text"
+            hide-details
+            density="compact"
+            placeholder="QTN-"
+            :loading="isSavingDealsSettings"
+            :disabled="isSavingDealsSettings"
+            @blur="saveDealsSettings"
+          />
+        </VCol>
+        <VCol cols="12" md="6">
+          <label class="text-subtitle-2 mb-2 d-block">
+            Proforma Start Seq
+          </label>
+          <AppTextField
+            v-model="proformaStartSeq"
+            type="text"
+            hide-details
+            density="compact"
+            placeholder="PF-"
+            :loading="isSavingDealsSettings"
+            :disabled="isSavingDealsSettings"
+            @blur="saveDealsSettings"
           />
         </VCol>
       </VRow>
