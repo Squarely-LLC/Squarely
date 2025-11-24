@@ -96,7 +96,7 @@ export default [
   {
     title: "HR",
     icon: { icon: "tabler-users-group" },
-    to: "",
+    to: "apps-hr-list",
   },
   {
     title: "Finance",
