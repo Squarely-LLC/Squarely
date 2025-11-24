@@ -26,6 +26,9 @@ const sentiments = ref<string[]>([]);
 const notes = ref<string[]>([]);
 const meetings = ref<string[]>([]);
 const jobStages = ref<string[]>([]);
+const showContactRecord = ref(false);
+const jobAlertEnabled = ref(false);
+const jobAlertDays = ref(0);
 
 const isSavingCategories = ref(false);
 const isSavingIndCategories = ref(false);
@@ -36,6 +39,7 @@ const isSavingSentiments = ref(false);
 const isSavingNotes = ref(false);
 const isSavingMeetings = ref(false);
 const isSavingJobStages = ref(false);
+const isSavingActivitySettings = ref(false);
 const isSavingFlags = ref(false);
 const isSavingIndFlags = ref(false);
 const isSavingDefaultContactType = ref(false);
@@ -48,8 +52,14 @@ const indRequireEmail = ref(false);
 const indInactiveAfterMonths = ref(0);
 let inactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let indInactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
+let jobAlertSaveHandle: ReturnType<typeof setTimeout> | null = null;
+let leadLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
+let quotationLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
 
 const defaultContactType = ref<string>("Individual");
+const leadLostIn = ref(0);
+const quotationLostIn = ref(0);
+const isSavingDealsSettings = ref(false);
 const documentRenewable = ref<boolean | null>(null);
 
 const notifyWarn = (message: string) =>
@@ -92,6 +102,17 @@ const loadData = () => {
   notes.value = cleanEntries((org as any)?.notes || []);
   meetings.value = cleanEntries((org as any)?.meetings || []);
   jobStages.value = cleanEntries((org as any)?.jobStages || []);
+  showContactRecord.value = !!(org as any)?.showContactRecord;
+  const jobAlert = ((org as any)?.jobAlert || {}) as {
+    enabled?: boolean;
+    days?: number;
+  };
+  jobAlertEnabled.value = !!jobAlert.enabled;
+  jobAlertDays.value = Number(jobAlert.days ?? 0);
+
+  const deals = store.configurations.deals || {};
+  leadLostIn.value = Number(deals.leadLostIn ?? 0);
+  quotationLostIn.value = Number(deals.quotationLostIn ?? 0);
 
   const explicitTypes = (org as any)?.documentTypes;
   const explicitCats = (org as any)?.documentCategories;
@@ -147,7 +168,7 @@ const makeListSaver = (options: ListSaverOptions) => {
     if (options.saveFn) {
       res = await options.saveFn(cleaned, payload.action);
     } else if (options.payloadBuilder) {
-      res = await store.saveRemote(options.payloadBuilder(cleaned));
+      res = !!(await store.saveRemote(options.payloadBuilder(cleaned)));
     }
     options.loading.value = false;
     if (res) {
@@ -290,6 +311,44 @@ const saveDocCategories = makeListSaver({
   },
 });
 
+const saveActivitySettings = async () => {
+  if (isSavingActivitySettings.value) return;
+  isSavingActivitySettings.value = true;
+  const res = await store.saveRemote({
+    crm: {
+      ...(store.configurations.crm || {}),
+      showContactRecord: showContactRecord.value,
+      jobAlert: { enabled: jobAlertEnabled.value, days: jobAlertDays.value },
+    },
+  } as any);
+  isSavingActivitySettings.value = false;
+  if (res) {
+    notifications.push("Activity settings saved", "success", 2000);
+  } else {
+    notifications.push("Failed to save activity settings", "error", 3000);
+    loadData();
+  }
+};
+
+const saveDealsSettings = async () => {
+  if (isSavingDealsSettings.value) return;
+  isSavingDealsSettings.value = true;
+  const res = await store.saveRemote({
+    deals: {
+      ...(store.configurations.deals || {}),
+      leadLostIn: leadLostIn.value,
+      quotationLostIn: quotationLostIn.value,
+    },
+  } as any);
+  isSavingDealsSettings.value = false;
+  if (res) {
+    notifications.push("Deals settings saved", "success", 2000);
+  } else {
+    notifications.push("Failed to save deals settings", "error", 3000);
+    loadData();
+  }
+};
+
 const saveFlags = async () => {
   if (isSavingFlags.value) return;
   isSavingFlags.value = true;
@@ -372,6 +431,36 @@ const onIndInactiveInput = (event: Event) => {
   }, 400);
 };
 
+const onJobAlertInput = (event: Event) => {
+  const val = parseFloat((event.target as HTMLInputElement).value);
+  jobAlertDays.value = isNaN(val) || val < 0 ? 0 : val;
+  if (jobAlertSaveHandle) clearTimeout(jobAlertSaveHandle);
+  jobAlertSaveHandle = setTimeout(() => {
+    jobAlertSaveHandle = null;
+    void saveActivitySettings();
+  }, 400);
+};
+
+const onLeadLostInInput = (event: Event) => {
+  const val = parseFloat((event.target as HTMLInputElement).value);
+  leadLostIn.value = isNaN(val) || val < 0 ? 0 : val;
+  if (leadLostInSaveHandle) clearTimeout(leadLostInSaveHandle);
+  leadLostInSaveHandle = setTimeout(() => {
+    leadLostInSaveHandle = null;
+    void saveDealsSettings();
+  }, 400);
+};
+
+const onQuotationLostInInput = (event: Event) => {
+  const val = parseFloat((event.target as HTMLInputElement).value);
+  quotationLostIn.value = isNaN(val) || val < 0 ? 0 : val;
+  if (quotationLostInSaveHandle) clearTimeout(quotationLostInSaveHandle);
+  quotationLostInSaveHandle = setTimeout(() => {
+    quotationLostInSaveHandle = null;
+    void saveDealsSettings();
+  }, 400);
+};
+
 onUnmounted(() => {
   if (inactiveSaveHandle) {
     clearTimeout(inactiveSaveHandle);
@@ -380,6 +469,18 @@ onUnmounted(() => {
   if (indInactiveSaveHandle) {
     clearTimeout(indInactiveSaveHandle);
     indInactiveSaveHandle = null;
+  }
+  if (jobAlertSaveHandle) {
+    clearTimeout(jobAlertSaveHandle);
+    jobAlertSaveHandle = null;
+  }
+  if (leadLostInSaveHandle) {
+    clearTimeout(leadLostInSaveHandle);
+    leadLostInSaveHandle = null;
+  }
+  if (quotationLostInSaveHandle) {
+    clearTimeout(quotationLostInSaveHandle);
+    quotationLostInSaveHandle = null;
   }
 });
 </script>
@@ -658,6 +759,91 @@ onUnmounted(() => {
           @error="notifyError"
         />
       </div>
+
+      <VRow>
+        <VCol cols="12" md="6">
+          <VSwitch
+            v-model="showContactRecord"
+            label="Show Contact record"
+            inset
+            :disabled="isSavingActivitySettings"
+            :loading="isSavingActivitySettings"
+            @change="() => void saveActivitySettings()"
+          />
+        </VCol>
+        <VCol cols="6" md="4">
+          <VSwitch
+            v-model="jobAlertEnabled"
+            label="Enable Job Alert (Days)"
+            inset
+            :disabled="isSavingActivitySettings"
+            :loading="isSavingActivitySettings"
+            @change="() => void saveActivitySettings()"
+          />
+        </VCol>
+        <VCol v-if="jobAlertEnabled" cols="6" md="2">
+          <AppTextField
+            v-model.number="jobAlertDays"
+            type="number"
+            min="0"
+            :loading="isSavingActivitySettings"
+            :disabled="isSavingActivitySettings"
+            @keydown="
+              (e: KeyboardEvent) => {
+                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+              }
+            "
+            @input="onJobAlertInput"
+          />
+        </VCol>
+      </VRow>
+    </VCardText>
+  </VCard>
+
+  <VCard class="mb-6" title="Deals">
+    <VCardText>
+      <VRow>
+        <VCol cols="12" md="6">
+          <label class="text-subtitle-2 mb-2 d-block">
+            Lead Lost In (Days)
+          </label>
+          <AppTextField
+            v-model.number="leadLostIn"
+            type="number"
+            min="0"
+            hide-details
+            density="compact"
+            :loading="isSavingDealsSettings"
+            :disabled="isSavingDealsSettings"
+            @keydown="
+              (e: KeyboardEvent) => {
+                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+              }
+            "
+            @input="onLeadLostInInput"
+          />
+        </VCol>
+        <VCol cols="12" md="6">
+          <label class="text-subtitle-2 mb-2 d-block">
+            Quotation Lost In (Days)
+          </label>
+          <AppTextField
+            v-model.number="quotationLostIn"
+            type="number"
+            min="0"
+            hide-details
+            density="compact"
+            :loading="isSavingDealsSettings"
+            :disabled="isSavingDealsSettings"
+            @keydown="
+              (e: KeyboardEvent) => {
+                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+              }
+            "
+            @input="onQuotationLostInInput"
+          />
+        </VCol>
+      </VRow>
     </VCardText>
   </VCard>
 </template>

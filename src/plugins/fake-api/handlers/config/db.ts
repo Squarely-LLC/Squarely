@@ -190,7 +190,7 @@ export const db: ConfigDB = {
       documentRenewable: "yes",
       callPurposes: ["Sales", "Follow Up", "Admin", "Other"],
       sentiment: ["Very Good", "Good", "Acceptable", "Poor", "Very Poor"],
-      showContactRecord: true,
+      showContactRecord: false,
       notes: ["General", "Ideas", "Blod Articles", "Meeting Notes"],
       meetings: ["Sales", "Brief", "Site Visit", "Other"],
       jobStages: ["PRPSL", "In Review", "Project | In Progress", "RFI"],
