@@ -1,23 +1,23 @@
 /* stylelint-disable @stylistic/no-eol-whitespace */ /* stylelint-disable
 @stylistic/no-eol-whitespace */
 <script setup lang="ts">
-import type { ContactDocument } from "@/plugins/fake-api/handlers/apps/contact/types";
+import type { EmployeeDocument } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { getFileInfo, saveFile } from "@/utils/fileStore";
 import { computed, reactive, ref, watch } from "vue";
 
 const props = defineProps<{
   modelValue: boolean;
-  doc?: ContactDocument | null;
+  doc?: EmployeeDocument | null;
   documentTypes?: string[];
   fileCategories?: readonly string[];
 }>();
 
 const emits = defineEmits<{
   (e: "update:modelValue", value: boolean): void;
-  (e: "save", payload: ContactDocument): void;
+  (e: "save", payload: EmployeeDocument): void;
 }>();
 
-type FormModel = Partial<ContactDocument> & {
+type FormModel = Partial<EmployeeDocument> & {
   linkUrl?: string | undefined;
   fileAttachment?: File | undefined;
   fileUrlBlob?: string | undefined;
@@ -171,7 +171,7 @@ function resetForm() {
   fileError.value = null;
 }
 
-function populateForm(d: ContactDocument | null | undefined) {
+function populateForm(d: EmployeeDocument | null | undefined) {
   if (!d) {
     resetForm();
     return;
@@ -265,7 +265,7 @@ async function uploadFile(file: File): Promise<string> {
 
 async function save() {
   // Basic payload normalize
-  const payload: ContactDocument = {
+  const payload: EmployeeDocument = {
     id: Number(form.id ?? Date.now()),
     category: (form.category as any) || undefined,
     type: (form.type as any) || undefined,

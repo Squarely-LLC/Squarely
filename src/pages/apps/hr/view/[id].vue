@@ -2,8 +2,8 @@
 import { onMounted, ref, toRaw, watch } from "vue";
 import { useRouter } from "vue-router";
 
-import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
-import { useContactsStore } from "@/stores/contacts";
+import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useEmployeesStore } from "@/stores/employees";
 
 import AddRecordDrawer from "@/views/apps/hr/view/AddRecordDrawer.vue";
 import EditRecordDrawer from "@/views/apps/hr/view/EditRecordDrawer.vue";
@@ -16,13 +16,13 @@ import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 const route = useRoute("apps-hr-view-id");
 const router = useRouter();
-const contactsStore = useContactsStore();
-contactsStore.init();
+const employeesStore = useEmployeesStore();
+employeesStore.init();
 
-const cloneContact = (contact: ContactProperties | null | undefined) => {
+const cloneContact = (contact: EmployeeProperties | null | undefined) => {
   if (!contact) return contact ?? null;
 
-  const raw = toRaw(contact) as ContactProperties;
+  const raw = toRaw(contact) as EmployeeProperties;
 
   if (typeof structuredClone === "function") {
     try {
@@ -36,27 +36,27 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
+    return JSON.parse(JSON.stringify(raw)) as EmployeeProperties;
   } catch (error) {
     console.warn("Failed to clone contact payload:", error);
     return { ...raw };
   }
 };
 
-const contact = ref<ContactProperties | null>(null);
+const contact = ref<EmployeeProperties | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 
 const resolveContact = () => {
   loading.value = true;
-  const found = contactsStore.byId(route.params.id);
+  const found = employeesStore.byId(route.params.id);
 
   if (found) {
     contact.value = cloneContact(found);
     error.value = null;
   } else {
     contact.value = null;
-    error.value = "Contact not found.";
+    error.value = "Employee not found.";
   }
 
   loading.value = false;
@@ -181,11 +181,11 @@ onMounted(() => {
 });
 watch(() => route.params.id, resolveContact);
 watch(
-  () => contactsStore.byId(route.params.id),
+  () => employeesStore.byId(route.params.id),
   (value) => {
     if (!value) {
       contact.value = null;
-      error.value = "Contact not found.";
+      error.value = "Employee not found.";
       return;
     }
     contact.value = cloneContact(value);
@@ -269,7 +269,7 @@ watch(
   </VRow>
   <div v-else>
     <VAlert type="error" variant="tonal">
-      Contact with ID {{ route.params.id }} not found!
+      Employee with ID {{ route.params.id }} not found!
     </VAlert>
   </div>
 

@@ -2,13 +2,13 @@
 import { nextTick, ref } from "vue";
 
 import { emailValidator, requiredValidator } from "@/@core/utils/validators";
-import type { ContactProperties } from "@db/apps/contact/types";
+import type { EmployeeProperties } from "@db/apps/employees/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
 interface Emit {
   (e: "update:isDrawerOpen", value: boolean): void;
-  (e: "userData", value: ContactProperties): void;
+  (e: "userData", value: EmployeeProperties): void;
 }
 
 interface Props {
@@ -24,11 +24,11 @@ const refForm = ref<VForm>();
 const fullName = ref("");
 const email = ref("");
 const number = ref("");
-const contactClass = ref<ContactProperties["class"] | undefined>();
-const contactType = ref<ContactProperties["type"] | undefined>();
-const category = ref<ContactProperties["category"] | undefined>();
-const status = ref<ContactProperties["status"] | undefined>();
-const channel = ref<ContactProperties["channel"] | undefined>();
+const contactClass = ref<EmployeeProperties["class"] | undefined>();
+const contactType = ref<EmployeeProperties["type"] | undefined>();
+const category = ref<EmployeeProperties["category"] | undefined>();
+const status = ref<EmployeeProperties["status"] | undefined>();
+const channel = ref<EmployeeProperties["channel"] | undefined>();
 const country = ref("");
 const city = ref("");
 const language = ref("");
@@ -113,7 +113,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
     @update:model-value="handleDrawerModelValueUpdate"
   >
     <AppDrawerHeaderSection
-      title="Add New Contact"
+      title="Add New Employee"
       @cancel="closeNavigationDrawer"
     />
 

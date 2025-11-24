@@ -87,7 +87,7 @@ const dialogModelValueUpdate = (val: boolean) => {
     <VCard class="pa-sm-10 pa-2">
       <VCardText>
         <!-- 👉 Title -->
-        <h4 class="text-h4 text-center mb-2">Add New Contact</h4>
+        <h4 class="text-h4 text-center mb-2">Add New Employee</h4>
         <p class="text-body-1 text-center mb-6">
           Please fill in the fields below.
         </p>

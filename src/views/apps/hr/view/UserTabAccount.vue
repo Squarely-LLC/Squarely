@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { useTodos } from "@/stores/todos";
 import avatar1 from "@images/avatars/avatar-1.png";
 import avatar2 from "@images/avatars/avatar-2.png";
@@ -18,7 +18,7 @@ import vue from "@images/icons/project-icons/vue.png";
 import xamarin from "@images/icons/project-icons/xamarin.png";
 import { computed, onMounted, ref } from "vue";
 
-const props = defineProps<{ user: ContactProperties | null }>();
+const props = defineProps<{ user: EmployeeProperties | null }>();
 
 // Project Table Header
 const projectTableHeaders = [

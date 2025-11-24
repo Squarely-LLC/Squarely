@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type {
-  ContactConnection,
-  ContactProperties,
-} from "@/plugins/fake-api/handlers/apps/contact/types";
-import { useContactsStore } from "@/stores/contacts";
+  EmployeeConnection,
+  EmployeeProperties,
+} from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { computed, nextTick, ref } from "vue";
@@ -15,14 +15,14 @@ import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 interface Props {
-  userData: ContactProperties;
+  userData: EmployeeProperties;
 }
 
 const props = defineProps<Props>();
 
 const isContactEditDialogVisible = ref(false);
 
-const classVariant = (contactClass: ContactProperties["class"]) => {
+const classVariant = (contactClass: EmployeeProperties["class"]) => {
   switch (contactClass) {
     case "Lead":
       return { color: "warning", icon: "tabler-target" };
@@ -39,7 +39,7 @@ const classVariant = (contactClass: ContactProperties["class"]) => {
   }
 };
 
-const statusColor = (status: ContactProperties["status"]) => {
+const statusColor = (status: EmployeeProperties["status"]) => {
   switch (status) {
     case "Active":
       return "success";
@@ -54,7 +54,7 @@ const statusColor = (status: ContactProperties["status"]) => {
   }
 };
 
-const channelColor = (channel: ContactProperties["channel"]) => {
+const channelColor = (channel: EmployeeProperties["channel"]) => {
   switch (channel) {
     case "Direct Sales":
       return "primary";
@@ -89,12 +89,12 @@ const avatarText = (name?: string | null) => {
 const connectionList = computed(() => props.userData.connections ?? []);
 
 // local override so UI updates instantly when adding a connection
-const localConnections = ref<ContactConnection[] | null>(null);
+const localConnections = ref<EmployeeConnection[] | null>(null);
 
 const resolvedConnectionList = computed(() => {
   const source = localConnections.value ?? connectionList.value;
   return source.map((c) => {
-    const linked = contactsStore.byId(c.contactId);
+    const linked = employeesStore.byId(c.contactId);
     return {
       ...c,
       picture: c.picture ?? linked?.picture,
@@ -110,10 +110,10 @@ const secondaryConnections = computed(() =>
   resolvedConnectionList.value.filter((connection) => !connection.isPrimary)
 );
 
-const contactsStore = useContactsStore();
+const employeesStore = useEmployeesStore();
 
 const contactsOptions = computed(() =>
-  contactsStore.all.map((c) => ({
+  employeesStore.all.map((c) => ({
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
@@ -168,7 +168,7 @@ const makePrimary = (contactId: number) => {
 
   // Persist the change via the contacts store so parent views update
   try {
-    contactsStore.updateContact(props.userData.id, { connections: updated });
+    employeesStore.updateEmployee(props.userData.id, { connections: updated });
   } catch (err) {
     console.error("Failed to set primary connection:", err);
   }
@@ -203,7 +203,7 @@ const performDeleteConnection = () => {
 
   // persist via store
   try {
-    contactsStore.updateContact(props.userData.id, { connections: updated });
+    employeesStore.updateEmployee(props.userData.id, { connections: updated });
   } catch (err) {
     console.error("Failed to delete connection:", err);
     snackbarMessage.value = "Failed to remove connection";
@@ -299,7 +299,7 @@ const findDeleteBlockingReasonsForContact = (id: number): string[] => {
     }
 
     // connections in other contacts
-    const referencedInConnections = contactsStore.all.filter(
+    const referencedInConnections = employeesStore.all.filter(
       (c: any) =>
         Array.isArray(c.connections) &&
         c.connections.some((conn: any) => Number(conn.contactId) === Number(id))
@@ -337,12 +337,12 @@ const performDeleteContact = () => {
   }
 
   try {
-    contactsStore.removeContact(id);
+    employeesStore.removeEmployee(id);
   } catch (e) {
     console.error("Failed to delete contact:", e);
   }
 
-  notifications.push("Contact deleted", "success", 3500);
+  notifications.push("Employee deleted", "success", 3500);
   // redirect back to contact list after successful delete
   try {
     router.push({ name: "apps-hr-list" });
@@ -406,7 +406,7 @@ const cleanupAndDeleteContact = () => {
     });
 
     // Remove connections pointing to this contact
-    contactsStore.items = contactsStore.items.map((c: any) => {
+    employeesStore.items = employeesStore.items.map((c: any) => {
       const connections = (c.connections || []).filter(
         (conn: any) => Number(conn.contactId) !== Number(id)
       );
@@ -414,7 +414,7 @@ const cleanupAndDeleteContact = () => {
     });
 
     // Finally delete the contact
-    contactsStore.removeContact(id);
+    employeesStore.removeEmployee(id);
     notifications.push(
       "References removed and contact deleted",
       "success",
@@ -441,9 +441,9 @@ const onAddConnection = (payload: {
   relation?: string;
 }) => {
   const contactIdNum = Number(payload.contactId);
-  const newConn: ContactConnection = {
+  const newConn: EmployeeConnection = {
     contactId: contactIdNum,
-    contactName: contactsStore.byId(contactIdNum)?.fullName || "",
+    contactName: employeesStore.byId(contactIdNum)?.fullName || "",
     isPrimary: false,
     relation: payload.relation || "",
   };
@@ -457,7 +457,7 @@ const onAddConnection = (payload: {
   // persist via store
   try {
     const updated = [...(connectionList.value ?? []), newConn];
-    contactsStore.updateContact(props.userData.id, { connections: updated });
+    employeesStore.updateEmployee(props.userData.id, { connections: updated });
   } catch (err) {
     console.error("Failed to persist new connection:", err);
     snackbarMessage.value = "Failed to add connection";
@@ -501,7 +501,7 @@ const saveEditRelation = () => {
   localConnections.value = [...updated];
 
   try {
-    contactsStore.updateContact(props.userData.id, { connections: updated });
+    employeesStore.updateEmployee(props.userData.id, { connections: updated });
   } catch (err) {
     console.error("Failed to update connection relation:", err);
     snackbarMessage.value = "Failed to update relation";
@@ -520,7 +520,7 @@ const saveEditRelation = () => {
 const editCandidate = computed(() =>
   editCandidateId.value == null
     ? null
-    : contactsStore.byId(editCandidateId.value)
+    : employeesStore.byId(editCandidateId.value)
 );
 
 // Drawer for creating a todo prefilled from a connection
@@ -629,7 +629,7 @@ const composeDialogRef = ref<any | null>(null);
 function openComposeForContact(conn: any) {
   try {
     // Prefer canonical contact record email when available
-    const linked = contactsStore.byId?.(conn.contactId as number | string);
+    const linked = employeesStore.byId?.(conn.contactId as number | string);
     const toAddress =
       linked?.email ||
       conn.email ||
@@ -682,9 +682,9 @@ function onEmailSend(payload: any) {
 }
 
 // Handler when ContactEditDialog inside profile saves
-function onContactEditSubmit(payload: ContactProperties) {
+function onContactEditSubmit(payload: EmployeeProperties) {
   try {
-    contactsStore.updateContact(payload.id, payload);
+    employeesStore.updateEmployee(payload.id, payload);
     notifications.push(`${payload.fullName} updated`, "success", 3000);
   } catch (e) {
     console.error("Failed to update contact from profile edit:", e);
@@ -1250,7 +1250,7 @@ function onContactEditSubmit(payload: ContactProperties) {
   <!-- Contact delete dialog -->
   <VDialog v-model="confirmDeleteContactVisible" max-width="540">
     <VCard class="pa-sm-8 pa-4">
-      <VCardTitle>Delete contact</VCardTitle>
+      <VCardTitle>Delete employee</VCardTitle>
       <VCardText>
         <div v-if="deleteContactBlockingReasons.length">
           <p>

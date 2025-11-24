@@ -8,13 +8,13 @@ import {
   emailValidator,
   requiredValidator,
 } from "../../../../@core/utils/validators";
-import type { ContactProperties } from "../../../../plugins/fake-api/handlers/apps/contact/types";
+import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 
 interface Props {
   isDialogVisible: boolean;
 }
 interface Emit {
-  (e: "submit", value: Partial<ContactProperties>): void;
+  (e: "submit", value: Partial<EmployeeProperties>): void;
   (e: "update:isDialogVisible", value: boolean): void;
 }
 const props = defineProps<Props>();
@@ -24,7 +24,7 @@ const display = useDisplay();
 const isFormValid = ref(false);
 const refForm = ref<VForm | undefined>();
 
-const localContact = ref<Partial<ContactProperties>>({
+const localContact = ref<Partial<EmployeeProperties>>({
   fullName: "",
   class: "Contact",
   type: "Individual",
@@ -151,7 +151,7 @@ const onSubmit = async () => {
   emit("submit", { ...localContact.value });
   emit("update:isDialogVisible", false);
   // show a brief snackbar confirming creation
-  notifications.push("Contact created", "success", 3000);
+  notifications.push("Employee created", "success", 3000);
   nextTick(() => resetForm());
 };
 
@@ -171,7 +171,7 @@ const onReset = () => {
 
     <VCard class="pa-sm-8 pa-4">
       <VCardText>
-        <h4 class="text-h5 text-center mb-2">Add New Contact</h4>
+        <h4 class="text-h5 text-center mb-2">Add New Employee</h4>
         <p class="text-body-2 text-center mb-6">
           Fill out the form below to add a new contact.
         </p>

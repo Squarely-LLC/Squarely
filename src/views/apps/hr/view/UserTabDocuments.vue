@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type {
-  ContactDocument,
-  ContactProperties,
-} from "@/plugins/fake-api/handlers/apps/contact/types";
-import { useContactsStore } from "@/stores/contacts";
+  EmployeeDocument,
+  EmployeeProperties,
+} from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { deleteFile, getFileObjectUrl } from "@/utils/fileStore";
@@ -12,7 +12,7 @@ import type { PropType } from "vue";
 import { computed, defineComponent, reactive, ref, watch } from "vue";
 import UserDocumentDialog from "./UserDocumentDialog.vue";
 
-const props = defineProps<{ user: ContactProperties | null }>();
+const props = defineProps<{ user: EmployeeProperties | null }>();
 
 const emit = defineEmits<{
   (
@@ -28,8 +28,8 @@ const emit = defineEmits<{
   ): void;
 }>();
 
-const contactsStore = useContactsStore();
-contactsStore.init();
+const employeesStore = useEmployeesStore();
+employeesStore.init();
 
 const AutoOpenGroups = defineComponent({
   name: "AutoOpenGroups",
@@ -131,7 +131,7 @@ const documentTypes: string[] = [
 
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;
 
-function docStatus(doc: ContactDocument) {
+function docStatus(doc: EmployeeDocument) {
   if (!doc.expiry) return "Active";
   try {
     const now = Date.now();
@@ -146,17 +146,17 @@ function docStatus(doc: ContactDocument) {
   }
 }
 
-const docsList = computed<ContactDocument[]>(() => {
+const docsList = computed<EmployeeDocument[]>(() => {
   // prefer the authoritative source from the contacts store for the
   // contact's documents so UI updates immediately after store mutations.
-  const fromStore = props.user ? contactsStore.byId(props.user.id) : null;
+  const fromStore = props.user ? employeesStore.byId(props.user.id) : null;
   const docs =
     localDocs.value ?? fromStore?.documents ?? props.user?.documents ?? [];
   return (Array.isArray(docs) ? docs.slice().reverse() : []).slice();
 });
 
 // local copy of documents to show immediate updates before parent prop refresh
-const localDocs = ref<ContactDocument[] | null>(null);
+const localDocs = ref<EmployeeDocument[] | null>(null);
 
 const filtered = computed(() => {
   const q = (searchQuery.value || "").toString().toLowerCase().trim();
@@ -182,12 +182,12 @@ const paged = computed(() => {
 });
 
 const isDialogVisible = ref(false);
-const editing = ref<ContactDocument | null>(null);
+const editing = ref<EmployeeDocument | null>(null);
 const dialogOpen = ref(false);
-const dialogDoc = ref<ContactDocument | null>(null);
+const dialogDoc = ref<EmployeeDocument | null>(null);
 // delete confirmation for individual documents
 const isConfirmDeleteVisible = ref(false);
-const deleteCandidate = ref<ContactDocument | null>(null);
+const deleteCandidate = ref<EmployeeDocument | null>(null);
 const todosStore = useTodos();
 todosStore.init();
 const notifications = useNotificationsStore();
@@ -223,14 +223,14 @@ function onEmailSend(payload: any) {
 }
 
 const todoCollaboratorOptions = computed(() =>
-  contactsStore.all.map((c) => ({
+  employeesStore.all.map((c) => ({
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
   }))
 );
 
-function openAddTodoDrawerForDocument(d: ContactDocument) {
+function openAddTodoDrawerForDocument(d: EmployeeDocument) {
   const initial: any = {
     title: `Review document: ${d.name || "Untitled"}`,
     collaborators: props.user
@@ -247,7 +247,7 @@ function openAddTodoDrawerForDocument(d: ContactDocument) {
   });
 }
 
-const form = reactive<Partial<ContactDocument>>({
+const form = reactive<Partial<EmployeeDocument>>({
   id: undefined,
   category: undefined,
   type: undefined,
@@ -271,13 +271,13 @@ const updateItemsPerPage = (value: number | string) => {
   page.value = 1;
 };
 
-function openEdit(d: ContactDocument) {
+function openEdit(d: EmployeeDocument) {
   editing.value = d;
   dialogDoc.value = d;
   dialogOpen.value = true;
 }
 
-async function openPreview(d: ContactDocument) {
+async function openPreview(d: EmployeeDocument) {
   if (!d || !d.fileUrl) return;
   const raw = String(d.fileUrl || "").trim();
 
@@ -418,7 +418,7 @@ async function openPreview(d: ContactDocument) {
 function saveDocument() {
   if (!props.user) return;
   const id = editing.value ? editing.value.id : Date.now();
-  const payload: ContactDocument = {
+  const payload: EmployeeDocument = {
     id: Number(id),
     category: (form.category as any) || undefined,
     type: (form.type as any) || undefined,
@@ -430,7 +430,7 @@ function saveDocument() {
     createdAt: new Date().toISOString(),
   };
 
-  const current = contactsStore.byId(props.user.id);
+  const current = employeesStore.byId(props.user.id);
   if (!current) return;
 
   const existing = Array.isArray(current.documents)
@@ -443,13 +443,13 @@ function saveDocument() {
     existing.push(payload);
   }
 
-  contactsStore.updateContact(props.user.id, { documents: existing });
+  employeesStore.updateEmployee(props.user.id, { documents: existing });
   isDialogVisible.value = false;
 }
 
-function removeDocument(d: ContactDocument) {
+function removeDocument(d: EmployeeDocument) {
   if (!props.user) return;
-  const current = contactsStore.byId(props.user.id);
+  const current = employeesStore.byId(props.user.id);
   if (!current) return;
 
   // if the doc references an idb: pointer, attempt to delete the stored blob
@@ -471,10 +471,10 @@ function removeDocument(d: ContactDocument) {
   } catch {}
 
   const existing = (current.documents || []).filter((x) => x.id !== d.id);
-  contactsStore.updateContact(props.user.id, { documents: existing });
+  employeesStore.updateEmployee(props.user.id, { documents: existing });
 }
 
-function confirmRemoveDocument(d: ContactDocument) {
+function confirmRemoveDocument(d: EmployeeDocument) {
   deleteCandidate.value = d;
   isConfirmDeleteVisible.value = true;
 }
@@ -491,7 +491,7 @@ function cancelRemove() {
   isConfirmDeleteVisible.value = false;
 }
 
-function createTodoForDocument(d: ContactDocument) {
+function createTodoForDocument(d: EmployeeDocument) {
   // open the drawer prefilled instead of auto-saving
   openAddTodoDrawerForDocument(d);
 }
@@ -514,7 +514,7 @@ function onAddTodoSaved(payload: any) {
   }
 }
 
-function emailUserForDocument(_d: ContactDocument) {
+function emailUserForDocument(_d: EmployeeDocument) {
   // open compose dialog with prefilled recipient and optionally attach the document file
   openEmailForDocument(_d).catch(() => {
     // fallback: try mailto if dialog fail
@@ -526,7 +526,7 @@ function emailUserForDocument(_d: ContactDocument) {
   });
 }
 
-async function openEmailForDocument(d: ContactDocument) {
+async function openEmailForDocument(d: EmployeeDocument) {
   if (!props.user) return;
 
   // When composing from a document we prefer an empty recipient so user can choose
@@ -597,7 +597,7 @@ async function openEmailForDocument(d: ContactDocument) {
 
 import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
 
-async function whatsappUserForDocument(d: ContactDocument) {
+async function whatsappUserForDocument(d: EmployeeDocument) {
   const notifications = useNotificationsStore();
 
   // prefer sharing the actual fileUrl if present
@@ -646,7 +646,7 @@ async function whatsappUserForDocument(d: ContactDocument) {
   }
 }
 
-function onDialogSave(payload: ContactDocument) {
+function onDialogSave(payload: EmployeeDocument) {
   try {
     // eslint-disable-next-line no-console
     console.log(
@@ -663,7 +663,7 @@ function onDialogSave(payload: ContactDocument) {
     } catch {}
     return;
   }
-  const current = contactsStore.byId(props.user.id);
+  const current = employeesStore.byId(props.user.id);
   if (!current) return;
   const existing = Array.isArray(current.documents)
     ? [...current.documents]
@@ -674,7 +674,7 @@ function onDialogSave(payload: ContactDocument) {
   } else {
     existing.push(payload);
   }
-  contactsStore.updateContact(props.user.id, { documents: existing });
+  employeesStore.updateEmployee(props.user.id, { documents: existing });
   // update local copy so the table reflects changes immediately
   localDocs.value = existing;
   try {

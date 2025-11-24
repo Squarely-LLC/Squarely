@@ -6,6 +6,7 @@ import { handlerAppsAcademy } from '@db/apps/academy/index'
 import { handlerAppsCalendar } from '@db/apps/calendar/index'
 import { handlerAppsChat } from '@db/apps/chat/index'
 import { handlerAppsContacts } from '@db/apps/contact/index'
+import { handlerAppsEmployees } from '@db/apps/employees/index'
 import { handlerAppsEcommerce } from '@db/apps/ecommerce/index'
 import { handlerAppsEmail } from '@db/apps/email/index'
 import { handlerAppsInvoice } from '@db/apps/invoice/index'
@@ -27,6 +28,7 @@ const worker = setupWorker(
   ...handlerAppsAcademy,
   ...handlerAppsInvoice,
   ...handlerAppsUsers,
+  ...handlerAppsEmployees,
   ...handlerAppsContacts,
   ...handlerAppsEmail,
   ...handlerAppsCalendar,

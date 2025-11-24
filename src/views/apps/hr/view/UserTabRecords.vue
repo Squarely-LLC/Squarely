@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineEmits, defineProps, ref } from "vue";
-import { useContactsStore } from "../../../../stores/contacts";
+import { useEmployeesStore } from "../../../../stores/employees";
 
 const props = defineProps({
   user: { type: Object as () => any, required: false },
@@ -16,20 +16,20 @@ const headers = [
 ];
 
 // use canonical contacts store and compute records for the passed user
-const contactsStore = useContactsStore();
-contactsStore.init?.();
+const employeesStore = useEmployeesStore();
+employeesStore.init?.();
 
 const contactId = computed(() => {
   if (!props.user) return null;
   return (props.user as any).id ?? props.user;
 });
 
-const RECORDS_API_DISABLED_KEY = "app.contacts.records.api.disabled";
+const RECORDS_API_DISABLED_KEY = "app.employees.records.api.disabled";
 
 const recordsList = computed(() => {
   const id = contactId.value;
   if (id == null) return [] as any[];
-  const contact = contactsStore.byId?.(id as any) ?? null;
+  const contact = employeesStore.byId?.(id as any) ?? null;
   return (
     contact && Array.isArray((contact as any).records)
       ? (contact as any).records
@@ -119,12 +119,12 @@ async function deleteRecord(record: any) {
   );
   if (!existsOnThisContact) {
     // remove from any contact that matches the record id
-    contactsStore.items.forEach((c: any) => {
+    employeesStore.items.forEach((c: any) => {
       if (
         Array.isArray(c.records) &&
         c.records.some((r: any) => String(r.id) === String(record.id))
       ) {
-        contactsStore.removeRecord(c.id, record.id);
+        employeesStore.removeRecord(c.id, record.id);
       }
     });
     return;
@@ -142,7 +142,7 @@ async function performRemoveConfirmed() {
   if (id == null) return;
 
   if (recordsApiUnavailable) {
-    contactsStore.removeRecord(id as any, record.id);
+    employeesStore.removeRecord(id as any, record.id);
     deleteCandidate.value = null;
     isConfirmDeleteVisible.value = false;
     return;
@@ -150,15 +150,15 @@ async function performRemoveConfirmed() {
 
   try {
     const response = await fetch(
-      `/api/apps/contacts/${id}/records/${record.id}`,
+      `/api/apps/employees/${id}/records/${record.id}`,
       { method: "DELETE" }
     );
 
     if (response.ok) {
-      contactsStore.removeRecord(id as any, record.id);
+      employeesStore.removeRecord(id as any, record.id);
     } else if (response.status === 404) {
       disableRecordsApi();
-      contactsStore.removeRecord(id as any, record.id);
+      employeesStore.removeRecord(id as any, record.id);
     } else {
       const text = await response.text();
       console.warn("Failed to delete record", response.status, text);
@@ -168,7 +168,7 @@ async function performRemoveConfirmed() {
     console.warn("Error deleting record", err);
     alert("Network error deleting record");
     disableRecordsApi();
-    contactsStore.removeRecord(id as any, record.id);
+    employeesStore.removeRecord(id as any, record.id);
   } finally {
     deleteCandidate.value = null;
     isConfirmDeleteVisible.value = false;
@@ -196,8 +196,8 @@ async function handleSaveRecord(payload: any) {
     const exists = recordsList.value.some(
       (r: any) => String(r.id) === String(normalized.id)
     );
-    if (exists) contactsStore.updateRecord(id as any, normalized);
-    else contactsStore.addRecord(id as any, normalized);
+    if (exists) employeesStore.updateRecord(id as any, normalized);
+    else employeesStore.addRecord(id as any, normalized);
     return normalized.id;
   };
 
@@ -221,7 +221,7 @@ async function handleSaveRecord(payload: any) {
     };
 
     if (payloadId && existsLocally) {
-      response = await fetch(`/api/apps/contacts/${id}/records/${payloadId}`, {
+      response = await fetch(`/api/apps/employees/${id}/records/${payloadId}`, {
         ...baseRequestInit,
         method: "PUT",
       });
@@ -232,7 +232,7 @@ async function handleSaveRecord(payload: any) {
         return;
       }
     } else {
-      response = await fetch(`/api/apps/contacts/${id}/records`, {
+      response = await fetch(`/api/apps/employees/${id}/records`, {
         ...baseRequestInit,
         method: "POST",
       });
@@ -257,14 +257,14 @@ async function handleSaveRecord(payload: any) {
 
     // Prefer handling single record payloads when available (avoid replacing
     // the whole records array). If API returned `record`, add/update that
-    // single record. If API returned only `contact.records`, merge server
+    // single record. If API returned only `employee.records`, merge server
     // records with existing ones to avoid erasing local records that might
     // not be present in the response.
     if (data?.record) {
       upsertLocalRecord(data.record);
-    } else if (data?.contact) {
-      const serverRecords = Array.isArray(data.contact.records)
-        ? data.contact.records
+    } else if (data?.employee) {
+      const serverRecords = Array.isArray(data.employee.records)
+        ? data.employee.records
         : [];
       const existing = recordsList.value ?? [];
       const serverIds = new Set(serverRecords.map((r: any) => String(r.id)));
@@ -274,7 +274,7 @@ async function handleSaveRecord(payload: any) {
         ...serverRecords,
         ...existing.filter((r: any) => !serverIds.has(String(r.id))),
       ];
-      contactsStore.updateContact(id as any, { records: merged });
+      employeesStore.updateEmployee(id as any, { records: merged });
     } else {
       upsertLocalRecord(payload);
     }

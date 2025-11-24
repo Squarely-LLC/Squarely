@@ -4,7 +4,7 @@ import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
 import { ref, toRaw, watch } from "vue";
 
-import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 
 type CountryOption = {
   code: string;
@@ -167,14 +167,14 @@ const withDialAttached = (digitsValue: string, countryDial: string) => {
 };
 
 interface Props {
-  contact?: ContactProperties | null;
+  contact?: EmployeeProperties | null;
   isDialogVisible: boolean;
   loading?: boolean;
   error?: string | null;
 }
 
 interface Emit {
-  (e: "submit", value: ContactProperties): void;
+  (e: "submit", value: EmployeeProperties): void;
   (e: "update:isDialogVisible", value: boolean): void;
 }
 
@@ -192,10 +192,10 @@ const selectedCountry = ref<CountryOption>(initialPhoneMeta.country);
 // flag to indicate the dialog initiated a save so watcher can merge instead of overwrite
 const justSaved = ref(false);
 
-const sanitizeContact = (contact: ContactProperties | null) => {
+const sanitizeContact = (contact: EmployeeProperties | null) => {
   if (!contact) return null;
 
-  const raw = toRaw(contact) as ContactProperties;
+  const raw = toRaw(contact) as EmployeeProperties;
   const { digits } = splitNumberByDial(raw.number ?? "");
 
   return {
@@ -210,10 +210,10 @@ const sanitizeContact = (contact: ContactProperties | null) => {
       vatNumber: raw.accounting?.vatNumber ?? "",
     },
     website: raw.website ?? "",
-  } as ContactProperties;
+  } as EmployeeProperties;
 };
 
-const localContact = ref<ContactProperties | null>(
+const localContact = ref<EmployeeProperties | null>(
   sanitizeContact(props.contact)
 );
 
@@ -238,7 +238,7 @@ watch(
       localContact.value = {
         ...(localContact.value ?? {}),
         ...(sanitized ?? {}),
-      } as ContactProperties;
+      } as EmployeeProperties;
       justSaved.value = false;
     } else {
       localContact.value = sanitized;
@@ -346,7 +346,7 @@ const saveContact = async (closeAfter = false) => {
     // if validation throws or is unavailable, proceed cautiously
   }
 
-  const payload: ContactProperties = {
+  const payload: EmployeeProperties = {
     ...localContact.value,
     number: withDialAttached(
       String(localContact.value.number ?? ""),

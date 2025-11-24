@@ -1,14 +1,14 @@
-<!-- Contacts page -->
+<!-- Employees page -->
 <script setup lang="ts">
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 
 import type {
-  ContactConnection,
-  ContactProperties,
-} from "@/plugins/fake-api/handlers/apps/contact/types";
-import { useContactsStore } from "@/stores/contacts";
+  EmployeeConnection,
+  EmployeeProperties,
+} from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useEmployeesStore } from "@/stores/employees";
 import AddNewUserDialog from "@/views/apps/hr/list/AddNewUserDialog.vue";
 import ContactEditDialog from "@/views/apps/hr/list/ContactEditDialog.vue";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -62,8 +62,8 @@ const statusFilter = computed(() => {
   return selectedStatus.value;
 });
 
-const contactsStore = useContactsStore();
-contactsStore.init();
+const employeesStore = useEmployeesStore();
+employeesStore.init();
 
 watch(selectedSort, (val) => {
   if (!val) {
@@ -78,7 +78,7 @@ watch(selectedSort, (val) => {
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
-const matchesFilters = (contact: ContactProperties) => {
+const matchesFilters = (contact: EmployeeProperties) => {
   const query = normalizedSearch.value;
   if (query) {
     const haystacks = [contact.fullName, contact.email, contact.number]
@@ -105,7 +105,7 @@ const matchesFilters = (contact: ContactProperties) => {
   return true;
 };
 
-const normalizeSortValue = (contact: ContactProperties, key?: string) => {
+const normalizeSortValue = (contact: EmployeeProperties, key?: string) => {
   switch (key) {
     case "user":
       return contact.fullName?.toLowerCase() ?? "";
@@ -124,7 +124,7 @@ const normalizeSortValue = (contact: ContactProperties, key?: string) => {
   }
 };
 
-const compareContacts = (a: ContactProperties, b: ContactProperties) => {
+const compareContacts = (a: EmployeeProperties, b: EmployeeProperties) => {
   const key = sortBy.value ?? "createdAt";
   const order = orderBy.value ?? "desc";
 
@@ -146,23 +146,23 @@ const compareContacts = (a: ContactProperties, b: ContactProperties) => {
   return order === "asc" ? diff : -diff;
 };
 
-const filteredContacts = computed<ContactProperties[]>(() => {
-  return contactsStore.all
+const filteredContacts = computed<EmployeeProperties[]>(() => {
+  return employeesStore.all
     .map((stored) => cloneContact(stored))
-    .filter((contact): contact is ContactProperties => {
+    .filter((contact): contact is EmployeeProperties => {
       if (!contact) return false;
       if (contact.id === null || contact.id === undefined) return false;
       return matchesFilters(contact);
     });
 });
 
-const sortedContacts = computed<ContactProperties[]>(() => {
+const sortedContacts = computed<EmployeeProperties[]>(() => {
   const items = [...filteredContacts.value];
   if (items.length > 1) items.sort(compareContacts);
   return items;
 });
 
-const displayedContacts = computed<ContactProperties[]>(() => {
+const displayedContacts = computed<EmployeeProperties[]>(() => {
   const results = sortedContacts.value;
   const start = (page.value - 1) * itemsPerPage.value;
   const end =
@@ -177,12 +177,12 @@ const connectionDirectory = computed(() => {
   const map = new Map<
     string,
     Pick<
-      ContactProperties,
+      EmployeeProperties,
       "id" | "fullName" | "picture" | "status" | "channel" | "class"
     >
   >();
 
-  contactsStore.all.forEach((contact) => {
+  employeesStore.all.forEach((contact) => {
     if (contact?.id === null || contact?.id === undefined) return;
     map.set(String(contact.id), {
       id: contact.id,
@@ -197,16 +197,16 @@ const connectionDirectory = computed(() => {
   return map;
 });
 
-type ConnectionDisplay = ContactConnection & {
+type ConnectionDisplay = EmployeeConnection & {
   displayName: string;
   avatar?: string | null;
-  displayStatus?: ContactProperties["status"];
-  displayChannel?: ContactProperties["channel"];
-  displayClass?: ContactProperties["class"];
+  displayStatus?: EmployeeProperties["status"];
+  displayChannel?: EmployeeProperties["channel"];
+  displayClass?: EmployeeProperties["class"];
 };
 
 const decorateConnections = (
-  connections: ContactConnection[] | undefined | null
+  connections: EmployeeConnection[] | undefined | null
 ): ConnectionDisplay[] => {
   if (!Array.isArray(connections) || !connections.length) return [];
 
@@ -314,10 +314,10 @@ const avatarText = (name?: string | null) => {
   return initials || safeName.slice(0, 2).toUpperCase();
 };
 
-const cloneContact = (contact: ContactProperties | null | undefined) => {
+const cloneContact = (contact: EmployeeProperties | null | undefined) => {
   if (!contact) return contact ?? null;
 
-  const raw = toRaw(contact) as ContactProperties;
+  const raw = toRaw(contact) as EmployeeProperties;
 
   if (typeof structuredClone === "function") {
     try {
@@ -331,7 +331,7 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
+    return JSON.parse(JSON.stringify(raw)) as EmployeeProperties;
   } catch (error) {
     console.warn("Failed to clone contact payload:", error);
     return { ...raw };
@@ -340,7 +340,7 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
 
 const isAddNewUserDrawerVisible = ref(false);
 const isContactEditDialogVisible = ref(false);
-const selectedContact = ref<ContactProperties | null>(null);
+const selectedContact = ref<EmployeeProperties | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const isConfirmDeleteVisible = ref(false);
@@ -348,13 +348,13 @@ const deleteCandidateId = ref<number | null>(null);
 const deleteBlockingReasons = ref<string[]>([]);
 const notifications = useNotificationsStore();
 
-const addNewContact = (contact: Partial<ContactProperties>) => {
+const addNewContact = (contact: Partial<EmployeeProperties>) => {
   // eslint-disable-next-line no-console
   console.log("addNewContact received:", JSON.parse(JSON.stringify(contact)));
 
-  // The store expects a Partial<ContactProperties> for addContact.
+  // The store expects a Partial<EmployeeProperties> for addEmployee.
   // Ensure we pass the payload through directly so the store assigns an id and defaults.
-  contactsStore.addContact(contact);
+  employeesStore.addEmployee(contact);
   isAddNewUserDrawerVisible.value = false;
 };
 
@@ -432,7 +432,7 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     }
 
     // connections: referenced as connection.contactId in other contacts
-    const referencedInConnections = contactsStore.all.filter(
+    const referencedInConnections = employeesStore.all.filter(
       (c) =>
         Array.isArray(c.connections) &&
         c.connections.some((conn) => Number(conn.contactId) === Number(id))
@@ -469,12 +469,12 @@ const performDelete = () => {
     return;
   }
 
-  contactsStore.removeContact(id);
+  employeesStore.removeEmployee(id);
   const index = selectedRows.value.findIndex((row) => row === id);
   if (index !== -1) selectedRows.value.splice(index, 1);
 
   // notify success
-  notifications.push("Contact deleted", "success", 3500);
+  notifications.push("Employee deleted", "success", 3500);
 
   // reset dialog state
   deleteCandidateId.value = null;
@@ -544,7 +544,7 @@ const cleanupAndDelete = () => {
   });
 
   // Remove connections pointing to this contact
-  contactsStore.items = contactsStore.items.map((c) => {
+  employeesStore.items = employeesStore.items.map((c) => {
     const connections = (c.connections || []).filter(
       (conn) => Number(conn.contactId) !== Number(id)
     );
@@ -552,7 +552,7 @@ const cleanupAndDelete = () => {
   });
 
   // Finally delete the contact
-  contactsStore.removeContact(id);
+  employeesStore.removeEmployee(id);
   const idx = selectedRows.value.findIndex((row) => row === id);
   if (idx !== -1) selectedRows.value.splice(idx, 1);
 
@@ -567,7 +567,7 @@ const cleanupAndDelete = () => {
 const deleteCandidateName = computed(() => {
   const id = deleteCandidateId.value;
   if (id === null) return "";
-  const c = contactsStore.byId(id);
+  const c = employeesStore.byId(id);
   return c?.fullName ?? String(id);
 });
 
@@ -575,10 +575,10 @@ const fetchContactDetails = (id: number | string) => {
   loading.value = true;
   error.value = null;
 
-  const contact = contactsStore.byId(id);
+  const contact = employeesStore.byId(id);
   if (!contact) {
     selectedContact.value = null;
-    error.value = "Contact not found";
+    error.value = "Employee not found";
   } else {
     selectedContact.value = cloneContact(contact);
   }
@@ -603,14 +603,14 @@ const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
 
 const contactsOptions = computed(() =>
-  contactsStore.all.map((c) => ({
+  employeesStore.all.map((c) => ({
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
   }))
 );
 
-const openAddTodoDrawerForContact = (contact: ContactProperties) => {
+const openAddTodoDrawerForContact = (contact: EmployeeProperties) => {
   try {
     const initial = {
       title: `Follow up: ${contact.fullName ?? ""}`,
@@ -640,7 +640,7 @@ const openAddTodoDrawerForContact = (contact: ContactProperties) => {
   }
 };
 
-const openAddMeetingForContact = (contact: ContactProperties) => {
+const openAddMeetingForContact = (contact: EmployeeProperties) => {
   try {
     const initial = {
       title: `Meeting: ${contact.fullName ?? ""}`,
@@ -673,7 +673,7 @@ const openAddMeetingForContact = (contact: ContactProperties) => {
   }
 };
 
-const openComposeForContact = (contact: ContactProperties) => {
+const openComposeForContact = (contact: EmployeeProperties) => {
   try {
     const toAddress = contact.email || "";
     const initial = {
@@ -695,7 +695,7 @@ const openComposeForContact = (contact: ContactProperties) => {
   }
 };
 
-const handleAction = (action: string, item: ContactProperties) => {
+const handleAction = (action: string, item: EmployeeProperties) => {
   // Fallback placeholder for actions not yet implemented
   notifications.push(`${action} for ${item.fullName}`, "info", 3000);
 };
@@ -731,11 +731,11 @@ const onTodoCreated = (payload: any) => {
   }
 };
 
-const saveEditedContact = (payload: ContactProperties) => {
+const saveEditedContact = (payload: EmployeeProperties) => {
   loading.value = true;
   error.value = null;
 
-  const updated = contactsStore.updateContact(payload.id, payload);
+  const updated = employeesStore.updateEmployee(payload.id, payload);
   if (!updated) {
     error.value = "Failed to save contact";
     loading.value = false;
@@ -770,7 +770,7 @@ const updateItemsPerPage = (value: number | string) => {
   <section>
     <VCard class="mb-6">
       <VCardItem class="pb-4">
-        <VCardTitle>Contacts</VCardTitle>
+        <VCardTitle>Employees</VCardTitle>
       </VCardItem>
 
       <VCardText>
@@ -839,7 +839,7 @@ const updateItemsPerPage = (value: number | string) => {
 
         <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
           <div style="inline-size: 15.625rem">
-            <AppTextField v-model="searchQuery" placeholder="Search Contacts" />
+            <AppTextField v-model="searchQuery" placeholder="Search Employees" />
           </div>
 
           <VBtn variant="tonal" color="secondary" prepend-icon="tabler-upload">
@@ -850,7 +850,7 @@ const updateItemsPerPage = (value: number | string) => {
             prepend-icon="tabler-plus"
             @click="isAddNewUserDrawerVisible = true"
           >
-            Add New Contact
+            Add New Employee
           </VBtn>
         </div>
       </VCardText>

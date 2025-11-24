@@ -46,5 +46,26 @@ try {
   // console.warn('contacts initialization failed', error);
 }
 
+// Centralized employees initialization (similar to contacts seeding)
+try {
+  if (typeof window !== "undefined") {
+    const { useEmployeesStore } = require("@/stores/employees") as any;
+    const { db: employeesDb } =
+      require("@/plugins/fake-api/handlers/apps/employees/db") as any;
+
+    const employeesStore = useEmployeesStore(store);
+    employeesStore.init?.();
+    if (
+      !employeesStore.all ||
+      (Array.isArray(employeesStore.all) && employeesStore.all.length === 0)
+    ) {
+      employeesStore.replaceAll(employeesDb.users || []);
+    }
+  }
+} catch (error) {
+  // eslint-disable-next-line no-console
+  // console.warn('employees initialization failed', error);
+}
+
 // Mount vue app
 app.mount("#app");
