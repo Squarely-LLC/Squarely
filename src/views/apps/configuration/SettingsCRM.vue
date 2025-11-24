@@ -26,9 +26,14 @@ const sentiments = ref<string[]>([]);
 const notes = ref<string[]>([]);
 const meetings = ref<string[]>([]);
 const jobStages = ref<string[]>([]);
+const salesType = ref<string[]>([]);
+const salesLocation = ref<string[]>([]);
+const dealStages = ref<string[]>([]);
 const showContactRecord = ref(false);
 const jobAlertEnabled = ref(false);
 const jobAlertDays = ref(0);
+const dealAlertEnabled = ref(false);
+const dealAlertDays = ref(0);
 
 const isSavingCategories = ref(false);
 const isSavingIndCategories = ref(false);
@@ -39,6 +44,9 @@ const isSavingSentiments = ref(false);
 const isSavingNotes = ref(false);
 const isSavingMeetings = ref(false);
 const isSavingJobStages = ref(false);
+const isSavingSalesType = ref(false);
+const isSavingSalesLocation = ref(false);
+const isSavingDealStages = ref(false);
 const isSavingActivitySettings = ref(false);
 const isSavingFlags = ref(false);
 const isSavingIndFlags = ref(false);
@@ -55,6 +63,7 @@ let indInactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let jobAlertSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let leadLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let quotationLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
+let dealAlertSaveHandle: ReturnType<typeof setTimeout> | null = null;
 
 const defaultContactType = ref<string>("Individual");
 const leadLostIn = ref(0);
@@ -117,6 +126,15 @@ const loadData = () => {
   quotationLostIn.value = Number(deals.quotationLostIn ?? 0);
   quotationStartsSeq.value = String(deals.quotationStartsSeq ?? "");
   proformaStartSeq.value = String(deals.proformaStartSeq ?? "");
+  salesType.value = cleanEntries(deals.salesType || []);
+  salesLocation.value = cleanEntries(deals.salesLocation || []);
+  dealStages.value = cleanEntries(deals.dealStages || []);
+  const dealAlert = (deals.dealAlert || {}) as {
+    enabled?: boolean;
+    days?: number;
+  };
+  dealAlertEnabled.value = !!dealAlert.enabled;
+  dealAlertDays.value = Number(dealAlert.days ?? 0);
 
   const explicitTypes = (org as any)?.documentTypes;
   const explicitCats = (org as any)?.documentCategories;
@@ -263,6 +281,36 @@ const saveJobStages = makeListSaver({
   }),
 });
 
+const saveSalesType = makeListSaver({
+  state: salesType,
+  loading: isSavingSalesType,
+  successMessage: "Sales type saved",
+  failureMessage: "Failed to save sales type",
+  payloadBuilder: (cleaned) => ({
+    deals: { ...(store.configurations.deals || {}), salesType: cleaned },
+  }),
+});
+
+const saveSalesLocation = makeListSaver({
+  state: salesLocation,
+  loading: isSavingSalesLocation,
+  successMessage: "Sales location saved",
+  failureMessage: "Failed to save sales location",
+  payloadBuilder: (cleaned) => ({
+    deals: { ...(store.configurations.deals || {}), salesLocation: cleaned },
+  }),
+});
+
+const saveDealStages = makeListSaver({
+  state: dealStages,
+  loading: isSavingDealStages,
+  successMessage: "Deal stages saved",
+  failureMessage: "Failed to save deal stages",
+  payloadBuilder: (cleaned) => ({
+    deals: { ...(store.configurations.deals || {}), dealStages: cleaned },
+  }),
+});
+
 const saveDocuments = async (action: "update" | "delete" = "update") => {
   const types = cleanEntries(docTypes.value);
   const categories = cleanEntries(docCategories.value);
@@ -344,6 +392,10 @@ const saveDealsSettings = async () => {
       quotationLostIn: quotationLostIn.value,
       quotationStartsSeq: quotationStartsSeq.value,
       proformaStartSeq: proformaStartSeq.value,
+      dealAlert: {
+        enabled: dealAlertEnabled.value,
+        days: dealAlertDays.value,
+      },
     },
   } as any);
   isSavingDealsSettings.value = false;
@@ -467,6 +519,16 @@ const onQuotationLostInInput = (event: Event) => {
   }, 400);
 };
 
+const onDealAlertInput = (event: Event) => {
+  const val = parseFloat((event.target as HTMLInputElement).value);
+  dealAlertDays.value = isNaN(val) || val < 0 ? 0 : val;
+  if (dealAlertSaveHandle) clearTimeout(dealAlertSaveHandle);
+  dealAlertSaveHandle = setTimeout(() => {
+    dealAlertSaveHandle = null;
+    void saveDealsSettings();
+  }, 400);
+};
+
 onUnmounted(() => {
   if (inactiveSaveHandle) {
     clearTimeout(inactiveSaveHandle);
@@ -487,6 +549,10 @@ onUnmounted(() => {
   if (quotationLostInSaveHandle) {
     clearTimeout(quotationLostInSaveHandle);
     quotationLostInSaveHandle = null;
+  }
+  if (dealAlertSaveHandle) {
+    clearTimeout(dealAlertSaveHandle);
+    dealAlertSaveHandle = null;
   }
 });
 </script>
@@ -864,7 +930,7 @@ onUnmounted(() => {
             @blur="saveDealsSettings"
           />
         </VCol>
-        <VCol cols="12" md="6">
+        <VCol cols="12" md="6" class="mb-4">
           <label class="text-subtitle-2 mb-2 d-block">
             Proforma Start Seq
           </label>
@@ -877,6 +943,69 @@ onUnmounted(() => {
             :loading="isSavingDealsSettings"
             :disabled="isSavingDealsSettings"
             @blur="saveDealsSettings"
+          />
+        </VCol>
+      </VRow>
+      <div class="mb-4">
+        <EditableChipList
+          label="Sales type"
+          :items="salesType"
+          :loading="isSavingSalesType"
+          placeholder="Add sales types"
+          @save="saveSalesType"
+          @warn="notifyWarn"
+          @error="notifyError"
+        />
+      </div>
+
+      <div class="mb-4">
+        <EditableChipList
+          label="Sales location"
+          :items="salesLocation"
+          :loading="isSavingSalesLocation"
+          placeholder="Add sales locations"
+          @save="saveSalesLocation"
+          @warn="notifyWarn"
+          @error="notifyError"
+        />
+      </div>
+
+      <div class="mb-4">
+        <EditableChipList
+          label="Deal stage"
+          :items="dealStages"
+          :loading="isSavingDealStages"
+          placeholder="Add deal stages"
+          @save="saveDealStages"
+          @warn="notifyWarn"
+          @error="notifyError"
+        />
+      </div>
+
+      <VRow>
+        <VCol cols="6" md="5">
+          <VSwitch
+            v-model="dealAlertEnabled"
+            label="Alert Deal Open More Than (Days)"
+            inset
+            :disabled="isSavingDealsSettings"
+            :loading="isSavingDealsSettings"
+            @change="() => void saveDealsSettings()"
+          />
+        </VCol>
+        <VCol v-if="dealAlertEnabled" cols="6" md="7">
+          <AppTextField
+            v-model.number="dealAlertDays"
+            type="number"
+            min="0"
+            :loading="isSavingDealsSettings"
+            :disabled="isSavingDealsSettings"
+            @keydown="
+              (e: KeyboardEvent) => {
+                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+              }
+            "
+            @input="onDealAlertInput"
           />
         </VCol>
       </VRow>
