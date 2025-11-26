@@ -6,43 +6,7 @@ import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import type { EmployeeProperties } from "./types";
 
-const normalizeConnections = (
-  connections?: EmployeeProperties["connections"]
-) => {
-  if (!Array.isArray(connections)) return [];
-
-  let primaryIndex = -1;
-
-  connections.forEach((connection, index) => {
-    if (connection?.isPrimary) primaryIndex = index;
-  });
-
-  return connections.map(({ picture, ...connection }, index) => ({
-    ...connection,
-    isPrimary: primaryIndex === index && primaryIndex !== -1,
-  }));
-};
-
-const buildEmployeeLookup = () =>
-  new Map(db.users.map((contact) => [contact.id, contact]));
-
-const hydrateConnections = (
-  connections: EmployeeProperties["connections"],
-  employeeLookup: Map<number, EmployeeProperties>
-) =>
-  normalizeConnections(connections).map((connection) => {
-    const linked = employeeLookup.get(connection.contactId);
-    return {
-      ...connection,
-      contactName: linked?.fullName ?? connection.contactName,
-      picture: linked?.picture ?? "",
-    };
-  });
-
-db.users = db.users.map((contact) => ({
-  ...contact,
-  connections: normalizeConnections(contact.connections),
-}));
+db.users = db.users.map((employee) => ({ ...employee }));
 
 export const handlerAppsEmployees = [
   http.get("/api/apps/employees", ({ request }) => {
@@ -50,7 +14,6 @@ export const handlerAppsEmployees = [
 
     const q = url.searchParams.get("q");
     const contactClass = url.searchParams.get("class");
-    const contactType = url.searchParams.get("type");
     const category = url.searchParams.get("category");
     const status = url.searchParams.get("status");
     const channel = url.searchParams.get("channel");
@@ -82,7 +45,6 @@ export const handlerAppsEmployees = [
         user.number.toLowerCase().includes(queryLower);
 
       const matchesClass = contactClass ? user.class === contactClass : true;
-      const matchesType = contactType ? user.type === contactType : true;
       const matchesCategory = category ? user.category === category : true;
       const matchesStatus = status ? user.status === status : true;
       const matchesChannel = channel ? user.channel === channel : true;
@@ -90,7 +52,6 @@ export const handlerAppsEmployees = [
       return (
         matchesQuery &&
         matchesClass &&
-        matchesType &&
         matchesCategory &&
         matchesStatus &&
         matchesChannel
@@ -107,8 +68,9 @@ export const handlerAppsEmployees = [
       }
       if (sortByLocal === "class") {
         filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === "asc") return a.class.localeCompare(b.class);
-          return b.class.localeCompare(a.class);
+          if (orderByLocal === "asc")
+            return (a.class ?? "").localeCompare(b.class ?? "");
+          return (b.class ?? "").localeCompare(a.class ?? "");
         });
       }
       if (sortByLocal === "number") {
@@ -138,8 +100,8 @@ export const handlerAppsEmployees = [
       if (sortByLocal === "category") {
         filteredUsers = filteredUsers.sort((a, b) => {
           if (orderByLocal === "asc")
-            return a.category.localeCompare(b.category);
-          return b.category.localeCompare(a.category);
+            return (a.category ?? "").localeCompare(b.category ?? "");
+          return (b.category ?? "").localeCompare(a.category ?? "");
         });
       }
       if (sortByLocal === "channel") {
@@ -157,19 +119,12 @@ export const handlerAppsEmployees = [
       }
     }
 
-    const employeeLookup = buildEmployeeLookup();
-
-    const hydratedUsers = filteredUsers.map((user) => ({
-      ...user,
-      connections: hydrateConnections(user.connections, employeeLookup),
-    }));
-
-    const totalUsers = hydratedUsers.length;
+    const totalUsers = filteredUsers.length;
     const totalPages = Math.ceil(totalUsers / itemsPerPageLocal);
 
     return HttpResponse.json(
       {
-        users: paginateArray(hydratedUsers, itemsPerPageLocal, pageLocal),
+        users: paginateArray(filteredUsers, itemsPerPageLocal, pageLocal),
         totalPages,
         totalUsers,
         page: pageLocal > Math.ceil(totalUsers / itemsPerPageLocal) ? 1 : page,
@@ -187,12 +142,9 @@ export const handlerAppsEmployees = [
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const employeeLookup = buildEmployeeLookup();
-
     return HttpResponse.json(
       {
         ...user,
-        connections: hydrateConnections(user.connections, employeeLookup),
       },
       { status: 200 }
     );
@@ -215,11 +167,7 @@ export const handlerAppsEmployees = [
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<EmployeeProperties>;
 
-    const {
-      connections: incomingConnections,
-      accounting: incomingAccounting,
-      ...restBody
-    } = body;
+    const { accounting: incomingAccounting, ...restBody } = body;
 
     const index = db.users.findIndex((entry) => entry.id === userId);
     if (index === -1)
@@ -235,29 +183,13 @@ export const handlerAppsEmployees = [
         "",
     };
 
-    const normalizedConnections = Array.isArray(incomingConnections)
-      ? normalizeConnections(incomingConnections)
-      : normalizeConnections(db.users[index].connections);
-
     db.users[index] = {
       ...db.users[index],
       ...restBody,
       accounting: nextAccounting,
-      connections: normalizedConnections,
     };
 
-    const employeeLookup = buildEmployeeLookup();
-
-    return HttpResponse.json(
-      {
-        ...db.users[index],
-        connections: hydrateConnections(
-          db.users[index].connections,
-          employeeLookup
-        ),
-      },
-      { status: 200 }
-    );
+    return HttpResponse.json(db.users[index], { status: 200 });
   }),
 
   http.post("/api/apps/employees/:id/records", async ({ params, request }) => {
@@ -284,17 +216,11 @@ export const handlerAppsEmployees = [
     // prepend so newest first
     db.users[index].records.unshift(incomingRecord);
 
-    const employeeLookup = buildEmployeeLookup();
-
     return HttpResponse.json(
       {
         record: incomingRecord,
         employee: {
           ...db.users[index],
-          connections: hydrateConnections(
-            db.users[index].connections,
-            employeeLookup
-          ),
         },
       },
       { status: 201 }
@@ -331,17 +257,11 @@ export const handlerAppsEmployees = [
         ...payload,
       };
 
-      const employeeLookup = buildEmployeeLookup();
-
       return HttpResponse.json(
         {
           record: db.users[index].records[ridx],
           employee: {
             ...db.users[index],
-            connections: hydrateConnections(
-              db.users[index].connections,
-              employeeLookup
-            ),
           },
         },
         { status: 200 }
@@ -376,11 +296,7 @@ export const handlerAppsEmployees = [
   http.post("/api/apps/employees", async ({ request }) => {
     const payload = (await request.json()) as any;
 
-    const {
-      connections: incomingConnections,
-      accounting: incomingAccounting,
-      ...restPayload
-    } = payload;
+    const { accounting: incomingAccounting, ...restPayload } = payload;
 
     const accounting = {
       taxId: incomingAccounting?.taxId ?? "",
@@ -388,15 +304,14 @@ export const handlerAppsEmployees = [
       vatNumber: incomingAccounting?.vatNumber ?? "",
     };
 
-    const normalizedConnections = normalizeConnections(incomingConnections);
-
-    db.users.push({
+    const newEmployee = {
       ...restPayload,
       id: db.users.length + 1,
       accounting,
-      connections: normalizedConnections,
-    });
+    };
 
-    return HttpResponse.json({ body: payload }, { status: 201 });
+    db.users.push(newEmployee);
+
+    return HttpResponse.json(newEmployee, { status: 201 });
   }),
 ];

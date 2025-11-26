@@ -3,15 +3,13 @@
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
+import { useRouter } from "vue-router";
 
-import type {
-  EmployeeConnection,
-  EmployeeProperties,
-} from "@/plugins/fake-api/handlers/apps/employees/types";
+import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { useEmployeesStore } from "@/stores/employees";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddNewUserDialog from "@/views/apps/hr/list/AddNewUserDialog.vue";
 import ContactEditDialog from "@/views/apps/hr/list/ContactEditDialog.vue";
-import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
@@ -19,9 +17,9 @@ type SortKey = "user" | "status" | "category" | "channel" | "createdAt";
 type SortVal = { key: SortKey; order: "asc" | "desc" };
 
 const searchQuery = ref("");
-const selectedRole = ref<string | undefined>();
-const selectedPlan = ref<string | undefined>();
 const selectedStatus = ref<string | undefined>();
+const selectedDepartment = ref<string | undefined>();
+const selectedReportTo = ref<number | string | undefined>();
 
 const sortOptions: { title: string; value: SortVal }[] = [
   { title: "Name (A-Z)", value: { key: "user", order: "asc" } },
@@ -40,25 +38,29 @@ const sortBy = ref<string | undefined>(selectedSort.value?.key);
 const orderBy = ref<"asc" | "desc" | undefined>(selectedSort.value?.order);
 const selectedRows = ref<number[]>([]);
 
+const rows = computed(() =>
+  displayedContacts.value.map((emp) => ({
+    ...emp,
+    employmentReportTo: resolveManager(emp)?.name ?? "",
+    employmentReportToAvatar: resolveManager(emp)?.avatar ?? null,
+    employmentReportToId: resolveManager(emp)?.id ?? null,
+  }))
+);
 const headers = [
   { title: "Name", key: "user" },
-  { title: "Type", key: "class" },
   { title: "Number", key: "number" },
-  { title: "Connections", key: "connections", sortable: false },
-  { title: "Status", key: "status" },
+  { title: "Reports To", key: "employmentReportTo" },
 
+  { title: "Department", key: "employment.department" },
+
+  { title: "Status", key: "status" },
   { title: "Actions", key: "actions", sortable: false },
 ];
 
-const roleFilter = computed(() =>
-  selectedRole.value ? selectedRole.value : undefined
-);
-const planFilter = computed(() =>
-  selectedPlan.value ? selectedPlan.value : undefined
-);
+const roleFilter = computed(() => undefined);
+const planFilter = computed(() => undefined);
 const statusFilter = computed(() => {
   if (!selectedStatus.value) return undefined;
-  if (selectedStatus.value === "Cold") return "Dormant";
   return selectedStatus.value;
 });
 
@@ -95,12 +97,19 @@ const matchesFilters = (contact: EmployeeProperties) => {
     if (!hasMatch) return false;
   }
 
-  if (selectedRole.value && contact.class !== selectedRole.value) return false;
-  if (selectedPlan.value && contact.category !== selectedPlan.value)
-    return false;
-
   const mappedStatus = statusFilter.value;
   if (mappedStatus && contact.status !== mappedStatus) return false;
+
+  if (
+    selectedDepartment.value &&
+    contact.employment?.department !== selectedDepartment.value
+  )
+    return false;
+
+  if (selectedReportTo.value) {
+    const reportToIds = contact.employment?.reportToIds ?? [];
+    if (!reportToIds.includes(selectedReportTo.value)) return false;
+  }
 
   return true;
 };
@@ -173,110 +182,112 @@ const displayedContacts = computed<EmployeeProperties[]>(() => {
 
 const totalContacts = computed(() => sortedContacts.value.length);
 
-const connectionDirectory = computed(() => {
-  const map = new Map<
-    string,
-    Pick<
-      EmployeeProperties,
-      "id" | "fullName" | "picture" | "status" | "channel" | "class"
-    >
-  >();
+const roles: any[] = [];
+const plans: any[] = [];
 
-  employeesStore.all.forEach((contact) => {
-    if (contact?.id === null || contact?.id === undefined) return;
-    map.set(String(contact.id), {
-      id: contact.id,
-      fullName: contact.fullName,
-      picture: contact.picture,
-      status: contact.status,
-      channel: contact.channel,
-      class: contact.class,
+const reportToDirectory = computed(() => {
+  const map = new Map<
+    string | number,
+    { id: number | string; name: string; avatar?: string | null }
+  >();
+  employeesStore.all.forEach((emp) => {
+    if (emp?.id === null || emp?.id === undefined) return;
+    map.set(emp.id, {
+      id: emp.id,
+      name: emp.fullName,
+      avatar: emp.picture || null,
     });
   });
-
   return map;
 });
 
-type ConnectionDisplay = EmployeeConnection & {
-  displayName: string;
-  avatar?: string | null;
-  displayStatus?: EmployeeProperties["status"];
-  displayChannel?: EmployeeProperties["channel"];
-  displayClass?: EmployeeProperties["class"];
+const resolveManager = (employee: EmployeeProperties) => {
+  const reportToIds = employee.employment?.reportToIds ?? [];
+  if (!reportToIds.length) return null;
+  const firstManagerId = reportToIds[0];
+  return reportToDirectory.value.get(firstManagerId) || null;
 };
 
-const decorateConnections = (
-  connections: EmployeeConnection[] | undefined | null
-): ConnectionDisplay[] => {
-  if (!Array.isArray(connections) || !connections.length) return [];
+const decorateManagers = (employee: EmployeeProperties) => {
+  const reportToIds = employee.employment?.reportToIds ?? [];
 
-  const directory = connectionDirectory.value;
-  // ensure primary connections come first so the first avatar is always the primary
-  const primaries = connections.filter((c) => c.isPrimary);
-  const others = connections.filter((c) => !c.isPrimary);
-  const ordered = [...primaries, ...others];
+  const allIds = [...reportToIds];
 
-  return ordered.map((connection) => {
-    const entry = directory.get(String(connection.contactId));
-    return {
-      ...connection,
-      displayName: entry?.fullName ?? connection.contactName,
-      avatar: entry?.picture ?? connection.picture ?? null,
-      displayStatus: entry?.status,
-      displayChannel: entry?.channel,
-      displayClass: entry?.class,
-    };
-  });
+  if (!allIds.length) return [];
+
+  return allIds
+    .map((id) => {
+      const manager = reportToDirectory.value.get(id);
+      if (!manager) return null;
+      return {
+        id: manager.id,
+        avatar: manager.avatar,
+        displayName: manager.name,
+        isPrimary: false, // No primary concept for managers
+      };
+    })
+    .filter(
+      (
+        m
+      ): m is {
+        id: number | string;
+        avatar: string;
+        displayName: string;
+        isPrimary: boolean;
+      } => m !== null
+    );
 };
-const roles = [
-  { title: "All", value: "" },
-  { title: "Client", value: "Client" },
-  { title: "Contact", value: "Contact" },
-  { title: "Lead", value: "Lead" },
-  { title: "Supplier", value: "Supplier" },
-  { title: "Owner", value: "Owner" },
-];
-const plans = [
-  { title: "All", value: "" },
-  { title: "General", value: "General" },
-  { title: "Real Estate", value: "Real Estate" },
-  { title: "VIP", value: "VIP" },
-];
 
 const statusOptions = [
   { title: "All", value: "" },
-  { title: "Cold", value: "Cold" },
   { title: "Active", value: "Active" },
-  { title: "Lost", value: "Lost" },
+  { title: "Not Hired", value: "Not Hired" },
 ];
 
-const resolveClassVariant = (contactClass: string) => {
-  switch (contactClass) {
-    case "Lead":
-      return { color: "warning", icon: "tabler-target" };
-    case "Client":
-      return { color: "primary", icon: "tabler-briefcase" };
-    case "Supplier":
-      return { color: "info", icon: "tabler-truck" };
-    case "Contact":
-      return { color: "success", icon: "tabler-user" };
-    case "Owner":
-      return { color: "secondary", icon: "tabler-building" };
-    default:
-      return { color: "primary", icon: "tabler-user" };
-  }
-};
+const departmentOptions = computed(() => {
+  const depts = new Set<string>();
+  employeesStore.all.forEach((emp) => {
+    const dept = emp?.employment?.department;
+    if (dept) depts.add(dept);
+  });
+  return [
+    { title: "All Departments", value: "" },
+    ...Array.from(depts)
+      .sort()
+      .map((dept) => ({ title: dept, value: dept })),
+  ];
+});
+
+const managerOptions = computed(() => {
+  const managerIds = new Set<number | string>();
+  employeesStore.all.forEach((emp) => {
+    const reportToIds = emp?.employment?.reportToIds ?? [];
+    for (const managerId of reportToIds) {
+      managerIds.add(managerId);
+    }
+  });
+
+  const managers = employeesStore.all
+    .filter(
+      (emp) =>
+        emp?.id !== null && emp?.id !== undefined && managerIds.has(emp.id)
+    )
+    .map((emp) => ({
+      title: emp.fullName,
+      value: emp.id,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  return [{ title: "All Managers", value: "" }, ...managers];
+});
+
+const resolveClassVariant = () => ({ color: "info", icon: "tabler-user" });
 
 const resolveStatusColor = (status: string) => {
   switch (status) {
     case "Active":
       return "success";
-    case "Dormant":
+    case "Not Hired":
       return "secondary";
-    case "Potential":
-      return "info";
-    case "Lost":
-      return "error";
     default:
       return "primary";
   }
@@ -347,6 +358,7 @@ const isConfirmDeleteVisible = ref(false);
 const deleteCandidateId = ref<number | null>(null);
 const deleteBlockingReasons = ref<string[]>([]);
 const notifications = useNotificationsStore();
+const router = useRouter();
 
 const addNewContact = (contact: Partial<EmployeeProperties>) => {
   // eslint-disable-next-line no-console
@@ -354,8 +366,13 @@ const addNewContact = (contact: Partial<EmployeeProperties>) => {
 
   // The store expects a Partial<EmployeeProperties> for addEmployee.
   // Ensure we pass the payload through directly so the store assigns an id and defaults.
-  employeesStore.addEmployee(contact);
+  const newEmployee = employeesStore.addEmployee(contact);
   isAddNewUserDrawerVisible.value = false;
+
+  // Navigate to the newly created employee's profile page
+  if (newEmployee?.id) {
+    router.push({ name: "apps-hr-view-id", params: { id: newEmployee.id } });
+  }
 };
 
 // Synchronous low-risk check for references to a contact id across todos, meetings and other contacts' connections
@@ -429,18 +446,6 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     });
     if (referencingMeetings.length) {
       reasons.push(`Referenced in ${referencingMeetings.length} meeting(s)`);
-    }
-
-    // connections: referenced as connection.contactId in other contacts
-    const referencedInConnections = employeesStore.all.filter(
-      (c) =>
-        Array.isArray(c.connections) &&
-        c.connections.some((conn) => Number(conn.contactId) === Number(id))
-    );
-    if (referencedInConnections.length) {
-      reasons.push(
-        `Connected to ${referencedInConnections.length} other contact(s)`
-      );
     }
   } catch (e) {
     // If anything goes wrong, be conservative and block deletion with a generic reason
@@ -541,14 +546,6 @@ const cleanupAndDelete = () => {
       (n: any) => !(n && n.author && Number(n.author.id) === Number(id))
     );
     return { ...m, requestedBy, linkedTo, notes };
-  });
-
-  // Remove connections pointing to this contact
-  employeesStore.items = employeesStore.items.map((c) => {
-    const connections = (c.connections || []).filter(
-      (conn) => Number(conn.contactId) !== Number(id)
-    );
-    return { ...c, connections };
   });
 
   // Finally delete the contact
@@ -777,29 +774,29 @@ const updateItemsPerPage = (value: number | string) => {
         <VRow>
           <VCol cols="12" sm="3">
             <AppSelect
-              v-model="selectedRole"
-              placeholder="Select Role"
-              :items="roles"
-              clearable
-              clear-icon="tabler-x"
-            />
-          </VCol>
-
-          <VCol cols="12" sm="3">
-            <AppSelect
-              v-model="selectedPlan"
-              placeholder="Select Category"
-              :items="plans"
-              clearable
-              clear-icon="tabler-x"
-            />
-          </VCol>
-
-          <VCol cols="12" sm="3">
-            <AppSelect
               v-model="selectedStatus"
               placeholder="Select Status"
               :items="statusOptions"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+
+          <VCol cols="12" sm="3">
+            <AppSelect
+              v-model="selectedDepartment"
+              placeholder="Select Department"
+              :items="departmentOptions"
+              clearable
+              clear-icon="tabler-x"
+            />
+          </VCol>
+
+          <VCol cols="12" sm="3">
+            <AppSelect
+              v-model="selectedReportTo"
+              placeholder="Reports To"
+              :items="managerOptions"
               clearable
               clear-icon="tabler-x"
             />
@@ -839,7 +836,10 @@ const updateItemsPerPage = (value: number | string) => {
 
         <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
           <div style="inline-size: 15.625rem">
-            <AppTextField v-model="searchQuery" placeholder="Search Employees" />
+            <AppTextField
+              v-model="searchQuery"
+              placeholder="Search Employees"
+            />
           </div>
 
           <VBtn variant="tonal" color="secondary" prepend-icon="tabler-upload">
@@ -850,7 +850,7 @@ const updateItemsPerPage = (value: number | string) => {
             prepend-icon="tabler-plus"
             @click="isAddNewUserDrawerVisible = true"
           >
-            Add New Employee
+            New Employee
           </VBtn>
         </div>
       </VCardText>
@@ -859,7 +859,7 @@ const updateItemsPerPage = (value: number | string) => {
         v-model:items-per-page="itemsPerPage"
         v-model:model-value="selectedRows"
         v-model:page="page"
-        :items="displayedContacts"
+        :items="rows"
         :items-length="totalContacts"
         item-value="id"
         :headers="headers"
@@ -877,11 +877,7 @@ const updateItemsPerPage = (value: number | string) => {
                 <VAvatar
                   size="40"
                   :variant="!item.picture ? 'tonal' : undefined"
-                  :color="
-                    !item.picture
-                      ? resolveClassVariant(item.class).color
-                      : undefined
-                  "
+                  :color="!item.picture ? 'info' : undefined"
                 >
                   <VImg v-if="item.picture" :src="item.picture" />
                   <span v-else>{{ avatarText(item.fullName) }}</span>
@@ -892,11 +888,7 @@ const updateItemsPerPage = (value: number | string) => {
               <VAvatar
                 size="40"
                 :variant="!item.picture ? 'tonal' : undefined"
-                :color="
-                  !item.picture
-                    ? resolveClassVariant(item.class).color
-                    : undefined
-                "
+                :color="!item.picture ? 'info' : undefined"
               >
                 <VImg v-if="item.picture" :src="item.picture" />
                 <span v-else>{{ avatarText(item.fullName) }}</span>
@@ -904,15 +896,6 @@ const updateItemsPerPage = (value: number | string) => {
             </template>
             <div class="d-flex flex-column">
               <h6 class="text-base d-flex align-center gap-1">
-                <VIcon
-                  :icon="
-                    item.type === 'Entity'
-                      ? 'tabler-building-skyscraper'
-                      : 'tabler-user'
-                  "
-                  size="16"
-                  :color="item.type === 'Entity' ? 'warning' : 'primary'"
-                />
                 <template v-if="item.id !== null && item.id !== undefined">
                   <RouterLink
                     :to="{
@@ -933,19 +916,15 @@ const updateItemsPerPage = (value: number | string) => {
               <div class="text-sm">
                 {{ item.email }}
               </div>
+              <div class="text-sm text-medium-emphasis">
+                {{
+                  item.positions && item.positions.length > 0
+                    ? item.positions.join(", ")
+                    : "Unknown Position"
+                }}
+              </div>
             </div>
           </div>
-        </template>
-
-        <template #item.class="{ item }">
-          <VChip
-            :color="resolveClassVariant(item.class).color"
-            size="small"
-            variant="tonal"
-            class="text-capitalize"
-          >
-            {{ item.class }}
-          </VChip>
         </template>
 
         <template #item.number="{ item }">
@@ -954,120 +933,66 @@ const updateItemsPerPage = (value: number | string) => {
           }}</a>
         </template>
 
-        <template #item.connections="{ item }">
+        <template #item.employmentReportTo="{ item }">
           <div class="d-flex align-center gap-2">
             <div
-              v-if="decorateConnections(item.connections).length"
+              v-if="decorateManagers(item).length"
               class="v-avatar-group demo-avatar-group"
             >
               <template
-                v-for="connection in decorateConnections(
-                  item.connections
-                ).slice(0, 3)"
-                :key="`${item.id}-${connection.contactId}`"
+                v-for="manager in decorateManagers(item).slice(0, 3)"
+                :key="`${item.id}-${manager.id}`"
               >
-                <template
-                  v-if="
-                    connection.contactId !== null &&
-                    connection.contactId !== undefined
-                  "
+                <RouterLink
+                  :to="{
+                    name: 'apps-hr-view-id',
+                    params: { id: manager.id },
+                  }"
+                  class="d-inline-block"
                 >
-                  <RouterLink
-                    :to="{
-                      name: 'apps-hr-view-id',
-                      params: { id: connection.contactId },
-                    }"
-                    class="d-inline-block"
-                  >
-                    <VAvatar
-                      :size="40"
-                      :color="connection.avatar ? undefined : 'primary'"
-                      :class="[
-                        connection.avatar
-                          ? null
-                          : 'text-white font-weight-medium',
-                        connection.isPrimary ? 'contact-primary-border' : null,
-                      ]"
-                    >
-                      <template v-if="connection.avatar">
-                        <VImg :src="connection.avatar" />
-                      </template>
-                      <template v-else>
-                        <span>{{ avatarText(connection.displayName) }}</span>
-                      </template>
-
-                      <VTooltip activator="parent" location="top">
-                        <div class="d-flex flex-column gap-1">
-                          <span class="font-weight-medium">
-                            {{ connection.displayName }}
-                          </span>
-
-                          <span
-                            v-if="connection.isPrimary"
-                            class="text-body-2 text-medium-emphasis"
-                          >
-                            <span class="text-primary">(Primary)</span>
-                          </span>
-                        </div>
-                      </VTooltip>
-                    </VAvatar>
-                  </RouterLink>
-                </template>
-                <template v-else>
                   <VAvatar
                     :size="40"
-                    :color="connection.avatar ? undefined : 'primary'"
+                    :color="manager.avatar ? undefined : 'primary'"
                     :class="[
-                      connection.avatar
-                        ? null
-                        : 'text-white font-weight-medium',
-                      connection.isPrimary ? 'contact-primary-border' : null,
+                      manager.avatar ? null : 'text-white font-weight-medium',
                     ]"
                   >
-                    <template v-if="connection.avatar">
-                      <VImg :src="connection.avatar" />
+                    <template v-if="manager.avatar">
+                      <VImg :src="manager.avatar" />
                     </template>
                     <template v-else>
-                      <span>{{ avatarText(connection.displayName) }}</span>
+                      <span>{{ avatarText(manager.displayName) }}</span>
                     </template>
 
                     <VTooltip activator="parent" location="top">
                       <div class="d-flex flex-column gap-1">
                         <span class="font-weight-medium">
-                          {{ connection.displayName }}
-                        </span>
-
-                        <span
-                          v-if="connection.isPrimary"
-                          class="text-body-2 text-medium-emphasis"
-                        >
-                          <span class="text-primary">(Primary)</span>
+                          {{ manager.displayName }}
                         </span>
                       </div>
                     </VTooltip>
                   </VAvatar>
-                </template>
+                </RouterLink>
               </template>
 
               <VAvatar
-                v-if="decorateConnections(item.connections).length > 3"
+                v-if="decorateManagers(item).length > 3"
                 color="secondary"
                 :size="40"
-                class="font-weight-medium text-white"
+                class="text-white font-weight-medium"
               >
-                +{{ decorateConnections(item.connections).length - 3 }}
+                <span>+{{ decorateManagers(item).length - 3 }}</span>
                 <VTooltip activator="parent" location="top">
-                  {{
-                    decorateConnections(item.connections)
-                      .slice(3)
-                      .map((connection) => connection.displayName)
-                      .join(", ")
-                  }}
+                  {{ decorateManagers(item).length - 3 }} more
                 </VTooltip>
               </VAvatar>
             </div>
             <span v-else class="text-medium-emphasis">-</span>
           </div>
+        </template>
+
+        <template #item.employment.department="{ item }">
+          <span>{{ item.employment?.department || "-" }}</span>
         </template>
 
         <template #item.status="{ item }">
@@ -1128,21 +1053,6 @@ const updateItemsPerPage = (value: number | string) => {
                   <VListItemTitle>Call</VListItemTitle>
                 </VListItem>
                 <VDivider />
-                <VListItem @click="handleAction('Deals', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-file-invoice" />
-                  </template>
-                  <VListItemTitle>Deals</VListItemTitle>
-                </VListItem>
-
-                <VListItem @click="handleAction('Purchases', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-shopping-cart" />
-                  </template>
-                  <VListItemTitle>Purchases</VListItemTitle>
-                </VListItem>
-
-                <VDivider />
 
                 <VListItem @click="confirmDeleteCandidate(item.id)">
                   <template #prepend>
@@ -1184,6 +1094,7 @@ const updateItemsPerPage = (value: number | string) => {
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
+      source="employees"
       @userData="onTodoCreated"
     />
 
@@ -1191,6 +1102,7 @@ const updateItemsPerPage = (value: number | string) => {
       ref="addMeetingRef"
       v-model="isAddMeetingOpen"
       :contacts="contactsOptions"
+      source="employees"
       @save="onMeetingCreated"
     />
 
@@ -1219,11 +1131,12 @@ const updateItemsPerPage = (value: number | string) => {
 
     <VDialog v-model="isConfirmDeleteVisible" max-width="540">
       <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Delete contact</VCardTitle>
+        <VCardTitle>Delete Employee</VCardTitle>
         <VCardText>
           <div v-if="deleteBlockingReasons.length">
             <p>
-              This contact cannot be deleted because it is referenced elsewhere:
+              This employee cannot be deleted because it is referenced
+              elsewhere:
             </p>
             <ul>
               <li v-for="(r, idx) in deleteBlockingReasons" :key="idx">
@@ -1231,7 +1144,7 @@ const updateItemsPerPage = (value: number | string) => {
               </li>
             </ul>
             <p class="mt-5">
-              Please review these references before deleting the contact.
+              Please review these references before deleting the employee.
             </p>
           </div>
           <div v-else>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
 import { useContactsStore } from "@/stores/contacts";
+import { useEmployeesStore } from "@/stores/employees";
 import type { CustomInputContent } from "@core/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -45,6 +46,8 @@ interface Props {
   }>;
   // if true, autofocus the due date/time picker when the drawer opens
   autofocusDue?: boolean;
+  // 'contacts' (default) or 'employees' - determines which store to use for collaborators
+  source?: "contacts" | "employees";
 }
 
 const props = defineProps<Props>();
@@ -94,14 +97,18 @@ const selectedStatus = ref<Exclude<Status, "completed">>("pending");
 const contactsStore = useContactsStore();
 contactsStore.init();
 
-// Always use canonical contacts for dropdown data to avoid stale static lists
-const effectiveOptions = computed(() =>
-  contactsStore.all.map((c) => ({
+const employeesStore = useEmployeesStore();
+employeesStore.init();
+
+// Use employees or contacts based on source prop
+const effectiveOptions = computed(() => {
+  const store = props.source === "employees" ? employeesStore : contactsStore;
+  return store.all.map((c) => ({
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
-);
+  }));
+});
 
 const idToContact = computed(
   () => new Map(effectiveOptions.value.map((c) => [c.id, c] as const))

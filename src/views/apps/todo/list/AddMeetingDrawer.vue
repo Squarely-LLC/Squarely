@@ -40,10 +40,13 @@ const props = withDefaults(
     initialStart?: string | Date;
     initialDurationMins?: number;
     contacts?: ContactRef[];
+    // 'contacts' (default) or 'employees' - determines which data is being linked
+    source?: "contacts" | "employees";
   }>(),
   {
     initialDurationMins: 60,
     contacts: () => [],
+    source: "contacts",
   }
 );
 

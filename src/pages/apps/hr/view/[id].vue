@@ -9,8 +9,8 @@ import AddRecordDrawer from "@/views/apps/hr/view/AddRecordDrawer.vue";
 import EditRecordDrawer from "@/views/apps/hr/view/EditRecordDrawer.vue";
 import UserBioPanel from "@/views/apps/hr/view/UserBioPanel.vue";
 import UserTabAccount from "@/views/apps/hr/view/UserTabAccount.vue";
+import UserTabContract from "@/views/apps/hr/view/UserTabContract.vue";
 import UserTabDocuments from "@/views/apps/hr/view/UserTabDocuments.vue";
-import UserTabNotifications from "@/views/apps/hr/view/UserTabNotifications.vue";
 import UserTabRecords from "@/views/apps/hr/view/UserTabRecords.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
@@ -65,21 +65,22 @@ const resolveContact = () => {
 const userTab = ref<number | null>(null);
 
 // stable keys for tabs used in the URL query param (order must match `tabs`)
-const tabKeys = ["account", "documents", "records", "notifications"] as const;
+const tabKeys = ["account", "contracts", "documents", "records"] as const;
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
+  { icon: "tabler-contract", title: "Contract" },
   { icon: "tabler-folder", title: "Documents" },
   { icon: "tabler-file-text", title: "Records" },
-
-  { icon: "tabler-bell", title: "Notifications" },
 ] as const;
 
-const userTabDocumentsRef =
-  ref<InstanceType<typeof UserTabDocuments> | null>(null);
+const userTabDocumentsRef = ref<InstanceType<typeof UserTabDocuments> | null>(
+  null
+);
 const userTabRecordsRef = ref<InstanceType<typeof UserTabRecords> | null>(null);
-const addTodoDrawerRef =
-  ref<InstanceType<typeof AddNewToDoDrawer> | null>(null);
+const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
+  null
+);
 const isAddTodoDrawerOpen = ref(false);
 const addTodoInitial = ref<any | null>(null);
 const addTodoCollaborators = ref<
@@ -243,6 +244,9 @@ watch(
         <VWindowItem>
           <UserTabAccount :user="contact" />
         </VWindowItem>
+        <VWindowItem>
+          <UserTabContract :user-data="contact" />
+        </VWindowItem>
 
         <VWindowItem>
           <UserTabDocuments
@@ -259,10 +263,6 @@ watch(
             @open-add-record="handleAddRecordRequest"
             @edit-record="handleEditRecordRequest"
           />
-        </VWindowItem>
-
-        <VWindowItem>
-          <UserTabNotifications />
         </VWindowItem>
       </VWindow>
     </VCol>

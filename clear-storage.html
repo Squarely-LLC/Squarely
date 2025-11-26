@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Employee Storage</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #da190b;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        #status.success {
+            background: #dff0d8;
+            color: #3c763d;
+            border: 1px solid #d6e9c6;
+            display: block;
+        }
+        #status.error {
+            background: #f2dede;
+            color: #a94442;
+            border: 1px solid #ebccd1;
+            display: block;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            border-left: 4px solid #2196F3;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗑️ Clear Employee Storage</h1>
+        
+        <div class="info">
+            <strong>What this does:</strong>
+            <ul>
+                <li>Clears the employee data from localStorage</li>
+                <li>Forces reload with fresh data from the database</li>
+                <li>New data includes multiple managers per employee</li>
+            </ul>
+        </div>
+
+        <div class="info">
+            <strong>Current Database Structure:</strong>
+            <pre>
+Employee 1 (Lina Haddad):    Reports to [3, 2] (Daniel & Farah)
+Employee 2 (Farah Mansour):  Reports to [] (no managers)
+Employee 3 (Daniel Smith):   Reports to [] (no managers)  
+Employee 4 (Rana Khoury):    Reports to [2, 3] (Farah & Daniel)
+            </pre>
+        </div>
+
+        <button onclick="clearStorage()">Clear Employee Storage</button>
+        <button class="danger" onclick="clearAllStorage()">Clear ALL Storage (⚠️ Use with caution)</button>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        function showStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = isError ? 'error' : 'success';
+        }
+
+        function clearStorage() {
+            try {
+                const key = 'app.employees.v2';
+                const before = localStorage.getItem(key);
+                
+                if (before) {
+                    localStorage.removeItem(key);
+                    showStatus(`✅ Successfully cleared employee storage! The app will reload with fresh data containing multiple managers. Refresh your application to see the changes.`);
+                } else {
+                    showStatus('ℹ️ No employee storage found. The storage was already clear or never initialized.');
+                }
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, true);
+            }
+        }
+
+        function clearAllStorage() {
+            if (!confirm('⚠️ This will clear ALL localStorage data including employees, contacts, and other app data. Are you sure?')) {
+                return;
+            }
+            
+            try {
+                const count = localStorage.length;
+                localStorage.clear();
+                showStatus(`✅ Successfully cleared all storage (${count} items). Refresh your application to reload with fresh data.`);
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, true);
+            }
+        }
+
+        // Show current storage info on load
+        window.addEventListener('load', () => {
+            const key = 'app.employees.v2';
+            const data = localStorage.getItem(key);
+            if (data) {
+                console.log('Current employee storage:', data);
+                try {
+                    const parsed = JSON.parse(data);
+                    console.log('Parsed data:', parsed);
+                } catch (e) {
+                    console.error('Failed to parse storage data:', e);
+                }
+            } else {
+                console.log('No employee storage found');
+            }
+        });
+    </script>
+</body>
+</html>

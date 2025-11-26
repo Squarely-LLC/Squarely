@@ -1,10 +1,8 @@
-export type EmployeeClass = "Lead" | "Client" | "Supplier" | "Contact" | "Owner";
+export type EmployeeClass = string;
 
-export type EmployeeType = "Entity" | "Individual";
+export type EmployeeCategory = string;
 
-export type EmployeeCategory = "General" | "VIP" | "Real Estate";
-
-export type EmployeeStatus = "Active" | "Dormant" | "Potential" | "Lost";
+export type EmployeeStatus = "Active" | "Not Hired";
 
 export type EmployeeChannel =
   | "Social Media"
@@ -14,10 +12,10 @@ export type EmployeeChannel =
   | "Email Campaigns";
 
 export interface EmployeeConnection {
-  contactId: number;
-  contactName: string;
-  isPrimary: boolean;
-  relation: string;
+  contactId: number | string;
+  contactName?: string;
+  isPrimary?: boolean;
+  relation?: string;
   picture?: string;
 }
 
@@ -83,12 +81,22 @@ export interface EmployeeAccounting {
   vatNumber?: string;
 }
 
+export interface EmployeeContract {
+  salaryPaid?: "Monthly" | "Weekly" | null;
+  employmentType?: string | null;
+  startDate?: string | null;
+  probationEndDate?: string | null;
+  firstPayroll?: string | null;
+  note?: string;
+}
+
 export interface EmployeeEmployment {
   department?: string;
-  reportToId?: number | string | null;
+  reportToIds?: (number | string)[];
   contractStatus?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  contract?: EmployeeContract;
 }
 
 export interface EmployeeSalary {
@@ -125,14 +133,14 @@ export interface EmployeeRequest {
 export interface EmployeeProperties {
   id: number;
   fullName: string;
-  class: EmployeeClass;
-  type: EmployeeType;
-  category: EmployeeCategory;
+  class?: EmployeeClass;
+  type?: string;
+  category?: EmployeeCategory;
   email: string;
   number: string;
   status: EmployeeStatus;
   picture?: string;
-  connections: EmployeeConnection[];
+  connections?: EmployeeConnection[];
   accounting: EmployeeAccounting;
   documents?: EmployeeDocument[];
   records?: EmployeeRecord[];
@@ -144,11 +152,11 @@ export interface EmployeeProperties {
   website?: string;
   channel: EmployeeChannel;
   birthdate?: string;
+  gender?: "Female" | "Male" | string;
   worksInSales: boolean;
   createdAt?: string;
   // HR-specific fields
   department?: string;
-  managerId?: number | string | null;
   employment?: EmployeeEmployment;
   salary?: EmployeeSalary | null;
   positions?: string[];

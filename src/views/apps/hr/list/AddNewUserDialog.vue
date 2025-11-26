@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useEmployeesStore } from "@/stores/employees";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
-import { nextTick, ref, watch } from "vue";
-import { useDisplay } from "vuetify";
+import { ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 import {
   emailValidator,
   requiredValidator,
 } from "../../../../@core/utils/validators";
-import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 
 interface Props {
   isDialogVisible: boolean;
@@ -19,20 +19,46 @@ interface Emit {
 }
 const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
+// ref to the AppDateTimePicker component so we can focus/open its input
+const duePickerRef = ref<any>(null);
 
-const display = useDisplay();
+const employeesStore = useEmployeesStore();
+employeesStore.init?.();
 const isFormValid = ref(false);
 const refForm = ref<VForm | undefined>();
 
+const getCurrentDate = () => {
+  const now = new Date();
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const month = months[now.getMonth()];
+  const day = now.getDate();
+  const year = now.getFullYear();
+  return `${month} ${day}, ${year}`; // Format: "November 26, 2025"
+};
+
 const localContact = ref<Partial<EmployeeProperties>>({
   fullName: "",
-  class: "Contact",
-  type: "Individual",
-  category: "General",
   email: "",
   number: "",
-  status: "Active",
+  status: "Not Hired",
+  birthdate: "",
+  address: "",
+  employment: { startDate: getCurrentDate() },
 });
+const gender = ref<"Female" | "Male">("Male");
 
 const countrySearch = ref("");
 
@@ -51,11 +77,6 @@ const countryCustomFilter = (value: any, query: string, item: any) => {
     dialNoPlus.includes(qNoPlus)
   );
 };
-
-const classOptions = ["Lead", "Client", "Supplier", "Contact", "Owner"];
-const categoryOptions = ["General", "VIP", "Real Estate"];
-const statusOptions = ["Active", "Dormant", "Potential", "Lost"];
-const typeOptions = ["Entity", "Individual"];
 
 // Build country options
 const rawCountries =
@@ -95,16 +116,6 @@ watch(
   }
 );
 
-// (kept util if you ever want emoji flags)
-const countryFlag = (cc: string) => {
-  if (!cc) return "";
-  const upper = cc.toUpperCase();
-  if (upper.length !== 2) return "";
-  return upper.replace(/./g, (ch) =>
-    String.fromCodePoint(127397 + ch.charCodeAt(0))
-  );
-};
-
 const dialogModelValueUpdate = (value: boolean) =>
   emit("update:isDialogVisible", value);
 
@@ -113,13 +124,14 @@ const resetForm = () => {
   refForm.value?.resetValidation();
   localContact.value = {
     fullName: "",
-    class: "Contact",
-    type: "Individual",
-    category: "General",
     email: "",
     number: "",
-    status: "Active",
+    status: "Not Hired",
+    birthdate: "",
+    address: "",
+    employment: { startDate: getCurrentDate() },
   };
+  gender.value = "Male";
   selectedCountry.value = LB_DEFAULT; // keep LB default
 };
 
@@ -143,16 +155,52 @@ const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
 
-  localContact.value.number = withDialAttached(
-    String(localContact.value.number ?? ""),
-    selectedCountry.value.dial
+  const dial = selectedCountry.value?.dial ?? "";
+  const numberWithDial = withDialAttached(
+    localContact.value.number ?? "",
+    dial
   );
 
-  emit("submit", { ...localContact.value });
-  emit("update:isDialogVisible", false);
-  // show a brief snackbar confirming creation
+  // Convert startDate to ISO format if it's a Date object or formatted string
+  let startDateISO: string | undefined;
+  const rawStartDate = localContact.value.employment?.startDate;
+
+  if (rawStartDate) {
+    const dateObj =
+      typeof rawStartDate === "string"
+        ? new Date(rawStartDate)
+        : (rawStartDate as Date);
+    if (!isNaN(dateObj.getTime())) {
+      startDateISO = dateObj.toISOString().split("T")[0]; // YYYY-MM-DD format
+    }
+  }
+
+  emit("submit", {
+    ...localContact.value,
+    number: numberWithDial,
+    birthdate: localContact.value.birthdate || undefined,
+    address: localContact.value.address || undefined,
+    gender: gender.value,
+    employment: {
+      ...(localContact.value.employment ?? {}),
+      startDate: startDateISO,
+    },
+  });
+
   notifications.push("Employee created", "success", 3000);
-  nextTick(() => resetForm());
+
+  // Reset form
+  localContact.value = {
+    fullName: "",
+    email: "",
+    number: "",
+    status: "Not Hired",
+    birthdate: "",
+    address: "",
+    employment: { startDate: getCurrentDate() },
+  };
+  gender.value = "Male";
+  refForm.value?.resetValidation();
 };
 
 const onReset = () => {
@@ -173,7 +221,7 @@ const onReset = () => {
       <VCardText>
         <h4 class="text-h5 text-center mb-2">Add New Employee</h4>
         <p class="text-body-2 text-center mb-6">
-          Fill out the form below to add a new contact.
+          Fill out the form below to add a new employee.
         </p>
 
         <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
@@ -182,24 +230,25 @@ const onReset = () => {
               <AppTextField
                 v-model="localContact.fullName"
                 :rules="[requiredValidator]"
-                label="Full Name"
+                label="Name"
                 placeholder="John Doe"
+                required
               />
             </VCol>
 
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localContact.email"
-                :rules="[requiredValidator, emailValidator]"
+                :rules="[(val: string) => !val || emailValidator(val)]"
                 label="Email"
-                placeholder="jane.doe@example.com"
+                placeholder="name@example.com"
+                type="email"
               />
             </VCol>
 
             <VCol cols="12" md="6">
-              <label class="v-label mb-1 text-body-2">Number</label>
+              <label class="v-label mb-1 text-body-2">Number *</label>
 
-              <!-- tighter inline layout (8px gap) -->
               <div class="country-phone-inline">
                 <VRow>
                   <VCol cols="12" md="5">
@@ -250,12 +299,11 @@ const onReset = () => {
                     </VAutocomplete>
                   </VCol>
 
-                  <!-- digits-only phone field (no validation rules besides required) -->
                   <VCol cols="12" md="7" class="phone-input">
                     <AppTextField
                       v-model="localContact.number"
                       :rules="[requiredValidator]"
-                      placeholder="e.g. 71234567"
+                      placeholder="+961 71 123 456"
                       type="tel"
                       inputmode="numeric"
                       pattern="[0-9]*"
@@ -267,42 +315,44 @@ const onReset = () => {
             </VCol>
 
             <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.class"
+              <AppDateTimePicker
+                ref="duePickerRef"
+                v-model="localContact.birthdate"
                 :rules="[requiredValidator]"
-                label="Class"
-                placeholder="Select class"
-                :items="classOptions"
+                label="Date of Birth"
+                placeholder="Select date"
+                :config="{ enableTime: false, dateFormat: 'Y-m-d' }"
               />
             </VCol>
 
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.type"
-                :rules="[requiredValidator]"
-                label="Type"
-                placeholder="Select type"
-                :items="typeOptions"
+            <VCol cols="12">
+              <VRadioGroup v-model="gender" inline>
+                <template #label>
+                  <label class="v-label text-body-2">Gender</label>
+                </template>
+                <VRadio label="Male" value="Male" />
+                <VRadio label="Female" value="Female" />
+              </VRadioGroup>
+            </VCol>
+
+            <VCol cols="12">
+              <AppTextarea
+                v-model="localContact.address"
+                label="Address"
+                placeholder="12, Business Park"
+                auto-grow
+                rows="2"
               />
             </VCol>
 
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.category"
+            <VCol cols="12">
+              <AppDateTimePicker
+                ref="duePickerRef"
+                v-model="localContact.employment!.startDate"
                 :rules="[requiredValidator]"
-                label="Category"
-                placeholder="Select category"
-                :items="categoryOptions"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.status"
-                :rules="[requiredValidator]"
-                label="Status"
-                placeholder="Select status"
-                :items="statusOptions"
+                label="Joining Date"
+                placeholder="Select joining date"
+                :config="{ enableTime: false, dateFormat: 'F j, Y' }"
               />
             </VCol>
 

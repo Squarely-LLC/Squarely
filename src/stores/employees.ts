@@ -4,32 +4,14 @@ import { toRaw } from "vue";
 import { db } from "../plugins/fake-api/handlers/apps/employees/db";
 import type {
   EmployeeAccounting,
-  EmployeeConnection,
+  EmployeeContract,
+  EmployeeEmployment,
   EmployeeProperties,
 } from "../plugins/fake-api/handlers/apps/employees/types";
 
 import type { EmployeeRecord } from "../plugins/fake-api/handlers/apps/employees/types";
 
 const STORAGE_KEY = "app.employees.v2";
-
-function cloneConnection(connection: EmployeeConnection): EmployeeConnection {
-  const raw = toRaw(connection) as EmployeeConnection;
-
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning connection:", error);
-    }
-  }
-
-  try {
-    return JSON.parse(JSON.stringify(raw)) as EmployeeConnection;
-  } catch (error) {
-    console.warn("JSON clone failed while cloning connection:", error);
-    return { ...raw };
-  }
-}
 
 function cloneAccounting(accounting: EmployeeAccounting): EmployeeAccounting {
   const raw = toRaw(accounting) as EmployeeAccounting;
@@ -68,9 +50,6 @@ function cloneEmployee(contact: EmployeeProperties): EmployeeProperties {
 
     return {
       ...raw,
-      connections: Array.isArray(raw.connections)
-        ? raw.connections.map((connection) => ({ ...connection }))
-        : [],
       accounting: raw.accounting ? { ...raw.accounting } : {},
       records: Array.isArray(raw.records)
         ? raw.records.map((r) => ({ ...r }))
@@ -108,13 +87,6 @@ function saveToStorage(employees: EmployeeProperties[]) {
   }
 }
 
-function ensureConnections(
-  connections: EmployeeConnection[] | undefined | null
-): EmployeeConnection[] {
-  if (!Array.isArray(connections)) return [];
-  return connections.map((connection) => cloneConnection(connection));
-}
-
 function ensureAccounting(
   accounting: EmployeeAccounting | undefined | null
 ): EmployeeAccounting {
@@ -141,6 +113,36 @@ function ensureRecords(
   }));
 }
 
+function ensureContract(
+  contract: EmployeeContract | undefined | null
+): EmployeeContract | undefined {
+  if (!contract) return undefined;
+  return {
+    salaryPaid: contract.salaryPaid || null,
+    employmentType: contract.employmentType || null,
+    startDate: contract.startDate || null,
+    probationEndDate: contract.probationEndDate || null,
+    firstPayroll: contract.firstPayroll || null,
+    note: contract.note || undefined,
+  };
+}
+
+function ensureEmployment(
+  employment: EmployeeEmployment | undefined | null
+): EmployeeEmployment | undefined {
+  if (!employment) return undefined;
+  return {
+    department: employment.department || undefined,
+    reportToIds: Array.isArray(employment.reportToIds)
+      ? [...employment.reportToIds]
+      : undefined,
+    contractStatus: employment.contractStatus || null,
+    startDate: employment.startDate || null,
+    endDate: employment.endDate || null,
+    contract: ensureContract(employment.contract),
+  };
+}
+
 function normaliseEmployee(
   payload: Partial<EmployeeProperties>,
   assignedId: number
@@ -150,14 +152,12 @@ function normaliseEmployee(
   return {
     id: assignedId,
     fullName: payload.fullName?.trim() || "Untitled Employee",
-    class: payload.class ?? "Employee",
-    type: payload.type ?? "Individual",
-    category: payload.category ?? "General",
+    class: payload.class || undefined,
+    category: payload.category || undefined,
     email: payload.email?.trim() || "unknown@example.com",
     number: payload.number?.trim() || "",
     status: payload.status ?? "Active",
     picture: payload.picture || undefined,
-    connections: ensureConnections(payload.connections),
     accounting: ensureAccounting(payload.accounting),
     records: ensureRecords(payload.records),
     address: payload.address || undefined,
@@ -168,6 +168,9 @@ function normaliseEmployee(
     birthdate: payload.birthdate || undefined,
     worksInSales: payload.worksInSales ?? false,
     createdAt: payload.createdAt || now,
+    employment: ensureEmployment(payload.employment),
+    salary: payload.salary || undefined,
+    gender: payload.gender || undefined,
   };
 }
 
@@ -178,14 +181,25 @@ function mergeEmployee(
   const merged = {
     ...original,
     ...patch,
-    connections: ensureConnections(
-      patch.connections ?? original.connections ?? []
-    ),
+    class: patch.class ?? original.class ?? undefined,
+    category: patch.category ?? original.category ?? undefined,
     accounting: ensureAccounting({
       ...(original.accounting ?? {}),
       ...(patch.accounting ?? {}),
     }),
     records: ensureRecords(patch.records ?? original.records ?? []),
+    employment: patch.employment
+      ? ensureEmployment({
+          ...(original.employment ?? {}),
+          ...(patch.employment ?? {}),
+          contract: patch.employment.contract
+            ? {
+                ...(original.employment?.contract ?? {}),
+                ...(patch.employment.contract ?? {}),
+              }
+            : original.employment?.contract,
+        })
+      : original.employment,
   };
 
   if (!merged.createdAt) merged.createdAt = original.createdAt;

@@ -24,8 +24,6 @@ const refForm = ref<VForm>();
 const fullName = ref("");
 const email = ref("");
 const number = ref("");
-const contactClass = ref<EmployeeProperties["class"] | undefined>();
-const contactType = ref<EmployeeProperties["type"] | undefined>();
 const category = ref<EmployeeProperties["category"] | undefined>();
 const status = ref<EmployeeProperties["status"] | undefined>();
 const channel = ref<EmployeeProperties["channel"] | undefined>();
@@ -42,8 +40,6 @@ const vatNumber = ref("");
 const resetForm = () => {
   refForm.value?.reset();
   refForm.value?.resetValidation();
-  contactClass.value = undefined;
-  contactType.value = undefined;
   category.value = undefined;
   status.value = undefined;
   channel.value = undefined;
@@ -70,14 +66,12 @@ const onSubmit = async () => {
   emit("userData", {
     id: 0,
     fullName: fullName.value.trim(),
-    class: contactClass.value!,
-    type: contactType.value!,
-    category: category.value!,
+    class: undefined,
+    category: undefined,
     email: email.value.trim(),
     number: number.value.trim(),
     status: status.value!,
     picture: undefined,
-    connections: [],
     accounting: {
       taxId: taxId.value || undefined,
       crn: crn.value || undefined,
@@ -153,41 +147,11 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
 
               <VCol cols="12">
                 <AppSelect
-                  v-model="contactClass"
-                  :rules="[requiredValidator]"
-                  label="Class"
-                  placeholder="Select class"
-                  :items="['Lead', 'Client', 'Supplier', 'Contact', 'Owner']"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <AppSelect
-                  v-model="contactType"
-                  :rules="[requiredValidator]"
-                  label="Type"
-                  placeholder="Select type"
-                  :items="['Entity', 'Individual']"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <AppSelect
-                  v-model="category"
-                  :rules="[requiredValidator]"
-                  label="Category"
-                  placeholder="Select category"
-                  :items="['General', 'VIP', 'Real Estate']"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <AppSelect
                   v-model="status"
                   :rules="[requiredValidator]"
                   label="Status"
                   placeholder="Select status"
-                  :items="['Active', 'Dormant', 'Potential', 'Lost']"
+                  :items="['Active', 'Not Hired']"
                 />
               </VCol>
 

@@ -7,10 +7,10 @@ import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { computed, nextTick, ref } from "vue";
-import { RouterLink, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 
-import ContactEditDialog from "@/views/apps/hr/list/ContactEditDialog.vue";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import ContactEditDialog from "@/views/apps/hr/list/ContactEditDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
@@ -43,12 +43,7 @@ const statusColor = (status: EmployeeProperties["status"]) => {
   switch (status) {
     case "Active":
       return "success";
-    case "Dormant":
-      return "secondary";
-    case "Potential":
-      return "info";
-    case "Lost":
-      return "error";
+
     default:
       return "primary";
   }
@@ -126,6 +121,7 @@ const moreList = [
   { title: "Manage", value: "Manage" },
 ];
 
+const isAddReportsToDialogVisible = ref(false);
 const isAddConnectionDialogVisible = ref(false);
 
 // tooltip label for accessibility / localization fallback
@@ -147,6 +143,9 @@ const handleMoreAction = (val: string) => {
     case "Add Connection":
       isAddConnectionDialogVisible.value = true;
       break;
+    case "Add Manager":
+      isAddReportsToDialogVisible.value = true;
+      break;
     case "Manage":
       console.log("Manage connections for", props.userData.fullName);
       break;
@@ -155,7 +154,7 @@ const handleMoreAction = (val: string) => {
   }
 };
 
-const makePrimary = (contactId: number) => {
+const makePrimary = (contactId: number | string) => {
   // choose the source array (local override if present) so UI updates instantly
   const source = localConnections.value ?? connectionList.value;
   const updated = source.map((c) => ({
@@ -181,13 +180,61 @@ const makePrimary = (contactId: number) => {
 const showSnackbar = ref(false);
 const snackbarMessage = ref("");
 // highlighted contact id for temporary visual highlight
-const highlightedContactId = ref<number | null>(null);
+const highlightedContactId = ref<number | string | null>(null);
+// highlighted manager id for temporary visual highlight
+const highlightedManagerId = ref<number | string | null>(null);
 
 // delete confirmation dialog state for connections (existing)
 const confirmDeleteDialogVisible = ref(false);
-const deleteCandidateId = ref<number | null>(null);
+const deleteCandidateId = ref<number | string | null>(null);
 
-const askDeleteConnection = (contactId: number) => {
+// delete confirmation dialog state for managers
+const confirmDeleteManagerDialogVisible = ref(false);
+const deleteManagerCandidateId = ref<number | string | null>(null);
+
+const askDeleteManager = (managerId: number | string) => {
+  deleteManagerCandidateId.value = managerId;
+  confirmDeleteManagerDialogVisible.value = true;
+};
+
+const performDeleteManager = () => {
+  const id = deleteManagerCandidateId.value;
+  if (id === null) return;
+
+  // Remove from reportToIds array
+  const currentReportToIds = props.userData.employment?.reportToIds ?? [];
+
+  const allIds = currentReportToIds.filter((managerId) => managerId !== id);
+
+  // persist via store
+  try {
+    employeesStore.updateEmployee(props.userData.id, {
+      ...props.userData,
+      employment: {
+        ...props.userData.employment,
+        reportToIds: allIds,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to delete :", err);
+    snackbarMessage.value = "Failed to remove";
+    showSnackbar.value = true;
+    confirmDeleteManagerDialogVisible.value = false;
+    deleteManagerCandidateId.value = null;
+    return;
+  }
+
+  snackbarMessage.value = "Manager removed";
+  showSnackbar.value = true;
+  confirmDeleteManagerDialogVisible.value = false;
+  deleteManagerCandidateId.value = null;
+
+  // highlight briefly
+  highlightedManagerId.value = id;
+  setTimeout(() => (highlightedManagerId.value = null), 2200);
+};
+
+const askDeleteConnection = (contactId: number | string) => {
   deleteCandidateId.value = contactId;
   confirmDeleteDialogVisible.value = true;
 };
@@ -435,6 +482,29 @@ const cleanupAndDeleteContact = () => {
   confirmDeleteContactVisible.value = false;
 };
 
+// handler for AddReportsToDialog emitted payload
+const onAddManager = (payload: { managerId: string | number }) => {
+  // Update the employee's reportToIds array
+  const currentReportToIds = props.userData.employment?.reportToIds ?? [];
+
+  const allIds = [...currentReportToIds];
+
+  if (!allIds.includes(payload.managerId)) {
+    allIds.push(payload.managerId);
+  }
+
+  employeesStore.updateEmployee(props.userData.id, {
+    ...props.userData,
+    employment: {
+      ...props.userData.employment,
+      reportToIds: allIds,
+    },
+  });
+
+  snackbarMessage.value = "Manager added successfully";
+  showSnackbar.value = true;
+};
+
 // handler for AddConnectionDialog emitted payload
 const onAddConnection = (payload: {
   contactId: number | string;
@@ -473,10 +543,10 @@ const onAddConnection = (payload: {
 
 // Edit relation dialog state and handlers (missing definitions were causing template errors)
 const editRelationDialogVisible = ref(false);
-const editCandidateId = ref<number | null>(null);
+const editCandidateId = ref<number | string | null>(null);
 const editRelation = ref("");
 
-const openEditRelation = (contactId: number) => {
+const openEditRelation = (contactId: number | string) => {
   const source = localConnections.value ?? connectionList.value ?? [];
   const existing = source.find((c) => c.contactId === contactId);
   editCandidateId.value = contactId;
@@ -566,6 +636,39 @@ function openAddMeetingForContact(conn: any) {
   }
 }
 
+function openAddMeetingForManager(manager: any) {
+  try {
+    const initial = {
+      title: `Meeting: ${manager.name ?? ""}`,
+      initialStart: new Date(),
+      contacts: contactsOptions.value,
+      notes: `schedule from employee : ${props.userData.fullName ?? ""}`,
+      linkedTo: [
+        {
+          id: manager.id,
+          name: manager.name ?? "",
+          avatarUrl: manager.picture ?? null,
+        },
+      ],
+    } as any;
+
+    if (addMeetingRef.value?.openWith) {
+      addMeetingRef.value.openWith(initial);
+    } else {
+      isAddMeetingOpen.value = true;
+      nextTick(() => {
+        try {
+          addMeetingRef.value?.openWith?.(initial);
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to open meeting drawer:", e);
+  }
+}
+
 function onMeetingCreated(payload: any) {
   try {
     // add to todos store
@@ -622,6 +725,36 @@ function openAddTodoDrawerForContact(conn: any) {
   }
 }
 
+function openAddTodoDrawerForManager(manager: any) {
+  try {
+    const initial = {
+      title: `Follow up: ${manager.name ?? ""}`,
+      collaborators: [
+        {
+          id: manager.id,
+          name: manager.name ?? "",
+          avatarUrl: manager.picture ?? null,
+        },
+      ],
+    };
+
+    if (addTodoDrawerRef.value?.openWith) {
+      addTodoDrawerRef.value.openWith(initial);
+    } else {
+      isAddTodoDrawerVisible.value = true;
+      nextTick(() => {
+        try {
+          addTodoDrawerRef.value?.openWith?.(initial);
+        } catch (e) {
+          /* ignore */
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to open todo drawer:", e);
+  }
+}
+
 // Compose email drawer
 const isComposeDialogVisible = ref(false);
 const composeDialogRef = ref<any | null>(null);
@@ -641,6 +774,30 @@ function openComposeForContact(conn: any) {
       to: toAddress || "",
       subject: `Hello ${conn.contactName ?? ""}`,
       message: `Hi ${conn.contactName ?? ""},\n\n`,
+    };
+
+    isComposeDialogVisible.value = true;
+    nextTick(() => {
+      try {
+        composeDialogRef.value?.openWith?.(initial);
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    console.error("Failed to open compose dialog:", e);
+  }
+}
+
+function openComposeForManager(manager: any) {
+  try {
+    const linked = employeesStore.byId?.(manager.id as number | string);
+    const toAddress = linked?.email || manager.email || "";
+
+    const initial = {
+      to: toAddress || "",
+      subject: `Hello ${manager.name ?? ""}`,
+      message: `Hi ${manager.name ?? ""},\n\n`,
     };
 
     isComposeDialogVisible.value = true;
@@ -693,6 +850,67 @@ function onContactEditSubmit(payload: EmployeeProperties) {
     isContactEditDialogVisible.value = false;
   }
 }
+
+// Computed property for employee position
+const displayPosition = computed(() => {
+  const positions = props.userData.positions;
+  if (positions && positions.length > 0) {
+    return positions.join(", ");
+  }
+  return "Unknown Position";
+});
+
+// Computed property for employee department
+const displayDepartment = computed(() => {
+  return props.userData.employment?.department || "Unknown Department";
+});
+
+// Computed property for tenure (years and months since start date)
+const displayTenure = computed(() => {
+  const startDate = props.userData.employment?.startDate;
+  if (!startDate) return "since -";
+
+  try {
+    const start = new Date(startDate);
+    const now = new Date();
+
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    return `since ${years}y ${months}m`;
+  } catch (e) {
+    return "since -";
+  }
+});
+
+// Combined display string
+const employeeInfoDisplay = computed(() => {
+  return `${displayPosition.value} - ${displayDepartment.value} - ${displayTenure.value}`;
+});
+
+// Computed property for Reports To (managers - can be multiple)
+const reportsToManagers = computed(() => {
+  const reportToIds = props.userData.employment?.reportToIds ?? [];
+
+  // Use the reportToIds array
+  const allIds = [...reportToIds];
+
+  if (allIds.length === 0) return [];
+
+  return allIds
+    .map((managerId) => {
+      const manager = employeesStore.byId(managerId);
+      return manager
+        ? { id: manager.id, name: manager.fullName, picture: manager.picture }
+        : null;
+    })
+    .filter((m) => m !== null);
+});
 </script>
 
 <template>
@@ -721,34 +939,16 @@ function onContactEditSubmit(payload: EmployeeProperties) {
           </h5>
 
           <div class="d-flex justify-center gap-2 mt-2">
-            <VChip
-              label
-              size="small"
-              class="text-capitalize"
-              :color="classVariant(props.userData.class).color"
-              variant="tonal"
-            >
-              {{ props.userData.class }}
+            <VChip label size="small" color="neutral" variant="tonal">
+              {{ displayPosition }}
             </VChip>
 
-            <VChip
-              label
-              size="small"
-              class="text-capitalize"
-              :color="statusColor(props.userData.status)"
-              variant="tonal"
-            >
-              {{ props.userData.status }}
+            <VChip label size="small" color="info" variant="tonal">
+              {{ displayDepartment }}
             </VChip>
 
-            <VChip
-              label
-              size="small"
-              class="text-capitalize"
-              color="secondary"
-              variant="tonal"
-            >
-              {{ props.userData.type }}
+            <VChip label size="small" color="warning" variant="tonal">
+              {{ displayTenure }}
             </VChip>
           </div>
         </VCardText>
@@ -769,21 +969,10 @@ function onContactEditSubmit(payload: EmployeeProperties) {
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.accounting?.taxId">
-              <VListItemTitle>
-                <h6 class="text-h6">
-                  Tax ID:
-                  <div class="d-inline-block text-body-1">
-                    {{ props.userData.accounting.taxId }}
-                  </div>
-                </h6>
-              </VListItemTitle>
-            </VListItem>
-
             <VListItem>
               <VListItemTitle>
                 <h6 class="text-h6">
-                  Contact:
+                  Phone:
                   <div class="d-inline-block text-body-1">
                     <a :href="`tel:${props.userData.number}`">{{
                       props.userData.number
@@ -793,51 +982,83 @@ function onContactEditSubmit(payload: EmployeeProperties) {
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.language">
+            <VListItem v-if="props.userData.birthdate">
               <VListItemTitle>
                 <h6 class="text-h6">
-                  Language:
+                  Date of Birth:
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.language }}
+                    {{ props.userData.birthdate }}
                   </div>
                 </h6>
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.website">
+            <VListItem v-if="props.userData.gender">
               <VListItemTitle>
                 <h6 class="text-h6">
-                  Website:
+                  Gender:
                   <div class="d-inline-block text-body-1">
-                    <a
-                      :href="props.userData.website || ''"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    {{ props.userData.gender }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.employment?.department">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Department:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.employment.department }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="reportsToManagers.length > 0">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Reports To:
+                  <div class="d-inline-block text-body-1">
+                    <span
+                      v-for="(manager, idx) in reportsToManagers"
+                      :key="manager.id"
                     >
-                      {{ props.userData.website }}
-                    </a>
+                      <RouterLink
+                        :to="{
+                          name: 'apps-hr-view-id',
+                          params: { id: manager.id },
+                        }"
+                        class="text-link"
+                      >
+                        {{ manager.name }}
+                      </RouterLink>
+                      <span v-if="idx < reportsToManagers.length - 1">, </span>
+                    </span>
                   </div>
                 </h6>
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.country">
+            <VListItem
+              v-if="props.userData.positions && props.userData.positions.length"
+            >
               <VListItemTitle>
                 <h6 class="text-h6">
-                  Country:
+                  Position(s):
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.country }}
+                    {{ props.userData.positions.join(", ") }}
                   </div>
                 </h6>
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.city">
+            <VListItem v-if="props.userData.employment?.startDate">
               <VListItemTitle>
                 <h6 class="text-h6">
-                  City:
+                  Start Date:
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.city }}
+                    {{ props.userData.employment.startDate }}
                   </div>
                 </h6>
               </VListItemTitle>
@@ -854,32 +1075,43 @@ function onContactEditSubmit(payload: EmployeeProperties) {
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.accounting?.crn">
+            <VListItem v-if="props.userData.city">
               <VListItemTitle>
                 <h6 class="text-h6">
-                  CRN:
+                  City:
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.accounting.crn }}
+                    {{ props.userData.city }}
                   </div>
                 </h6>
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.accounting?.vatNumber">
+            <VListItem v-if="props.userData.country">
               <VListItemTitle>
                 <h6 class="text-h6">
-                  VAT Number:
+                  Country:
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.accounting.vatNumber }}
+                    {{ props.userData.country }}
                   </div>
                 </h6>
               </VListItemTitle>
             </VListItem>
 
-            <VListItem v-if="props.userData.worksInSales">
+            <VListItem v-if="props.userData.language">
               <VListItemTitle>
                 <h6 class="text-h6">
-                  Works in sales:
+                  Language:
+                  <div class="d-inline-block text-body-1">
+                    {{ props.userData.language }}
+                  </div>
+                </h6>
+              </VListItemTitle>
+            </VListItem>
+
+            <VListItem v-if="props.userData.worksInSales !== undefined">
+              <VListItemTitle>
+                <h6 class="text-h6">
+                  Works in Sales:
                   <div class="d-inline-block text-body-1">
                     {{ props.userData.worksInSales ? "Yes" : "No" }}
                   </div>
@@ -899,33 +1131,133 @@ function onContactEditSubmit(payload: EmployeeProperties) {
     </VCol>
 
     <VCol cols="12">
-      <VCard title="Connections">
+      <VCard title="Reports To">
         <template #append>
           <div>
-            <!-- Single Add Connection button replaces the settings menu -->
+            <!-- Add Manager button -->
             <VBtn
               icon
               variant="text"
-              @click="isAddConnectionDialogVisible = true"
+              @click="isAddReportsToDialogVisible = true"
             >
               <VIcon icon="tabler-user-plus" color="secondary" />
-              <VTooltip activator="parent" location="top">{{
-                addConnectionTooltip
-              }}</VTooltip>
+              <VTooltip activator="parent" location="top">
+                Add Manager
+              </VTooltip>
             </VBtn>
           </div>
         </template>
-
         <VCardText>
           <VList class="card-list">
-            <template v-if="!resolvedConnectionList.length">
+            <!-- Reports To Managers -->
+            <template v-if="reportsToManagers.length > 0">
+              <VListItem
+                v-for="manager in reportsToManagers"
+                :key="manager.id"
+                :class="{
+                  'connection-highlight': highlightedManagerId === manager.id,
+                }"
+              >
+                <template #prepend>
+                  <RouterLink
+                    :to="{
+                      name: 'apps-hr-view-id',
+                      params: { id: manager.id },
+                    }"
+                    class="avatar-link"
+                  >
+                    <VAvatar
+                      class="me-3"
+                      size="38"
+                      :color="!manager.picture ? 'primary' : undefined"
+                      :variant="!manager.picture ? 'tonal' : undefined"
+                    >
+                      <VImg v-if="manager.picture" :src="manager.picture" />
+                      <span v-else class="text-m font-weight-medium">{{
+                        avatarText(manager.name)
+                      }}</span>
+                    </VAvatar>
+                  </RouterLink>
+                </template>
+
+                <VListItemTitle class="font-weight-medium d-flex align-center">
+                  <span>{{ manager.name }}</span>
+                </VListItemTitle>
+                <VListItemSubtitle>Manager</VListItemSubtitle>
+
+                <template #append>
+                  <div class="d-flex align-center">
+                    <VBtn
+                      icon
+                      variant="text"
+                      color="medium-emphasis"
+                      @click="askDeleteManager(manager.id)"
+                    >
+                      <VIcon icon="tabler-trash" />
+                      <VTooltip activator="parent" location="top">
+                        Remove
+                      </VTooltip>
+                    </VBtn>
+
+                    <VBtn icon variant="text" color="medium-emphasis">
+                      <VIcon icon="tabler-send-2" />
+                      <VMenu activator="parent">
+                        <VList>
+                          <VListItem
+                            link
+                            @click.prevent="
+                              openAddTodoDrawerForManager(manager)
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-notes" />
+                            </template>
+                            <VListItemTitle>To Do</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem
+                            @click.prevent="openAddMeetingForManager(manager)"
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-calendar-plus" />
+                            </template>
+                            <VListItemTitle>Meeting</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem
+                            @click.prevent="openComposeForManager(manager)"
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-mail" />
+                            </template>
+                            <VListItemTitle>Email</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem>
+                            <template #prepend>
+                              <VIcon icon="tabler-phone" />
+                            </template>
+                            <VListItemTitle>Call</VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
+                    </VBtn>
+                  </div>
+                </template>
+              </VListItem>
+              <VDivider class="my-3" v-if="resolvedConnectionList.length" />
+            </template>
+
+            <template v-if="reportsToManagers.length === 0">
               <VListItem>
                 <VListItemTitle class="text-center w-100 text-medium-emphasis">
-                  No connections yet.
+                  No managers assigned yet.
                 </VListItemTitle>
               </VListItem>
+              <VDivider class="my-3" v-if="resolvedConnectionList.length" />
             </template>
-            <template v-else>
+
+            <template v-if="resolvedConnectionList.length > 0">
               <!-- Primary connections first -->
               <template v-if="primaryConnections.length">
                 <VListItem
@@ -939,7 +1271,7 @@ function onContactEditSubmit(payload: EmployeeProperties) {
                   <template #prepend>
                     <RouterLink
                       :to="{
-                        name: 'apps-hr-view-id',
+                        name: 'apps-contact-view-id',
                         params: { id: conn.contactId },
                       }"
                       class="avatar-link"
@@ -1004,7 +1336,7 @@ function onContactEditSubmit(payload: EmployeeProperties) {
                               @click="askDeleteConnection(conn.contactId)"
                             >
                               <template #prepend>
-                                <VIcon color="error" icon="tabler-trash" />
+                                <VIcon icon="tabler-trash" />
                               </template>
                               <VListItemTitle>Delete</VListItemTitle>
                             </VListItem>
@@ -1077,7 +1409,7 @@ function onContactEditSubmit(payload: EmployeeProperties) {
                   <template #prepend>
                     <RouterLink
                       :to="{
-                        name: 'apps-hr-view-id',
+                        name: 'apps-contact-view-id',
                         params: { id: conn.contactId },
                       }"
                       class="avatar-link"
@@ -1134,7 +1466,7 @@ function onContactEditSubmit(payload: EmployeeProperties) {
                               link
                             >
                               <template #prepend>
-                                <VIcon color="error" icon="tabler-trash" />
+                                <VIcon icon="tabler-trash" />
                               </template>
                               <VListItemTitle>Delete</VListItemTitle>
                             </VListItem>
@@ -1203,6 +1535,12 @@ function onContactEditSubmit(payload: EmployeeProperties) {
     :contact="props.userData"
     @submit="onContactEditSubmit"
   />
+  <AddReportsToDialog
+    v-model:is-dialog-visible="isAddReportsToDialogVisible"
+    :current-employee-id="props.userData.id"
+    :existing-manager-ids="reportsToManagers.map((m) => m.id)"
+    @add-manager="onAddManager"
+  />
   <AddConnectionDialog
     v-model:is-dialog-visible="isAddConnectionDialogVisible"
     :current-contact-id="props.userData.id"
@@ -1214,11 +1552,13 @@ function onContactEditSubmit(payload: EmployeeProperties) {
     ref="addTodoDrawerRef"
     v-model:is-drawer-open="isAddTodoDrawerVisible"
     :collaborators-options="[]"
+    source="employees"
   />
   <AddMeetingDrawer
     ref="addMeetingRef"
     v-model="isAddMeetingOpen"
     :contacts="contactsOptions"
+    source="employees"
     @save="onMeetingCreated"
   />
   <EmailDialog
@@ -1242,6 +1582,31 @@ function onContactEditSubmit(payload: EmployeeProperties) {
         >
         <VBtn color="error" variant="tonal" @click="performDeleteConnection"
           >Delete</VBtn
+        >
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog
+    v-model="confirmDeleteManagerDialogVisible"
+    persistent
+    max-width="400"
+  >
+    <VCard class="pa-sm-8 pa-4">
+      <VCardText> Are you sure you want to remove this manager? </VCardText>
+      <VCardActions>
+        <VBtn
+          variant="text"
+          @click="
+            () => {
+              confirmDeleteManagerDialogVisible = false;
+              deleteManagerCandidateId = null;
+            }
+          "
+          >Cancel</VBtn
+        >
+        <VBtn color="error" variant="tonal" @click="performDeleteManager"
+          >Remove</VBtn
         >
       </VCardActions>
     </VCard>

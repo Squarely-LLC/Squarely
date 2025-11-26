@@ -282,8 +282,8 @@ watch(
   }
 );
 
-const classOptions = ["Lead", "Client", "Supplier", "Contact", "Owner"];
-const categoryOptions = ["General", "VIP", "Real Estate"];
+const classOptions: string[] = [];
+const categoryOptions: string[] = [];
 const statusOptions = ["Active", "Dormant", "Potential", "Lost"];
 const typeOptions = ["Entity", "Individual"];
 const channelOptions = [
@@ -531,10 +531,10 @@ const onReset = () => {
 
                 <VCol cols="12" md="6">
                   <AppSelect
-                    v-model="localContact.class"
-                    label="Class"
-                    placeholder="Select class"
-                    :items="classOptions"
+                    v-model="localContact.status"
+                    label="Status"
+                    placeholder="Select status"
+                    :items="['Active', 'Not Hired']"
                     :rules="[requiredValidator]"
                   />
                 </VCol>
