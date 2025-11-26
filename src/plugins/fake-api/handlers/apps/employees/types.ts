@@ -81,13 +81,30 @@ export interface EmployeeAccounting {
   vatNumber?: string;
 }
 
+export type ContractStatus = "Active" | "Terminated" | "Draft";
+
+export interface EmployeeContractTermination {
+  noticePeriod?: string | null;
+  terminationType?: string | null;
+  note?: string;
+  lastDayAtWork?: string | null;
+  lastPayrollPeriod?: string | null;
+  fileUrl?: string;
+  attachmentLink?: string;
+  terminatedAt?: string;
+}
+
 export interface EmployeeContract {
+  id?: number;
   salaryPaid?: "Monthly" | "Weekly" | null;
   employmentType?: string | null;
   startDate?: string | null;
   probationEndDate?: string | null;
   firstPayroll?: string | null;
   note?: string;
+  status?: ContractStatus;
+  termination?: EmployeeContractTermination;
+  createdAt?: string;
 }
 
 export interface EmployeeEmployment {
@@ -96,7 +113,8 @@ export interface EmployeeEmployment {
   contractStatus?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  contract?: EmployeeContract;
+  contract?: EmployeeContract; // Deprecated: use contracts array
+  contracts?: EmployeeContract[];
 }
 
 export interface EmployeeSalary {

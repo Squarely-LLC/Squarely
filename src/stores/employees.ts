@@ -118,13 +118,35 @@ function ensureContract(
 ): EmployeeContract | undefined {
   if (!contract) return undefined;
   return {
+    id: contract.id || undefined,
     salaryPaid: contract.salaryPaid || null,
     employmentType: contract.employmentType || null,
     startDate: contract.startDate || null,
     probationEndDate: contract.probationEndDate || null,
     firstPayroll: contract.firstPayroll || null,
     note: contract.note || undefined,
+    status: contract.status || "Active",
+    createdAt: contract.createdAt || new Date().toISOString(),
+    termination: contract.termination
+      ? {
+          noticePeriod: contract.termination.noticePeriod || null,
+          terminationType: contract.termination.terminationType || null,
+          note: contract.termination.note || undefined,
+          lastDayAtWork: contract.termination.lastDayAtWork || null,
+          lastPayrollPeriod: contract.termination.lastPayrollPeriod || null,
+          fileUrl: contract.termination.fileUrl || undefined,
+          attachmentLink: contract.termination.attachmentLink || undefined,
+          terminatedAt: contract.termination.terminatedAt || undefined,
+        }
+      : undefined,
   };
+}
+
+function ensureContracts(
+  contracts: EmployeeContract[] | undefined | null
+): EmployeeContract[] | undefined {
+  if (!Array.isArray(contracts)) return undefined;
+  return contracts.map((c) => ensureContract(c)!).filter(Boolean);
 }
 
 function ensureEmployment(
@@ -140,6 +162,7 @@ function ensureEmployment(
     startDate: employment.startDate || null,
     endDate: employment.endDate || null,
     contract: ensureContract(employment.contract),
+    contracts: ensureContracts(employment.contracts),
   };
 }
 
@@ -156,7 +179,7 @@ function normaliseEmployee(
     category: payload.category || undefined,
     email: payload.email?.trim() || "unknown@example.com",
     number: payload.number?.trim() || "",
-    status: payload.status ?? "Active",
+    status: payload.status ?? "Not Hired",
     picture: payload.picture || undefined,
     accounting: ensureAccounting(payload.accounting),
     records: ensureRecords(payload.records),
