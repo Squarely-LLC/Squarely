@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import FlatPickr from 'vue-flatpickr-component'
-import { useTheme } from 'vuetify'
+import FlatPickr from "vue-flatpickr-component";
+import { useTheme } from "vuetify";
 
 // @ts-expect-error There won't be declaration file for it
-import { VField, makeVFieldProps } from 'vuetify/lib/components/VField/VField'
+import { VField, makeVFieldProps } from "vuetify/lib/components/VField/VField";
 
 // @ts-expect-error There won't be declaration file for it
-import { VInput, makeVInputProps } from 'vuetify/lib/components/VInput/VInput'
+import { VInput, makeVInputProps } from "vuetify/lib/components/VInput/VInput";
 
 // @ts-expect-error There won't be declaration file for it
-import { filterInputAttrs } from 'vuetify/lib/util/helpers'
+import { filterInputAttrs } from "vuetify/lib/util/helpers";
 
-import { useConfigStore } from '@core/stores/config'
+import { useConfigStore } from "@core/stores/config";
 
 // inherit Attribute make false
 defineOptions({
   inheritAttrs: false,
-})
+});
 
 const props = defineProps({
   autofocus: Boolean,
@@ -29,107 +29,153 @@ const props = defineProps({
   suffix: String,
   type: {
     type: String,
-    default: 'text',
+    default: "text",
   },
   modelModifiers: Object as PropType<Record<string, boolean>>,
   ...makeVInputProps({
-    density: 'comfortable',
-    hideDetails: 'auto',
+    density: "comfortable",
+    hideDetails: "auto",
   }),
   ...makeVFieldProps({
-    variant: 'outlined',
-    color: 'primary',
+    variant: "outlined",
+    color: "primary",
   }),
-})
+});
 
-const emit = defineEmits<Emit>()
+const emit = defineEmits<Emit>();
 
 interface Emit {
-  (e: 'click:control', val: MouseEvent): true
-  (e: 'mousedown:control', val: MouseEvent): true
-  (e: 'update:focused', val: MouseEvent): true
-  (e: 'update:modelValue', val: string): void
-  (e: 'click:clear', el: MouseEvent): void
+  (e: "click:control", val: MouseEvent): true;
+  (e: "mousedown:control", val: MouseEvent): true;
+  (e: "update:focused", val: MouseEvent): true;
+  (e: "update:modelValue", val: string): void;
+  (e: "click:clear", el: MouseEvent): void;
 }
 
-const configStore = useConfigStore()
-const attrs = useAttrs()
+const configStore = useConfigStore();
+const attrs = useAttrs();
 
-const [rootAttrs, compAttrs] = filterInputAttrs(attrs)
-const inputProps = ref(VInput.filterProps(props))
-const fieldProps = ref(VField.filterProps(props))
+const [rootAttrs, compAttrs] = filterInputAttrs(attrs);
+const inputProps = ref(VInput.filterProps(props));
+const fieldProps = ref(VField.filterProps(props));
 
-const refFlatPicker = ref()
+const refFlatPicker = ref();
 
-const { focused } = useFocus(refFlatPicker)
-const isCalendarOpen = ref(false)
-const isInlinePicker = ref(false)
+const { focused } = useFocus(refFlatPicker);
+const isCalendarOpen = ref(false);
+const isInlinePicker = ref(false);
 
 // flat picker prop manipulation
 if (compAttrs.config && compAttrs.config.inline) {
-  isInlinePicker.value = compAttrs.config.inline
-  Object.assign(compAttrs, { altInputClass: 'inlinePicker' })
+  isInlinePicker.value = compAttrs.config.inline;
+  Object.assign(compAttrs, { altInputClass: "inlinePicker" });
 }
+
+// Save original onReady callback to avoid recursion
+const originalOnReady = compAttrs.config?.onReady;
 
 compAttrs.config = {
   ...compAttrs.config,
-  prevArrow: '<i class="tabler-chevron-left v-icon" style="font-size: 20px; height: 20px; width: 20px;"></i>',
-  nextArrow: '<i class="tabler-chevron-right v-icon" style="font-size: 20px; height: 20px; width: 20px;"></i>',
-}
+  prevArrow:
+    '<i class="tabler-chevron-left v-icon" style="font-size: 20px; height: 20px; width: 20px;"></i>',
+  nextArrow:
+    '<i class="tabler-chevron-right v-icon" style="font-size: 20px; height: 20px; width: 20px;"></i>',
+  onReady: (selectedDates: any, dateStr: any, instance: any) => {
+    // Convert year input from number type to text type to fix clipping in dialogs
+    const yearInput = instance.currentYearElement;
+    if (yearInput) {
+      yearInput.type = "text";
+      yearInput.inputMode = "numeric";
+      yearInput.setAttribute("maxlength", "4");
+
+      // Only allow numeric input
+      yearInput.addEventListener("input", (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        input.value = input.value.replace(/[^0-9]/g, "");
+      });
+    }
+
+    // Call user's original onReady if provided
+    if (originalOnReady) {
+      originalOnReady(selectedDates, dateStr, instance);
+    }
+  },
+};
 
 // v-field clear prop
 const onClear = (el: MouseEvent) => {
-  el.stopPropagation()
+  el.stopPropagation();
 
   nextTick(() => {
-    emit('update:modelValue', '')
+    emit("update:modelValue", "");
 
-    emit('click:clear', el)
-  })
-}
+    emit("click:clear", el);
+  });
+};
 
-const vuetifyTheme = useTheme()
+const vuetifyTheme = useTheme();
 
-const vuetifyThemesName = Object.keys(vuetifyTheme.themes.value)
+const vuetifyThemesName = Object.keys(vuetifyTheme.themes.value);
 
 // Themes class added to flat-picker component for light and dark support
 const updateThemeClassInCalendar = () => {
   // ℹ️ Flatpickr don't render it's instance in mobile and device simulator
-  if (!refFlatPicker.value.fp.calendarContainer)
-    return
+  if (!refFlatPicker.value.fp.calendarContainer) return;
 
-  vuetifyThemesName.forEach(t => {
-    refFlatPicker.value.fp.calendarContainer.classList.remove(`v-theme--${t}`)
-  })
-  refFlatPicker.value.fp.calendarContainer.classList.add(`v-theme--${vuetifyTheme.global.name.value}`)
-}
+  vuetifyThemesName.forEach((t) => {
+    refFlatPicker.value.fp.calendarContainer.classList.remove(`v-theme--${t}`);
+  });
+  refFlatPicker.value.fp.calendarContainer.classList.add(
+    `v-theme--${vuetifyTheme.global.name.value}`
+  );
+};
 
-watch(() => configStore.theme, updateThemeClassInCalendar)
+watch(() => configStore.theme, updateThemeClassInCalendar);
+
+// Prevent dialog focus-trap from interfering with flatpickr
+const handleFocusIn = (e: FocusEvent) => {
+  const target = e.target as HTMLElement;
+  const isFlatpickrInput = target?.classList?.contains("flatpickr-input");
+  const isFlatpickrPopup = target?.closest(".flatpickr-calendar");
+
+  if (isFlatpickrInput || isFlatpickrPopup) {
+    e.stopImmediatePropagation();
+  }
+};
 
 onMounted(() => {
-  updateThemeClassInCalendar()
-})
+  updateThemeClassInCalendar();
+  document.addEventListener("focusin", handleFocusIn, true);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("focusin", handleFocusIn, true);
+});
 
 const emitModelValue = (val: string) => {
-  emit('update:modelValue', val)
-}
+  emit("update:modelValue", val);
+};
 
-watch(() => props, () => {
-  fieldProps.value = VField.filterProps(props)
-  inputProps.value = VInput.filterProps(props)
-},
-{
-  deep: true,
-  immediate: true,
-})
+watch(
+  () => props,
+  () => {
+    fieldProps.value = VField.filterProps(props);
+    inputProps.value = VInput.filterProps(props);
+  },
+  {
+    deep: true,
+    immediate: true,
+  }
+);
 
-const elementId = computed (() => {
-  const _elementIdToken = fieldProps.id || fieldProps.label || inputProps.value.id
+const elementId = computed(() => {
+  const _elementIdToken =
+    fieldProps.id || fieldProps.label || inputProps.value.id;
 
-  const _id = useId()
+  const _id = useId();
 
-  return _elementIdToken ? `app-picker-field-${_elementIdToken}` : _id
-})
+  return _elementIdToken ? `app-picker-field-${_elementIdToken}` : _id;
+});
 </script>
 
 <template>
@@ -146,15 +192,22 @@ const elementId = computed (() => {
       v-bind="{ ...inputProps, ...rootAttrs }"
       :model-value="modelValue"
       :hide-details="props.hideDetails"
-      :class="[{
-        'v-text-field--prefixed': props.prefix,
-        'v-text-field--suffixed': props.suffix,
-        'v-text-field--flush-details': ['plain', 'underlined'].includes(props.variant),
-      }, props.class]"
+      :class="[
+        {
+          'v-text-field--prefixed': props.prefix,
+          'v-text-field--suffixed': props.suffix,
+          'v-text-field--flush-details': ['plain', 'underlined'].includes(
+            props.variant
+          ),
+        },
+        props.class,
+      ]"
       class="position-relative v-text-field"
       :style="props.style"
     >
-      <template #default="{ id, isDirty, isValid, isDisabled, isReadonly, validate }">
+      <template
+        #default="{ id, isDirty, isValid, isDisabled, isReadonly, validate }"
+      >
         <!-- v-field -->
         <VField
           v-bind="{ ...fieldProps, label: undefined }"
@@ -180,7 +233,10 @@ const elementId = computed (() => {
                 class="flat-picker-custom-style h-100 w-100"
                 :disabled="isReadonly.value"
                 @on-open="isCalendarOpen = true"
-                @on-close="isCalendarOpen = false; validate()"
+                @on-close="
+                  isCalendarOpen = false;
+                  validate();
+                "
                 @update:model-value="emitModelValue"
               />
 
@@ -192,7 +248,7 @@ const elementId = computed (() => {
                 :readonly="isReadonly.value"
                 class="flat-picker-custom-style h-100 w-100"
                 type="text"
-              >
+              />
             </div>
           </template>
         </VField>
@@ -229,7 +285,10 @@ const elementId = computed (() => {
   padding-inline: var(--v-field-padding-start);
 }
 
-$heading-color: rgba(var(--v-theme-on-background), var(--v-high-emphasis-opacity));
+$heading-color: rgba(
+  var(--v-theme-on-background),
+  var(--v-high-emphasis-opacity)
+);
 $body-color: rgba(var(--v-theme-on-background), var(--v-high-emphasis-opacity));
 $disabled-color: rgba(var(--v-theme-on-background), var(--v-disabled-opacity));
 
@@ -308,7 +367,10 @@ input[altinputclass="inlinePicker"] {
     &.inRange,
     &.inRange:hover {
       border: none;
-      background: rgba(var(--v-theme-primary), var(--v-activated-opacity)) !important;
+      background: rgba(
+        var(--v-theme-primary),
+        var(--v-activated-opacity)
+      ) !important;
       box-shadow: none !important;
       color: rgb(var(--v-theme-primary));
     }
@@ -337,8 +399,8 @@ input[altinputclass="inlinePicker"] {
     }
 
     &.flatpickr-disabled,
-    &.prevMonthDay:not(.startRange,.inRange),
-    &.nextMonthDay:not(.endRange,.inRange) {
+    &.prevMonthDay:not(.startRange, .inRange),
+    &.nextMonthDay:not(.endRange, .inRange) {
       opacity: var(--v-disabled-opacity);
     }
 
@@ -394,7 +456,8 @@ input[altinputclass="inlinePicker"] {
   &.hasTime.open {
     .flatpickr-innerContainer + .flatpickr-time {
       block-size: auto;
-      border-block-start: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+      border-block-start: 1px solid
+        rgba(var(--v-border-color), var(--v-border-opacity));
     }
 
     .flatpickr-time {

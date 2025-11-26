@@ -105,8 +105,8 @@ const dialogModelValueUpdate = (val: boolean) => {
   >
     <DialogCloseBtn @click="dialogModelValueUpdate(false)" />
 
-    <VCard title="Terminate Contract">
-      <VCardText>
+    <VCard title="Terminate Contract" style="overflow: visible">
+      <VCardText style="overflow: visible">
         <VForm
           ref="refForm"
           v-model="isFormValid"
