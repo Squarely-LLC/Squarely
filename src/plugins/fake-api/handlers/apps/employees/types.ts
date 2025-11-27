@@ -186,12 +186,122 @@ export type EmployeeRequestType =
   | "Advance"
   | "Time au Lieu";
 
-export interface EmployeeRequest {
+export type EmployeeRequestStatus =
+  | "draft"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+// Leave Request
+export interface LeaveRequest {
   id: number;
-  type: EmployeeRequestType;
-  status: "draft" | "pending" | "approved" | "rejected";
-  createdAt?: string;
+  type: "Leave";
+  typeId?: string; // Leave type (Vacation, Sick, etc.)
+  startDate: string;
+  returnDate: string;
+  requestedDays: number;
+  deductible: boolean;
+  periodId?: string; // Period (e.g., "December - 2025")
+  deductionAmount?: number;
+  reason?: string;
+  attachmentFile?: string; // File URL
+  attachmentLink?: string; // External link
+  status: EmployeeRequestStatus;
+  createdAt: string;
+  approvedBy?: number | string;
+  approvedAt?: string;
+  rejectedBy?: number | string;
+  rejectedAt?: string;
+  rejectionReason?: string;
 }
+
+// Addition Request
+export interface AdditionRequest {
+  id: number;
+  type: "Addition";
+  additionType?: string; // Type of addition
+  date: string;
+  amount: number;
+  period?: string; // Period (e.g., "December - 2025")
+  relatedType?: string; // "Not Linked", "Leave", "Deduction", etc.
+  relatedId?: string | number; // ID of related entity
+  notes?: string;
+  attachmentFile?: string;
+  attachmentLink?: string;
+  status: EmployeeRequestStatus;
+  createdAt: string;
+  approvedBy?: number | string;
+  approvedAt?: string;
+  rejectedBy?: number | string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+}
+
+// Deduction Request
+export interface DeductionRequest {
+  id: number;
+  type: "Deduction";
+  deductionType?: string; // Type of deduction
+  date: string;
+  amount: number;
+  period?: string; // Period (e.g., "December - 2025")
+  notes?: string;
+  attachmentFile?: string;
+  attachmentLink?: string;
+  status: EmployeeRequestStatus;
+  createdAt: string;
+  approvedBy?: number | string;
+  approvedAt?: string;
+  rejectedBy?: number | string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+}
+
+// Advance Request
+export interface AdvanceRequest {
+  id: number;
+  type: "Advance";
+  advanceType?: string; // Type of advance
+  date: string;
+  amount: number;
+  payBackInMonths?: number; // Number of months to pay back
+  startOfPaymentPeriod?: string; // Period when payment starts
+  notes?: string;
+  attachmentFile?: string;
+  attachmentLink?: string;
+  status: EmployeeRequestStatus;
+  createdAt: string;
+  approvedBy?: number | string;
+  approvedAt?: string;
+  rejectedBy?: number | string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+}
+
+// Time au Lieu Request
+export interface TimeAuLieuRequest {
+  id: number;
+  type: "Time au Lieu";
+  numberOfDays: number;
+  date: string;
+  relatedTo?: string; // "Not Linked" or other relation
+  relatedId?: string | number; // ID of related entity
+  note?: string;
+  status: EmployeeRequestStatus;
+  createdAt: string;
+  approvedBy?: number | string;
+  approvedAt?: string;
+  rejectedBy?: number | string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+}
+
+export type EmployeeRequest =
+  | LeaveRequest
+  | AdditionRequest
+  | DeductionRequest
+  | AdvanceRequest
+  | TimeAuLieuRequest;
 
 export interface EmployeeProperties {
   id: number;

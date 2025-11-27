@@ -403,6 +403,88 @@ export const useEmployeesStore = defineStore("employees", {
       this.items.splice(index, 1);
     },
 
+    /**
+     * Add a request to an employee's requests array.
+     */
+    addRequest(
+      employeeId: number | string,
+      request: Partial<any> & { type: string }
+    ) {
+      const index = this.items.findIndex(
+        (emp) => String(emp.id) === String(employeeId)
+      );
+      if (index === -1) return null;
+
+      const employee = this.items[index];
+      const existing = Array.isArray(employee.requests)
+        ? employee.requests
+        : [];
+      const newId =
+        existing.length > 0
+          ? Math.max(...existing.map((r) => r.id || 0)) + 1
+          : 1;
+
+      const newRequest = {
+        ...request,
+        id: newId,
+        status: request.status || "pending",
+        createdAt: request.createdAt || new Date().toISOString(),
+      };
+
+      const newRequests = [newRequest, ...existing];
+      const updated = mergeEmployee(employee, { requests: newRequests });
+      this.items.splice(index, 1, updated);
+      return newRequest;
+    },
+
+    /**
+     * Update an existing request for an employee.
+     */
+    updateRequest(
+      employeeId: number | string,
+      requestId: number | string,
+      patch: Partial<any>
+    ) {
+      const index = this.items.findIndex(
+        (emp) => String(emp.id) === String(employeeId)
+      );
+      if (index === -1) return null;
+
+      const employee = this.items[index];
+      const existing = Array.isArray(employee.requests)
+        ? employee.requests
+        : [];
+      const updatedRequests = existing.map((r) =>
+        String(r.id) === String(requestId) ? { ...r, ...patch } : r
+      );
+
+      const updated = mergeEmployee(employee, { requests: updatedRequests });
+      this.items.splice(index, 1, updated);
+      return updatedRequests.find((r) => String(r.id) === String(requestId));
+    },
+
+    /**
+     * Remove a request from an employee.
+     */
+    removeRequest(employeeId: number | string, requestId: number | string) {
+      const index = this.items.findIndex(
+        (emp) => String(emp.id) === String(employeeId)
+      );
+      if (index === -1) return null;
+
+      const employee = this.items[index];
+      const existing = Array.isArray(employee.requests)
+        ? employee.requests
+        : [];
+      const updatedRequests = existing.filter(
+        (r) => String(r.id) !== String(requestId)
+      );
+
+      const updated = mergeEmployee(employee, { requests: updatedRequests });
+      this.items.splice(index, 1, updated);
+      return updated;
+    },
+
     nextId() {
       return nextEmployeeId(this.items);
     },

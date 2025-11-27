@@ -12,6 +12,7 @@ import UserTabAccount from "@/views/apps/hr/view/UserTabAccount.vue";
 import UserTabContract from "@/views/apps/hr/view/UserTabContract.vue";
 import UserTabDocuments from "@/views/apps/hr/view/UserTabDocuments.vue";
 import UserTabRecords from "@/views/apps/hr/view/UserTabRecords.vue";
+import UserTabRequests from "@/views/apps/hr/view/UserTabRequests.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 const route = useRoute("apps-hr-view-id");
@@ -69,7 +70,9 @@ const tabKeys = ["account", "contracts", "documents", "records"] as const;
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
+
   { icon: "tabler-contract", title: "Contract" },
+  { icon: "tabler-help-octagon", title: "Requests" },
   { icon: "tabler-folder", title: "Documents" },
   { icon: "tabler-file-text", title: "Records" },
 ] as const;
@@ -246,6 +249,9 @@ watch(
         </VWindowItem>
         <VWindowItem>
           <UserTabContract :user-data="contact" />
+        </VWindowItem>
+        <VWindowItem>
+          <UserTabRequests :user-data="contact" />
         </VWindowItem>
 
         <VWindowItem>
