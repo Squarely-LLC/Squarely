@@ -220,14 +220,6 @@ const localContact = ref<EmployeeProperties | null>(
 // preload city dropdown when editing an existing contact
 updateCitiesForCountry(localContact.value?.country);
 
-// Stepper state
-const currentStep = ref(0);
-const numberedSteps = [
-  { title: "Contact Details", icon: "tabler-user" },
-  { title: "Additional Info", icon: "tabler-user-plus" },
-  { title: "Legal", icon: "tabler-file-description" },
-];
-
 watch(
   () => props.contact,
   (value) => {
@@ -262,8 +254,6 @@ watch(
       ).country;
       countrySearch.value = "";
       updateCitiesForCountry(localContact.value?.country);
-      // ensure the stepper resets to the first tab when dialog is closed
-      currentStep.value = 0;
     }
   }
 );
@@ -282,10 +272,6 @@ watch(
   }
 );
 
-const classOptions: string[] = [];
-const categoryOptions: string[] = [];
-const statusOptions = ["Active", "Dormant", "Potential", "Lost"];
-const typeOptions = ["Entity", "Individual"];
 const channelOptions = [
   "Social Media",
   "Referral",
@@ -299,15 +285,6 @@ const requiredValidator = (v: any) =>
   (v !== null && v !== undefined && String(v).trim() !== "") || "Required";
 const emailValidator = (v: any) =>
   !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v)) || "Invalid email";
-
-// simple website validator: allow empty or basic URL forms (with or without scheme)
-const websiteValidator = (v: any) => {
-  if (!v) return true;
-  const s = String(v).trim();
-  // basic regex: optional http(s)://, then domain with at least one dot, optional port/path
-  const re = /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(:\d+)?(\/\S*)?$/i;
-  return re.test(s) || "Invalid website";
-};
 
 const dialogModelValueUpdate = (value: boolean) => {
   emit("update:isDialogVisible", value);
@@ -325,10 +302,9 @@ const onPhoneInput = (val: string) => {
 };
 
 /**
- * Save the contact. If `closeAfter` is true the dialog will be closed after saving.
- * When saving mid-step we keep the dialog open so the user can continue editing.
+ * Save the contact and close the dialog.
  */
-const saveContact = async (closeAfter = false) => {
+const saveContact = async () => {
   if (!localContact.value) return;
 
   // validate the form programmatically before saving
@@ -338,7 +314,7 @@ const saveContact = async (closeAfter = false) => {
       const isValid =
         typeof validationResult === "boolean"
           ? validationResult
-          : (validationResult?.valid ?? false);
+          : validationResult?.valid ?? false;
 
       if (!isValid) return;
     }
@@ -356,7 +332,7 @@ const saveContact = async (closeAfter = false) => {
   // mark that we're saving from this dialog so prop updates don't clobber local edits
   justSaved.value = true;
   emit("submit", payload);
-  if (closeAfter) emit("update:isDialogVisible", false);
+  emit("update:isDialogVisible", false);
 };
 
 const onReset = () => {
@@ -371,371 +347,199 @@ const onReset = () => {
 
 <template>
   <VDialog
-    :width="$vuetify.display.smAndDown ? 'auto' : 820"
+    :width="$vuetify.display.smAndDown ? 'auto' : 700"
     :model-value="isDialogVisible"
     @update:model-value="dialogModelValueUpdate"
   >
     <DialogCloseBtn @click="dialogModelValueUpdate(false)" />
 
-    <VCard>
+    <VCard class="pa-sm-8 pa-4">
       <VCardText>
-        <!-- 👉 Stepper: compact on small screens, full on larger -->
-        <div
-          v-if="$vuetify.display.smAndDown"
-          class="d-flex align-center justify-space-between px-2"
-        >
-          <VBtn
-            icon
-            variant="text"
-            :disabled="currentStep === 0"
-            @click="currentStep = Math.max(0, currentStep - 1)"
-          >
-            <VIcon icon="tabler-arrow-left" />
-          </VBtn>
+        <h4 class="text-h5 text-center mb-2">Edit Employee</h4>
+        <p class="text-body-2 text-center mb-6">Update employee information</p>
 
-          <div class="text-subtitle-1 text-center">
-            {{ numberedSteps[currentStep]?.title }}
-          </div>
+        <VForm v-if="localContact" ref="formRef" @submit.prevent="saveContact">
+          <VRow>
+            <!-- Name -->
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localContact.fullName"
+                label="Name"
+                placeholder="John Doe"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
 
-          <VBtn
-            icon
-            variant="text"
-            :disabled="currentStep === numberedSteps.length - 1"
-            @click="
-              currentStep = Math.min(numberedSteps.length - 1, currentStep + 1)
-            "
-          >
-            <VIcon icon="tabler-arrow-right" />
-          </VBtn>
-        </div>
+            <!-- DOB -->
+            <VCol cols="12" md="6">
+              <AppDateTimePicker
+                v-model="localContact.birthdate"
+                label="Date of Birth"
+                placeholder="Select date"
+                clearable
+                :max="new Date().toISOString().split('T')[0]"
+              />
+            </VCol>
 
-        <div v-else>
-          <AppStepper
-            v-model:current-step="currentStep"
-            :items="numberedSteps"
-            icon-size="24"
-            class="stepper-icon-step-bg"
-          />
-        </div>
-      </VCardText>
+            <!-- Joining Date -->
+            <VCol cols="12" md="6">
+              <AppDateTimePicker
+                v-model="localContact.employment.startDate"
+                label="Joining Date"
+                placeholder="Select date"
+                clearable
+              />
+            </VCol>
 
-      <VDivider />
+            <!-- Email -->
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localContact.email"
+                label="Email"
+                placeholder="john@example.com"
+                :rules="[requiredValidator, emailValidator]"
+              />
+            </VCol>
 
-      <VCardText>
-        <!-- 👉 stepper content -->
-        <VForm
-          v-if="localContact"
-          ref="formRef"
-          @submit.prevent="() => saveContact(true)"
-        >
-          <VWindow v-model="currentStep" class="disable-tab-transition">
-            <!-- Account Details -->
-            <VWindowItem>
-              <VRow>
-                <VCol cols="12">
-                  <h6 class="text-h6 font-weight-medium">Contact Details</h6>
-                  <p class="mb-0">Enter the contact account details</p>
-                </VCol>
+            <!-- Number -->
+            <VCol cols="12" md="6">
+              <label class="v-label mb-1 text-body-2">Number</label>
 
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.fullName"
-                    label="Full Name"
-                    placeholder="John Doe"
-                    :rules="[requiredValidator]"
-                  />
-                </VCol>
+              <div class="country-phone-inline">
+                <VRow>
+                  <VCol cols="12" md="5">
+                    <VAutocomplete
+                      v-model="selectedCountry"
+                      class="country-select"
+                      :items="countryOptions"
+                      item-title="label"
+                      item-value="code"
+                      return-object
+                      v-model:search="countrySearch"
+                      :custom-filter="countryCustomFilter"
+                      :menu-props="{ maxHeight: 360 }"
+                      single-line
+                    >
+                      <template #selection="{ item }">
+                        <div class="selection-item country-item">
+                          <span class="flag">
+                            <span
+                              :class="[
+                                'fi',
+                                'fi-' + (item?.raw?.code || '').toLowerCase(),
+                              ]"
+                            ></span>
+                          </span>
+                          <span class="dial ml-2">{{ item?.raw?.dial }}</span>
+                        </div>
+                      </template>
 
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.email"
-                    label="Email"
-                    placeholder="john@example.com"
-                    :rules="[requiredValidator, emailValidator]"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <label class="v-label mb-1 text-body-2">Number</label>
-
-                  <div class="country-phone-inline">
-                    <VRow>
-                      <VCol cols="12" md="5">
-                        <VAutocomplete
-                          v-model="selectedCountry"
-                          class="country-select"
-                          :items="countryOptions"
-                          item-title="label"
-                          item-value="code"
-                          return-object
-                          v-model:search="countrySearch"
-                          :custom-filter="countryCustomFilter"
-                          :menu-props="{ maxHeight: 360 }"
-                          single-line
-                        >
-                          <template #selection="{ item }">
-                            <div class="selection-item country-item">
-                              <span class="flag">
-                                <span
-                                  :class="[
-                                    'fi',
-                                    'fi-' +
-                                      (item?.raw?.code || '').toLowerCase(),
-                                  ]"
-                                ></span>
-                              </span>
-                              <span class="dial ml-2">{{
-                                item?.raw?.dial
-                              }}</span>
-                            </div>
+                      <template #item="{ item, props }">
+                        <VListItem v-bind="props" class="country-item">
+                          <template #prepend>
+                            <span class="flag">
+                              <span
+                                :class="[
+                                  'fi',
+                                  'fi-' + (item?.raw?.code || '').toLowerCase(),
+                                ]"
+                              ></span>
+                            </span>
                           </template>
 
-                          <template #item="{ item, props }">
-                            <VListItem v-bind="props" class="country-item">
-                              <template #prepend>
-                                <span class="flag">
-                                  <span
-                                    :class="[
-                                      'fi',
-                                      'fi-' +
-                                        (item?.raw?.code || '').toLowerCase(),
-                                    ]"
-                                  ></span>
-                                </span>
-                              </template>
-
-                              <template #append>
-                                <span class="dial ml-3">{{
-                                  item?.raw?.dial
-                                }}</span>
-                              </template>
-                            </VListItem>
+                          <template #append>
+                            <span class="dial ml-3">{{ item?.raw?.dial }}</span>
                           </template>
-                        </VAutocomplete>
-                      </VCol>
+                        </VListItem>
+                      </template>
+                    </VAutocomplete>
+                  </VCol>
 
-                      <VCol cols="12" md="7" class="phone-input">
-                        <AppTextField
-                          v-model="localContact.number"
-                          :rules="[requiredValidator]"
-                          placeholder="e.g. 71234567"
-                          type="tel"
-                          inputmode="numeric"
-                          pattern="[0-9]*"
-                          @update:model-value="onPhoneInput"
-                        />
-                      </VCol>
-                    </VRow>
-                  </div>
-                </VCol>
+                  <VCol cols="12" md="7" class="phone-input">
+                    <AppTextField
+                      v-model="localContact.number"
+                      :rules="[requiredValidator]"
+                      placeholder="e.g. 71234567"
+                      type="tel"
+                      inputmode="numeric"
+                      pattern="[0-9]*"
+                      @update:model-value="onPhoneInput"
+                    />
+                  </VCol>
+                </VRow>
+              </div>
+            </VCol>
 
-                <VCol cols="12" md="6">
-                  <AppSelect
-                    v-model="localContact.status"
-                    label="Status"
-                    placeholder="Select status"
-                    :items="['Active', 'Not Hired']"
-                    :rules="[requiredValidator]"
-                  />
-                </VCol>
+            <!-- Language -->
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localContact.language"
+                label="Language"
+                placeholder="English"
+              />
+            </VCol>
 
-                <VCol cols="12" md="6">
-                  <AppSelect
-                    v-model="localContact.type"
-                    label="Type"
-                    placeholder="Select type"
-                    :items="typeOptions"
-                    :rules="[requiredValidator]"
-                  />
-                </VCol>
+            <!-- Address -->
+            <VCol cols="12">
+              <AppTextField
+                v-model="localContact.address"
+                label="Address"
+                placeholder="Street, building, floor"
+              />
+            </VCol>
 
-                <VCol cols="12" md="6">
-                  <AppSelect
-                    v-model="localContact.category"
-                    label="Category"
-                    placeholder="Select category"
-                    :items="categoryOptions"
-                  />
-                </VCol>
+            <!-- Country -->
+            <VCol cols="12" md="6">
+              <VAutocomplete
+                v-model="localContact.country"
+                :items="countries"
+                item-title="label"
+                item-value="label"
+                :return-object="false"
+                v-model:search="countrySearch"
+                :menu-props="{ maxHeight: 360 }"
+                label="Country"
+                placeholder="Country"
+                @keydown="onCountryKeydown"
+              >
+              </VAutocomplete>
+            </VCol>
 
-                <VCol cols="12" md="6">
-                  <AppSelect
-                    v-model="localContact.status"
-                    label="Status"
-                    placeholder="Select status"
-                    :items="statusOptions"
-                  />
-                </VCol>
+            <!-- City -->
+            <VCol cols="12" md="6">
+              <VAutocomplete
+                v-model="localContact.city"
+                :items="cityOptions"
+                :return-object="false"
+                v-model:search="citySearch"
+                :menu-props="{ maxHeight: 360 }"
+                label="City"
+                placeholder="City"
+                @keydown="onCityKeydown"
+              >
+              </VAutocomplete>
+            </VCol>
 
-                <VCol cols="12" md="6">
-                  <VSwitch
-                    class="mt-5"
-                    v-model="localContact.worksInSales"
-                    label="Works in sales?"
-                    color="primary"
-                  />
-                </VCol>
-              </VRow>
-            </VWindowItem>
-
-            <!-- Additional Info -->
-            <VWindowItem>
-              <VRow>
-                <VCol cols="12">
-                  <h6 class="text-h6 font-weight-medium">Additional Info</h6>
-                  <p class="mb-0">Setup additional contact information</p>
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <VAutocomplete
-                    v-model="localContact.country"
-                    :items="countries"
-                    item-title="label"
-                    item-value="label"
-                    :return-object="false"
-                    v-model:search="countrySearch"
-                    :menu-props="{ maxHeight: 360 }"
-                    label="Country"
-                    placeholder="Country"
-                    @keydown="onCountryKeydown"
-                  >
-                  </VAutocomplete>
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <VAutocomplete
-                    v-model="localContact.city"
-                    :items="cityOptions"
-                    :return-object="false"
-                    v-model:search="citySearch"
-                    :menu-props="{ maxHeight: 360 }"
-                    label="City"
-                    placeholder="City"
-                    @keydown="onCityKeydown"
-                  >
-                  </VAutocomplete>
-                </VCol>
-
-                <VCol cols="12">
-                  <AppTextField
-                    v-model="localContact.address"
-                    label="Address"
-                    placeholder="Street, building, floor"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.language"
-                    label="Language"
-                    placeholder="English"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.website"
-                    label="Website"
-                    placeholder="https://example.com"
-                    :rules="[websiteValidator]"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppDateTimePicker
-                    v-model="localContact.birthdate"
-                    label="Birthdate"
-                    placeholder="Select date"
-                    clearable
-                    :max="new Date().toISOString().split('T')[0]"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppSelect
-                    v-model="localContact.channel"
-                    label="Channel"
-                    placeholder="Select channel"
-                    :items="channelOptions"
-                  />
-                </VCol>
-              </VRow>
-            </VWindowItem>
-
-            <!-- Legal -->
-            <VWindowItem>
-              <VRow>
-                <VCol cols="12">
-                  <h6 class="text-h6 font-weight-medium">Legal</h6>
-                  <p class="mb-0">Legal and tax information</p>
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.accounting.taxId"
-                    label="Tax ID"
-                    placeholder="TAX-123456"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.accounting.vatNumber"
-                    label="VAT Number"
-                    placeholder="VAT-112233"
-                  />
-                </VCol>
-
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-model="localContact.accounting.crn"
-                    label="CRN"
-                    placeholder="CRN-9981"
-                  />
-                </VCol>
-              </VRow>
-            </VWindowItem>
-          </VWindow>
-
-          <div class="d-flex flex-wrap align-center mt-8">
-            <VBtn
-              color="secondary"
-              variant="tonal"
-              :disabled="currentStep === 0"
-              @click="currentStep--"
-            >
-              <VIcon icon="tabler-arrow-left" start class="flip-in-rtl" />
-              Previous
-            </VBtn>
-
-            <VSpacer />
-
-            <!-- right grouped buttons: Save and Next stick together -->
-            <div class="d-flex align-center gap-2">
-              <VBtn
+            <!-- Works in sales? -->
+            <VCol cols="12" md="6">
+              <VSwitch
+                class="mt-5"
+                v-model="localContact.worksInSales"
+                label="Works in sales?"
                 color="primary"
-                @click.prevent="
-                  () => saveContact(numberedSteps.length - 1 === currentStep)
-                "
-              >
-                Save
-              </VBtn>
-
-              <VBtn
-                variant="tonal"
-                v-if="numberedSteps.length - 1 !== currentStep"
-                @click="currentStep++"
-              >
-                Next
-                <VIcon icon="tabler-arrow-right" end class="flip-in-rtl" />
-              </VBtn>
-            </div>
-          </div>
+              />
+            </VCol>
+          </VRow>
         </VForm>
 
         <VAlert v-else type="warning" variant="tonal">
           Unable to load contact details.
         </VAlert>
+      </VCardText>
+
+      <VCardText class="d-flex justify-end flex-wrap gap-3">
+        <VBtn variant="tonal" color="secondary" @click="onReset"> Cancel </VBtn>
+        <VBtn type="submit" @click="saveContact"> Save </VBtn>
       </VCardText>
     </VCard>
   </VDialog>

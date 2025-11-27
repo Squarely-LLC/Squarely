@@ -211,7 +211,7 @@ const onReset = () => {
 
 <template>
   <VDialog
-    :width="$vuetify.display.smAndDown ? 'auto' : 900"
+    :width="$vuetify.display.smAndDown ? 'auto' : 700"
     :model-value="isDialogVisible"
     @update:model-value="dialogModelValueUpdate"
   >
@@ -324,17 +324,16 @@ const onReset = () => {
                 :config="{ enableTime: false, dateFormat: 'Y-m-d' }"
               />
             </VCol>
-
             <VCol cols="12">
-              <VRadioGroup v-model="gender" inline>
-                <template #label>
-                  <label class="v-label text-body-2">Gender</label>
-                </template>
-                <VRadio label="Male" value="Male" />
-                <VRadio label="Female" value="Female" />
-              </VRadioGroup>
+              <AppDateTimePicker
+                ref="duePickerRef"
+                v-model="localContact.employment!.startDate"
+                :rules="[requiredValidator]"
+                label="Joining Date"
+                placeholder="Select joining date"
+                :config="{ enableTime: false, dateFormat: 'F j, Y' }"
+              />
             </VCol>
-
             <VCol cols="12">
               <AppTextarea
                 v-model="localContact.address"
@@ -346,14 +345,13 @@ const onReset = () => {
             </VCol>
 
             <VCol cols="12">
-              <AppDateTimePicker
-                ref="duePickerRef"
-                v-model="localContact.employment!.startDate"
-                :rules="[requiredValidator]"
-                label="Joining Date"
-                placeholder="Select joining date"
-                :config="{ enableTime: false, dateFormat: 'F j, Y' }"
-              />
+              <VRadioGroup v-model="gender" inline>
+                <template #label>
+                  <label class="v-label text-body-2">Gender</label>
+                </template>
+                <VRadio label="Male" value="Male" />
+                <VRadio label="Female" value="Female" />
+              </VRadioGroup>
             </VCol>
 
             <VCol cols="12" class="d-flex flex-wrap justify-center gap-4 mt-4">
