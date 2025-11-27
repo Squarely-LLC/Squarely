@@ -919,7 +919,11 @@ const onTerminationSubmit = (terminationData: any) => {
       <!-- Positions Card -->
       <VCard
         class="mb-3"
-        style="display: flex; flex-direction: column; block-size: 245px"
+        :style="
+          $vuetify.display.smAndDown
+            ? 'display: flex; flex-direction: column; max-block-size: 502px'
+            : 'display: flex; flex-direction: column; block-size: 245px'
+        "
       >
         <template #title>
           <div class="d-flex align-center justify-space-between">
@@ -1000,7 +1004,11 @@ const onTerminationSubmit = (terminationData: any) => {
       <!-- Payment Methods Card -->
       <VCard
         class="mb-6"
-        style="display: flex; flex-direction: column; block-size: 245px"
+        :style="
+          $vuetify.display.smAndDown
+            ? 'display: flex; flex-direction: column; max-block-size: 502px'
+            : 'display: flex; flex-direction: column; block-size: 245px'
+        "
       >
         <template #title>
           <div class="d-flex align-center justify-space-between">
