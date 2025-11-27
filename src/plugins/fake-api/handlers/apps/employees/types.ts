@@ -107,6 +107,14 @@ export interface EmployeeContract {
   createdAt?: string;
 }
 
+export interface EmployeePosition {
+  id?: number;
+  position: string;
+  startingDate: string;
+  note?: string;
+  createdAt?: string;
+}
+
 export interface EmployeeEmployment {
   department?: string;
   reportToIds?: (number | string)[];
@@ -115,14 +123,24 @@ export interface EmployeeEmployment {
   endDate?: string | null;
   contract?: EmployeeContract; // Deprecated: use contracts array
   contracts?: EmployeeContract[];
+  positions?: EmployeePosition[];
+}
+
+export interface EmployeeSalaryRecord {
+  id?: number;
+  basicSalary: number;
+  transportation: number;
+  housing: number;
+  allowance: number;
+  date: string;
+  startingPeriod: string;
+  note?: string;
+  createdAt?: string;
 }
 
 export interface EmployeeSalary {
-  base?: number;
   currency?: string;
-  memberOfSalesTeam?: boolean;
-  lastUpdated?: string | null;
-  notes?: string;
+  history?: EmployeeSalaryRecord[];
 }
 
 export interface EmployeePaymentMethod {
@@ -177,7 +195,6 @@ export interface EmployeeProperties {
   department?: string;
   employment?: EmployeeEmployment;
   salary?: EmployeeSalary | null;
-  positions?: string[];
   paymentMethods?: EmployeePaymentMethod[];
   requests?: EmployeeRequest[];
 }

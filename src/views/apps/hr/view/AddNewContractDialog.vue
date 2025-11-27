@@ -100,11 +100,19 @@ watch(
   >
     <DialogCloseBtn @click="dialogModelValueUpdate(false)" />
 
-    <VCard
-      :title="contractData ? 'Edit Contract' : 'Create New Contract'"
-      style="overflow: visible"
-    >
+    <VCard class="pa-sm-8 pa-4">
       <VCardText style="overflow: visible">
+        <h4 class="text-h5 text-center mb-2">
+          {{ contractData ? "Edit Contract" : "Create New Contract" }}
+        </h4>
+        <p class="text-body-2 text-center mb-6">
+          Fill out the form below to
+          {{
+            contractData
+              ? "update the contract details."
+              : "create a new contract."
+          }}
+        </p>
         <VForm
           ref="refForm"
           v-model="isFormValid"

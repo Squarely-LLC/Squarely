@@ -218,7 +218,7 @@ const onReset = () => {
     <DialogCloseBtn @click="dialogModelValueUpdate(false)" />
 
     <VCard class="pa-sm-8 pa-4">
-      <VCardText>
+      <VCardText style="overflow: visible">
         <h4 class="text-h5 text-center mb-2">Add New Employee</h4>
         <p class="text-body-2 text-center mb-6">
           Fill out the form below to add a new employee.

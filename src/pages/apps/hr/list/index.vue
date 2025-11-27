@@ -918,9 +918,12 @@ const updateItemsPerPage = (value: number | string) => {
               </div>
               <div class="text-sm text-medium-emphasis">
                 {{
-                  item.positions && item.positions.length > 0
-                    ? item.positions.join(", ")
-                    : "Unknown Position"
+                  item.employment?.positions &&
+                  item.employment.positions.length > 0
+                    ? item.employment.positions
+                        .map((p) => p.position)
+                        .join(", ")
+                    : "No Position"
                 }}
               </div>
             </div>

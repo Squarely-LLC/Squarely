@@ -6,7 +6,9 @@ import type {
   EmployeeAccounting,
   EmployeeContract,
   EmployeeEmployment,
+  EmployeePosition,
   EmployeeProperties,
+  EmployeeSalaryRecord,
 } from "../plugins/fake-api/handlers/apps/employees/types";
 
 import type { EmployeeRecord } from "../plugins/fake-api/handlers/apps/employees/types";
@@ -163,6 +165,9 @@ function ensureEmployment(
     endDate: employment.endDate || null,
     contract: ensureContract(employment.contract),
     contracts: ensureContracts(employment.contracts),
+    positions: Array.isArray(employment.positions)
+      ? [...employment.positions]
+      : undefined,
   };
 }
 
@@ -391,3 +396,5 @@ export const useEmployeesStore = defineStore("employees", {
     },
   },
 });
+
+export type { EmployeePosition, EmployeeSalaryRecord };
