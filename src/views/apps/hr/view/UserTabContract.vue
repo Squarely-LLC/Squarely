@@ -60,6 +60,51 @@ const localEmployment = ref({
   salesAmount: props.userData.employment?.salesAmount || 0,
 });
 
+const defaultWorkSchedule = {
+  Monday: { active: true, remote: false, from: "09:00", to: "17:00" },
+  Tuesday: { active: true, remote: false, from: "09:00", to: "17:00" },
+  Wednesday: { active: true, remote: false, from: "09:00", to: "17:00" },
+  Thursday: { active: true, remote: false, from: "09:00", to: "17:00" },
+  Friday: { active: true, remote: false, from: "09:00", to: "17:00" },
+  Saturday: { active: false, remote: false, from: "09:00", to: "17:00" },
+  Sunday: { active: false, remote: false, from: "09:00", to: "17:00" },
+};
+
+const localAttendance = ref({
+  vacation: props.userData.attendance?.vacation || 0,
+  sickLeave: props.userData.attendance?.sickLeave || 0,
+  parentalLeave: props.userData.attendance?.parentalLeave || 0,
+  carryoverDays: props.userData.attendance?.carryoverDays || 0,
+  workSchedule: props.userData.attendance?.workSchedule
+    ? {
+        Monday:
+          props.userData.attendance.workSchedule.Monday ||
+          defaultWorkSchedule.Monday,
+        Tuesday:
+          props.userData.attendance.workSchedule.Tuesday ||
+          defaultWorkSchedule.Tuesday,
+        Wednesday:
+          props.userData.attendance.workSchedule.Wednesday ||
+          defaultWorkSchedule.Wednesday,
+        Thursday:
+          props.userData.attendance.workSchedule.Thursday ||
+          defaultWorkSchedule.Thursday,
+        Friday:
+          props.userData.attendance.workSchedule.Friday ||
+          defaultWorkSchedule.Friday,
+        Saturday:
+          props.userData.attendance.workSchedule.Saturday ||
+          defaultWorkSchedule.Saturday,
+        Sunday:
+          props.userData.attendance.workSchedule.Sunday ||
+          defaultWorkSchedule.Sunday,
+      }
+    : defaultWorkSchedule,
+  allowedExtraTime: props.userData.attendance?.allowedExtraTime || 0,
+});
+
+const isAttendanceExpanded = ref(false);
+
 // Update localEmployment when props change (e.g., after refresh)
 watch(
   () => props.userData.employment,
@@ -358,6 +403,14 @@ const updateSalesTeamInfo = () => {
   });
 
   notifications.push("Sales team details saved", "success", 2500);
+};
+
+const updateAttendance = () => {
+  employeesStore.updateEmployee(props.userData.id, {
+    attendance: toPlain(localAttendance.value),
+  });
+
+  notifications.push("Attendance updated successfully", "success", 3500);
 };
 
 // Auto-save employment tweaks to mimic configuration auto-save
@@ -1328,6 +1381,164 @@ const onTerminationSubmit = (terminationData: any) => {
     </VCol>
   </VRow>
 
+  <!-- ========== ATTENDANCE CARD ========== -->
+  <VCard class="mb-6">
+    <VCardTitle class="d-flex align-center justify-space-between">
+      <span>Attendance</span>
+      <VBtn
+        variant="text"
+        :icon="
+          isAttendanceExpanded ? 'tabler-chevron-up' : 'tabler-chevron-down'
+        "
+        @click="isAttendanceExpanded = !isAttendanceExpanded"
+      />
+    </VCardTitle>
+
+    <VCardText v-if="isAttendanceExpanded">
+      <VRow>
+        <!-- Number of allowed days per year -->
+        <VCol cols="12">
+          <h6 class="text-body-1 font-weight-medium mb-4">
+            Number of allowed days per year
+          </h6>
+        </VCol>
+
+        <VCol cols="12" md="3">
+          <AppTextField
+            v-model.number="localAttendance.vacation"
+            label="Vacation"
+            type="number"
+            @update:model-value="updateAttendance"
+          />
+        </VCol>
+
+        <VCol cols="12" md="3">
+          <AppTextField
+            v-model.number="localAttendance.sickLeave"
+            label="Sick Leave"
+            type="number"
+            @update:model-value="updateAttendance"
+          />
+        </VCol>
+
+        <VCol cols="12" md="3">
+          <AppTextField
+            v-model.number="localAttendance.parentalLeave"
+            label="Parental Leave"
+            type="number"
+            @update:model-value="updateAttendance"
+          />
+        </VCol>
+
+        <VCol cols="12" md="3">
+          <AppTextField
+            v-model.number="localAttendance.carryoverDays"
+            label="Carryover Days"
+            type="number"
+            @update:model-value="updateAttendance"
+          />
+        </VCol>
+
+        <!-- Work Schedule -->
+        <VCol cols="12" class="mt-4">
+          <VDivider class="mb-4" />
+        </VCol>
+
+        <VCol
+          v-for="day in [
+            'Monday',
+            'Tuesday',
+            'Wednesday',
+            'Thursday',
+            'Friday',
+            'Saturday',
+            'Sunday',
+          ]"
+          :key="day"
+          cols="12"
+        >
+          <VRow align="center">
+            <VCol cols="12" md="2" class="text-capitalize">
+              <span class="text-body-2 font-weight-medium">{{ day }}</span>
+            </VCol>
+
+            <VCol cols="6" md="2">
+              <AppDateTimePicker
+                v-model="localAttendance.workSchedule[day].from"
+                label="From / To"
+                placeholder="Select time"
+                :config="{
+                  enableTime: true,
+                  noCalendar: true,
+                  dateFormat: 'H:i',
+                }"
+                @update:model-value="updateAttendance"
+              />
+            </VCol>
+
+            <VCol cols="6" md="2">
+              <AppDateTimePicker
+                v-model="localAttendance.workSchedule[day].to"
+                label=" "
+                placeholder="Select time"
+                :config="{
+                  enableTime: true,
+                  noCalendar: true,
+                  dateFormat: 'H:i',
+                }"
+                @update:model-value="updateAttendance"
+              />
+            </VCol>
+
+            <VCol
+              cols="6"
+              md="3"
+              class="d-flex align-center"
+              style="padding-block-start: 30px"
+            >
+              <VSwitch
+                v-model="localAttendance.workSchedule[day].active"
+                label="Active"
+                color="success"
+                hide-details
+                @update:model-value="updateAttendance"
+              />
+            </VCol>
+
+            <VCol
+              cols="6"
+              md="3"
+              class="d-flex align-center"
+              style="padding-block-start: 30px"
+            >
+              <VSwitch
+                v-model="localAttendance.workSchedule[day].remote"
+                label="Remote"
+                color="primary"
+                hide-details
+                @update:model-value="updateAttendance"
+              />
+            </VCol>
+          </VRow>
+        </VCol>
+
+        <!-- Allowed Extra Time -->
+        <VCol cols="12" class="mt-4">
+          <VDivider class="mb-4" />
+        </VCol>
+
+        <VCol cols="12">
+          <AppSelect
+            v-model.number="localAttendance.allowedExtraTime"
+            label="Allowed Extra Time"
+            :items="[0, 15, 30, 45, 60, 90, 120]"
+            @update:model-value="updateAttendance"
+          />
+        </VCol>
+      </VRow>
+    </VCardText>
+  </VCard>
+
   <!-- ==================== DIALOGS ==================== -->
   <!-- Add New Contract Dialog -->
   <AddNewContractDialog
@@ -1409,3 +1620,33 @@ const onTerminationSubmit = (terminationData: any) => {
     </VCard>
   </VDialog>
 </template>
+
+<style scoped>
+/* Scrollbar styling for scrollable card content areas */
+.v-card-text {
+  /* Firefox: thin + subtle color */
+  scrollbar-color: rgba(0 0 0 / 12%) transparent;
+  scrollbar-width: thin;
+}
+
+/* WebKit (Chrome, Edge, Safari) thin scrollbar */
+.v-card-text::-webkit-scrollbar {
+  block-size: 10px;
+  inline-size: 10px;
+}
+
+.v-card-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.v-card-text::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgba(0 0 0 / 12%);
+}
+
+.v-card-text::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0 0 0 / 18%);
+}
+</style>

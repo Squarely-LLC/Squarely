@@ -115,6 +115,23 @@ export interface EmployeePosition {
   createdAt?: string;
 }
 
+export interface EmployeeAttendance {
+  vacation: number;
+  sickLeave: number;
+  parentalLeave: number;
+  carryoverDays: number;
+  workSchedule: {
+    monday: { active: boolean; remote: boolean; from: string; to: string };
+    tuesday: { active: boolean; remote: boolean; from: string; to: string };
+    wednesday: { active: boolean; remote: boolean; from: string; to: string };
+    thursday: { active: boolean; remote: boolean; from: string; to: string };
+    friday: { active: boolean; remote: boolean; from: string; to: string };
+    saturday: { active: boolean; remote: boolean; from: string; to: string };
+    sunday: { active: boolean; remote: boolean; from: string; to: string };
+  };
+  allowedExtraTime: number;
+}
+
 export interface EmployeeEmployment {
   department?: string;
   reportToIds?: (number | string)[];
@@ -206,5 +223,6 @@ export interface EmployeeProperties {
   employment?: EmployeeEmployment;
   salary?: EmployeeSalary | null;
   paymentMethods?: EmployeePaymentMethod[];
+  attendance?: EmployeeAttendance;
   requests?: EmployeeRequest[];
 }
