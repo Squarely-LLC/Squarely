@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { EmployeeSalaryRecord } from "@/stores/employees";
+import DialogCloseBtn from "@core/components/DialogCloseBtn.vue";
 import { ref, watch } from "vue";
 
 interface Props {
@@ -24,6 +25,9 @@ const localSalaryData = ref<Omit<EmployeeSalaryRecord, "id" | "createdAt">>({
   date: "",
   startingPeriod: "",
   note: "",
+  isSalesTeamMember: false,
+  salesPercentage: 0,
+  salesAmount: 0,
 });
 
 const resetForm = () => {
@@ -35,6 +39,9 @@ const resetForm = () => {
     date: "",
     startingPeriod: "",
     note: "",
+    isSalesTeamMember: false,
+    salesPercentage: 0,
+    salesAmount: 0,
   };
 };
 
@@ -51,6 +58,9 @@ watch(
         date: newData.date || "",
         startingPeriod: newData.startingPeriod || "",
         note: newData.note || "",
+        isSalesTeamMember: newData.isSalesTeamMember || false,
+        salesPercentage: newData.salesPercentage || 0,
+        salesAmount: newData.salesAmount || 0,
       };
     } else {
       resetForm();
@@ -182,6 +192,37 @@ for (let year = currentYear - 5; year <= currentYear + 5; year++) {
                 label="NOTE"
                 placeholder="Add any additional notes"
                 rows="3"
+              />
+            </VCol>
+
+            <!-- Sales Team Member -->
+            <VCol cols="12">
+              <VCheckbox
+                v-model="localSalaryData.isSalesTeamMember"
+                label="Member of Sales Team"
+                color="primary"
+              />
+            </VCol>
+
+            <!-- Sales Percentage (conditional) -->
+            <VCol v-if="localSalaryData.isSalesTeamMember" cols="12" md="6">
+              <AppTextField
+                v-model.number="localSalaryData.salesPercentage"
+                label="PERCENTAGE"
+                placeholder="Enter percentage on sales"
+                type="number"
+                :rules="[numberRule]"
+              />
+            </VCol>
+
+            <!-- Sales Amount (conditional) -->
+            <VCol v-if="localSalaryData.isSalesTeamMember" cols="12" md="6">
+              <AppTextField
+                v-model.number="localSalaryData.salesAmount"
+                label="AMOUNT"
+                placeholder="Enter amount on sales"
+                type="number"
+                :rules="[numberRule]"
               />
             </VCol>
 

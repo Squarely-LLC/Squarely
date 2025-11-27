@@ -9,7 +9,8 @@ import { useConfigStore } from "@/stores/config";
 import type { EmployeeSalaryRecord } from "@/stores/employees";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import AddEmployeePaymentDialog from "./AddEmployeePaymentDialog.vue";
 import AddNewContractDialog from "./AddNewContractDialog.vue";
 import AddPositionDialog from "./AddPositionDialog.vue";
 import AddSalaryRaiseDialog from "./AddSalaryRaiseDialog.vue";
@@ -30,6 +31,11 @@ employeesStore.init();
 
 const notifications = useNotificationsStore();
 
+// Helper to convert reactive arrays to plain objects
+const toPlain = <T>(value: T): T => {
+  return JSON.parse(JSON.stringify(value));
+};
+
 // ==================== STATE ====================
 const isAddContractDialogVisible = ref(false);
 const isTerminateDialogVisible = ref(false);
@@ -37,15 +43,38 @@ const isAddPositionDialogVisible = ref(false);
 const isAddSalaryDialogVisible = ref(false);
 const confirmDeletePositionVisible = ref(false);
 const confirmDeleteSalaryVisible = ref(false);
+const confirmDeletePaymentVisible = ref(false);
 const selectedContractId = ref<number | null>(null);
 const selectedPositionId = ref<number | null>(null);
 const selectedSalaryId = ref<number | null>(null);
 const deletePositionCandidateId = ref<number | null>(null);
 const deleteSalaryCandidateId = ref<number | null>(null);
+const deletePaymentCandidateId = ref<number | null>(null);
+const isAddPaymentDialogVisible = ref(false);
+const selectedPaymentMethodId = ref<number | null>(null);
 
 const localEmployment = ref({
   department: props.userData.employment?.department || null,
+  isSalesTeamMember: props.userData.employment?.isSalesTeamMember || false,
+  salesPercentage: props.userData.employment?.salesPercentage || 0,
+  salesAmount: props.userData.employment?.salesAmount || 0,
 });
+
+// Update localEmployment when props change (e.g., after refresh)
+watch(
+  () => props.userData.employment,
+  (newEmployment) => {
+    if (newEmployment) {
+      localEmployment.value.isSalesTeamMember =
+        newEmployment.isSalesTeamMember || false;
+      localEmployment.value.salesPercentage =
+        newEmployment.salesPercentage || 0;
+      localEmployment.value.salesAmount = newEmployment.salesAmount || 0;
+      localEmployment.value.department = newEmployment.department || null;
+    }
+  },
+  { deep: true }
+);
 
 // ==================== COMPUTED PROPERTIES ====================
 // Get all contracts (support both old single contract and new contracts array)
@@ -115,6 +144,17 @@ const selectedSalary = computed(
   () => allSalaries.value.find((s) => s.id === selectedSalaryId.value) || null
 );
 
+const allPaymentMethods = computed(() => {
+  return props.userData.paymentMethods || [];
+});
+
+const selectedPaymentMethod = computed(
+  () =>
+    allPaymentMethods.value.find(
+      (pm) => pm.id === selectedPaymentMethodId.value
+    ) || null
+);
+
 const departmentOptions = computed(() => {
   const departments = configStore.configurations?.hr?.departments;
   if (!departments || departments.length === 0) {
@@ -134,6 +174,8 @@ const employmentTypeOptions = [
   "Intern",
 ];
 
+const paymentTypeOptions = ["Bank Transfer", "Cash", "Check", "Payroll Card"];
+
 // ==================== CONTRACT FUNCTIONS ====================
 const onContractSubmit = (contract: EmployeeContract) => {
   const currentContracts = props.userData.employment?.contracts || [];
@@ -146,8 +188,7 @@ const onContractSubmit = (contract: EmployeeContract) => {
 
     employeesStore.updateEmployee(props.userData.id, {
       employment: {
-        ...props.userData.employment,
-        contracts: updatedContracts,
+        contracts: toPlain(updatedContracts),
       },
     });
 
@@ -170,8 +211,7 @@ const onContractSubmit = (contract: EmployeeContract) => {
     employeesStore.updateEmployee(props.userData.id, {
       status: "Active",
       employment: {
-        ...props.userData.employment,
-        contracts: [...currentContracts, newContract],
+        contracts: toPlain([...currentContracts, newContract]),
       },
     });
 
@@ -184,10 +224,10 @@ const onContractSubmit = (contract: EmployeeContract) => {
 const saveDepartmentChanges = () => {
   employeesStore.updateEmployee(props.userData.id, {
     employment: {
-      ...props.userData.employment,
       department: localEmployment.value.department || undefined,
     },
   });
+  notifications.push("Department updated successfully", "success", 3500);
 };
 
 const discardChanges = () => {
@@ -234,8 +274,7 @@ const onPositionSubmit = (
 
     employeesStore.updateEmployee(props.userData.id, {
       employment: {
-        ...props.userData.employment,
-        positions: updatedPositions,
+        positions: toPlain(updatedPositions),
       },
     });
 
@@ -255,8 +294,7 @@ const onPositionSubmit = (
 
     employeesStore.updateEmployee(props.userData.id, {
       employment: {
-        ...props.userData.employment,
-        positions: [...currentPositions, newPosition],
+        positions: toPlain([...currentPositions, newPosition]),
       },
     });
 
@@ -285,8 +323,7 @@ const performDeletePosition = () => {
 
   employeesStore.updateEmployee(props.userData.id, {
     employment: {
-      ...props.userData.employment,
-      positions: updatedPositions,
+      positions: toPlain(updatedPositions),
     },
   });
 
@@ -304,6 +341,45 @@ const openAddPositionDialog = () => {
   selectedPositionId.value = null;
   isAddPositionDialogVisible.value = true;
 };
+
+// ==================== SALES TEAM FUNCTIONS ====================
+// Auto-save sales team information on change
+const updateSalesTeamInfo = () => {
+  const isMember = !!localEmployment.value.isSalesTeamMember;
+  const salesPercentage = isMember ? localEmployment.value.salesPercentage : 0;
+  const salesAmount = isMember ? localEmployment.value.salesAmount : 0;
+
+  employeesStore.updateEmployee(props.userData.id, {
+    employment: {
+      isSalesTeamMember: isMember,
+      salesPercentage,
+      salesAmount,
+    },
+  });
+
+  notifications.push("Sales team details saved", "success", 2500);
+};
+
+// Auto-save employment tweaks to mimic configuration auto-save
+watch(
+  () => localEmployment.value.department,
+  (department, previous) => {
+    if (department === previous) return;
+    saveDepartmentChanges();
+  }
+);
+
+watch(
+  () => [
+    localEmployment.value.isSalesTeamMember,
+    localEmployment.value.salesPercentage,
+    localEmployment.value.salesAmount,
+  ],
+  (_val, prev) => {
+    if (!prev) return;
+    updateSalesTeamInfo();
+  }
+);
 
 // ==================== SALARY FUNCTIONS ====================
 const onSalarySubmit = (
@@ -390,6 +466,101 @@ const openAddSalaryDialog = () => {
   isAddSalaryDialogVisible.value = true;
 };
 
+// ==================== PAYMENT METHOD FUNCTIONS ====================
+const onPaymentMethodSubmit = (paymentData: any) => {
+  const currentMethods = props.userData.paymentMethods || [];
+
+  if (selectedPaymentMethodId.value) {
+    // Update existing payment method
+    const updatedMethods = currentMethods.map((pm) =>
+      pm.id === selectedPaymentMethodId.value ? { ...pm, ...paymentData } : pm
+    );
+
+    employeesStore.updateEmployee(props.userData.id, {
+      paymentMethods: toPlain(updatedMethods),
+    });
+
+    notifications.push("Payment method updated successfully", "success", 3500);
+  } else {
+    // Add new payment method
+    const newId =
+      currentMethods.length > 0
+        ? Math.max(...currentMethods.map((pm) => pm.id || 0)) + 1
+        : 1;
+
+    const newPaymentMethod = {
+      ...paymentData,
+      id: newId,
+      isPrimary: currentMethods.length === 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    employeesStore.updateEmployee(props.userData.id, {
+      paymentMethods: toPlain([...currentMethods, newPaymentMethod]),
+    });
+
+    notifications.push("Payment method added successfully", "success", 3500);
+  }
+
+  selectedPaymentMethodId.value = null;
+};
+
+const editPaymentMethod = (methodId: number) => {
+  selectedPaymentMethodId.value = methodId;
+  isAddPaymentDialogVisible.value = true;
+};
+
+const openAddPaymentDialog = () => {
+  selectedPaymentMethodId.value = null;
+  isAddPaymentDialogVisible.value = true;
+};
+
+const viewPaymentMethodDetails = (methodId: number) => {
+  editPaymentMethod(methodId);
+};
+
+const deletePaymentMethod = (methodId: number) => {
+  deletePaymentCandidateId.value = methodId;
+  confirmDeletePaymentVisible.value = true;
+};
+
+const cancelDeletePayment = () => {
+  deletePaymentCandidateId.value = null;
+  confirmDeletePaymentVisible.value = false;
+};
+
+const performDeletePayment = () => {
+  if (deletePaymentCandidateId.value === null) return;
+
+  const currentMethods = props.userData.paymentMethods || [];
+  const updatedMethods = currentMethods.filter(
+    (pm) => pm.id !== deletePaymentCandidateId.value
+  );
+
+  employeesStore.updateEmployee(props.userData.id, {
+    paymentMethods: toPlain(updatedMethods),
+  });
+
+  notifications.push("Payment method deleted successfully", "success", 3500);
+
+  deletePaymentCandidateId.value = null;
+  confirmDeletePaymentVisible.value = false;
+};
+
+const setPrimaryPaymentMethod = (methodId: number) => {
+  const currentMethods = props.userData.paymentMethods || [];
+  const updatedMethods = currentMethods.map((pm) => ({
+    ...pm,
+    isPrimary: pm.id === methodId,
+  }));
+
+  employeesStore.updateEmployee(props.userData.id, {
+    paymentMethods: toPlain(updatedMethods),
+  });
+
+  notifications.push("Primary payment method updated", "success", 3500);
+};
+
 // ==================== TERMINATION FUNCTION ====================
 const onTerminationSubmit = (terminationData: any) => {
   const currentContracts = props.userData.employment?.contracts || [];
@@ -424,8 +595,7 @@ const onTerminationSubmit = (terminationData: any) => {
   employeesStore.updateEmployee(props.userData.id, {
     status: hasActiveContract ? "Active" : "Not Hired",
     employment: {
-      ...props.userData.employment,
-      contracts: updatedContracts,
+      contracts: toPlain(updatedContracts),
     },
   });
 
@@ -740,19 +910,17 @@ const onTerminationSubmit = (terminationData: any) => {
         </template>
       </VRow>
     </VCardText>
-
-    <VCardText v-if="localEmployment.department" class="d-flex flex-wrap gap-4">
-      <VBtn @click="saveDepartmentChanges">Save changes</VBtn>
-      <VBtn color="secondary" variant="tonal" @click="discardChanges">
-        Discard
-      </VBtn>
-    </VCardText>
   </VCard>
 
-  <!-- ========== POSITIONS CARD ========== -->
+  <!-- ========== POSITIONS AND PAYMENT METHODS ROW ========== -->
   <VRow>
+    <!-- Left Column: Positions + Payment Methods -->
     <VCol cols="12" md="6">
-      <VCard class="mb-6">
+      <!-- Positions Card -->
+      <VCard
+        class="mb-3"
+        style="display: flex; flex-direction: column; block-size: 245px"
+      >
         <template #title>
           <div class="d-flex align-center justify-space-between">
             <span>Positions</span>
@@ -767,7 +935,7 @@ const onTerminationSubmit = (terminationData: any) => {
           </div>
         </template>
 
-        <VCardText>
+        <VCardText style="flex: 1; overflow-y: auto">
           <!-- Show alert if no positions -->
           <div v-if="allPositions.length === 0" color="info" variant="tonal">
             No positions yet. Add a new position to keep track of employee
@@ -828,11 +996,144 @@ const onTerminationSubmit = (terminationData: any) => {
           </div>
         </VCardText>
       </VCard>
+
+      <!-- Payment Methods Card -->
+      <VCard
+        class="mb-6"
+        style="display: flex; flex-direction: column; block-size: 245px"
+      >
+        <template #title>
+          <div class="d-flex align-center justify-space-between">
+            <span>Payment Methods</span>
+            <VBtn
+              size="small"
+              variant="tonal"
+              prepend-icon="tabler-plus"
+              @click="openAddPaymentDialog"
+            >
+              Payment Method
+            </VBtn>
+          </div>
+        </template>
+
+        <VCardText style="flex: 1; overflow-y: auto">
+          <!-- Show alert if no payment methods -->
+          <div
+            v-if="allPaymentMethods.length === 0"
+            color="info"
+            variant="tonal"
+          >
+            No payment methods yet. Add a payment method to manage employee
+            payments.
+          </div>
+
+          <!-- Show payment methods list -->
+          <div v-else class="d-flex flex-column gap-2">
+            <div
+              v-for="method in allPaymentMethods"
+              :key="method.id"
+              class="d-flex align-center justify-space-between pa-3 rounded"
+              style="
+                border: 1px solid
+                  rgba(var(--v-border-color), var(--v-border-opacity));
+              "
+            >
+              <div class="flex-grow-1">
+                <div class="d-flex align-center gap-2 mb-1">
+                  <span class="text-body-2 font-weight-medium">
+                    {{ method.type }}
+                  </span>
+                  <VChip
+                    v-if="method.isPrimary"
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                  >
+                    Primary
+                  </VChip>
+                </div>
+                <div
+                  v-if="method.type === 'Bank Transfer' && (method as any).bankName"
+                  class="text-caption text-medium-emphasis"
+                >
+                  {{ (method as any).bankName }}
+                  <span v-if="method.accountNumber">
+                    • {{ method.accountNumber }}
+                  </span>
+                </div>
+                <div
+                  v-else-if="method.type === 'Cash'"
+                  class="text-caption text-medium-emphasis"
+                >
+                  Cash Payment
+                </div>
+              </div>
+
+              <div class="d-flex align-center gap-1">
+                <VBtn
+                  size="x-small"
+                  variant="text"
+                  icon
+                  @click="setPrimaryPaymentMethod(method.id)"
+                >
+                  <VIcon
+                    :icon="
+                      method.isPrimary ? 'tabler-star-filled' : 'tabler-star'
+                    "
+                    :color="method.isPrimary ? 'warning' : 'default'"
+                  />
+                  <VTooltip activator="parent" location="top">
+                    {{
+                      method.isPrimary
+                        ? "Primary Payment Method"
+                        : "Set as Primary"
+                    }}
+                  </VTooltip>
+                </VBtn>
+                <VBtn
+                  v-if="method.type === 'Bank Transfer'"
+                  size="x-small"
+                  variant="text"
+                  icon
+                  @click="viewPaymentMethodDetails(method.id)"
+                >
+                  <VIcon icon="tabler-eye" />
+                  <VTooltip activator="parent" location="top">
+                    View Details
+                  </VTooltip>
+                </VBtn>
+                <VBtn size="x-small" variant="text" icon color="default">
+                  <VIcon icon="tabler-dots-vertical" />
+                  <VMenu activator="parent">
+                    <VList>
+                      <VListItem @click="editPaymentMethod(method.id)">
+                        <template #prepend>
+                          <VIcon icon="tabler-edit" />
+                        </template>
+                        <VListItemTitle>Edit</VListItemTitle>
+                      </VListItem>
+                      <VListItem @click="deletePaymentMethod(method.id)">
+                        <template #prepend>
+                          <VIcon color="error" icon="tabler-trash" />
+                        </template>
+                        <VListItemTitle>Delete</VListItemTitle>
+                      </VListItem>
+                    </VList>
+                  </VMenu>
+                </VBtn>
+              </div>
+            </div>
+          </div>
+        </VCardText>
+      </VCard>
     </VCol>
 
     <!-- ========== SALARY CARD ========== -->
     <VCol cols="12" md="6">
-      <VCard class="mb-6">
+      <VCard
+        class="mb-6"
+        style="display: flex; flex-direction: column; block-size: 502px"
+      >
         <template #title>
           <div class="d-flex align-center justify-space-between">
             <span>Salary</span>
@@ -847,7 +1148,42 @@ const onTerminationSubmit = (terminationData: any) => {
           </div>
         </template>
 
-        <VCardText>
+        <VCardText style="flex: 1; overflow-y: auto">
+          <!-- Member of Sales Team Checkbox -->
+          <div class="mb-4">
+            <VCheckbox
+              v-model="localEmployment.isSalesTeamMember"
+              label="Member of Sales Team"
+              color="primary"
+              hide-details
+              @update:model-value="updateSalesTeamInfo"
+            />
+          </div>
+
+          <!-- Sales Team Fields (conditional) -->
+          <VRow v-if="localEmployment.isSalesTeamMember" class="mb-4">
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model.number="localEmployment.salesPercentage"
+                label="PERCENTAGE"
+                placeholder="Enter percentage on sales"
+                type="number"
+                hide-details
+                @update:model-value="updateSalesTeamInfo"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model.number="localEmployment.salesAmount"
+                label="AMOUNT"
+                placeholder="Enter amount on sales"
+                type="number"
+                hide-details
+                @update:model-value="updateSalesTeamInfo"
+              />
+            </VCol>
+          </VRow>
+
           <!-- Show alert if no salaries -->
           <div v-if="allSalaries.length === 0" color="info" variant="tonal">
             No salary records yet. Add a salary to keep track of employee
@@ -875,6 +1211,7 @@ const onTerminationSubmit = (terminationData: any) => {
                   position: absolute;
                   inset-block-start: 8px;
                   inset-inline-end: 8px;
+                  /* stylelint-disable-next-line @stylistic/no-eol-whitespace */
                 "
               >
                 <VIcon icon="tabler-dots-vertical" />
@@ -897,6 +1234,18 @@ const onTerminationSubmit = (terminationData: any) => {
               </VBtn>
 
               <div class="flex-grow-1">
+                <!-- Sales Team Member Badge -->
+                <div v-if="salary.isSalesTeamMember" class="mb-2">
+                  <VChip
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="tabler-check"
+                  >
+                    Member of Sales Team
+                  </VChip>
+                </div>
+
                 <div
                   class="text-body-1 font-weight-bold mb-2"
                   :class="salary.id === currentSalaryId ? 'text-success' : ''"
@@ -942,6 +1291,23 @@ const onTerminationSubmit = (terminationData: any) => {
                     salary.basicSalary.toLocaleString()
                   }}</span>
                 </div>
+
+                <!-- Sales Team Fields -->
+                <template v-if="salary.isSalesTeamMember">
+                  <div class="text-caption">
+                    PERCENTAGE:
+                    <span class="text-medium-emphasis"
+                      >{{ salary.salesPercentage || 0 }}%</span
+                    >
+                  </div>
+                  <div class="text-caption">
+                    AMOUNT:
+                    <span class="text-medium-emphasis">{{
+                      (salary.salesAmount || 0).toLocaleString()
+                    }}</span>
+                  </div>
+                </template>
+
                 <div v-if="salary.note" class="text-caption mt-2">
                   Note:
                   <span class="text-medium-emphasis">{{ salary.note }}</span>
@@ -982,6 +1348,13 @@ const onTerminationSubmit = (terminationData: any) => {
     @submit="onSalarySubmit"
   />
 
+  <!-- Add Payment Method Dialog -->
+  <AddEmployeePaymentDialog
+    v-model:is-dialog-visible="isAddPaymentDialogVisible"
+    :payment-data="selectedPaymentMethod"
+    @submit="onPaymentMethodSubmit"
+  />
+
   <!-- Confirm Delete Position Dialog -->
   <VDialog v-model="confirmDeletePositionVisible" persistent max-width="540">
     <VCard class="pa-sm-8 pa-4">
@@ -1006,6 +1379,22 @@ const onTerminationSubmit = (terminationData: any) => {
       <VCardActions>
         <VBtn variant="text" @click="cancelDeleteSalary"> Cancel </VBtn>
         <VBtn color="error" variant="tonal" @click="performDeleteSalary">
+          Delete
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <!-- Confirm Delete Payment Method Dialog -->
+  <VDialog v-model="confirmDeletePaymentVisible" persistent max-width="540">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Delete payment method</VCardTitle>
+      <VCardText>
+        Are you sure you want to delete this payment method?
+      </VCardText>
+      <VCardActions>
+        <VBtn variant="text" @click="cancelDeletePayment"> Cancel </VBtn>
+        <VBtn color="error" variant="tonal" @click="performDeletePayment">
           Delete
         </VBtn>
       </VCardActions>

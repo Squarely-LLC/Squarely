@@ -124,6 +124,9 @@ export interface EmployeeEmployment {
   contract?: EmployeeContract; // Deprecated: use contracts array
   contracts?: EmployeeContract[];
   positions?: EmployeePosition[];
+  isSalesTeamMember?: boolean;
+  salesPercentage?: number;
+  salesAmount?: number;
 }
 
 export interface EmployeeSalaryRecord {
@@ -136,6 +139,9 @@ export interface EmployeeSalaryRecord {
   startingPeriod: string;
   note?: string;
   createdAt?: string;
+  isSalesTeamMember?: boolean;
+  salesPercentage?: number;
+  salesAmount?: number;
 }
 
 export interface EmployeeSalary {
@@ -146,10 +152,14 @@ export interface EmployeeSalary {
 export interface EmployeePaymentMethod {
   id: number;
   type: string;
+  bankName?: string;
+  branchName?: string;
   accountName?: string;
   accountNumber?: string;
   iban?: string;
+  swiftCode?: string;
   isPrimary?: boolean;
+  createdAt?: string;
 }
 
 export type EmployeeRequestType =

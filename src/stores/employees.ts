@@ -15,40 +15,43 @@ import type { EmployeeRecord } from "../plugins/fake-api/handlers/apps/employees
 
 const STORAGE_KEY = "app.employees.v2";
 
-function cloneAccounting(accounting: EmployeeAccounting): EmployeeAccounting {
-  const raw = toRaw(accounting) as EmployeeAccounting;
-
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning accounting:", error);
-    }
+// Vue wraps store state with reactive proxies; we need a plain object before
+// cloning to avoid structuredClone DataCloneError for Proxy arrays.
+const toPlainDeep = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map((item) => toPlainDeep(item)) as unknown as T;
   }
 
+  if (value && typeof value === "object") {
+    const rawObject = toRaw(value) as Record<string, unknown>;
+    const plain: Record<string, unknown> = {};
+
+    Object.keys(rawObject).forEach((key) => {
+      plain[key] = toPlainDeep(rawObject[key]);
+    });
+
+    return plain as T;
+  }
+
+  return value;
+};
+
+function cloneAccounting(accounting: EmployeeAccounting): EmployeeAccounting {
   try {
-    return JSON.parse(JSON.stringify(raw)) as EmployeeAccounting;
+    return toPlainDeep(accounting);
   } catch (error) {
     console.warn("JSON clone failed while cloning accounting:", error);
+    const raw = toRaw(accounting) as EmployeeAccounting;
     return { ...raw };
   }
 }
 
 function cloneEmployee(contact: EmployeeProperties): EmployeeProperties {
-  const raw = toRaw(contact) as EmployeeProperties;
-
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning contact:", error);
-    }
-  }
-
   try {
-    return JSON.parse(JSON.stringify(raw)) as EmployeeProperties;
+    return toPlainDeep(contact) as EmployeeProperties;
   } catch (error) {
-    console.warn("JSON clone failed while cloning contact:", error);
+    console.warn("Deep clone failed while cloning contact:", error);
+    const raw = toRaw(contact) as EmployeeProperties;
 
     return {
       ...raw,
@@ -168,6 +171,15 @@ function ensureEmployment(
     positions: Array.isArray(employment.positions)
       ? [...employment.positions]
       : undefined,
+    isSalesTeamMember: employment.isSalesTeamMember ?? false,
+    salesPercentage:
+      employment.salesPercentage !== undefined
+        ? Number(employment.salesPercentage)
+        : undefined,
+    salesAmount:
+      employment.salesAmount !== undefined
+        ? Number(employment.salesAmount)
+        : undefined,
   };
 }
 
@@ -199,6 +211,9 @@ function normaliseEmployee(
     employment: ensureEmployment(payload.employment),
     salary: payload.salary || undefined,
     gender: payload.gender || undefined,
+    paymentMethods: Array.isArray(payload.paymentMethods)
+      ? payload.paymentMethods
+      : undefined,
   };
 }
 
@@ -228,6 +243,7 @@ function mergeEmployee(
             : original.employment?.contract,
         })
       : original.employment,
+    paymentMethods: patch.paymentMethods ?? original.paymentMethods,
   };
 
   if (!merged.createdAt) merged.createdAt = original.createdAt;
