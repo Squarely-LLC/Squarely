@@ -5,8 +5,8 @@ import type {
   EmployeeRequest,
   LeaveRequest,
 } from "@/plugins/fake-api/handlers/apps/employees/types";
-import { computed, defineComponent, defineProps, ref, watch } from "vue";
 import type { PropType } from "vue";
+import { computed, defineComponent, defineProps, ref, watch } from "vue";
 
 interface Props {
   userData: EmployeeProperties;
@@ -145,6 +145,9 @@ const leaveCards = computed(() => [
   },
 ]);
 
+// Group config without a fixed order so groups follow the current sort
+const groupBy = computed(() => [{ key: "monthYear" }]);
+
 // Auto-expand grouped rows (mirrors document tab behaviour)
 const AutoOpenGroups = defineComponent({
   name: "AutoOpenGroups",
@@ -221,7 +224,9 @@ function getRequestDescription(request: EmployeeRequest): string {
     const typeLabel = r.typeId?.replace("-", " ") || "Leave";
     const days = r.requestedDays || 0;
     const remaining = r.deductible ? 0 : days;
-    return `Leave\n${r.startDate} To ${r.returnDate} | #${days} days\n${typeLabel} | ${remaining} Remaining Days${
+    return `Leave\n${r.startDate} To ${
+      r.returnDate
+    } | #${days} days\n${typeLabel} | ${remaining} Remaining Days${
       r.reason ? `\n${r.reason}` : ""
     }`;
   }
@@ -590,9 +595,11 @@ const updateItemsPerPage = (val: number) => {
             :items="paginatedRequests"
             hide-default-footer
             class="text-no-wrap"
-            :group-by="[{ key: 'monthYear', order: 'desc' }]"
+            :group-by="groupBy"
           >
-            <template #body.prepend="{ groupedItems, toggleGroup, isGroupOpen }">
+            <template
+              #body.prepend="{ groupedItems, toggleGroup, isGroupOpen }"
+            >
               <AutoOpenGroups
                 :grouped-items="groupedItems"
                 :toggle-group="toggleGroup"
@@ -602,12 +609,8 @@ const updateItemsPerPage = (val: number) => {
 
             <!-- Group Header -->
             <template #group-header="{ item, columns }">
-              <tr>
-                <td
-                  :colspan="columns.length"
-                  style="background-color: rgb(var(--v-theme-surface-variant))"
-                  class="py-3"
-                >
+              <tr class="request-group-header">
+                <td :colspan="columns.length" class="py-3">
                   <span class="text-body-1 font-weight-medium">{{
                     item.value
                   }}</span>
@@ -693,3 +696,14 @@ const updateItemsPerPage = (val: number) => {
     </VRow>
   </section>
 </template>
+
+<style scoped>
+.request-group-header {
+  background-color: rgba(var(--v-theme-surface-variant), 0.05);
+  color: rgb(var(--v-theme-primary));
+}
+
+.request-group-header td {
+  border: none;
+}
+</style>

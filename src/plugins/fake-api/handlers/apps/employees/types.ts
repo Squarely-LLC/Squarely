@@ -121,13 +121,13 @@ export interface EmployeeAttendance {
   parentalLeave: number;
   carryoverDays: number;
   workSchedule: {
-    monday: { active: boolean; remote: boolean; from: string; to: string };
-    tuesday: { active: boolean; remote: boolean; from: string; to: string };
-    wednesday: { active: boolean; remote: boolean; from: string; to: string };
-    thursday: { active: boolean; remote: boolean; from: string; to: string };
-    friday: { active: boolean; remote: boolean; from: string; to: string };
-    saturday: { active: boolean; remote: boolean; from: string; to: string };
-    sunday: { active: boolean; remote: boolean; from: string; to: string };
+    Monday: { active: boolean; remote: boolean; from: string; to: string };
+    Tuesday: { active: boolean; remote: boolean; from: string; to: string };
+    Wednesday: { active: boolean; remote: boolean; from: string; to: string };
+    Thursday: { active: boolean; remote: boolean; from: string; to: string };
+    Friday: { active: boolean; remote: boolean; from: string; to: string };
+    Saturday: { active: boolean; remote: boolean; from: string; to: string };
+    Sunday: { active: boolean; remote: boolean; from: string; to: string };
   };
   allowedExtraTime: number;
 }

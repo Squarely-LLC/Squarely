@@ -1464,7 +1464,7 @@ const onTerminationSubmit = (terminationData: any) => {
 
             <VCol cols="6" md="2">
               <AppDateTimePicker
-                v-model="localAttendance.workSchedule[day].from"
+                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].from"
                 label="From / To"
                 placeholder="Select time"
                 :config="{
@@ -1478,7 +1478,7 @@ const onTerminationSubmit = (terminationData: any) => {
 
             <VCol cols="6" md="2">
               <AppDateTimePicker
-                v-model="localAttendance.workSchedule[day].to"
+                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].to"
                 label=" "
                 placeholder="Select time"
                 :config="{
@@ -1497,7 +1497,7 @@ const onTerminationSubmit = (terminationData: any) => {
               style="padding-block-start: 30px"
             >
               <VSwitch
-                v-model="localAttendance.workSchedule[day].active"
+                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].active"
                 label="Active"
                 color="success"
                 hide-details
@@ -1512,7 +1512,7 @@ const onTerminationSubmit = (terminationData: any) => {
               style="padding-block-start: 30px"
             >
               <VSwitch
-                v-model="localAttendance.workSchedule[day].remote"
+                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].remote"
                 label="Remote"
                 color="primary"
                 hide-details
