@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requiredValidator } from "@/@core/utils/validators";
 import { computed, nextTick, ref, watch, withDefaults } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -44,15 +45,22 @@ const typeOptions = [
   { title: "Parental Leave", value: "parental-leave" },
 ];
 
-const emptyForm = (): LeavePayload => ({
-  typeId: "",
-  startDate: null,
-  returnDate: null,
-  deductible: false,
-  reason: "",
-  file: null,
-  attachLink: "",
-});
+const emptyForm = (): LeavePayload => {
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(
+    today.getMonth() + 1
+  ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  return {
+    typeId: "",
+    startDate: todayISO,
+    returnDate: null,
+    deductible: false,
+    reason: "",
+    file: null,
+    attachLink: "",
+  };
+};
 
 const form = ref<LeavePayload>(emptyForm());
 const pickerRenderKey = ref(0);
@@ -168,9 +176,15 @@ const resetForm = () => {
 watch(
   () => props.isDrawerOpen,
   (v) => {
-    if (v) hydrateForm(props.leaveData);
-    else nextTick(() => resetForm());
-    if (v) pickerRenderKey.value++; // force fresh flatpickr instances per open
+    if (v) {
+      hydrateForm(props.leaveData);
+      pickerRenderKey.value++; // force fresh flatpickr instances per open
+      nextTick(() => {
+        refForm.value?.resetValidation();
+      });
+    } else {
+      nextTick(() => resetForm());
+    }
   },
   { immediate: true }
 );
@@ -246,6 +260,7 @@ async function onSubmit() {
                   :items="typeOptions"
                   label="Type"
                   placeholder="Select Type"
+                  :rules="[requiredValidator]"
                   clearable
                 />
               </VCol>
@@ -255,6 +270,8 @@ async function onSubmit() {
                   :key="`start-${pickerRenderKey}`"
                   v-model="form.startDate"
                   label="Start Date"
+                  placeholder="Select start date"
+                  :rules="[requiredValidator]"
                   :config="datePickerConfig"
                 />
               </VCol>
@@ -263,6 +280,8 @@ async function onSubmit() {
                   :key="`return-${pickerRenderKey}`"
                   v-model="form.returnDate"
                   label="Return Date"
+                  placeholder="Select return date"
+                  :rules="[requiredValidator]"
                   :config="datePickerConfig"
                 />
               </VCol>
@@ -303,13 +322,20 @@ async function onSubmit() {
                 <AppTextField
                   v-model="form.reason"
                   label="Reason"
+                  placeholder="Enter reason for leave"
+                  :rules="[requiredValidator]"
                   textarea
                   rows="4"
                 />
               </VCol>
 
               <VCol cols="12">
-                <VFileInput v-model="form.file" label="Attach File" show-size />
+                <VFileInput
+                  v-model="form.file"
+                  label="Attach File"
+                  placeholder="Choose a file"
+                  show-size
+                />
               </VCol>
 
               <VCol cols="12">
