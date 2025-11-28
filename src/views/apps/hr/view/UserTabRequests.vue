@@ -5,14 +5,68 @@ import type {
   EmployeeRequest,
   LeaveRequest,
 } from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useEmployeesStore } from "@/stores/employees";
+import { useNotificationsStore } from "@/stores/notifications";
 import type { PropType } from "vue";
 import { computed, defineComponent, defineProps, ref, watch } from "vue";
+import AddLeaveDrawer from "./AddLeaveDrawer.vue";
 
 interface Props {
   userData: EmployeeProperties;
 }
 
 const props = defineProps<Props>();
+
+const employeesStore = useEmployeesStore();
+const notifications = useNotificationsStore();
+
+// Add Leave drawer state
+const isAddLeaveOpen = ref(false);
+const selectedLeaveData = ref<any | null>(null);
+
+const openAddLeaveDrawer = () => {
+  selectedLeaveData.value = null;
+  isAddLeaveOpen.value = true;
+};
+
+const openEditLeave = (request: any) => {
+  selectedLeaveData.value = JSON.parse(JSON.stringify(request));
+  isAddLeaveOpen.value = true;
+};
+
+const handleAddLeave = (payload: any) => {
+  const currentRequests = props.userData.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  // if editing existing request
+  if (selectedLeaveData.value && selectedLeaveData.value.id) {
+    const updated = currentRequests.map((r: any) =>
+      r.id === selectedLeaveData.value.id ? { ...r, ...payload } : r
+    );
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify(updated)),
+    });
+    notifications.push("Leave request updated", "success", 3500);
+  } else {
+    const newRequest = {
+      ...payload,
+      id: newId,
+      type: "Leave",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+    };
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+    });
+    notifications.push("Leave request added", "success", 3500);
+  }
+
+  selectedLeaveData.value = null;
+  isAddLeaveOpen.value = false;
+};
 
 // Get all requests
 const requests = computed(() => props.userData.requests || []);
@@ -24,6 +78,8 @@ const selectedType = ref<string>();
 const selectedMonth = ref<string>();
 const itemsPerPage = ref(10);
 const page = ref(1);
+const confirmDeleteVisible = ref(false);
+const deleteRequestCandidateId = ref<number | null>(null);
 
 // Calculate leave statistics
 const vacationStats = computed(() => {
@@ -257,7 +313,7 @@ function getRequestDescription(request: EmployeeRequest): string {
     return `Time au Lieu\n${r.numberOfDays} days${r.note ? `\n${r.note}` : ""}`;
   }
 
-  return request.type;
+  return (request as EmployeeRequest).type;
 }
 
 function getRequestAmount(request: EmployeeRequest): number {
@@ -382,7 +438,7 @@ const getStatusColor = (status: string): string => {
 const getTypeIcon = (type: string): string => {
   switch (type) {
     case "Leave":
-      return "tabler-plane-departure";
+      return "tabler-door-exit";
     case "Addition":
       return "tabler-plus";
     case "Deduction":
@@ -393,6 +449,15 @@ const getTypeIcon = (type: string): string => {
       return "tabler-clock";
     default:
       return "tabler-file";
+  }
+};
+
+const getTypeIconColor = (type: string): string | undefined => {
+  switch (type) {
+    case "Deduction":
+      return "error";
+    default:
+      return undefined;
   }
 };
 
@@ -408,6 +473,32 @@ const headers = [
 const updateItemsPerPage = (val: number) => {
   itemsPerPage.value = val;
   page.value = 1;
+};
+
+const deleteRequest = (requestId: number) => {
+  deleteRequestCandidateId.value = requestId;
+  confirmDeleteVisible.value = true;
+};
+
+const performDeleteRequest = () => {
+  const requestId = deleteRequestCandidateId.value;
+  if (requestId === null) return;
+
+  const currentRequests = props.userData.requests || [];
+  const updatedRequests = currentRequests.filter((r) => r.id !== requestId);
+
+  employeesStore.updateEmployee(props.userData.id, {
+    requests: updatedRequests,
+  });
+
+  notifications.push("Request deleted successfully", "success", 3500);
+  confirmDeleteVisible.value = false;
+  deleteRequestCandidateId.value = null;
+};
+
+const cancelDeleteRequest = () => {
+  confirmDeleteVisible.value = false;
+  deleteRequestCandidateId.value = null;
 };
 </script>
 
@@ -583,7 +674,50 @@ const updateItemsPerPage = (val: number) => {
                 Export
               </VBtn>
 
-              <VBtn prepend-icon="tabler-plus"> Requests </VBtn>
+              <VBtn
+                prepend-icon="tabler-plus"
+                append-icon="tabler-chevron-down"
+              >
+                Requests
+                <VMenu activator="parent">
+                  <VList>
+                    <VListItem @click="openAddLeaveDrawer">
+                      <template #prepend>
+                        <VIcon icon="tabler-door-exit" />
+                      </template>
+                      <VListItemTitle>Leaves</VListItemTitle>
+                    </VListItem>
+                    <VDivider />
+                    <VListItem>
+                      <template #prepend>
+                        <VIcon icon="tabler-plus" />
+                      </template>
+                      <VListItemTitle>Additions</VListItemTitle>
+                    </VListItem>
+                    <VDivider />
+                    <VListItem>
+                      <template #prepend>
+                        <VIcon icon="tabler-minus" />
+                      </template>
+                      <VListItemTitle>Deductions</VListItemTitle>
+                    </VListItem>
+                    <VDivider />
+                    <VListItem>
+                      <template #prepend>
+                        <VIcon icon="tabler-cash" />
+                      </template>
+                      <VListItemTitle>Advances</VListItemTitle>
+                    </VListItem>
+                    <VDivider />
+                    <VListItem>
+                      <template #prepend>
+                        <VIcon icon="tabler-clock" />
+                      </template>
+                      <VListItemTitle>Time au Lieu</VListItemTitle>
+                    </VListItem>
+                  </VList>
+                </VMenu>
+              </VBtn>
             </div>
           </VCardText>
 
@@ -621,11 +755,7 @@ const updateItemsPerPage = (val: number) => {
             <!-- Description Column -->
             <template #item.description="{ item }">
               <div class="d-flex align-center gap-3 py-3">
-                <VAvatar
-                  size="34"
-                  :color="getStatusColor(item.status)"
-                  variant="tonal"
-                >
+                <VAvatar size="34" variant="tonal">
                   <VIcon :icon="getTypeIcon(item.type)" size="20" />
                 </VAvatar>
                 <div>
@@ -660,12 +790,29 @@ const updateItemsPerPage = (val: number) => {
 
             <!-- Actions Column -->
             <template #item.actions="{ item }">
-              <IconBtn>
+              <IconBtn @click.stop="openEditLeave(item.rawData)">
                 <VIcon icon="tabler-edit" />
               </IconBtn>
 
               <IconBtn>
                 <VIcon icon="tabler-dots-vertical" />
+                <VMenu activator="parent">
+                  <VList>
+                    <VListItem>
+                      <template #prepend>
+                        <VIcon icon="tabler-eye" />
+                      </template>
+                      <VListItemTitle>View Details</VListItemTitle>
+                    </VListItem>
+
+                    <VListItem @click="deleteRequest(item.id)">
+                      <template #prepend>
+                        <VIcon color="error" icon="tabler-trash" />
+                      </template>
+                      <VListItemTitle>Delete</VListItemTitle>
+                    </VListItem>
+                  </VList>
+                </VMenu>
               </IconBtn>
             </template>
           </VDataTable>
@@ -694,6 +841,39 @@ const updateItemsPerPage = (val: number) => {
         </VCard>
       </VCol>
     </VRow>
+
+    <!-- Add / Edit Leave Drawer -->
+    <VOverlay
+      v-model="isAddLeaveOpen"
+      class="add-leave-scrim"
+      scrim="rgba(17, 24, 39, 0.72)"
+      :z-index="1995"
+    />
+    <AddLeaveDrawer
+      v-model:is-drawer-open="isAddLeaveOpen"
+      :employee-name="(props.userData as any)?.name || ''"
+      :available-days="props.userData?.attendance?.vacation || 0"
+      :leave-data="selectedLeaveData"
+      @submit="handleAddLeave"
+      @close="selectedLeaveData = null"
+    />
+
+    <!-- Confirm Delete Request Dialog -->
+    <VDialog v-model="confirmDeleteVisible" persistent max-width="540">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Delete Request</VCardTitle>
+        <VCardText>
+          Are you sure you want to delete this request? This action cannot be
+          undone.
+        </VCardText>
+        <VCardActions>
+          <VBtn variant="text" @click="cancelDeleteRequest"> Cancel </VBtn>
+          <VBtn color="error" variant="tonal" @click="performDeleteRequest">
+            Delete
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </section>
 </template>
 
@@ -705,5 +885,13 @@ const updateItemsPerPage = (val: number) => {
 
 .request-group-header td {
   border: none;
+}
+
+.add-leave-scrim {
+  inset-inline-end: 400px;
+}
+
+.add-leave-scrim :deep(.v-overlay__scrim) {
+  inset-inline-end: 400px;
 }
 </style>
