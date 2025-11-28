@@ -5,13 +5,14 @@ import type { VForm } from "vuetify/components/VForm";
 
 type LeavePayload = {
   typeId: string;
-  startDate: string | Date | null;
-  returnDate: string | Date | null;
+  startDate: string | null;
+  returnDate: string | null;
   deductible: boolean;
   reason: string;
   file: File | null;
   attachLink: string;
   requestedDays?: number;
+  period?: string;
 };
 
 const props = withDefaults(
@@ -54,14 +55,27 @@ const emptyForm = (): LeavePayload => ({
 });
 
 const form = ref<LeavePayload>(emptyForm());
+const pickerRenderKey = ref(0);
+
+const toIsoDateString = (value: any): string | null => {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 const drawerTitle = computed(() =>
   props.leaveData ? "Edit Leave" : "Add Leave"
 );
 
 const requestedDays = computed(() => {
-  const s = form.value.startDate ? new Date(form.value.startDate) : null;
-  const e = form.value.returnDate ? new Date(form.value.returnDate) : null;
+  const s = form.value.startDate
+    ? new Date(String(form.value.startDate))
+    : null;
+  const e = form.value.returnDate
+    ? new Date(String(form.value.returnDate))
+    : null;
   if (!s || !e) return 0;
   // normalize to start of day
   s.setHours(0, 0, 0, 0);
@@ -72,10 +86,75 @@ const requestedDays = computed(() => {
 
 const remainingDays = computed(() => props.availableDays - requestedDays.value);
 
+const datePickerConfig = computed(() => ({
+  enableTime: false,
+  dateFormat: "Y-m-d", // model stays ISO-like
+  altInput: true,
+  altFormat: "F j, Y",
+  allowInput: true,
+  position: "auto",
+  positionElement: undefined,
+  onReady: (selectedDates: any, dateStr: any, instance: any) => {
+    // Ensure calendar is positioned relative to drawer, not body scroll
+    if (instance.calendarContainer) {
+      instance.calendarContainer.style.position = "fixed";
+    }
+  },
+}));
+
+const periodLabel = computed(() => {
+  const start = form.value.startDate
+    ? new Date(String(form.value.startDate))
+    : null;
+  const end = form.value.returnDate
+    ? new Date(String(form.value.returnDate))
+    : null;
+  if (
+    start &&
+    end &&
+    !Number.isNaN(start.getTime()) &&
+    !Number.isNaN(end.getTime())
+  ) {
+    const sameYear = start.getFullYear() === end.getFullYear();
+    const sameMonth = sameYear && start.getMonth() === end.getMonth();
+    if (sameYear && !sameMonth) {
+      const startLabel = start.toLocaleDateString("en-US", {
+        month: "short",
+      });
+      const endLabel = end.toLocaleDateString("en-US", {
+        month: "short",
+      });
+      return `${startLabel}-${endLabel} ${start.getFullYear()}`;
+    }
+    const startLabel = start.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+    const endLabel = end.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+    return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+  }
+  if (start && !Number.isNaN(start.getTime())) {
+    return start.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+  }
+  return undefined;
+});
+
 const hydrateForm = (payload?: LeavePayload | null) => {
   form.value = {
     ...emptyForm(),
-    ...(payload ? { ...payload } : {}),
+    ...(payload
+      ? {
+          ...payload,
+          startDate: toIsoDateString(payload.startDate),
+          returnDate: toIsoDateString(payload.returnDate),
+        }
+      : {}),
   };
 };
 
@@ -83,6 +162,7 @@ const resetForm = () => {
   hydrateForm();
   refForm.value?.reset();
   refForm.value?.resetValidation();
+  pickerRenderKey.value++;
 };
 
 watch(
@@ -90,6 +170,7 @@ watch(
   (v) => {
     if (v) hydrateForm(props.leaveData);
     else nextTick(() => resetForm());
+    if (v) pickerRenderKey.value++; // force fresh flatpickr instances per open
   },
   { immediate: true }
 );
@@ -128,6 +209,8 @@ async function onSubmit() {
   const payload: LeavePayload = {
     ...form.value,
     requestedDays: requestedDays.value,
+    // derive period from start/end to keep table aligned
+    ...(periodLabel.value ? { period: periodLabel.value } : {}),
   };
 
   emit("submit", payload);
@@ -169,16 +252,18 @@ async function onSubmit() {
 
               <VCol cols="12" md="6">
                 <AppDateTimePicker
+                  :key="`start-${pickerRenderKey}`"
                   v-model="form.startDate"
                   label="Start Date"
-                  :config="{ enableTime: false, dateFormat: 'F j, Y' }"
+                  :config="datePickerConfig"
                 />
               </VCol>
               <VCol cols="12" md="6">
                 <AppDateTimePicker
+                  :key="`return-${pickerRenderKey}`"
                   v-model="form.returnDate"
                   label="Return Date"
-                  :config="{ enableTime: false, dateFormat: 'F j, Y' }"
+                  :config="datePickerConfig"
                 />
               </VCol>
 

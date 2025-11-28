@@ -30,6 +30,7 @@ const openAddLeaveDrawer = () => {
 };
 
 const openEditLeave = (request: any) => {
+  if (!request || request.type !== "Leave") return;
   selectedLeaveData.value = JSON.parse(JSON.stringify(request));
   isAddLeaveOpen.value = true;
 };
@@ -323,11 +324,50 @@ function getRequestAmount(request: EmployeeRequest): number {
 }
 
 function getRequestPeriod(request: EmployeeRequest): string {
-  if ("period" in request && (request as any).period)
-    return (request as any).period;
-  if ("periodId" in request && (request as any).periodId)
-    return (request as any).periodId;
+  const start = (request as any).startDate || (request as any).date || null;
+  const end = (request as any).returnDate || (request as any).endDate || null;
+
+  const startDate = start ? new Date(start as any) : null;
+  const endDate = end ? new Date(end as any) : null;
+
+  if (startDate && endDate && !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+    const sameYear = startDate.getFullYear() === endDate.getFullYear();
+    const sameMonth = sameYear && startDate.getMonth() === endDate.getMonth();
+    if (sameYear && !sameMonth) {
+      const startLabel = startDate.toLocaleDateString("en-US", {
+        month: "short",
+      });
+      const endLabel = endDate.toLocaleDateString("en-US", {
+        month: "short",
+      });
+      return `${startLabel}-${endLabel} ${startDate.getFullYear()}`;
+    }
+    const startLabel = startDate.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+    const endLabel = endDate.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+    return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+  }
+
+  if (startDate && !Number.isNaN(startDate.getTime())) {
+    return startDate.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+  }
+
   return "-";
+}
+
+function getRequestDateValue(request: EmployeeRequest): Date | null {
+  const raw = (request as any).startDate || (request as any).date || null;
+  if (!raw) return null;
+  const d = new Date(raw as any);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 // Format requests for table display
@@ -336,16 +376,26 @@ const formattedRequests = computed(() => {
     id: request.id,
     type: request.type,
     description: getRequestDescription(request),
-    date: new Date(request.createdAt).toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }),
-    dateValue: new Date(request.createdAt),
-    monthYear: new Date(request.createdAt).toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    }),
+    date: (() => {
+      const d = getRequestDateValue(request);
+      return d
+        ? d.toLocaleDateString("en-US", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
+        : "-";
+    })(),
+    dateValue: getRequestDateValue(request),
+    monthYear: (() => {
+      const d = getRequestDateValue(request);
+      return d
+        ? d.toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+          })
+        : "No Date";
+    })(),
     amount: getRequestAmount(request),
     period: getRequestPeriod(request),
     status: request.status,
@@ -372,6 +422,7 @@ const filteredRequests = computed(() => {
   // Month filter
   if (selectedMonth.value) {
     filtered = filtered.filter((r) => {
+      if (!r.dateValue) return false;
       const requestMonth = r.dateValue.toLocaleDateString("en-US", {
         month: "long",
         year: "numeric",
@@ -395,10 +446,18 @@ const filteredRequests = computed(() => {
 });
 
 // Pagination
+const sortedRequests = computed(() => {
+  return [...filteredRequests.value].sort((a, b) => {
+    const aDate = a.dateValue ? a.dateValue.getTime() : 0;
+    const bDate = b.dateValue ? b.dateValue.getTime() : 0;
+    return bDate - aDate;
+  });
+});
+
 const paginatedRequests = computed(() => {
   const start = (page.value - 1) * itemsPerPage.value;
   const end = start + itemsPerPage.value;
-  return filteredRequests.value.slice(start, end);
+  return sortedRequests.value.slice(start, end);
 });
 
 const totalRequests = computed(() => filteredRequests.value.length);
@@ -407,6 +466,7 @@ const totalRequests = computed(() => filteredRequests.value.length);
 const availableMonths = computed(() => {
   const months = new Set<string>();
   formattedRequests.value.forEach((r) => {
+    if (!r.dateValue) return;
     const month = r.dateValue.toLocaleDateString("en-US", {
       month: "long",
       year: "numeric",
@@ -790,9 +850,11 @@ const cancelDeleteRequest = () => {
 
             <!-- Actions Column -->
             <template #item.actions="{ item }">
-              <IconBtn @click.stop="openEditLeave(item.rawData)">
-                <VIcon icon="tabler-edit" />
-              </IconBtn>
+              <template v-if="item.type === 'Leave'">
+                <IconBtn @click.stop="openEditLeave(item.rawData)">
+                  <VIcon icon="tabler-edit" />
+                </IconBtn>
+              </template>
 
               <IconBtn>
                 <VIcon icon="tabler-dots-vertical" />

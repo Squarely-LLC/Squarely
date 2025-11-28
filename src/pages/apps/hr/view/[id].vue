@@ -66,7 +66,7 @@ const resolveContact = () => {
 const userTab = ref<number | null>(null);
 
 // stable keys for tabs used in the URL query param (order must match `tabs`)
-const tabKeys = ["account", "contracts", "documents", "records"] as const;
+const tabKeys = ["account", "contracts", "requests", "records"] as const;
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
