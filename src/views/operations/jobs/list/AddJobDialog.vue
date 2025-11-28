@@ -43,8 +43,20 @@ const contactOptions = computed(() =>
   contactsStore.all.map((contact) => ({
     title: contact.fullName,
     value: contact.id,
+    avatar: (contact as any).avatar || (contact as any).picture || null,
   }))
 );
+const avatarText = (name?: string | null) => {
+  const safe = (name || "").trim();
+  if (!safe) return "??";
+  return safe
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+};
 const localJob = ref<Partial<JobProperties>>({
   name: "",
   code: "",
@@ -132,15 +144,7 @@ const onCancel = () => {
                 placeholder="P-1234"
               />
             </VCol>
-            <VCol cols="12" md="6">
-              <AppTextField
-                v-model="localJob.avatar"
-                label="Avatar URL"
-                placeholder="https://example.com/image.png"
-                hint="Provide an image URL for the project avatar"
-                persistent-hint
-              />
-            </VCol>
+
             <VCol cols="12" md="6">
               <AppDateTimePicker
                 v-model="localJob.startDate"
@@ -199,11 +203,78 @@ const onCancel = () => {
                 label="Collaborators"
                 placeholder="Select collaborators"
                 :items="contactOptions"
+                item-title="title"
+                item-value="value"
                 multiple
                 chips
                 clearable
                 clear-icon="tabler-x"
-              />
+              >
+                <template #selection="{ item, index }">
+                  <VChip
+                    v-if="index < 4"
+                    class="me-1 mb-1"
+                    size="small"
+                    variant="elevated"
+                  >
+                    <VAvatar
+                      size="20"
+                      start
+                      class="me-2"
+                      :color="item?.raw?.avatar ? undefined : 'primary'"
+                      :class="
+                        item?.raw?.avatar
+                          ? null
+                          : 'text-white font-weight-medium'
+                      "
+                    >
+                      <VImg
+                        v-if="item?.raw?.avatar"
+                        :src="item.raw.avatar"
+                        alt="avatar"
+                      />
+                      <span v-else class="text-xxs font-weight-bold">{{
+                        avatarText(item?.raw?.title)
+                      }}</span>
+                    </VAvatar>
+                    <span class="text-truncate">{{ item?.raw?.title }}</span>
+                  </VChip>
+                  <span
+                    v-else-if="index === 4"
+                    class="text-caption text-medium-emphasis"
+                  >
+                    +{{ localJob.collaborators.length - index }}
+                  </span>
+                </template>
+
+                <template #item="{ item, props }">
+                  <VListItem v-bind="props">
+                    <template #prepend>
+                      <VAvatar
+                        size="28"
+                        :color="item?.raw?.avatar ? undefined : 'primary'"
+                        :class="
+                          item?.raw?.avatar
+                            ? null
+                            : 'text-white font-weight-medium'
+                        "
+                      >
+                        <VImg
+                          v-if="item?.raw?.avatar"
+                          :src="item.raw.avatar"
+                          alt="avatar"
+                        />
+                        <span
+                          v-else
+                          class="text-caption text-white font-weight-bold"
+                          >{{ avatarText(item?.raw?.title) }}</span
+                        >
+                      </VAvatar>
+                    </template>
+                    <VListItemTitle>{{ item?.raw?.title }}</VListItemTitle>
+                  </VListItem>
+                </template>
+              </AppSelect>
             </VCol>
             <VCol cols="12">
               <AppTextarea

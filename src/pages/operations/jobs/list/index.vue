@@ -32,7 +32,10 @@ const selectedStage = ref<string | undefined>();
 const selectedType = ref<string | undefined>();
 const selectedFlag = ref<string | undefined>();
 
-const sortOptions: { title: string; value: { key: SortKey; order: SortOrder } }[] = [
+const sortOptions: {
+  title: string;
+  value: { key: SortKey; order: SortOrder };
+}[] = [
   { title: "Name (A-Z)", value: { key: "name", order: "asc" } },
   { title: "Name (Z-A)", value: { key: "name", order: "desc" } },
   { title: "Recently Added", value: { key: "createdAt", order: "desc" } },
@@ -194,9 +197,7 @@ const compareJobs = (a: JobProperties, b: JobProperties) => {
 };
 
 const filteredJobs = computed<JobProperties[]>(() =>
-  jobsStore.all
-    .map((job) => cloneJob(job))
-    .filter((job) => matchesFilters(job))
+  jobsStore.all.map((job) => cloneJob(job)).filter((job) => matchesFilters(job))
 );
 
 const sortedJobs = computed<JobProperties[]>(() => {
@@ -432,7 +433,10 @@ const updateItemsPerPage = (value: number | string) => {
             Export
           </VBtn>
 
-          <VBtn prepend-icon="tabler-plus" @click="isAddJobDialogVisible = true">
+          <VBtn
+            prepend-icon="tabler-plus"
+            @click="isAddJobDialogVisible = true"
+          >
             Add New Job
           </VBtn>
         </div>
@@ -479,20 +483,46 @@ const updateItemsPerPage = (value: number | string) => {
 
               <div class="text-sm text-medium-emphasis">
                 <span v-if="item.code">{{ item.code }}</span>
-                <span v-if="item.code && item.location"> • </span>
+                <span v-if="item.code && item.location"> ï¿½ </span>
                 <span v-if="item.location">{{ item.location }}</span>
               </div>
 
-              <div class="d-flex align-center gap-2 text-xs text-medium-emphasis">
+              <div
+                class="d-flex align-center gap-2 text-xs text-medium-emphasis"
+              >
                 <VAvatar
-                  v-if="getContactEntry(item.relatedTo)?.picture"
+                  v-if="getContactEntry(item.relatedTo)"
                   size="24"
+                  :variant="
+                    getContactEntry(item.relatedTo)?.picture
+                      ? undefined
+                      : 'tonal'
+                  "
+                  :color="
+                    getContactEntry(item.relatedTo)?.picture
+                      ? undefined
+                      : 'primary'
+                  "
+                  :class="
+                    getContactEntry(item.relatedTo)?.picture
+                      ? null
+                      : 'text-white font-weight-medium'
+                  "
                 >
-                  <VImg :src="getContactEntry(item.relatedTo)?.picture || ''" />
+                  <template v-if="getContactEntry(item.relatedTo)?.picture">
+                    <VImg
+                      :src="getContactEntry(item.relatedTo)?.picture || ''"
+                    />
+                  </template>
+                  <template v-else>
+                    <span>{{ avatarText(relatedContactName(item)) }}</span>
+                  </template>
                 </VAvatar>
                 <span>
                   Related:
-                  <span class="text-high-emphasis">{{ relatedContactName(item) }}</span>
+                  <span class="text-high-emphasis">{{
+                    relatedContactName(item)
+                  }}</span>
                 </span>
               </div>
             </div>
@@ -523,7 +553,6 @@ const updateItemsPerPage = (value: number | string) => {
                 v-for="stakeholder in decorateStakeholders(item).slice(0, 3)"
                 :key="`${item.id}-${stakeholder.id}`"
                 :size="40"
-                :variant="!stakeholder.avatar ? 'tonal' : undefined"
                 :color="!stakeholder.avatar ? 'primary' : undefined"
                 :class="[
                   !stakeholder.avatar ? 'text-white font-weight-medium' : null,
@@ -539,10 +568,10 @@ const updateItemsPerPage = (value: number | string) => {
 
                 <VTooltip activator="parent" location="top">
                   <div class="d-flex flex-column gap-1">
-                    <span class="font-weight-medium">{{ stakeholder.name }}</span>
-                    <span class="text-body-2 text-medium-emphasis">
-                      {{ stakeholder.role }}
-                    </span>
+                    <span class="font-weight-medium">{{
+                      stakeholder.name
+                    }}</span>
+
                     <span
                       v-if="stakeholder.isPrimary"
                       class="text-body-2 text-primary"
@@ -575,7 +604,9 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.actions="{ item }">
-          <IconBtn :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }">
+          <IconBtn
+            :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
+          >
             <VIcon icon="tabler-eye" />
           </IconBtn>
 
@@ -601,16 +632,6 @@ const updateItemsPerPage = (value: number | string) => {
       :loading="dialogLoading"
       :error="dialogError"
       @submit="updateJob"
-    />
-
-    <ConfirmDialog
-      v-model="isConfirmDeleteVisible"
-      title="Delete Job"
-      :loading="false"
-      subtitle="Are you sure you want to delete this job? This action cannot be undone."
-      confirm-text="Delete"
-      cancel-text="Cancel"
-      @confirm="performDelete"
     />
   </section>
 </template>
