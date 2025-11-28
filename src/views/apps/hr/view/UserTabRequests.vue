@@ -13,6 +13,7 @@ import AddAdditionsDrawer from "./AddAdditionsDrawer.vue";
 import AddAdvancesDrawer from "./AddAdvancesDrawer.vue";
 import AddDeductionDrawer from "./AddDeductionDrawer.vue";
 import AddLeaveDrawer from "./AddLeaveDrawer.vue";
+import AddTimeAuLieuDrawer from "./AddTimeAuLieuDrawer.vue";
 
 interface Props {
   userData: EmployeeProperties;
@@ -39,6 +40,10 @@ const selectedDeductionData = ref<any | null>(null);
 const isAddAdvancesOpen = ref(false);
 const selectedAdvanceData = ref<any | null>(null);
 
+// Add Time au Lieu drawer state
+const isAddTimeAuLieuOpen = ref(false);
+const selectedTimeAuLieuData = ref<any | null>(null);
+
 const openAddLeaveDrawer = () => {
   selectedLeaveData.value = null;
   isAddLeaveOpen.value = true;
@@ -57,6 +62,11 @@ const openAddDeductionDrawer = () => {
 const openAddAdvancesDrawer = () => {
   selectedAdvanceData.value = null;
   isAddAdvancesOpen.value = true;
+};
+
+const openAddTimeAuLieuDrawer = () => {
+  selectedTimeAuLieuData.value = null;
+  isAddTimeAuLieuOpen.value = true;
 };
 
 const openEditLeave = (request: any) => {
@@ -81,6 +91,12 @@ const openEditAdvance = (request: any) => {
   if (!request || request.type !== "Advance") return;
   selectedAdvanceData.value = JSON.parse(JSON.stringify(request));
   isAddAdvancesOpen.value = true;
+};
+
+const openEditTimeAuLieu = (request: any) => {
+  if (!request || request.type !== "Time au Lieu") return;
+  selectedTimeAuLieuData.value = JSON.parse(JSON.stringify(request));
+  isAddTimeAuLieuOpen.value = true;
 };
 
 const handleAddLeave = (payload: any) => {
@@ -219,16 +235,57 @@ const handleAddAdvance = (payload: any) => {
   isAddAdvancesOpen.value = false;
 };
 
+const handleAddTimeAuLieu = (payload: any) => {
+  const currentRequests = props.userData.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  // if editing existing request
+  if (selectedTimeAuLieuData.value && selectedTimeAuLieuData.value.id) {
+    const updated = currentRequests.map((r: any) =>
+      r.id === selectedTimeAuLieuData.value.id ? { ...r, ...payload } : r
+    );
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify(updated)),
+    });
+    notifications.push("Time au Lieu request updated", "success", 3500);
+  } else {
+    const newRequest = {
+      ...payload,
+      id: newId,
+      type: "Time au Lieu",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+    };
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+    });
+    notifications.push("Time au Lieu request added", "success", 3500);
+  }
+
+  selectedTimeAuLieuData.value = null;
+  isAddTimeAuLieuOpen.value = false;
+};
+
 // Get all requests
-const requests = computed(() => props.userData.requests || []);
+const requests = computed(() => {
+  const reqs = props.userData.requests || [];
+  console.log("📊 RAW REQUESTS from userData:", reqs.length, reqs);
+  return reqs;
+});
 
 // Table state
 const searchQuery = ref("");
 const selectedStatus = ref<string>();
 const selectedType = ref<string>();
 const selectedMonth = ref<string>();
-const itemsPerPage = ref(10);
+const itemsPerPage = ref(5);
 const page = ref(1);
+// Sorting state (controlled externally so we can sort before grouping)
+const sortBy = ref<string | undefined>(undefined);
+const orderBy = ref<string | undefined>(undefined);
 const confirmDeleteVisible = ref(false);
 const deleteRequestCandidateId = ref<number | null>(null);
 
@@ -355,6 +412,96 @@ const leaveCards = computed(() => [
 // Group config without a fixed order so groups follow the current sort
 const groupBy = computed(() => [{ key: "monthYear" }]);
 
+// Track whether the table is grouped (we default to grouping by monthYear)
+const groupingActive = computed(() =>
+  Boolean(groupBy.value && groupBy.value.length > 0)
+);
+
+// Custom grouped pagination
+// Vuetify applies grouping after pagination which hides items; to keep groups
+// intact while paginating we implement our own grouped pagination:
+// - group the sorted items by `monthYear` into `groupedRequests`
+// - compute which groups overlap the current page (based on itemsPerPage)
+// - include the whole groups on that page (so groups aren't split across pages)
+const groupedRequests = computed(() => {
+  const map = new Map<string, typeof sortedRequests.value>();
+  for (const r of sortedRequests.value) {
+    const key = r.monthYear ?? "No Date";
+    if (!map.has(key)) map.set(key, [] as typeof sortedRequests.value);
+    map.get(key)!.push(r);
+  }
+  return Array.from(map.entries()).map(([key, items]) => ({ key, items }));
+});
+
+const totalDataItems = computed(() => sortedRequests.value.length);
+
+// Determine which groups belong on the current page. Pages are computed on
+// data item counts (not counting group header rows). If a group overlaps the
+// page range, the whole group is included on that page.
+const pagedGroups = computed(() => {
+  if (!groupingActive.value || (itemsPerPage.value ?? 0) <= 0)
+    return groupedRequests.value;
+
+  const pageSize = itemsPerPage.value as number;
+  const start = (page.value - 1) * pageSize;
+  const end = page.value * pageSize - 1;
+
+  const result: Array<{ key: string; items: typeof sortedRequests.value }> = [];
+  let idx = 0;
+  for (const g of groupedRequests.value) {
+    const groupStart = idx;
+    const groupEnd = idx + g.items.length - 1;
+    // advance index for next group
+    idx += g.items.length;
+    // include group if it overlaps the page window
+    if (groupEnd < start) continue;
+    if (groupStart > end && result.length > 0) break; // we've passed the page window
+    if (groupStart > end && result.length === 0) continue; // skip leading groups
+    result.push(g);
+  }
+  console.log(
+    "📦 pagedGroups page=",
+    page.value,
+    "pageSize=",
+    itemsPerPage.value,
+    "groups=",
+    result.map((g) => g.key)
+  );
+  return result;
+});
+
+// Flatten the paged groups into rows the table can render. We include a
+// synthetic header object for group labels (marked with __isGroup) followed
+// by the group's items.
+const displayedItems = computed(() => {
+  if (!groupingActive.value) {
+    // Un-grouped mode: apply pagination client-side using page and itemsPerPage
+    const n = itemsPerPage.value ?? 0;
+    if (n === -1) return sortedRequests.value;
+    const start = (page.value - 1) * n;
+    return sortedRequests.value.slice(start, start + n);
+  }
+
+  const out: Array<any> = [];
+  let gi = 0;
+  for (const g of pagedGroups.value) {
+    out.push({ __isGroup: true, id: `group-${gi++}`, value: g.key });
+    for (const it of g.items) out.push(it);
+  }
+  return out;
+});
+
+// When switching pages or toggling grouping/itemsPerPage we should ensure the
+// page number stays valid — reset to first page for clarity.
+watch([itemsPerPage, groupingActive], () => (page.value = 1));
+
+// Debugging: log page changes so we can confirm clicks update the page ref
+watch(
+  () => page.value,
+  (p) => console.log("📄 page changed ->", p),
+  { immediate: false }
+);
+
 // Auto-expand grouped rows (mirrors document tab behaviour)
 const AutoOpenGroups = defineComponent({
   name: "AutoOpenGroups",
@@ -417,6 +564,12 @@ const AutoOpenGroups = defineComponent({
         for (const id of Array.from(autoOpened)) {
           if (!present.has(id)) autoOpened.delete(id);
         }
+        console.log(
+          "🔓 AUTO-OPENED GROUPS:",
+          Array.from(autoOpened),
+          "Total groups:",
+          present.size
+        );
       },
       { immediate: true, deep: true }
     );
@@ -440,23 +593,26 @@ function getRequestDescription(request: EmployeeRequest): string {
 
   if (request.type === "Addition") {
     const r = request as any;
-    return `Addition\n${r.additionType || "Addition"}${
+    const typeLabel = r.additionType?.replace("-", " ") || "Addition";
+    return `Addition\n${typeLabel}${r.amount ? ` | Amount: ${r.amount}` : ""}${
       r.notes ? `\n${r.notes}` : ""
     }`;
   }
 
   if (request.type === "Deduction") {
     const r = request as any;
-    return `Deduction\n${r.deductionType || "Deduction"}${
+    const typeLabel = r.deductionType?.replace("-", " ") || "Deduction";
+    return `Deduction\n${typeLabel}${r.amount ? ` | Amount: ${r.amount}` : ""}${
       r.notes ? `\n${r.notes}` : ""
     }`;
   }
 
   if (request.type === "Advance") {
     const r = request as AdvanceRequest;
-    return `Advance\n${r.advanceType || "Advance"}${
-      r.notes ? `\n${r.notes}` : ""
-    }`;
+    const typeLabel = r.advanceType?.replace("-", " ") || "Advance";
+    return `Advance\n${typeLabel}${r.amount ? ` | Amount: ${r.amount}` : ""}${
+      r.payBackInMonths ? ` | Pay back: ${r.payBackInMonths} months` : ""
+    }${r.notes ? `\n${r.notes}` : ""}`;
   }
 
   if (request.type === "Time au Lieu") {
@@ -469,11 +625,28 @@ function getRequestDescription(request: EmployeeRequest): string {
 
 function getRequestAmount(request: EmployeeRequest): number {
   if (request.type === "Leave") return 0;
-  if ("amount" in request) return (request as any).amount || 0;
+  if (request.type === "Time au Lieu") return 0;
+  // For Addition, Deduction, and Advance types
+  if ("amount" in request) {
+    const amount = (request as any).amount;
+    return typeof amount === "string" ? parseFloat(amount) || 0 : amount || 0;
+  }
   return 0;
 }
 
 function getRequestPeriod(request: EmployeeRequest): string {
+  // For Addition, Deduction, and Advance - use the period field directly
+  if (request.type === "Addition" || request.type === "Deduction") {
+    const period = (request as any).period;
+    if (period) return period;
+  }
+
+  if (request.type === "Advance") {
+    const startOfPaymentPeriod = (request as any).startOfPaymentPeriod;
+    if (startOfPaymentPeriod) return startOfPaymentPeriod;
+  }
+
+  // For Leave and Time au Lieu - calculate from dates
   const start = (request as any).startDate || (request as any).date || null;
   const end = (request as any).returnDate || (request as any).endDate || null;
 
@@ -527,7 +700,7 @@ function getRequestDateValue(request: EmployeeRequest): Date | null {
 
 // Format requests for table display
 const formattedRequests = computed(() => {
-  return requests.value.map((request) => ({
+  const formatted = requests.value.map((request) => ({
     id: request.id,
     type: request.type,
     description: getRequestDescription(request),
@@ -556,6 +729,8 @@ const formattedRequests = computed(() => {
     status: request.status,
     rawData: request,
   }));
+  console.log("✨ FORMATTED REQUESTS:", formatted.length, formatted);
+  return formatted;
 });
 
 // Filters
@@ -597,22 +772,75 @@ const filteredRequests = computed(() => {
     );
   }
 
+  console.log("🔍 FILTERED REQUESTS:", filtered.length, "Active filters:", {
+    status: selectedStatus.value,
+    type: selectedType.value,
+    month: selectedMonth.value,
+    search: searchQuery.value,
+  });
   return filtered;
 });
 
-// Pagination
+// Sorting - VDataTable will handle pagination
 const sortedRequests = computed(() => {
-  return [...filteredRequests.value].sort((a, b) => {
-    const aDate = a.dateValue ? a.dateValue.getTime() : 0;
-    const bDate = b.dateValue ? b.dateValue.getTime() : 0;
-    return bDate - aDate;
-  });
-});
+  const list = [...filteredRequests.value];
 
-const paginatedRequests = computed(() => {
-  const start = (page.value - 1) * itemsPerPage.value;
-  const end = start + itemsPerPage.value;
-  return sortedRequests.value.slice(start, end);
+  // No explicit sort by header -> default to DATE desc
+  if (!sortBy.value) {
+    list.sort((a, b) => {
+      const aDate = a.dateValue ? a.dateValue.getTime() : 0;
+      const bDate = b.dateValue ? b.dateValue.getTime() : 0;
+      return bDate - aDate;
+    });
+  } else {
+    const key = sortBy.value;
+    const direction = orderBy.value === "desc" ? -1 : 1;
+
+    list.sort((a, b) => {
+      let aVal: any = (a as any)[key];
+      let bVal: any = (b as any)[key];
+
+      // special handling for date and amount
+      if (key === "date") {
+        aVal = a.dateValue ? a.dateValue.getTime() : 0;
+        bVal = b.dateValue ? b.dateValue.getTime() : 0;
+      }
+
+      if (key === "amount") {
+        aVal = Number(a.amount || 0);
+        bVal = Number(b.amount || 0);
+      }
+
+      // normalize strings
+      if (typeof aVal === "string") aVal = aVal.toLowerCase();
+      if (typeof bVal === "string") bVal = bVal.toLowerCase();
+
+      if (aVal > bVal) return 1 * direction;
+      if (aVal < bVal) return -1 * direction;
+      return 0;
+    });
+  }
+
+  console.log("📅 SORTED REQUESTS:", list.length, {
+    sortBy: sortBy.value,
+    orderBy: orderBy.value,
+  });
+
+  // Check for month groupings
+  const monthGroups = new Map();
+  list.forEach((req) => {
+    const count = monthGroups.get(req.monthYear) || 0;
+    monthGroups.set(req.monthYear, count + 1);
+  });
+  // (monthGroups already computed from 'list' above)
+  console.log(
+    "📊 MONTH GROUPS:",
+    Array.from(monthGroups.entries()).map(
+      ([month, count]) => `${month}: ${count} items`
+    )
+  );
+
+  return list;
 });
 
 const totalRequests = computed(() => filteredRequests.value.length);
@@ -687,6 +915,15 @@ const headers = [
 
 const updateItemsPerPage = (val: number) => {
   itemsPerPage.value = val;
+  page.value = 1;
+};
+
+// Capture table header clicks (Vuetify emits update:options)
+const updateOptions = (options: any) => {
+  // options.sortBy is an array like [{ key: 'date', order: 'desc' }]
+  sortBy.value = options.sortBy?.[0]?.key;
+  orderBy.value = options.sortBy?.[0]?.order;
+  // whenever sorting changes, return to first page
   page.value = 1;
 };
 
@@ -924,7 +1161,7 @@ const cancelDeleteRequest = () => {
                       <VListItemTitle>Advances</VListItemTitle>
                     </VListItem>
                     <VDivider />
-                    <VListItem>
+                    <VListItem @click="openAddTimeAuLieuDrawer">
                       <template #prepend>
                         <VIcon icon="tabler-clock" />
                       </template>
@@ -939,118 +1176,133 @@ const cancelDeleteRequest = () => {
           <VDivider />
 
           <!-- Table with Month Grouping -->
-          <VDataTable
+          <VDataTableServer
+            :items-per-page="-1"
             :headers="headers"
-            :items="paginatedRequests"
+            :items="displayedItems"
+            :items-length="totalDataItems"
             hide-default-footer
             class="text-no-wrap"
-            :group-by="groupBy"
+            :group-by="[]"
+            @update:options="updateOptions"
           >
-            <template
-              #body.prepend="{ groupedItems, toggleGroup, isGroupOpen }"
-            >
-              <AutoOpenGroups
-                :grouped-items="groupedItems"
-                :toggle-group="toggleGroup"
-                :is-group-open="isGroupOpen"
-              />
-            </template>
+            <!-- Custom body rendering to support grouped pagination -->
+            <template #body="{ items }">
+              <template v-for="row in items">
+                <tr
+                  v-if="row.__isGroup"
+                  :key="`group-${row.id}`"
+                  class="request-group-header"
+                >
+                  <td :colspan="headers.length" class="py-3">
+                    <span class="text-body-1 font-weight-medium">{{
+                      row.value
+                    }}</span>
+                  </td>
+                </tr>
 
-            <!-- Group Header -->
-            <template #group-header="{ item, columns }">
-              <tr class="request-group-header">
-                <td :colspan="columns.length" class="py-3">
-                  <span class="text-body-1 font-weight-medium">{{
-                    item.value
-                  }}</span>
-                </td>
-              </tr>
-            </template>
+                <tr v-else :key="`row-${row.id}`">
+                  <!-- DESCRIPTION -->
+                  <td>
+                    <div class="d-flex align-center gap-3 py-3">
+                      <VAvatar size="34" variant="tonal">
+                        <VIcon :icon="getTypeIcon(row.type)" size="20" />
+                      </VAvatar>
+                      <div>
+                        <div
+                          class="text-sm"
+                          style="line-height: 1.5; white-space: pre-line"
+                        >
+                          {{ row.description }}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
 
-            <!-- Description Column -->
-            <template #item.description="{ item }">
-              <div class="d-flex align-center gap-3 py-3">
-                <VAvatar size="34" variant="tonal">
-                  <VIcon :icon="getTypeIcon(item.type)" size="20" />
-                </VAvatar>
-                <div>
-                  <div
-                    class="text-sm"
-                    style="line-height: 1.5; white-space: pre-line"
-                  >
-                    {{ item.description }}
-                  </div>
-                </div>
-              </div>
-            </template>
+                  <!-- DATE -->
+                  <td>{{ row.date }}</td>
 
-            <!-- Amount Column -->
-            <template #item.amount="{ item }">
-              <span v-if="item.amount > 0">{{
-                item.amount.toLocaleString()
-              }}</span>
-              <span v-else class="text-disabled">-</span>
-            </template>
+                  <!-- AMOUNT -->
+                  <td>
+                    <span v-if="row.amount > 0">{{
+                      row.amount.toLocaleString()
+                    }}</span>
+                    <span v-else class="text-disabled">-</span>
+                  </td>
 
-            <!-- Status Column -->
-            <template #item.status="{ item }">
-              <VChip
-                :color="getStatusColor(item.status)"
-                size="small"
-                class="text-capitalize"
-              >
-                {{ item.status }}
-              </VChip>
-            </template>
+                  <!-- PERIOD -->
+                  <td>{{ row.period }}</td>
 
-            <!-- Actions Column -->
-            <template #item.actions="{ item }">
-              <template v-if="item.type === 'Leave'">
-                <IconBtn @click.stop="openEditLeave(item.rawData)">
-                  <VIcon icon="tabler-edit" />
-                </IconBtn>
+                  <!-- STATUS -->
+                  <td>
+                    <VChip
+                      :color="getStatusColor(row.status)"
+                      size="small"
+                      class="text-capitalize"
+                    >
+                      {{ row.status }}
+                    </VChip>
+                  </td>
+
+                  <!-- ACTIONS -->
+                  <td>
+                    <template v-if="row.type === 'Leave'">
+                      <IconBtn @click.stop="openEditLeave(row.rawData)">
+                        <VIcon icon="tabler-edit" />
+                      </IconBtn>
+                    </template>
+
+                    <template v-if="row.type === 'Addition'">
+                      <IconBtn @click.stop="openEditAddition(row.rawData)">
+                        <VIcon icon="tabler-edit" />
+                      </IconBtn>
+                    </template>
+
+                    <template v-if="row.type === 'Deduction'">
+                      <IconBtn @click.stop="openEditDeduction(row.rawData)">
+                        <VIcon icon="tabler-edit" />
+                      </IconBtn>
+                    </template>
+
+                    <template v-if="row.type === 'Advance'">
+                      <IconBtn @click.stop="openEditAdvance(row.rawData)">
+                        <VIcon icon="tabler-edit" />
+                      </IconBtn>
+                    </template>
+
+                    <template v-if="row.type === 'Time au Lieu'">
+                      <IconBtn @click.stop="openEditTimeAuLieu(row.rawData)">
+                        <VIcon icon="tabler-edit" />
+                      </IconBtn>
+                    </template>
+
+                    <IconBtn>
+                      <VIcon icon="tabler-dots-vertical" />
+                      <VMenu activator="parent">
+                        <VList>
+                          <VListItem>
+                            <template #prepend>
+                              <VIcon icon="tabler-eye" />
+                            </template>
+                            <VListItemTitle>View Details</VListItemTitle>
+                          </VListItem>
+
+                          <VListItem @click="deleteRequest(row.id)">
+                            <template #prepend>
+                              <VIcon color="error" icon="tabler-trash" />
+                            </template>
+                            <VListItemTitle>Delete</VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
+                    </IconBtn>
+                  </td>
+                </tr>
               </template>
-
-              <template v-if="item.type === 'Addition'">
-                <IconBtn @click.stop="openEditAddition(item.rawData)">
-                  <VIcon icon="tabler-edit" />
-                </IconBtn>
-              </template>
-
-              <template v-if="item.type === 'Deduction'">
-                <IconBtn @click.stop="openEditDeduction(item.rawData)">
-                  <VIcon icon="tabler-edit" />
-                </IconBtn>
-              </template>
-
-              <template v-if="item.type === 'Advance'">
-                <IconBtn @click.stop="openEditAdvance(item.rawData)">
-                  <VIcon icon="tabler-edit" />
-                </IconBtn>
-              </template>
-
-              <IconBtn>
-                <VIcon icon="tabler-dots-vertical" />
-                <VMenu activator="parent">
-                  <VList>
-                    <VListItem>
-                      <template #prepend>
-                        <VIcon icon="tabler-eye" />
-                      </template>
-                      <VListItemTitle>View Details</VListItemTitle>
-                    </VListItem>
-
-                    <VListItem @click="deleteRequest(item.id)">
-                      <template #prepend>
-                        <VIcon color="error" icon="tabler-trash" />
-                      </template>
-                      <VListItemTitle>Delete</VListItemTitle>
-                    </VListItem>
-                  </VList>
-                </VMenu>
-              </IconBtn>
             </template>
-          </VDataTable>
+
+            <!-- (custom body renders rows including description, amount, status and actions) -->
+          </VDataTableServer>
 
           <VDivider />
 
@@ -1060,16 +1312,23 @@ const cancelDeleteRequest = () => {
           >
             <div class="d-flex align-center gap-2">
               <div class="text-sm text-disabled">
-                {{ (page - 1) * itemsPerPage + 1 }}-{{
-                  Math.min(page * itemsPerPage, totalRequests)
-                }}
-                of {{ totalRequests }}
+                <template v-if="itemsPerPage > 0">
+                  {{ (page - 1) * itemsPerPage + 1 }}-{{
+                    Math.min(page * itemsPerPage, totalDataItems)
+                  }}
+                  of {{ totalDataItems }}
+                </template>
+                <template v-else>
+                  1-{{ totalDataItems }} of {{ totalDataItems }}
+                </template>
               </div>
             </div>
 
             <VPagination
               v-model="page"
-              :length="Math.ceil(totalRequests / itemsPerPage)"
+              :length="
+                itemsPerPage > 0 ? Math.ceil(totalDataItems / itemsPerPage) : 1
+              "
               :total-visible="5"
             />
           </VCardText>
@@ -1135,6 +1394,20 @@ const cancelDeleteRequest = () => {
       @close="selectedAdvanceData = null"
     />
 
+    <!-- Add / Edit Time au Lieu Drawer -->
+    <VOverlay
+      v-model="isAddTimeAuLieuOpen"
+      class="add-time-au-lieu-scrim"
+      scrim="rgba(17, 24, 39, 0.72)"
+      :z-index="1995"
+    />
+    <AddTimeAuLieuDrawer
+      v-model:is-drawer-open="isAddTimeAuLieuOpen"
+      :time-au-lieu-data="selectedTimeAuLieuData"
+      @submit="handleAddTimeAuLieu"
+      @close="selectedTimeAuLieuData = null"
+    />
+
     <!-- Confirm Delete Request Dialog -->
     <VDialog v-model="confirmDeleteVisible" persistent max-width="540">
       <VCard class="pa-sm-8 pa-4">
@@ -1193,6 +1466,14 @@ const cancelDeleteRequest = () => {
 }
 
 .add-advances-scrim :deep(.v-overlay__scrim) {
+  inset-inline-end: 400px;
+}
+
+.add-time-au-lieu-scrim {
+  inset-inline-end: 400px;
+}
+
+.add-time-au-lieu-scrim :deep(.v-overlay__scrim) {
   inset-inline-end: 400px;
 }
 </style>
