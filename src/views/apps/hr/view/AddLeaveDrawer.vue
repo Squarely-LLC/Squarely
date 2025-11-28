@@ -14,6 +14,8 @@ type LeavePayload = {
   attachLink: string;
   requestedDays?: number;
   period?: string;
+  periodId?: string;
+  deductionAmount?: string;
 };
 
 const props = withDefaults(
@@ -59,6 +61,8 @@ const emptyForm = (): LeavePayload => {
     reason: "",
     file: null,
     attachLink: "",
+    periodId: "",
+    deductionAmount: "",
   };
 };
 
@@ -315,6 +319,25 @@ async function onSubmit() {
                   <VSwitch v-model="form.deductible" />
                 </div>
               </VCol>
+
+              <template v-if="form.deductible">
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="form.periodId"
+                    label="Period ID"
+                    placeholder="December - 2025"
+                  />
+                </VCol>
+
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="form.deductionAmount"
+                    label="Deduction Amount"
+                    placeholder="Enter amount"
+                    type="number"
+                  />
+                </VCol>
+              </template>
 
               <VDivider />
 
