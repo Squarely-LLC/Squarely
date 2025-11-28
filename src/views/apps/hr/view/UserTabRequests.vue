@@ -9,6 +9,7 @@ import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import type { PropType } from "vue";
 import { computed, defineComponent, defineProps, ref, watch } from "vue";
+import AddAdditionsDrawer from "./AddAdditionsDrawer.vue";
 import AddLeaveDrawer from "./AddLeaveDrawer.vue";
 
 interface Props {
@@ -24,15 +25,30 @@ const notifications = useNotificationsStore();
 const isAddLeaveOpen = ref(false);
 const selectedLeaveData = ref<any | null>(null);
 
+// Add Additions drawer state
+const isAddAdditionsOpen = ref(false);
+const selectedAdditionData = ref<any | null>(null);
+
 const openAddLeaveDrawer = () => {
   selectedLeaveData.value = null;
   isAddLeaveOpen.value = true;
+};
+
+const openAddAdditionsDrawer = () => {
+  selectedAdditionData.value = null;
+  isAddAdditionsOpen.value = true;
 };
 
 const openEditLeave = (request: any) => {
   if (!request || request.type !== "Leave") return;
   selectedLeaveData.value = JSON.parse(JSON.stringify(request));
   isAddLeaveOpen.value = true;
+};
+
+const openEditAddition = (request: any) => {
+  if (!request || request.type !== "Addition") return;
+  selectedAdditionData.value = JSON.parse(JSON.stringify(request));
+  isAddAdditionsOpen.value = true;
 };
 
 const handleAddLeave = (payload: any) => {
@@ -67,6 +83,40 @@ const handleAddLeave = (payload: any) => {
 
   selectedLeaveData.value = null;
   isAddLeaveOpen.value = false;
+};
+
+const handleAddAddition = (payload: any) => {
+  const currentRequests = props.userData.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  // if editing existing request
+  if (selectedAdditionData.value && selectedAdditionData.value.id) {
+    const updated = currentRequests.map((r: any) =>
+      r.id === selectedAdditionData.value.id ? { ...r, ...payload } : r
+    );
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify(updated)),
+    });
+    notifications.push("Addition request updated", "success", 3500);
+  } else {
+    const newRequest = {
+      ...payload,
+      id: newId,
+      type: "Addition",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+    };
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+    });
+    notifications.push("Addition request added", "success", 3500);
+  }
+
+  selectedAdditionData.value = null;
+  isAddAdditionsOpen.value = false;
 };
 
 // Get all requests
@@ -330,7 +380,12 @@ function getRequestPeriod(request: EmployeeRequest): string {
   const startDate = start ? new Date(start as any) : null;
   const endDate = end ? new Date(end as any) : null;
 
-  if (startDate && endDate && !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+  if (
+    startDate &&
+    endDate &&
+    !Number.isNaN(startDate.getTime()) &&
+    !Number.isNaN(endDate.getTime())
+  ) {
     const sameYear = startDate.getFullYear() === endDate.getFullYear();
     const sameMonth = sameYear && startDate.getMonth() === endDate.getMonth();
     if (sameYear && !sameMonth) {
@@ -748,7 +803,7 @@ const cancelDeleteRequest = () => {
                       <VListItemTitle>Leaves</VListItemTitle>
                     </VListItem>
                     <VDivider />
-                    <VListItem>
+                    <VListItem @click="openAddAdditionsDrawer">
                       <template #prepend>
                         <VIcon icon="tabler-plus" />
                       </template>
@@ -856,6 +911,12 @@ const cancelDeleteRequest = () => {
                 </IconBtn>
               </template>
 
+              <template v-if="item.type === 'Addition'">
+                <IconBtn @click.stop="openEditAddition(item.rawData)">
+                  <VIcon icon="tabler-edit" />
+                </IconBtn>
+              </template>
+
               <IconBtn>
                 <VIcon icon="tabler-dots-vertical" />
                 <VMenu activator="parent">
@@ -920,6 +981,20 @@ const cancelDeleteRequest = () => {
       @close="selectedLeaveData = null"
     />
 
+    <!-- Add / Edit Additions Drawer -->
+    <VOverlay
+      v-model="isAddAdditionsOpen"
+      class="add-additions-scrim"
+      scrim="rgba(17, 24, 39, 0.72)"
+      :z-index="1995"
+    />
+    <AddAdditionsDrawer
+      v-model:is-drawer-open="isAddAdditionsOpen"
+      :addition-data="selectedAdditionData"
+      @submit="handleAddAddition"
+      @close="selectedAdditionData = null"
+    />
+
     <!-- Confirm Delete Request Dialog -->
     <VDialog v-model="confirmDeleteVisible" persistent max-width="540">
       <VCard class="pa-sm-8 pa-4">
@@ -954,6 +1029,14 @@ const cancelDeleteRequest = () => {
 }
 
 .add-leave-scrim :deep(.v-overlay__scrim) {
+  inset-inline-end: 400px;
+}
+
+.add-additions-scrim {
+  inset-inline-end: 400px;
+}
+
+.add-additions-scrim :deep(.v-overlay__scrim) {
   inset-inline-end: 400px;
 }
 </style>
