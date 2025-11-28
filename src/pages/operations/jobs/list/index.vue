@@ -10,9 +10,9 @@ import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
-import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddJobDialog from "@/views/operations/jobs/list/AddJobDialog.vue";
 import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 
@@ -142,12 +142,16 @@ const avatarText = (name?: string | null) => {
 };
 
 const contactDirectory = computed(() => {
-  const map = new Map<number, { name: string; picture: string | null }>();
+  const map = new Map<
+    number,
+    { name: string; picture: string | null; email: string | null }
+  >();
   contactsStore.all.forEach((contact) => {
     if (contact?.id === null || contact?.id === undefined) return;
     map.set(Number(contact.id), {
       name: contact.fullName,
       picture: contact.picture || null,
+      email: contact.email || null,
     });
   });
   return map;
