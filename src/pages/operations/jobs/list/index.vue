@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
-import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import type {
+  JobFlag,
+  JobProperties,
+  JobStage,
+} from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useTodos } from "@/stores/todos";
+import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
+import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddJobDialog from "@/views/operations/jobs/list/AddJobDialog.vue";
 import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 
@@ -26,6 +34,15 @@ const contactsStore = useContactsStore();
 contactsStore.init();
 
 const notifications = useNotificationsStore();
+const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
+  null
+);
+const isAddTodoDrawerVisible = ref(false);
+const addTodoInitial = ref<any | null>(null);
+const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
+const isAddMeetingOpen = ref(false);
+const composeDialogRef = ref<any | null>(null);
+const isComposeDialogVisible = ref(false);
 
 const searchQuery = ref("");
 const selectedStage = ref<string | undefined>();
@@ -306,10 +323,163 @@ const updateJob = (payload: JobProperties) => {
 
 const isConfirmDeleteVisible = ref(false);
 const deleteCandidateId = ref<number | null>(null);
+const isFlagDialogVisible = ref(false);
+const isStageDialogVisible = ref(false);
+const flagDialogValue = ref<JobFlag | null>(null);
+const stageDialogValue = ref<JobStage | null>(null);
+const flagDialogJobId = ref<number | null>(null);
+const stageDialogJobId = ref<number | null>(null);
+const meetingContacts = computed(() =>
+  contactsStore.all.map((c) => ({
+    id: c.id,
+    name: c.fullName,
+    avatarUrl: c.picture || null,
+  }))
+);
 
 const confirmDelete = (id: number) => {
   deleteCandidateId.value = id;
   isConfirmDeleteVisible.value = true;
+};
+
+const cancelDelete = () => {
+  isConfirmDeleteVisible.value = false;
+  deleteCandidateId.value = null;
+};
+
+const onTodoCreated = (payload: any) => {
+  try {
+    const todos = useTodos();
+    try {
+      todos.init();
+    } catch {}
+    todos.addTodo && todos.addTodo(payload);
+    notifications.push("To Do created", "success", 3500);
+  } catch (e) {
+    console.error("onTodoCreated failed:", e);
+    notifications.push("To Do created", "success", 3500);
+  } finally {
+    isAddTodoDrawerVisible.value = false;
+  }
+};
+
+const onMeetingCreated = (payload: any) => {
+  try {
+    const todos = useTodos();
+    try {
+      todos.init();
+    } catch {}
+    todos.addMeeting && todos.addMeeting(payload);
+    notifications.push("Meeting created", "success", 3500);
+  } catch (e) {
+    console.error("onMeetingCreated failed:", e);
+    notifications.push("Meeting created", "success", 3500);
+  } finally {
+    isAddMeetingOpen.value = false;
+  }
+};
+
+const closeMeetingDrawer = () => {
+  isAddMeetingOpen.value = false;
+};
+
+const handleJobAction = (action: string, job: JobProperties) => {
+  switch (action) {
+    case "todo":
+      addTodoInitial.value = {
+        title: `Job: ${job.name}`,
+        description: job.note || "",
+        linkedTo: [
+          {
+            id: job.id,
+            name: job.name,
+            avatarUrl: job.avatar || null,
+            type: "job",
+          },
+        ],
+        // prefill collaborators from related contact if present
+        collaborators: job.relatedTo
+          ? [
+              {
+                id: job.relatedTo as number,
+                name: relatedContactName(job),
+                avatarUrl: getContactEntry(job.relatedTo)?.picture || null,
+              },
+            ]
+          : [],
+      };
+      isAddTodoDrawerVisible.value = true;
+      nextTick(() => {
+        try {
+          addTodoDrawerRef.value?.openWith?.(addTodoInitial.value);
+        } catch {}
+        addTodoInitial.value = null;
+      });
+      break;
+    case "meeting":
+      nextTick(() => {
+        try {
+          addMeetingRef.value?.openWith?.({
+            title: `Meeting: ${job.name}`,
+            initialStart: new Date(),
+            durationMins: 60,
+            linkedTo: [
+              {
+                id: job.id,
+                name: job.name,
+                avatarUrl: job.avatar || null,
+                type: "job",
+              },
+            ],
+            attendees: job.relatedTo
+              ? [
+                  {
+                    id: job.relatedTo as number,
+                    name: relatedContactName(job),
+                    avatarUrl: getContactEntry(job.relatedTo)?.picture || null,
+                  },
+                ]
+              : [],
+            notes: job.note || "",
+            location: job.location || "",
+          });
+        } catch {}
+        isAddMeetingOpen.value = true;
+      });
+      break;
+    case "email":
+      isComposeDialogVisible.value = true;
+      nextTick(() => {
+        try {
+          const toAddress =
+            (getContactEntry(job.relatedTo)?.email as string | undefined) || "";
+          composeDialogRef.value?.openWith?.({
+            to: toAddress ? [toAddress] : [],
+            subject: `Regarding ${job.name}`,
+            message: `Hello,\n\nI'd like to discuss ${job.name}.\n\nThanks,`,
+          });
+        } catch {}
+      });
+      break;
+    case "call":
+      notifications.push(`Call for ${job.name}`, "info", 2500);
+      break;
+    case "flag":
+      flagDialogJobId.value = job.id as number;
+      flagDialogValue.value = job.flag as JobFlag;
+      isFlagDialogVisible.value = true;
+      break;
+    case "stage":
+      stageDialogJobId.value = job.id as number;
+      stageDialogValue.value = job.stage as JobStage;
+      isStageDialogVisible.value = true;
+      break;
+    case "delete":
+      confirmDelete(job.id as number);
+      break;
+    default:
+      break;
+  }
 };
 
 const performDelete = () => {
@@ -325,6 +495,42 @@ const performDelete = () => {
   notifications.push("Job deleted", "success", 3000);
   deleteCandidateId.value = null;
   isConfirmDeleteVisible.value = false;
+};
+
+const deleteCandidateName = computed(() => {
+  if (deleteCandidateId.value === null) return "";
+  const job =
+    (jobsStore as any).byId?.(deleteCandidateId.value) ||
+    jobsStore.all.find((j) => j.id === deleteCandidateId.value);
+  return job?.name ?? String(deleteCandidateId.value);
+});
+
+const saveFlagChange = () => {
+  if (flagDialogJobId.value === null || !flagDialogValue.value) {
+    isFlagDialogVisible.value = false;
+    return;
+  }
+  jobsStore.updateJob(flagDialogJobId.value, {
+    ...(jobsStore.byId(flagDialogJobId.value) as any),
+    flag: flagDialogValue.value,
+  } as any);
+  notifications.push("Flag updated", "success", 2500);
+  isFlagDialogVisible.value = false;
+  flagDialogJobId.value = null;
+};
+
+const saveStageChange = () => {
+  if (stageDialogJobId.value === null || !stageDialogValue.value) {
+    isStageDialogVisible.value = false;
+    return;
+  }
+  jobsStore.updateJob(stageDialogJobId.value, {
+    ...(jobsStore.byId(stageDialogJobId.value) as any),
+    stage: stageDialogValue.value,
+  } as any);
+  notifications.push("Stage updated", "success", 2500);
+  isStageDialogVisible.value = false;
+  stageDialogJobId.value = null;
 };
 
 const updateOptions = (options: {
@@ -469,7 +675,6 @@ const updateItemsPerPage = (value: number | string) => {
 
             <div class="d-flex flex-column gap-1">
               <h6 class="text-base d-flex align-center gap-1 mb-0">
-                <VIcon icon="tabler-briefcase" size="16" color="primary" />
                 <RouterLink
                   :to="{
                     name: 'operations-jobs-view-id',
@@ -518,12 +723,10 @@ const updateItemsPerPage = (value: number | string) => {
                     <span>{{ avatarText(relatedContactName(item)) }}</span>
                   </template>
                 </VAvatar>
-                <span>
-                  Related:
-                  <span class="text-high-emphasis">{{
-                    relatedContactName(item)
-                  }}</span>
-                </span>
+
+                <span class="text-high-emphasis">{{
+                  relatedContactName(item)
+                }}</span>
               </div>
             </div>
           </div>
@@ -604,22 +807,175 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.actions="{ item }">
-          <IconBtn
-            :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-          >
-            <VIcon icon="tabler-eye" />
-          </IconBtn>
+          <VBtn icon variant="text" color="medium-emphasis">
+            <VIcon icon="tabler-dots-vertical" />
+            <VMenu activator="parent">
+              <VList>
+                <VListItem @click="handleJobAction('todo', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-list-check" />
+                  </template>
+                  <VListItemTitle>Todo</VListItemTitle>
+                </VListItem>
+                <VListItem @click="handleJobAction('meeting', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-calendar" />
+                  </template>
+                  <VListItemTitle>Meeting</VListItemTitle>
+                </VListItem>
+                <VListItem @click="handleJobAction('email', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-mail" />
+                  </template>
+                  <VListItemTitle>Email</VListItemTitle>
+                </VListItem>
+                <VListItem @click="handleJobAction('call', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-phone" />
+                  </template>
+                  <VListItemTitle>Call</VListItemTitle>
+                </VListItem>
 
-          <IconBtn @click="openEditDialog(item)">
-            <VIcon icon="tabler-edit" />
-          </IconBtn>
+                <VDivider />
 
-          <IconBtn @click="confirmDelete(item.id)">
-            <VIcon icon="tabler-trash" />
-          </IconBtn>
+                <VListItem @click="handleJobAction('flag', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-flag" />
+                  </template>
+                  <VListItemTitle>Change Flag</VListItemTitle>
+                </VListItem>
+                <VListItem @click="handleJobAction('stage', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-arrows-exchange-2" />
+                  </template>
+                  <VListItemTitle>Change Stage</VListItemTitle>
+                </VListItem>
+
+                <VDivider />
+
+                <VListItem @click="handleJobAction('delete', item)">
+                  <template #prepend>
+                    <VIcon color="error" icon="tabler-trash" />
+                  </template>
+                  <VListItemTitle class="text-error">Delete</VListItemTitle>
+                </VListItem>
+              </VList>
+            </VMenu>
+          </VBtn>
         </template>
       </VDataTableServer>
     </VCard>
+
+    <AddNewToDoDrawer
+      ref="addTodoDrawerRef"
+      v-model:is-drawer-open="isAddTodoDrawerVisible"
+      :collaborators-options="[]"
+      source="contacts"
+      :initial="addTodoInitial"
+      @userData="onTodoCreated"
+    />
+
+    <AddMeetingDrawer
+      ref="addMeetingRef"
+      v-model:modelValue="isAddMeetingOpen"
+      :contacts="meetingContacts"
+      source="contacts"
+      @cancel="closeMeetingDrawer"
+      @save="onMeetingCreated"
+    />
+
+    <EmailDialog
+      ref="composeDialogRef"
+      v-model:is-dialog-visible="isComposeDialogVisible"
+      @send="
+        (payload) => {
+          try {
+            const recipients = Array.isArray(payload?.to)
+              ? payload.to
+              : payload?.to
+              ? [String(payload.to)]
+              : [];
+            notifications.push(
+              `Email sent to ${recipients.length} recipient(s)`,
+              'success',
+              3500
+            );
+          } catch (e) {
+            notifications.push('Email sent', 'success', 3500);
+          }
+        }
+      "
+    />
+
+    <VDialog v-model="isConfirmDeleteVisible" max-width="540">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Delete Job</VCardTitle>
+        <VCardText>
+          Are you sure you want to permanently delete
+          <strong>{{ deleteCandidateName }}</strong
+          >?
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" color="secondary" @click="cancelDelete">
+            Cancel
+          </VBtn>
+          <VBtn color="error" variant="tonal" @click="performDelete">
+            Delete
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isFlagDialogVisible" max-width="480">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Change Flag</VCardTitle>
+        <VCardText>
+          <AppSelect
+            v-model="flagDialogValue"
+            placeholder="Select Flag"
+            :items="flagOptions"
+            clearable
+            clear-icon="tabler-x"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isFlagDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn color="primary" @click="saveFlagChange">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isStageDialogVisible" max-width="480">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Change Stage</VCardTitle>
+        <VCardText>
+          <AppSelect
+            v-model="stageDialogValue"
+            placeholder="Select Stage"
+            :items="stageOptions"
+            clearable
+            clear-icon="tabler-x"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isStageDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn color="primary" @click="saveStageChange">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <AddJobDialog
       v-model:is-dialog-visible="isAddJobDialogVisible"

@@ -7,6 +7,7 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
+import { useEmployeesStore } from "@/stores/employees";
 import { computed, nextTick, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 interface Props {
@@ -21,7 +22,9 @@ const emit = defineEmits<Emit>();
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 const contactsStore = useContactsStore();
+const employeesStore = useEmployeesStore();
 contactsStore.init();
+employeesStore.init();
 const stageOptions: JobStage[] = [
   "PRPSL",
   "In Review",
@@ -44,6 +47,15 @@ const contactOptions = computed(() =>
     title: contact.fullName,
     value: contact.id,
     avatar: (contact as any).avatar || (contact as any).picture || null,
+  }))
+);
+
+const employeeOptions = computed(() =>
+  employeesStore.all.map((employee) => ({
+    title: employee.fullName,
+    position: employee.employment?.positions?.[0]?.position || "",
+    value: employee.id,
+    avatar: (employee as any).picture || (employee as any).avatar || null,
   }))
 );
 const avatarText = (name?: string | null) => {
@@ -193,16 +205,43 @@ const onCancel = () => {
                 label="Related To"
                 placeholder="Select Contact"
                 :items="contactOptions"
+                item-title="title"
+                item-value="value"
                 clearable
                 clear-icon="tabler-x"
-              />
+              >
+                <template #item="{ item, props }">
+                  <VListItem v-bind="props">
+                    <template #prepend>
+                      <VAvatar
+                        size="28"
+                        :color="item?.raw?.avatar ? undefined : 'primary'"
+                        :class="
+                          item?.raw?.avatar
+                            ? null
+                            : 'text-white font-weight-medium'
+                        "
+                      >
+                        <VImg
+                          v-if="item?.raw?.avatar"
+                          :src="item.raw.avatar"
+                          alt="avatar"
+                        />
+                        <span v-else class="text-caption font-weight-bold">{{
+                          avatarText(item?.raw?.title)
+                        }}</span>
+                      </VAvatar>
+                    </template>
+                  </VListItem>
+                </template>
+              </AppSelect>
             </VCol>
             <VCol cols="12">
               <AppSelect
                 v-model="localJob.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"
-                :items="contactOptions"
+                :items="employeeOptions"
                 item-title="title"
                 item-value="value"
                 multiple
@@ -271,7 +310,10 @@ const onCancel = () => {
                         >
                       </VAvatar>
                     </template>
-                    <VListItemTitle>{{ item?.raw?.title }}</VListItemTitle>
+
+                    <VListItemSubtitle v-if="item?.raw?.position">
+                      {{ item.raw.position }}
+                    </VListItemSubtitle>
                   </VListItem>
                 </template>
               </AppSelect>
