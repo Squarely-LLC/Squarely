@@ -10,6 +10,8 @@ import { useNotificationsStore } from "@/stores/notifications";
 import type { PropType } from "vue";
 import { computed, defineComponent, defineProps, ref, watch } from "vue";
 import AddAdditionsDrawer from "./AddAdditionsDrawer.vue";
+import AddAdvancesDrawer from "./AddAdvancesDrawer.vue";
+import AddDeductionDrawer from "./AddDeductionDrawer.vue";
 import AddLeaveDrawer from "./AddLeaveDrawer.vue";
 
 interface Props {
@@ -29,6 +31,14 @@ const selectedLeaveData = ref<any | null>(null);
 const isAddAdditionsOpen = ref(false);
 const selectedAdditionData = ref<any | null>(null);
 
+// Add Deduction drawer state
+const isAddDeductionOpen = ref(false);
+const selectedDeductionData = ref<any | null>(null);
+
+// Add Advances drawer state
+const isAddAdvancesOpen = ref(false);
+const selectedAdvanceData = ref<any | null>(null);
+
 const openAddLeaveDrawer = () => {
   selectedLeaveData.value = null;
   isAddLeaveOpen.value = true;
@@ -37,6 +47,16 @@ const openAddLeaveDrawer = () => {
 const openAddAdditionsDrawer = () => {
   selectedAdditionData.value = null;
   isAddAdditionsOpen.value = true;
+};
+
+const openAddDeductionDrawer = () => {
+  selectedDeductionData.value = null;
+  isAddDeductionOpen.value = true;
+};
+
+const openAddAdvancesDrawer = () => {
+  selectedAdvanceData.value = null;
+  isAddAdvancesOpen.value = true;
 };
 
 const openEditLeave = (request: any) => {
@@ -49,6 +69,18 @@ const openEditAddition = (request: any) => {
   if (!request || request.type !== "Addition") return;
   selectedAdditionData.value = JSON.parse(JSON.stringify(request));
   isAddAdditionsOpen.value = true;
+};
+
+const openEditDeduction = (request: any) => {
+  if (!request || request.type !== "Deduction") return;
+  selectedDeductionData.value = JSON.parse(JSON.stringify(request));
+  isAddDeductionOpen.value = true;
+};
+
+const openEditAdvance = (request: any) => {
+  if (!request || request.type !== "Advance") return;
+  selectedAdvanceData.value = JSON.parse(JSON.stringify(request));
+  isAddAdvancesOpen.value = true;
 };
 
 const handleAddLeave = (payload: any) => {
@@ -117,6 +149,74 @@ const handleAddAddition = (payload: any) => {
 
   selectedAdditionData.value = null;
   isAddAdditionsOpen.value = false;
+};
+
+const handleAddDeduction = (payload: any) => {
+  const currentRequests = props.userData.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  // if editing existing request
+  if (selectedDeductionData.value && selectedDeductionData.value.id) {
+    const updated = currentRequests.map((r: any) =>
+      r.id === selectedDeductionData.value.id ? { ...r, ...payload } : r
+    );
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify(updated)),
+    });
+    notifications.push("Deduction request updated", "success", 3500);
+  } else {
+    const newRequest = {
+      ...payload,
+      id: newId,
+      type: "Deduction",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+    };
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+    });
+    notifications.push("Deduction request added", "success", 3500);
+  }
+
+  selectedDeductionData.value = null;
+  isAddDeductionOpen.value = false;
+};
+
+const handleAddAdvance = (payload: any) => {
+  const currentRequests = props.userData.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  // if editing existing request
+  if (selectedAdvanceData.value && selectedAdvanceData.value.id) {
+    const updated = currentRequests.map((r: any) =>
+      r.id === selectedAdvanceData.value.id ? { ...r, ...payload } : r
+    );
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify(updated)),
+    });
+    notifications.push("Advance request updated", "success", 3500);
+  } else {
+    const newRequest = {
+      ...payload,
+      id: newId,
+      type: "Advance",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+    };
+    employeesStore.updateEmployee(props.userData.id, {
+      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+    });
+    notifications.push("Advance request added", "success", 3500);
+  }
+
+  selectedAdvanceData.value = null;
+  isAddAdvancesOpen.value = false;
 };
 
 // Get all requests
@@ -810,14 +910,14 @@ const cancelDeleteRequest = () => {
                       <VListItemTitle>Additions</VListItemTitle>
                     </VListItem>
                     <VDivider />
-                    <VListItem>
+                    <VListItem @click="openAddDeductionDrawer">
                       <template #prepend>
                         <VIcon icon="tabler-minus" />
                       </template>
                       <VListItemTitle>Deductions</VListItemTitle>
                     </VListItem>
                     <VDivider />
-                    <VListItem>
+                    <VListItem @click="openAddAdvancesDrawer">
                       <template #prepend>
                         <VIcon icon="tabler-cash" />
                       </template>
@@ -917,6 +1017,18 @@ const cancelDeleteRequest = () => {
                 </IconBtn>
               </template>
 
+              <template v-if="item.type === 'Deduction'">
+                <IconBtn @click.stop="openEditDeduction(item.rawData)">
+                  <VIcon icon="tabler-edit" />
+                </IconBtn>
+              </template>
+
+              <template v-if="item.type === 'Advance'">
+                <IconBtn @click.stop="openEditAdvance(item.rawData)">
+                  <VIcon icon="tabler-edit" />
+                </IconBtn>
+              </template>
+
               <IconBtn>
                 <VIcon icon="tabler-dots-vertical" />
                 <VMenu activator="parent">
@@ -995,6 +1107,34 @@ const cancelDeleteRequest = () => {
       @close="selectedAdditionData = null"
     />
 
+    <!-- Add / Edit Deduction Drawer -->
+    <VOverlay
+      v-model="isAddDeductionOpen"
+      class="add-deduction-scrim"
+      scrim="rgba(17, 24, 39, 0.72)"
+      :z-index="1995"
+    />
+    <AddDeductionDrawer
+      v-model:is-drawer-open="isAddDeductionOpen"
+      :deduction-data="selectedDeductionData"
+      @submit="handleAddDeduction"
+      @close="selectedDeductionData = null"
+    />
+
+    <!-- Add / Edit Advances Drawer -->
+    <VOverlay
+      v-model="isAddAdvancesOpen"
+      class="add-advances-scrim"
+      scrim="rgba(17, 24, 39, 0.72)"
+      :z-index="1995"
+    />
+    <AddAdvancesDrawer
+      v-model:is-drawer-open="isAddAdvancesOpen"
+      :advance-data="selectedAdvanceData"
+      @submit="handleAddAdvance"
+      @close="selectedAdvanceData = null"
+    />
+
     <!-- Confirm Delete Request Dialog -->
     <VDialog v-model="confirmDeleteVisible" persistent max-width="540">
       <VCard class="pa-sm-8 pa-4">
@@ -1037,6 +1177,22 @@ const cancelDeleteRequest = () => {
 }
 
 .add-additions-scrim :deep(.v-overlay__scrim) {
+  inset-inline-end: 400px;
+}
+
+.add-deduction-scrim {
+  inset-inline-end: 400px;
+}
+
+.add-deduction-scrim :deep(.v-overlay__scrim) {
+  inset-inline-end: 400px;
+}
+
+.add-advances-scrim {
+  inset-inline-end: 400px;
+}
+
+.add-advances-scrim :deep(.v-overlay__scrim) {
   inset-inline-end: 400px;
 }
 </style>
