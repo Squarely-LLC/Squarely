@@ -12,6 +12,10 @@ import AddNewUserDialog from "@/views/apps/hr/list/AddNewUserDialog.vue";
 import ContactEditDialog from "@/views/apps/hr/list/ContactEditDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import AddAdditionsDrawer from "@/views/apps/hr/view/AddAdditionsDrawer.vue";
+import AddLeaveDrawer from "@/views/apps/hr/view/AddLeaveDrawer.vue";
+import AddDeductionDrawer from "@/views/apps/hr/view/AddDeductionDrawer.vue";
+import AddAdvancesDrawer from "@/views/apps/hr/view/AddAdvancesDrawer.vue";
 
 type SortKey = "user" | "status" | "category" | "channel" | "createdAt";
 type SortVal = { key: SortKey; order: "asc" | "desc" };
@@ -598,6 +602,14 @@ const isAddMeetingOpen = ref(false);
 
 const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
+const isAddLeaveOpen = ref(false);
+const leaveTarget = ref<EmployeeProperties | null>(null);
+const isAddAdditionOpen = ref(false);
+const additionTarget = ref<EmployeeProperties | null>(null);
+const isAddDeductionOpen = ref(false);
+const deductionTarget = ref<EmployeeProperties | null>(null);
+const isAddAdvanceOpen = ref(false);
+const advanceTarget = ref<EmployeeProperties | null>(null);
 
 const contactsOptions = computed(() =>
   employeesStore.all.map((c) => ({
@@ -692,7 +704,175 @@ const openComposeForContact = (contact: EmployeeProperties) => {
   }
 };
 
+const openLeaveDrawerForContact = (contact: EmployeeProperties) => {
+  leaveTarget.value = contact;
+  isAddLeaveOpen.value = true;
+};
+
+const openAdditionDrawerForContact = (contact: EmployeeProperties) => {
+  additionTarget.value = contact;
+  isAddAdditionOpen.value = true;
+};
+
+const openDeductionDrawerForContact = (contact: EmployeeProperties) => {
+  deductionTarget.value = contact;
+  isAddDeductionOpen.value = true;
+};
+
+const openAdvanceDrawerForContact = (contact: EmployeeProperties) => {
+  advanceTarget.value = contact;
+  isAddAdvanceOpen.value = true;
+};
+
+const handleLeaveSubmit = (payload: any) => {
+  if (!leaveTarget.value) return;
+  const target = leaveTarget.value;
+  const currentRequests = target.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  const newRequest = {
+    ...payload,
+    id: newId,
+    type: "Leave",
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  employeesStore.updateEmployee(target.id, {
+    requests: JSON.parse(
+      JSON.stringify([...currentRequests, newRequest] as any[])
+    ),
+  });
+
+  notifications.push("Leave request added", "success", 3500);
+  isAddLeaveOpen.value = false;
+  leaveTarget.value = null;
+};
+
+const handleLeaveClose = () => {
+  isAddLeaveOpen.value = false;
+  leaveTarget.value = null;
+};
+
+const handleAdditionSubmit = (payload: any) => {
+  if (!additionTarget.value) return;
+  const target = additionTarget.value;
+  const currentRequests = target.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  const newRequest = {
+    ...payload,
+    id: newId,
+    type: "Addition",
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  employeesStore.updateEmployee(target.id, {
+    requests: JSON.parse(
+      JSON.stringify([...currentRequests, newRequest] as any[])
+    ),
+  });
+
+  notifications.push("Addition request added", "success", 3500);
+  isAddAdditionOpen.value = false;
+  additionTarget.value = null;
+};
+
+const handleAdditionClose = () => {
+  isAddAdditionOpen.value = false;
+  additionTarget.value = null;
+};
+
+const handleDeductionSubmit = (payload: any) => {
+  if (!deductionTarget.value) return;
+  const target = deductionTarget.value;
+  const currentRequests = target.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  const newRequest = {
+    ...payload,
+    id: newId,
+    type: "Deduction",
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  employeesStore.updateEmployee(target.id, {
+    requests: JSON.parse(
+      JSON.stringify([...currentRequests, newRequest] as any[])
+    ),
+  });
+
+  notifications.push("Deduction request added", "success", 3500);
+  isAddDeductionOpen.value = false;
+  deductionTarget.value = null;
+};
+
+const handleDeductionClose = () => {
+  isAddDeductionOpen.value = false;
+  deductionTarget.value = null;
+};
+
+const handleAdvanceSubmit = (payload: any) => {
+  if (!advanceTarget.value) return;
+  const target = advanceTarget.value;
+  const currentRequests = target.requests || [];
+  const newId =
+    currentRequests.length > 0
+      ? Math.max(...currentRequests.map((r: any) => r.id || 0)) + 1
+      : 1;
+
+  const newRequest = {
+    ...payload,
+    id: newId,
+    type: "Advance",
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  employeesStore.updateEmployee(target.id, {
+    requests: JSON.parse(
+      JSON.stringify([...currentRequests, newRequest] as any[])
+    ),
+  });
+
+  notifications.push("Advance request added", "success", 3500);
+  isAddAdvanceOpen.value = false;
+  advanceTarget.value = null;
+};
+
+const handleAdvanceClose = () => {
+  isAddAdvanceOpen.value = false;
+  advanceTarget.value = null;
+};
+
 const handleAction = (action: string, item: EmployeeProperties) => {
+  if (action === "Leave") {
+    openLeaveDrawerForContact(item);
+    return;
+  }
+  if (action === "Addition") {
+    openAdditionDrawerForContact(item);
+    return;
+  }
+  if (action === "Deduction") {
+    openDeductionDrawerForContact(item);
+    return;
+  }
+  if (action === "Advance") {
+    openAdvanceDrawerForContact(item);
+    return;
+  }
   // Fallback placeholder for actions not yet implemented
   notifications.push(`${action} for ${item.fullName}`, "info", 3000);
 };
@@ -1049,11 +1229,41 @@ const updateItemsPerPage = (value: number | string) => {
                   <VListItemTitle>Email</VListItemTitle>
                 </VListItem>
 
-                <VListItem @click="handleAction('Call', item)">
+              <VListItem @click="handleAction('Call', item)">
+                <template #prepend>
+                  <VIcon icon="tabler-phone" />
+                </template>
+                <VListItemTitle>Call</VListItemTitle>
+              </VListItem>
+
+                <VDivider />
+
+                <VListItem @click="handleAction('Leave', item)">
                   <template #prepend>
-                    <VIcon icon="tabler-phone" />
+                    <VIcon icon="tabler-door-exit" />
                   </template>
-                  <VListItemTitle>Call</VListItemTitle>
+                  <VListItemTitle>Leave</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="handleAction('Addition', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-plus" />
+                  </template>
+                  <VListItemTitle>Addition</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="handleAction('Deduction', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-minus" />
+                  </template>
+                  <VListItemTitle>Deduction</VListItemTitle>
+                </VListItem>
+
+                <VListItem @click="handleAction('Advance', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-cash" />
+                  </template>
+                  <VListItemTitle>Advance</VListItemTitle>
                 </VListItem>
                 <VDivider />
 
@@ -1090,6 +1300,36 @@ const updateItemsPerPage = (value: number | string) => {
       :loading="loading"
       :error="error"
       @submit="saveEditedContact"
+    />
+
+    <AddLeaveDrawer
+      v-model:is-drawer-open="isAddLeaveOpen"
+      :employee-name="leaveTarget?.fullName || ''"
+      :available-days="leaveTarget?.attendance?.vacation || 0"
+      :leave-data="null"
+      @submit="handleLeaveSubmit"
+      @close="handleLeaveClose"
+    />
+
+    <AddAdditionsDrawer
+      v-model:is-drawer-open="isAddAdditionOpen"
+      :addition-data="null"
+      @submit="handleAdditionSubmit"
+      @close="handleAdditionClose"
+    />
+
+    <AddDeductionDrawer
+      v-model:is-drawer-open="isAddDeductionOpen"
+      :deduction-data="null"
+      @submit="handleDeductionSubmit"
+      @close="handleDeductionClose"
+    />
+
+    <AddAdvancesDrawer
+      v-model:is-drawer-open="isAddAdvanceOpen"
+      :advance-data="null"
+      @submit="handleAdvanceSubmit"
+      @close="handleAdvanceClose"
     />
 
     <!-- To Do / Meeting / Email components wired for quick-create from contact list -->

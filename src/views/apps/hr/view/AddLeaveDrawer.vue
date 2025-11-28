@@ -243,13 +243,20 @@ async function onSubmit() {
     temporary
     location="end"
     :width="400"
-    :scrim="false"
+    :scrim="true"
     class="scrollable-content"
     style="z-index: 2000"
     :model-value="props.isDrawerOpen"
     @update:model-value="handleDrawerModelValueUpdate"
   >
     <AppDrawerHeaderSection :title="drawerTitle" @cancel="closeDrawer" />
+
+    <div
+      v-if="employeeName"
+      class="px-6 pb-2 text-body-2 text-medium-emphasis"
+    >
+      {{ employeeName }}
+    </div>
 
     <VDivider />
 

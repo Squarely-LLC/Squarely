@@ -173,7 +173,7 @@ async function onSubmit() {
     temporary
     location="end"
     :width="400"
-    :scrim="false"
+    :scrim="true"
     class="scrollable-content"
     style="z-index: 2000"
     :model-value="props.isDrawerOpen"

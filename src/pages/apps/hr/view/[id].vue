@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, toRaw, watch } from "vue";
+import { nextTick, onMounted, ref, toRaw, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
@@ -61,12 +61,13 @@ const resolveContact = () => {
   }
 
   loading.value = false;
+  openLeaveFromQuery();
 };
 
 const userTab = ref<number | null>(null);
 
 // stable keys for tabs used in the URL query param (order must match `tabs`)
-const tabKeys = ["account", "contracts", "requests", "records"] as const;
+const tabKeys = ["account", "contracts", "requests", "documents"] as const;
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
@@ -74,13 +75,15 @@ const tabs = [
   { icon: "tabler-contract", title: "Contract" },
   { icon: "tabler-help-octagon", title: "Requests" },
   { icon: "tabler-folder", title: "Documents" },
-  { icon: "tabler-file-text", title: "Records" },
 ] as const;
 
 const userTabDocumentsRef = ref<InstanceType<typeof UserTabDocuments> | null>(
   null
 );
 const userTabRecordsRef = ref<InstanceType<typeof UserTabRecords> | null>(null);
+const userTabRequestsRef = ref<InstanceType<typeof UserTabRequests> | null>(
+  null
+);
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
   null
 );
@@ -169,6 +172,32 @@ function handleEditRecordDrawerUpdate(val: boolean) {
   if (!val) editRecordInitial.value = null;
 }
 
+const setRequestsTab = () => {
+  const idx = (tabKeys as readonly string[]).indexOf("requests");
+  userTab.value = idx === -1 ? 0 : idx;
+};
+
+const clearOpenLeaveQuery = () => {
+  if (!route.query.openLeave) return;
+  const { openLeave, ...rest } = route.query;
+  router
+    .replace({
+      name: route.name as any,
+      params: route.params,
+      query: rest,
+    })
+    .catch(() => {});
+};
+
+const openLeaveFromQuery = async () => {
+  if (!route.query.openLeave) return;
+  if (!contact.value) return;
+  setRequestsTab();
+  await nextTick();
+  userTabRequestsRef.value?.openLeaveDrawer?.();
+  clearOpenLeaveQuery();
+};
+
 const setTabFromQuery = () => {
   try {
     const q = String(route.query.tab || tabKeys[0]);
@@ -203,6 +232,14 @@ watch(
   () => {
     setTabFromQuery();
   }
+);
+
+watch(
+  () => route.query.openLeave,
+  () => {
+    openLeaveFromQuery();
+  },
+  { immediate: true }
 );
 
 // update the route when the user changes tabs
@@ -251,7 +288,10 @@ watch(
           <UserTabContract :user-data="contact" />
         </VWindowItem>
         <VWindowItem>
-          <UserTabRequests :user-data="contact" />
+          <UserTabRequests
+            ref="userTabRequestsRef"
+            :user-data="contact"
+          />
         </VWindowItem>
 
         <VWindowItem>
@@ -259,15 +299,6 @@ watch(
             ref="userTabDocumentsRef"
             :user="contact"
             @open-add-todo="handleAddTodoRequest"
-          />
-        </VWindowItem>
-
-        <VWindowItem>
-          <UserTabRecords
-            ref="userTabRecordsRef"
-            :user="contact"
-            @open-add-record="handleAddRecordRequest"
-            @edit-record="handleEditRecordRequest"
           />
         </VWindowItem>
       </VWindow>

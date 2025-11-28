@@ -952,389 +952,402 @@ const cancelDeleteRequest = () => {
   confirmDeleteVisible.value = false;
   deleteRequestCandidateId.value = null;
 };
+
+defineExpose({
+  openLeaveDrawer: openAddLeaveDrawer,
+});
 </script>
 
 <template>
   <section>
-    <VRow>
-      <!-- Leave Cards -->
-      <VCol
-        v-for="card in leaveCards"
-        :key="card.title"
-        cols="12"
-        sm="6"
-        md="3"
-      >
-        <VCard>
-          <VCardText>
-            <!-- Header with Icon -->
-            <div class="d-flex align-center justify-space-between mb-3">
-              <VIcon :icon="card.icon" :color="card.color" size="24" />
-              <h6 class="text-h6 font-weight-medium">{{ card.title }}</h6>
-            </div>
+    <div class="requests-stack">
+      <div class="table-block">
+        <VRow>
+          <VCol cols="12">
+            <VCard>
+              <VCardText>
+                <VRow>
+                  <VCol cols="12" sm="4">
+                    <AppSelect
+                      v-model="selectedStatus"
+                      placeholder="Select Status"
+                      :items="[
+                        { title: 'All', value: 'All' },
+                        { title: 'Draft', value: 'draft' },
+                        { title: 'Pending', value: 'pending' },
+                        { title: 'Approved', value: 'approved' },
+                        { title: 'Rejected', value: 'rejected' },
+                      ]"
+                      clearable
+                      clear-icon="tabler-x"
+                    />
+                  </VCol>
 
-            <VDivider class="mb-3" />
+                  <VCol cols="12" sm="4">
+                    <AppSelect
+                      v-model="selectedType"
+                      placeholder="Select Type"
+                      :items="[
+                        { title: 'All', value: 'All' },
+                        { title: 'Leave', value: 'Leave' },
+                        { title: 'Addition', value: 'Addition' },
+                        { title: 'Deduction', value: 'Deduction' },
+                        { title: 'Advance', value: 'Advance' },
+                        { title: 'Time au Lieu', value: 'Time au Lieu' },
+                      ]"
+                      clearable
+                      clear-icon="tabler-x"
+                    />
+                  </VCol>
 
-            <!-- Stats -->
-            <div class="d-flex align-center justify-space-between py-1">
-              <span class="text-sm">Allowed</span>
-              <span
-                class="text-sm font-weight-bold"
-                :class="`text-${card.color}`"
-                >{{ card.allowed }}</span
-              >
-            </div>
-            <div class="d-flex align-center justify-space-between py-1">
-              <span class="text-sm">Taken</span>
-              <span class="text-sm font-weight-bold">{{ card.taken }}</span>
-            </div>
-            <div class="d-flex align-center justify-space-between py-1">
-              <span class="text-sm">Remaining</span>
-              <span class="text-sm font-weight-bold text-success">{{
-                card.remaining
-              }}</span>
-            </div>
-          </VCardText>
-        </VCard>
-      </VCol>
+                  <VCol cols="12" sm="4">
+                    <AppSelect
+                      v-model="selectedMonth"
+                      placeholder="Select Month"
+                      :items="availableMonths"
+                      clearable
+                      clear-icon="tabler-x"
+                    />
+                  </VCol>
+                </VRow>
+              </VCardText>
 
-      <!-- Advances Card -->
-      <VCol cols="12" sm="6" md="3">
-        <VCard>
-          <VCardText>
-            <!-- Header with Icon -->
-            <div class="d-flex align-center justify-space-between mb-3">
-              <VIcon icon="tabler-cash" color="success" size="24" />
-              <h6 class="text-h6 font-weight-medium">advances</h6>
-            </div>
+              <VDivider />
 
-            <VDivider class="mb-3" />
+              <VCardText class="d-flex flex-wrap gap-4">
+                <div class="me-3 d-flex gap-3">
+                  <AppSelect
+                    :model-value="itemsPerPage"
+                    :items="[
+                      { value: 10, title: '10' },
+                      { value: 25, title: '25' },
+                      { value: 50, title: '50' },
+                      { value: 100, title: '100' },
+                      { value: -1, title: 'All' },
+                    ]"
+                    style="inline-size: 6.25rem"
+                    @update:model-value="updateItemsPerPage"
+                  />
+                </div>
 
-            <!-- Stats -->
-            <div class="d-flex align-center justify-space-between py-1">
-              <span class="text-sm">Taken</span>
-              <span class="text-sm font-weight-bold">
-                {{ advanceStats.taken }} |
-                {{ advanceStats.amount.toLocaleString() }}
-              </span>
-            </div>
-            <div class="d-flex align-center justify-space-between py-1">
-              <span class="text-sm">Paid</span>
-              <span class="text-sm font-weight-bold">
-                {{ advanceStats.paid }} |
-                {{ advanceStats.paidAmount.toLocaleString() }}
-              </span>
-            </div>
-            <div class="d-flex align-center justify-space-between py-1">
-              <span class="text-sm">Outstanding</span>
-              <span class="text-sm font-weight-bold text-warning">
-                {{ advanceStats.outstanding }} |
-                {{ advanceStats.outstandingAmount.toLocaleString() }}
-              </span>
-            </div>
-          </VCardText>
-        </VCard>
-      </VCol>
-    </VRow>
+                <VSpacer />
 
-    <!-- Requests Table Card -->
-    <VRow class="mt-6">
-      <VCol cols="12">
-        <VCard>
-          <VCardText>
-            <VRow>
-              <VCol cols="12" sm="3">
-                <AppSelect
-                  v-model="selectedStatus"
-                  placeholder="Select Status"
-                  :items="[
-                    { title: 'All', value: 'All' },
-                    { title: 'Draft', value: 'draft' },
-                    { title: 'Pending', value: 'pending' },
-                    { title: 'Approved', value: 'approved' },
-                    { title: 'Rejected', value: 'rejected' },
-                  ]"
-                  clearable
-                  clear-icon="tabler-x"
-                />
-              </VCol>
-
-              <VCol cols="12" sm="3">
-                <AppSelect
-                  v-model="selectedType"
-                  placeholder="Select Type"
-                  :items="[
-                    { title: 'All', value: 'All' },
-                    { title: 'Leave', value: 'Leave' },
-                    { title: 'Addition', value: 'Addition' },
-                    { title: 'Deduction', value: 'Deduction' },
-                    { title: 'Advance', value: 'Advance' },
-                    { title: 'Time au Lieu', value: 'Time au Lieu' },
-                  ]"
-                  clearable
-                  clear-icon="tabler-x"
-                />
-              </VCol>
-
-              <VCol cols="12" sm="3">
-                <AppSelect
-                  v-model="selectedMonth"
-                  placeholder="Select Month"
-                  :items="availableMonths"
-                  clearable
-                  clear-icon="tabler-x"
-                />
-              </VCol>
-            </VRow>
-          </VCardText>
-
-          <VDivider />
-
-          <VCardText class="d-flex flex-wrap gap-4">
-            <div class="me-3 d-flex gap-3">
-              <AppSelect
-                :model-value="itemsPerPage"
-                :items="[
-                  { value: 10, title: '10' },
-                  { value: 25, title: '25' },
-                  { value: 50, title: '50' },
-                  { value: 100, title: '100' },
-                  { value: -1, title: 'All' },
-                ]"
-                style="inline-size: 6.25rem"
-                @update:model-value="updateItemsPerPage"
-              />
-            </div>
-
-            <VSpacer />
-
-            <div
-              class="app-user-search-filter d-flex align-center flex-wrap gap-4"
-            >
-              <div style="inline-size: 15.625rem">
-                <AppTextField
-                  v-model="searchQuery"
-                  placeholder="Search Requests"
-                />
-              </div>
-
-              <VBtn
-                variant="tonal"
-                color="secondary"
-                prepend-icon="tabler-upload"
-              >
-                Export
-              </VBtn>
-
-              <VBtn
-                prepend-icon="tabler-plus"
-                append-icon="tabler-chevron-down"
-              >
-                Requests
-                <VMenu activator="parent">
-                  <VList>
-                    <VListItem @click="openAddLeaveDrawer">
-                      <template #prepend>
-                        <VIcon icon="tabler-door-exit" />
-                      </template>
-                      <VListItemTitle>Leaves</VListItemTitle>
-                    </VListItem>
-                    <VDivider />
-                    <VListItem @click="openAddAdditionsDrawer">
-                      <template #prepend>
-                        <VIcon icon="tabler-plus" />
-                      </template>
-                      <VListItemTitle>Additions</VListItemTitle>
-                    </VListItem>
-                    <VDivider />
-                    <VListItem @click="openAddDeductionDrawer">
-                      <template #prepend>
-                        <VIcon icon="tabler-minus" />
-                      </template>
-                      <VListItemTitle>Deductions</VListItemTitle>
-                    </VListItem>
-                    <VDivider />
-                    <VListItem @click="openAddAdvancesDrawer">
-                      <template #prepend>
-                        <VIcon icon="tabler-cash" />
-                      </template>
-                      <VListItemTitle>Advances</VListItemTitle>
-                    </VListItem>
-                    <VDivider />
-                    <VListItem @click="openAddTimeAuLieuDrawer">
-                      <template #prepend>
-                        <VIcon icon="tabler-clock" />
-                      </template>
-                      <VListItemTitle>Time au Lieu</VListItemTitle>
-                    </VListItem>
-                  </VList>
-                </VMenu>
-              </VBtn>
-            </div>
-          </VCardText>
-
-          <VDivider />
-
-          <!-- Table with Month Grouping -->
-          <VDataTableServer
-            :items-per-page="-1"
-            :headers="headers"
-            :items="displayedItems"
-            :items-length="totalDataItems"
-            hide-default-footer
-            class="text-no-wrap"
-            :group-by="[]"
-            @update:options="updateOptions"
-          >
-            <!-- Custom body rendering to support grouped pagination -->
-            <template #body="{ items }">
-              <template v-for="row in items">
-                <tr
-                  v-if="row.__isGroup"
-                  :key="`group-${row.id}`"
-                  class="request-group-header"
+                <div
+                  class="app-user-search-filter d-flex align-center flex-wrap gap-4"
                 >
-                  <td :colspan="headers.length" class="py-3">
-                    <span class="text-body-1 font-weight-medium">{{
-                      row.value
-                    }}</span>
-                  </td>
-                </tr>
+                  <div style="inline-size: 15.625rem">
+                    <AppTextField
+                      v-model="searchQuery"
+                      placeholder="Search Requests"
+                    />
+                  </div>
 
-                <tr v-else :key="`row-${row.id}`">
-                  <!-- DESCRIPTION -->
-                  <td>
-                    <div class="d-flex align-center gap-3 py-3">
-                      <VAvatar size="34" variant="tonal">
-                        <VIcon :icon="getTypeIcon(row.type)" size="20" />
-                      </VAvatar>
-                      <div>
-                        <div
-                          class="text-sm"
-                          style="line-height: 1.5; white-space: pre-line"
-                        >
-                          {{ row.description }}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
+                  <VBtn
+                    variant="tonal"
+                    color="secondary"
+                    prepend-icon="tabler-upload"
+                  >
+                    Export
+                  </VBtn>
 
-                  <!-- DATE -->
-                  <td>{{ row.date }}</td>
+                  <VBtn
+                    prepend-icon="tabler-plus"
+                    append-icon="tabler-chevron-down"
+                  >
+                    Requests
+                    <VMenu activator="parent">
+                      <VList>
+                        <VListItem @click="openAddLeaveDrawer">
+                          <template #prepend>
+                            <VIcon icon="tabler-door-exit" />
+                          </template>
+                          <VListItemTitle>Leaves</VListItemTitle>
+                        </VListItem>
+                        <VDivider />
+                        <VListItem @click="openAddAdditionsDrawer">
+                          <template #prepend>
+                            <VIcon icon="tabler-plus" />
+                          </template>
+                          <VListItemTitle>Additions</VListItemTitle>
+                        </VListItem>
+                        <VDivider />
+                        <VListItem @click="openAddDeductionDrawer">
+                          <template #prepend>
+                            <VIcon icon="tabler-minus" />
+                          </template>
+                          <VListItemTitle>Deductions</VListItemTitle>
+                        </VListItem>
+                        <VDivider />
+                        <VListItem @click="openAddAdvancesDrawer">
+                          <template #prepend>
+                            <VIcon icon="tabler-cash" />
+                          </template>
+                          <VListItemTitle>Advances</VListItemTitle>
+                        </VListItem>
+                        <VDivider />
+                        <VListItem @click="openAddTimeAuLieuDrawer">
+                          <template #prepend>
+                            <VIcon icon="tabler-clock" />
+                          </template>
+                          <VListItemTitle>Time au Lieu</VListItemTitle>
+                        </VListItem>
+                      </VList>
+                    </VMenu>
+                  </VBtn>
+                </div>
+              </VCardText>
 
-                  <!-- AMOUNT -->
-                  <td>
-                    <span v-if="row.amount > 0">{{
-                      row.amount.toLocaleString()
-                    }}</span>
-                    <span v-else class="text-disabled">-</span>
-                  </td>
+              <VDivider />
 
-                  <!-- PERIOD -->
-                  <td>{{ row.period }}</td>
-
-                  <!-- STATUS -->
-                  <td>
-                    <VChip
-                      :color="getStatusColor(row.status)"
-                      size="small"
-                      class="text-capitalize"
+              <!-- Table with Month Grouping -->
+              <VDataTableServer
+                :items-per-page="-1"
+                :headers="headers"
+                :items="displayedItems"
+                :items-length="totalDataItems"
+                hide-default-footer
+                class="text-no-wrap"
+                :group-by="[]"
+                @update:options="updateOptions"
+              >
+                <!-- Custom body rendering to support grouped pagination -->
+                <template #body="{ items }">
+                  <template v-for="row in items">
+                    <tr
+                      v-if="row.__isGroup"
+                      :key="`group-${row.id}`"
+                      class="request-group-header"
                     >
-                      {{ row.status }}
-                    </VChip>
-                  </td>
+                      <td :colspan="headers.length" class="py-3">
+                        <span class="text-body-1 font-weight-medium">{{
+                          row.value
+                        }}</span>
+                      </td>
+                    </tr>
 
-                  <!-- ACTIONS -->
-                  <td>
-                    <template v-if="row.type === 'Leave'">
-                      <IconBtn @click.stop="openEditLeave(row.rawData)">
-                        <VIcon icon="tabler-edit" />
-                      </IconBtn>
+                    <tr v-else :key="`row-${row.id}`">
+                      <!-- DESCRIPTION -->
+                      <td>
+                        <div class="d-flex align-center gap-3 py-3">
+                          <VAvatar size="34" variant="tonal">
+                            <VIcon :icon="getTypeIcon(row.type)" size="20" />
+                          </VAvatar>
+                          <div>
+                            <div
+                              class="text-sm"
+                              style="line-height: 1.5; white-space: pre-line"
+                            >
+                              {{ row.description }}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <!-- DATE -->
+                      <td>{{ row.date }}</td>
+
+                      <!-- AMOUNT -->
+                      <td>
+                        <span v-if="row.amount > 0">{{
+                          row.amount.toLocaleString()
+                        }}</span>
+                        <span v-else class="text-disabled">-</span>
+                      </td>
+
+                      <!-- PERIOD -->
+                      <td>{{ row.period }}</td>
+
+                      <!-- STATUS -->
+                      <td>
+                        <VChip
+                          :color="getStatusColor(row.status)"
+                          size="small"
+                          class="text-capitalize"
+                        >
+                          {{ row.status }}
+                        </VChip>
+                      </td>
+
+                      <!-- ACTIONS -->
+                      <td>
+                        <template v-if="row.type === 'Leave'">
+                          <IconBtn @click.stop="openEditLeave(row.rawData)">
+                            <VIcon icon="tabler-edit" />
+                          </IconBtn>
+                        </template>
+
+                        <template v-if="row.type === 'Addition'">
+                          <IconBtn @click.stop="openEditAddition(row.rawData)">
+                            <VIcon icon="tabler-edit" />
+                          </IconBtn>
+                        </template>
+
+                        <template v-if="row.type === 'Deduction'">
+                          <IconBtn @click.stop="openEditDeduction(row.rawData)">
+                            <VIcon icon="tabler-edit" />
+                          </IconBtn>
+                        </template>
+
+                        <template v-if="row.type === 'Advance'">
+                          <IconBtn @click.stop="openEditAdvance(row.rawData)">
+                            <VIcon icon="tabler-edit" />
+                          </IconBtn>
+                        </template>
+
+                        <template v-if="row.type === 'Time au Lieu'">
+                          <IconBtn
+                            @click.stop="openEditTimeAuLieu(row.rawData)"
+                          >
+                            <VIcon icon="tabler-edit" />
+                          </IconBtn>
+                        </template>
+
+                        <IconBtn>
+                          <VIcon icon="tabler-dots-vertical" />
+                          <VMenu activator="parent">
+                            <VList>
+                              <VListItem>
+                                <template #prepend>
+                                  <VIcon icon="tabler-eye" />
+                                </template>
+                                <VListItemTitle>View Details</VListItemTitle>
+                              </VListItem>
+
+                              <VListItem @click="deleteRequest(row.id)">
+                                <template #prepend>
+                                  <VIcon color="error" icon="tabler-trash" />
+                                </template>
+                                <VListItemTitle>Delete</VListItemTitle>
+                              </VListItem>
+                            </VList>
+                          </VMenu>
+                        </IconBtn>
+                      </td>
+                    </tr>
+                  </template>
+                </template>
+
+                <!-- (custom body renders rows including description, amount, status and actions) -->
+              </VDataTableServer>
+
+              <VDivider />
+
+              <!-- Pagination -->
+              <VCardText
+                class="d-flex align-center flex-wrap justify-end gap-4 pa-4"
+              >
+                <div class="d-flex align-center gap-2">
+                  <div class="text-sm text-disabled">
+                    <template v-if="itemsPerPage > 0">
+                      {{ (page - 1) * itemsPerPage + 1 }}-{{
+                        Math.min(page * itemsPerPage, totalDataItems)
+                      }}
+                      of {{ totalDataItems }}
                     </template>
-
-                    <template v-if="row.type === 'Addition'">
-                      <IconBtn @click.stop="openEditAddition(row.rawData)">
-                        <VIcon icon="tabler-edit" />
-                      </IconBtn>
+                    <template v-else>
+                      1-{{ totalDataItems }} of {{ totalDataItems }}
                     </template>
+                  </div>
+                </div>
 
-                    <template v-if="row.type === 'Deduction'">
-                      <IconBtn @click.stop="openEditDeduction(row.rawData)">
-                        <VIcon icon="tabler-edit" />
-                      </IconBtn>
-                    </template>
+                <VPagination
+                  v-model="page"
+                  :length="
+                    itemsPerPage > 0
+                      ? Math.ceil(totalDataItems / itemsPerPage)
+                      : 1
+                  "
+                  :total-visible="5"
+                />
+              </VCardText>
+            </VCard>
+          </VCol>
+        </VRow>
+      </div>
 
-                    <template v-if="row.type === 'Advance'">
-                      <IconBtn @click.stop="openEditAdvance(row.rawData)">
-                        <VIcon icon="tabler-edit" />
-                      </IconBtn>
-                    </template>
-
-                    <template v-if="row.type === 'Time au Lieu'">
-                      <IconBtn @click.stop="openEditTimeAuLieu(row.rawData)">
-                        <VIcon icon="tabler-edit" />
-                      </IconBtn>
-                    </template>
-
-                    <IconBtn>
-                      <VIcon icon="tabler-dots-vertical" />
-                      <VMenu activator="parent">
-                        <VList>
-                          <VListItem>
-                            <template #prepend>
-                              <VIcon icon="tabler-eye" />
-                            </template>
-                            <VListItemTitle>View Details</VListItemTitle>
-                          </VListItem>
-
-                          <VListItem @click="deleteRequest(row.id)">
-                            <template #prepend>
-                              <VIcon color="error" icon="tabler-trash" />
-                            </template>
-                            <VListItemTitle>Delete</VListItemTitle>
-                          </VListItem>
-                        </VList>
-                      </VMenu>
-                    </IconBtn>
-                  </td>
-                </tr>
-              </template>
-            </template>
-
-            <!-- (custom body renders rows including description, amount, status and actions) -->
-          </VDataTableServer>
-
-          <VDivider />
-
-          <!-- Pagination -->
-          <VCardText
-            class="d-flex align-center flex-wrap justify-end gap-4 pa-4"
+      <div class="cards-block">
+        <VRow>
+          <!-- Leave Cards -->
+          <VCol
+            v-for="card in leaveCards"
+            :key="card.title"
+            cols="12"
+            sm="6"
+            md="3"
           >
-            <div class="d-flex align-center gap-2">
-              <div class="text-sm text-disabled">
-                <template v-if="itemsPerPage > 0">
-                  {{ (page - 1) * itemsPerPage + 1 }}-{{
-                    Math.min(page * itemsPerPage, totalDataItems)
-                  }}
-                  of {{ totalDataItems }}
-                </template>
-                <template v-else>
-                  1-{{ totalDataItems }} of {{ totalDataItems }}
-                </template>
-              </div>
-            </div>
+            <VCard>
+              <VCardText>
+                <!-- Header with Icon -->
+                <div class="d-flex align-center justify-space-between mb-3">
+                  <VIcon :icon="card.icon" :color="card.color" size="24" />
+                  <h6 class="text-h6 font-weight-medium">{{ card.title }}</h6>
+                </div>
 
-            <VPagination
-              v-model="page"
-              :length="
-                itemsPerPage > 0 ? Math.ceil(totalDataItems / itemsPerPage) : 1
-              "
-              :total-visible="5"
-            />
-          </VCardText>
-        </VCard>
-      </VCol>
-    </VRow>
+                <VDivider class="mb-3" />
+
+                <!-- Stats -->
+                <div class="d-flex align-center justify-space-between py-1">
+                  <span class="text-sm">Allowed</span>
+                  <span
+                    class="text-sm font-weight-bold"
+                    :class="`text-${card.color}`"
+                    >{{ card.allowed }}</span
+                  >
+                </div>
+                <div class="d-flex align-center justify-space-between py-1">
+                  <span class="text-sm">Taken</span>
+                  <span class="text-sm font-weight-bold">{{ card.taken }}</span>
+                </div>
+                <div class="d-flex align-center justify-space-between py-1">
+                  <span class="text-sm">Remaining</span>
+                  <span class="text-sm font-weight-bold text-success">{{
+                    card.remaining
+                  }}</span>
+                </div>
+              </VCardText>
+            </VCard>
+          </VCol>
+
+          <!-- Advances Card -->
+          <VCol cols="12" sm="6" md="3">
+            <VCard>
+              <VCardText>
+                <!-- Header with Icon -->
+                <div class="d-flex align-center justify-space-between mb-3">
+                  <VIcon icon="tabler-cash" color="success" size="24" />
+                  <h6 class="text-h6 font-weight-medium">advances</h6>
+                </div>
+
+                <VDivider class="mb-3" />
+
+                <!-- Stats -->
+                <div class="d-flex align-center justify-space-between py-1">
+                  <span class="text-sm">Taken</span>
+                  <span class="text-sm font-weight-bold">
+                    {{ advanceStats.taken }} |
+                    {{ advanceStats.amount.toLocaleString() }}
+                  </span>
+                </div>
+                <div class="d-flex align-center justify-space-between py-1">
+                  <span class="text-sm">Paid</span>
+                  <span class="text-sm font-weight-bold">
+                    {{ advanceStats.paid }} |
+                    {{ advanceStats.paidAmount.toLocaleString() }}
+                  </span>
+                </div>
+                <div class="d-flex align-center justify-space-between py-1">
+                  <span class="text-sm">Outstanding</span>
+                  <span class="text-sm font-weight-bold text-warning">
+                    {{ advanceStats.outstanding }} |
+                    {{ advanceStats.outstandingAmount.toLocaleString() }}
+                  </span>
+                </div>
+              </VCardText>
+            </VCard>
+          </VCol>
+        </VRow>
+      </div>
+    </div>
 
     <!-- Add / Edit Leave Drawer -->
     <VOverlay
@@ -1428,6 +1441,34 @@ const cancelDeleteRequest = () => {
 </template>
 
 <style scoped>
+.requests-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.table-block {
+  order: 1;
+}
+
+.cards-block {
+  order: 2;
+}
+
+@media (min-width: 960px) {
+  .requests-stack {
+    gap: 2rem;
+  }
+
+  .table-block {
+    order: 2;
+  }
+
+  .cards-block {
+    order: 1;
+  }
+}
+
 .request-group-header {
   background-color: rgba(var(--v-theme-surface-variant), 0.05);
   color: rgb(var(--v-theme-primary));
