@@ -10,12 +10,12 @@ import { useEmployeesStore } from "@/stores/employees";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddNewUserDialog from "@/views/apps/hr/list/AddNewUserDialog.vue";
 import ContactEditDialog from "@/views/apps/hr/list/ContactEditDialog.vue";
+import AddAdditionsDrawer from "@/views/apps/hr/view/AddAdditionsDrawer.vue";
+import AddAdvancesDrawer from "@/views/apps/hr/view/AddAdvancesDrawer.vue";
+import AddDeductionDrawer from "@/views/apps/hr/view/AddDeductionDrawer.vue";
+import AddLeaveDrawer from "@/views/apps/hr/view/AddLeaveDrawer.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
-import AddAdditionsDrawer from "@/views/apps/hr/view/AddAdditionsDrawer.vue";
-import AddLeaveDrawer from "@/views/apps/hr/view/AddLeaveDrawer.vue";
-import AddDeductionDrawer from "@/views/apps/hr/view/AddDeductionDrawer.vue";
-import AddAdvancesDrawer from "@/views/apps/hr/view/AddAdvancesDrawer.vue";
 
 type SortKey = "user" | "status" | "category" | "channel" | "createdAt";
 type SortVal = { key: SortKey; order: "asc" | "desc" };
@@ -1030,7 +1030,7 @@ const updateItemsPerPage = (value: number | string) => {
             prepend-icon="tabler-plus"
             @click="isAddNewUserDrawerVisible = true"
           >
-            New Employee
+            Employee
           </VBtn>
         </div>
       </VCardText>
@@ -1229,12 +1229,12 @@ const updateItemsPerPage = (value: number | string) => {
                   <VListItemTitle>Email</VListItemTitle>
                 </VListItem>
 
-              <VListItem @click="handleAction('Call', item)">
-                <template #prepend>
-                  <VIcon icon="tabler-phone" />
-                </template>
-                <VListItemTitle>Call</VListItemTitle>
-              </VListItem>
+                <VListItem @click="handleAction('Call', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-phone" />
+                  </template>
+                  <VListItemTitle>Call</VListItemTitle>
+                </VListItem>
 
                 <VDivider />
 

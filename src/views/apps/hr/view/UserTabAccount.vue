@@ -277,13 +277,38 @@ const activities = computed(() => {
     }
   }
 
+  // From employee requests: include requests for this employee
+  if (props.user && Array.isArray(props.user.requests)) {
+    for (const request of props.user.requests) {
+      items.push({
+        kind: "employee-request",
+        title: request.type,
+        body:
+          (request as any).reason ||
+          (request as any).notes ||
+          (request as any).note ||
+          "",
+        date: request.createdAt,
+        actor: null,
+        meta: { employeeId: userId, requestId: request.id, request },
+        requestType: request.type,
+        requestStatus: request.status,
+      });
+    }
+  }
+
   // show desired kinds and exclude future-dated activities
   const now = Date.now();
   const filtered = items
     .filter((it) =>
-      ["todo", "todo-step", "meeting", "todo-message", "meeting-note"].includes(
-        it.kind
-      )
+      [
+        "todo",
+        "todo-step",
+        "meeting",
+        "todo-message",
+        "meeting-note",
+        "employee-request",
+      ].includes(it.kind)
     )
     .filter((it) => {
       try {
@@ -367,6 +392,8 @@ function labelColorName(kind: string) {
     ? "warning"
     : kind === "todo-step"
     ? "secondary"
+    : kind === "employee-request"
+    ? "primary"
     : "info";
 }
 
@@ -376,7 +403,112 @@ function labelTextForKind(kind: string) {
   if (kind === "todo-message") return "Comment";
   if (kind === "meeting-note") return "Note";
   if (kind === "meeting") return "Meeting";
+  if (kind === "employee-request") return "Request";
   return "";
+}
+
+function requestIcon(requestType: string) {
+  switch (requestType) {
+    case "Leave":
+      return "tabler-beach";
+    case "Addition":
+      return "tabler-cash-plus";
+    case "Deduction":
+      return "tabler-cash-minus";
+    case "Advance":
+      return "tabler-credit-card";
+    case "Time au Lieu":
+      return "tabler-clock-hour-3";
+    default:
+      return "tabler-file-text";
+  }
+}
+
+function requestStatusColor(status: string) {
+  switch (status) {
+    case "approved":
+      return "success";
+    case "rejected":
+      return "error";
+    case "pending":
+      return "warning";
+    case "draft":
+      return "secondary";
+    default:
+      return "info";
+  }
+}
+
+function requestDetails(
+  act: any
+): Array<{ label: string; value: string; icon?: string }> {
+  const details: Array<{ label: string; value: string; icon?: string }> = [];
+  const req = act.meta?.request || {};
+
+  if (act.requestType === "Leave") {
+    if (req.startDate)
+      details.push({
+        label: "Start",
+        value: new Date(req.startDate).toLocaleDateString(),
+        icon: "tabler-calendar",
+      });
+    if (req.returnDate)
+      details.push({
+        label: "Return",
+        value: new Date(req.returnDate).toLocaleDateString(),
+        icon: "tabler-calendar-check",
+      });
+    if (req.requestedDays)
+      details.push({
+        label: "Days",
+        value: String(req.requestedDays),
+        icon: "tabler-calendar-time",
+      });
+  } else if (
+    act.requestType === "Addition" ||
+    act.requestType === "Deduction"
+  ) {
+    if (req.amount)
+      details.push({
+        label: "Amount",
+        value: `$${req.amount}`,
+        icon: "tabler-currency-dollar",
+      });
+    if (req.date)
+      details.push({
+        label: "Date",
+        value: new Date(req.date).toLocaleDateString(),
+        icon: "tabler-calendar",
+      });
+  } else if (act.requestType === "Advance") {
+    if (req.amount)
+      details.push({
+        label: "Amount",
+        value: `$${req.amount}`,
+        icon: "tabler-currency-dollar",
+      });
+    if (req.payBackInMonths)
+      details.push({
+        label: "Payback",
+        value: `${req.payBackInMonths} months`,
+        icon: "tabler-calendar-month",
+      });
+  } else if (act.requestType === "Time au Lieu") {
+    if (req.numberOfDays)
+      details.push({
+        label: "Days",
+        value: String(req.numberOfDays),
+        icon: "tabler-calendar-time",
+      });
+    if (req.date)
+      details.push({
+        label: "Date",
+        value: new Date(req.date).toLocaleDateString(),
+        icon: "tabler-calendar",
+      });
+  }
+
+  return details;
 }
 
 function todoMessages(todoId: number | string) {
@@ -672,6 +804,8 @@ const currentFilterLabel = computed(() => {
                     ? 'warning'
                     : act.kind === 'todo-step'
                     ? 'secondary'
+                    : act.kind === 'employee-request'
+                    ? 'primary'
                     : 'info'
                 "
                 size="x-small"
@@ -680,6 +814,12 @@ const currentFilterLabel = computed(() => {
                   class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
                 >
                   <div class="d-flex align-center">
+                    <VIcon
+                      v-if="act.kind === 'employee-request'"
+                      :icon="requestIcon(act.requestType)"
+                      size="20"
+                      class="me-2"
+                    />
                     <span class="app-timeline-title">{{ act.title }}</span>
                     <span
                       v-if="act.kind === 'todo-step'"
@@ -694,6 +834,7 @@ const currentFilterLabel = computed(() => {
                           'todo-message',
                           'meeting-note',
                           'meeting',
+                          'employee-request',
                         ].includes(act.kind)
                       "
                       size="small"
@@ -703,6 +844,18 @@ const currentFilterLabel = computed(() => {
                       density="compact"
                     >
                       {{ labelTextForKind(act.kind) }}
+                    </VChip>
+                    <VChip
+                      v-if="act.kind === 'employee-request'"
+                      size="small"
+                      class="timeline-chip"
+                      :color="requestStatusColor(act.requestStatus)"
+                      :text-color="`on-${requestStatusColor(
+                        act.requestStatus
+                      )}`"
+                      density="compact"
+                    >
+                      {{ act.requestStatus }}
                     </VChip>
                   </div>
 
@@ -795,6 +948,22 @@ const currentFilterLabel = computed(() => {
                     >
                       +{{ stepCollaborators(act).length - 4 }}
                     </VAvatar>
+                  </div>
+                </div>
+
+                <div v-else-if="act.kind === 'employee-request'" class="mt-2">
+                  <div
+                    v-if="requestDetails(act).length > 0"
+                    class="d-flex gap-3 align-center flex-wrap"
+                  >
+                    <div
+                      v-for="(detail, idx) in requestDetails(act)"
+                      :key="idx"
+                      class="text-sm text-medium-emphasis d-flex align-center gap-1"
+                    >
+                      <VIcon v-if="detail.icon" :icon="detail.icon" size="16" />
+                      <span>{{ detail.label }}: {{ detail.value }}</span>
+                    </div>
                   </div>
                 </div>
 
