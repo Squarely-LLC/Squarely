@@ -230,6 +230,14 @@ const handleStakeholderMeeting = (contact: {
         linkedTo: job.value
           ? [
               {
+                id: contact.id,
+                name: contact.name,
+                avatarUrl: contact.avatar,
+                type: "contact",
+                roles: ["contact"],
+                contactId: contact.id,
+              },
+              {
                 id: job.value.id,
                 name: job.value.name,
                 avatarUrl: job.value.avatar || null,
@@ -262,27 +270,62 @@ const handleStakeholderMeeting = (contact: {
 const handleAddMeetingFromCommunication = () => {
   nextTick(() => {
     try {
+      const linkedSet = new Set<string | number>();
+      const linkedContacts: Array<{
+        id: number | string;
+        name: string;
+        avatarUrl: string | null;
+        type: "contact";
+        roles: ["contact"];
+        contactId: number | string;
+      }> = [];
+
+      const addContactById = (id?: number | null) => {
+        if (id === null || id === undefined) return;
+        const key = String(id);
+        if (linkedSet.has(key)) return;
+        linkedSet.add(key);
+        const entry = contactsStore.byId(id);
+        linkedContacts.push({
+          id,
+          contactId: id,
+          name: entry?.fullName || `Contact ${id}`,
+          avatarUrl: entry?.picture || null,
+          type: "contact",
+          roles: ["contact"],
+        });
+      };
+
+      (job.value?.stakeholders || []).forEach((s) =>
+        addContactById(s.contactId)
+      );
+      (job.value?.collaborators || []).forEach((cId) =>
+        addContactById(Number(cId))
+      );
+      addContactById(job.value?.relatedTo ?? null);
+
+      const relatedContactId = job.value?.relatedTo ?? null;
+      const relatedContactEntry =
+        relatedContactId !== null && relatedContactId !== undefined
+          ? contactsStore.byId(relatedContactId)
+          : null;
+
       addMeetingRef.value?.openWith?.({
         title: `Meeting: ${job.value?.name || "Project"}`,
         initialStart: new Date(),
         durationMins: 60,
-        linkedTo: job.value
-          ? [
-              {
-                id: job.value.id,
-                name: job.value.name,
-                avatarUrl: job.value.avatar || null,
-                type: "job",
-              },
-            ]
-          : [],
-        relatedTo: job.value
-          ? {
-              id: job.value.id,
-              name: job.value.name,
-              type: "job",
-            }
-          : null,
+        linkedTo: linkedContacts,
+        relatedTo:
+          relatedContactId !== null && relatedContactId !== undefined
+            ? {
+                id: relatedContactId,
+                name:
+                  relatedContactEntry?.fullName ||
+                  relatedContactEntry?.name ||
+                  `Contact ${relatedContactId}`,
+                type: "contact",
+              }
+            : null,
         attendees: [],
         notes: `Meeting regarding ${job.value?.name || "project"}`,
         // Don't prefill meetingType, location, or locationDetails when adding from communication tab

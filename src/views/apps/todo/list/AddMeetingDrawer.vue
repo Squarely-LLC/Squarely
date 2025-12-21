@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { computed, nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
@@ -7,7 +8,14 @@ import type { VForm } from "vuetify/components/VForm";
 export type ContactRef = {
   id: number | string;
   name: string;
+  email?: string;
   avatarUrl?: string | null;
+  type?: "contact" | "employee" | "employee_contact";
+  roles?: ("contact" | "employee")[];
+  contactId?: number | string;
+  employeeId?: number | string;
+  // internal value used by the autocomplete to disambiguate same ids across sources
+  value?: string;
 };
 
 export interface NewMeetingPayload {
@@ -61,6 +69,9 @@ const emit = defineEmits<{
 const jobsStore = useJobsStore();
 jobsStore.init();
 
+const employeesStore = useEmployeesStore();
+employeesStore.init();
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 
@@ -69,12 +80,26 @@ const startAt = ref<string>("");
 const durationMins = ref(props.initialDurationMins);
 const meetingType = ref("Sales");
 const linkedSearch = ref("");
-const selectedLinkedIds = ref<(number | string)[]>([]);
+const selectedLinkedIds = ref<string[]>([]);
 const locationPreset = ref("");
 const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
 const selectedJobId = ref<string | number | null>(null);
+
+// build stable keys so contact/employee ids don't collide
+const contactKey = (id: string | number) => `contact-${id}`;
+const employeeKey = (id: string | number) => `employee-${id}`;
+const combinedKey = (
+  contactId?: string | number,
+  employeeId?: string | number,
+  name?: string
+) =>
+  `both-${contactId ?? "none"}-${employeeId ?? "none"}-${(
+    name || ""
+  ).toString()}`
+    .toLowerCase()
+    .trim();
 
 // Jobs for the Related to dropdown
 const jobOptions = computed(() =>
@@ -83,6 +108,192 @@ const jobOptions = computed(() =>
     value: job.id,
   }))
 );
+
+// Normalized options for the Linked to dropdown (contacts + employees + both)
+const linkedItems = computed<ContactRef[]>(() => {
+  const contacts = props.contacts.map((contact) => ({
+    ...contact,
+    contactId: contact.id,
+    group: "Contacts",
+    type: "contact" as const,
+    roles: ["contact"] as const,
+    value: contactKey(contact.id),
+  }));
+
+  const employees = employeesStore.all.map((employee) => ({
+    id: employee.id,
+    employeeId: employee.id,
+    name: employee.fullName,
+    avatarUrl: employee.picture || null,
+    group: "Employees",
+    type: "employee" as const,
+    roles: ["employee"] as const,
+    value: employeeKey(employee.id),
+  }));
+
+  const nameKey = (name?: string | null) =>
+    (name || "").toString().trim().toLowerCase();
+
+  const merged: ContactRef[] = [];
+  const usedContacts = new Set<string | number>();
+  const usedEmployees = new Set<string | number>();
+
+  const contactMap = new Map<string, ContactRef>();
+  contacts.forEach((c) => {
+    contactMap.set(nameKey(c.name) || String(c.contactId), c);
+  });
+
+  employees.forEach((e) => {
+    const key = nameKey(e.name) || String(e.employeeId);
+    const matchingContact = contactMap.get(key);
+    if (matchingContact) {
+      merged.push({
+        id: matchingContact.contactId ?? e.employeeId,
+        contactId: matchingContact.contactId,
+        employeeId: e.employeeId,
+        name: matchingContact.name || e.name,
+        avatarUrl: matchingContact.avatarUrl || e.avatarUrl || null,
+        type: "employee_contact",
+        roles: ["contact", "employee"],
+        group: "Employees & Contacts",
+        value: combinedKey(matchingContact.contactId, e.employeeId, e.name),
+      });
+      usedContacts.add(matchingContact.contactId!);
+      usedEmployees.add(e.employeeId!);
+    }
+  });
+
+  merged.push(
+    ...contacts.filter((c) => !usedContacts.has(c.contactId!)),
+    ...employees.filter((e) => !usedEmployees.has(e.employeeId!))
+  );
+
+  return [...merged].sort((a, b) =>
+    (a.name || "").toString().localeCompare((b.name || "").toString(), undefined, {
+      sensitivity: "base",
+    })
+  );
+});
+
+// Categorised items for the Linked to dropdown (contacts + employees + both)
+const groupedLinkedItems = computed(() => linkedItems.value);
+
+// Helper: find matching linked item by supplied hints
+function matchLinkedItem(criteria: {
+  type?: ContactRef["type"];
+  roles?: ("contact" | "employee")[];
+  contactId?: string | number;
+  employeeId?: string | number;
+  id?: string | number;
+  name?: string;
+}) {
+  const normalizedName = (criteria.name || "").toString().trim().toLowerCase();
+  return linkedItems.value.find((item) => {
+    if (criteria.type && item.type !== criteria.type) return false;
+    if (
+      criteria.roles &&
+      !criteria.roles.every((r) => (item.roles || []).includes(r))
+    )
+      return false;
+    if (
+      criteria.contactId !== undefined &&
+      String(item.contactId) !== String(criteria.contactId)
+    )
+      return false;
+    if (
+      criteria.employeeId !== undefined &&
+      String(item.employeeId) !== String(criteria.employeeId)
+    )
+      return false;
+    if (
+      criteria.id !== undefined &&
+      ![
+        String(item.id),
+        String(item.contactId ?? ""),
+        String(item.employeeId ?? ""),
+      ].includes(String(criteria.id))
+    )
+      return false;
+    if (
+      normalizedName &&
+      item.name?.toString().trim().toLowerCase() !== normalizedName
+    )
+      return false;
+    return true;
+  });
+}
+
+function resolveLinkedValue(link: any): string | null {
+  const id = link?.id ?? link;
+  const type = link?.type as ContactRef["type"] | undefined;
+  const roles = Array.isArray(link?.roles) ? (link.roles as any[]) : [];
+  const name = link?.name;
+  const contactId =
+    link?.contactId ?? (type === "contact" ? id : undefined) ?? undefined;
+  const employeeId =
+    link?.employeeId ?? (type === "employee" ? id : undefined) ?? undefined;
+
+  const bothRoles =
+    roles.includes("contact") && roles.includes("employee")
+      ? ["contact", "employee"]
+      : undefined;
+
+  const tryMatch = (criteria: Parameters<typeof matchLinkedItem>[0]) =>
+    matchLinkedItem(criteria)?.value ?? null;
+
+  if (type === "employee_contact" || bothRoles) {
+    const val = tryMatch({
+      type: "employee_contact",
+      contactId,
+      employeeId,
+      id,
+      name,
+    });
+    if (val) return val;
+  }
+
+  if (type === "contact" || roles.includes("contact")) {
+    const val = tryMatch({
+      type: "contact",
+      contactId: contactId ?? id,
+      id,
+      name,
+    });
+    if (val) return val;
+  }
+
+  if (type === "employee" || roles.includes("employee")) {
+    const val = tryMatch({
+      type: "employee",
+      employeeId: employeeId ?? id,
+      id,
+      name,
+    });
+    if (val) return val;
+  }
+
+  // fallbacks: try any combined, then contact, then employee by id/name
+  const combinedVal = tryMatch({
+    type: "employee_contact",
+    contactId,
+    employeeId,
+    id,
+    name,
+  });
+  if (combinedVal) return combinedVal;
+
+  const contactVal = tryMatch({ type: "contact", contactId: id, id, name });
+  if (contactVal) return contactVal;
+  const employeeVal = tryMatch({
+    type: "employee",
+    employeeId: id,
+    id,
+    name,
+  });
+  if (employeeVal) return employeeVal;
+
+  return null;
+}
 
 // pending initial payload applied when the drawer opens
 const pendingInitial = ref<any | null>(null);
@@ -110,7 +321,9 @@ function applyInitial(initial?: any) {
       }
     }
     if (Array.isArray(initial.linkedTo)) {
-      selectedLinkedIds.value = initial.linkedTo.map((l: any) => l.id);
+      selectedLinkedIds.value = initial.linkedTo
+        .map((l: any) => resolveLinkedValue(l))
+        .filter((v): v is string => !!v);
     }
     if (initial.relatedTo) {
       selectedJobId.value = initial.relatedTo.id;
@@ -140,15 +353,69 @@ const meetingTypeItems = [
 
 const presetLocations = ["Office", "Zoom", "Google Meet", "Client HQ", "Phone"];
 
-const idToContact = computed(
-  () => new Map(props.contacts.map((contact) => [contact.id, contact] as const))
-);
+const idToContact = computed(() => {
+  const map = new Map<string | number, ContactRef>();
+  const addEntry = (key: string | number, value: ContactRef) => {
+    if (!map.has(key)) map.set(key, value);
+  };
 
-const linkedContacts = computed<ContactRef[]>(
-  () =>
-    selectedLinkedIds.value
-      .map((id) => idToContact.value.get(id))
-      .filter(Boolean) as ContactRef[]
+  linkedItems.value.forEach((item) => {
+    const entry = { ...item };
+    if (entry.value) addEntry(entry.value, entry);
+    if (entry.contactId !== undefined)
+      addEntry(contactKey(entry.contactId), entry);
+    if (entry.employeeId !== undefined)
+      addEntry(employeeKey(entry.employeeId), entry);
+    addEntry(String(entry.id), entry);
+  });
+
+  return map;
+});
+
+const linkedContacts = computed<ContactRef[]>(() => {
+  const seen = new Set<string>();
+  return selectedLinkedIds.value
+    .map((id) => idToContact.value.get(id))
+    .filter(Boolean)
+    .filter((contact) => {
+      const seenKey =
+        contact?.value || `${contact?.type || "contact"}-${contact?.id}`;
+      if (!contact || !seenKey) return false;
+      if (seen.has(seenKey)) return false;
+      seen.add(seenKey);
+      return true;
+    }) as ContactRef[];
+});
+
+// Data shape to persist (strip UI-only value key)
+const linkedContactsPayload = computed<ContactRef[]>(() =>
+  linkedContacts.value.map((entry) => {
+    const { value, roles, type, contactId, employeeId, ...rest } = entry;
+    const normalizedRoles =
+      roles && roles.length
+        ? roles
+        : type === "employee_contact"
+        ? (["contact", "employee"] as ("contact" | "employee")[])
+        : type === "employee"
+        ? (["employee"] as ("contact" | "employee")[])
+        : (["contact"] as ("contact" | "employee")[]);
+
+    const normalizedId =
+      type === "employee"
+        ? employeeId ?? rest.id
+        : type === "contact"
+        ? contactId ?? rest.id
+        : contactId ?? employeeId ?? rest.id;
+
+    return {
+      ...rest,
+      id: normalizedId,
+      type,
+      contactId: contactId ?? (type !== "employee" ? normalizedId : undefined),
+      employeeId: employeeId ?? (type !== "contact" ? normalizedId : undefined),
+      roles: normalizedRoles,
+    };
+  })
 );
 
 const required = (value: unknown) =>
@@ -177,12 +444,22 @@ const isValidStart = computed(() => {
 });
 
 watch(
-  () => props.contacts,
-  (contacts) => {
-    const validIds = new Set(contacts.map((contact) => contact.id));
-    selectedLinkedIds.value = selectedLinkedIds.value.filter((id) =>
-      validIds.has(id)
+  [() => props.contacts, () => employeesStore.all],
+  () => {
+    const validKeys = new Set(
+      linkedItems.value
+        .map((item) => item.value)
+        .filter((v): v is string => !!v)
     );
+
+    const normalized = selectedLinkedIds.value
+      .map((id) => {
+        if (typeof id === "string" && validKeys.has(id)) return id;
+        return resolveLinkedValue({ id });
+      })
+      .filter((v): v is string => !!v && validKeys.has(v));
+
+    selectedLinkedIds.value = Array.from(new Set(normalized));
   },
   { deep: true }
 );
@@ -265,7 +542,7 @@ async function onSubmit() {
     color: undefined,
     durationMins: Number(durationMins.value),
     meetingType: meetingType.value,
-    linkedTo: linkedContacts.value,
+    linkedTo: linkedContactsPayload.value,
     attachmentFile: attachmentFile.value,
     relatedTo: selectedJobId.value
       ? {
@@ -375,18 +652,27 @@ function toDateTimeLocalString(input?: string | Date) {
                 <AppAutocomplete
                   v-model="selectedLinkedIds"
                   v-model:search="linkedSearch"
-                  :items="props.contacts"
+                  :items="groupedLinkedItems"
                   item-title="name"
-                  item-value="id"
+                  item-value="value"
+                  group-by="group"
                   label="Linked to"
                   multiple
                   chips
                   closable-chips
                   clearable
-                  placeholder="Select contacts"
+                  placeholder="Select contacts or employees"
                   @update:model-value="linkedSearch = ''"
                 >
                   <template #prepend-item />
+                  <template #group="{ props: groupProps, item }">
+                    <VListSubheader
+                      v-bind="groupProps"
+                      class="text-uppercase text-caption text-medium-emphasis"
+                    >
+                      {{ item.title }}
+                    </VListSubheader>
+                  </template>
                   <template #item="{ props: itemProps, item }">
                     <VListItem v-bind="itemProps">
                       <template #prepend>
@@ -406,7 +692,27 @@ function toDateTimeLocalString(input?: string | Date) {
                           </template>
                         </VAvatar>
                       </template>
-                      <VListItemTitle>{{ item.raw.name }}</VListItemTitle>
+
+                      <VListItemSubtitle class="text-capitalize">
+                        {{
+                          (item.raw.roles && item.raw.roles.length
+                            ? item.raw.roles
+                            : [
+                                item.raw.type === "employee_contact"
+                                  ? "contact"
+                                  : item.raw.type || "contact",
+                              ]
+                          )
+                            .map((r: string) =>
+                              r === "employee_contact"
+                                ? "Employee & Contact"
+                                : r === "employee"
+                                ? "Employee"
+                                : "Contact"
+                            )
+                            .join(" & ")
+                        }}
+                      </VListItemSubtitle>
                     </VListItem>
                   </template>
                   <template #selection="{ item, index }">
