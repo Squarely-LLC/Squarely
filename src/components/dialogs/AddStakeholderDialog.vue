@@ -41,7 +41,8 @@ const availableContacts = computed(() => {
       name: contact.fullName,
       email: contact.email || "",
       company: (contact as any).company || "",
-    }));
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 });
 
 const selectedContactId = ref<number | string | null>(null);
