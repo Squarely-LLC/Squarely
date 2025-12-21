@@ -37,6 +37,7 @@ export interface JobProperties {
   code?: string | null;
   avatar?: string | null;
   startDate?: string | null;
+  endDate?: string | null;
   location?: string | null;
   stage: JobStage;
   type: JobType;

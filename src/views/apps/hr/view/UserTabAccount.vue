@@ -340,6 +340,7 @@ const eventFilterOptions = [
   { title: "Steps", value: "todo-step" },
   { title: "Meetings", value: "meeting" },
   { title: "Messages", value: "todo-message" },
+  { title: "Requests", value: "employee-request" },
   { title: "Call", value: "Call" },
   { title: "Todo", value: "Todo" },
   { title: "Meeting", value: "Meeting" },
@@ -984,7 +985,7 @@ const currentFilterLabel = computed(() => {
 
     <VCol cols="12">
       <!-- Statistics-style Summary card (Calls / Meetings / To-Dos) -->
-      <VCard title="Summary" class="summary-card mt-4">
+      <VCard title="Summary" class="summary-card">
         <VCardText>
           <VRow>
             <VCol cols="12" md="4">

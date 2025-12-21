@@ -89,25 +89,29 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
           {{ avatarText(job.name) }}
         </span>
       </VAvatar>
-      <h5 class="text-h5 mt-4 mb-1">{{ job.name }}</h5>
-      <p class="text-body-2 text-medium-emphasis mb-0">
-        {{ job.code || "No code" }}
-      </p>
-      <div class="d-flex justify-center gap-2 flex-wrap mt-4">
-        <VChip color="info" label size="small" variant="tonal">
+
+      <h5 class="text-h5 mt-4">
+        {{ job.name }}
+      </h5>
+
+      <div class="d-flex justify-center gap-2 mt-2">
+        <VChip label size="small" color="info" variant="tonal">
           {{ job.stage }}
         </VChip>
-        <VChip color="primary" label size="small" variant="tonal">
+
+        <VChip label size="small" color="primary" variant="tonal">
           {{ job.type }}
         </VChip>
-        <VChip :color="resolveFlagColor(job.flag)" label size="small">
+
+        <VChip label size="small" :color="resolveFlagColor(job.flag)">
           {{ job.flag }}
         </VChip>
       </div>
     </VCardText>
-    <VDivider />
+
     <VCardText>
       <h5 class="text-h5">Details</h5>
+
       <VDivider class="my-4" />
       <VList class="py-0 card-list details-list">
         <VListItem>
@@ -120,6 +124,7 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
             </h6>
           </VListItemTitle>
         </VListItem>
+
         <VListItem>
           <VListItemTitle>
             <h6 class="text-h6">
@@ -130,6 +135,7 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
             </h6>
           </VListItemTitle>
         </VListItem>
+
         <VListItem>
           <VListItemTitle>
             <h6 class="text-h6">
@@ -140,97 +146,22 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
             </h6>
           </VListItemTitle>
         </VListItem>
-        <VListItem>
+
+        <VListItem v-if="relatedContact">
           <VListItemTitle>
-            <div class="d-flex align-center gap-2 flex-wrap">
-              <h6 class="text-h6 mb-0">Related Contact:</h6>
-              <template v-if="relatedContact">
-                <VAvatar v-if="relatedContact.picture" size="32" class="me-1">
-                  <VImg :src="relatedContact.picture || ''" />
-                </VAvatar>
-                <VAvatar
-                  v-else
-                  size="32"
-                  color="secondary"
-                  variant="tonal"
-                  class="me-1 font-weight-medium"
-                >
-                  <span>{{ avatarText(relatedContact.name) }}</span>
-                </VAvatar>
-                <div class="d-inline-block text-body-1 text-high-emphasis">
-                  {{ relatedContact.name }}
-                </div>
-              </template>
-              <div
-                v-else
-                class="d-inline-block text-body-1 text-medium-emphasis"
-              >
-                --
+            <h6 class="text-h6">
+              Related To:
+              <div class="d-inline-block text-body-1">
+                {{ relatedContact.name }}
               </div>
-            </div>
+            </h6>
           </VListItemTitle>
         </VListItem>
       </VList>
     </VCardText>
-    <VDivider />
+
     <VCardText class="d-flex justify-center gap-4 pb-6">
-      <VBtn @click="emit('edit')">Edit</VBtn>
       <VBtn variant="tonal" color="error" @click="emit('delete')">Delete</VBtn>
-    </VCardText>
-    <VDivider />
-    <VCardText>
-      <h6 class="text-h6 mb-3">Collaborators</h6>
-      <div class="d-flex justify-center gap-3 flex-wrap align-center">
-        <div
-          v-if="collaboratorCount"
-          class="v-avatar-group demo-avatar-group justify-center"
-        >
-          <VAvatar
-            v-for="collaborator in decoratedCollaborators.slice(0, 3)"
-            :key="`job-collaborator-${collaborator.id}`"
-            :size="42"
-            :variant="!collaborator.avatar ? 'tonal' : undefined"
-            :color="!collaborator.avatar ? 'primary' : undefined"
-            :class="
-              !collaborator.avatar ? 'text-white font-weight-medium' : undefined
-            "
-          >
-            <template v-if="collaborator.avatar">
-              <VImg :src="collaborator.avatar" />
-            </template>
-            <template v-else>
-              <span>{{ avatarText(collaborator.name) }}</span>
-            </template>
-            <VTooltip activator="parent" location="top">
-              {{ collaborator.name }}
-            </VTooltip>
-          </VAvatar>
-          <VAvatar
-            v-if="collaboratorCount > 3"
-            color="secondary"
-            :size="42"
-            class="font-weight-medium text-white"
-          >
-            +{{ collaboratorCount - 3 }}
-            <VTooltip activator="parent" location="top">
-              {{
-                decoratedCollaborators
-                  .slice(3)
-                  .map((collaborator) => collaborator.name)
-                  .join(", ")
-              }}
-            </VTooltip>
-          </VAvatar>
-        </div>
-        <span v-else class="text-body-2 text-medium-emphasis">
-          No collaborators assigned yet.
-        </span>
-      </div>
-    </VCardText>
-    <VDivider />
-    <VCardText>
-      <h6 class="text-h6 mb-2">Notes</h6>
-      <p class="text-body-2 text-medium-emphasis mb-0">{{ noteText }}</p>
     </VCardText>
   </VCard>
 </template>

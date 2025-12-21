@@ -16,6 +16,7 @@ declare module 'vue' {
     AddPaymentMethodDialog: typeof import('./src/components/dialogs/AddPaymentMethodDialog.vue')['default']
     AddReportsToContactDialog: typeof import('./src/components/dialogs/AddReportsToContactDialog.vue')['default']
     AddReportsToDialog: typeof import('./src/components/dialogs/AddReportsToDialog.vue')['default']
+    AddStakeholderDialog: typeof import('./src/components/dialogs/AddStakeholderDialog.vue')['default']
     AppAutocomplete: typeof import('./src/@core/components/app-form-elements/AppAutocomplete.vue')['default']
     AppBarSearch: typeof import('./src/@core/components/AppBarSearch.vue')['default']
     AppCardActions: typeof import('./src/@core/components/cards/AppCardActions.vue')['default']

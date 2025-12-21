@@ -43,6 +43,7 @@ const contactOptions = computed(() =>
     value: contact.id,
   }))
 );
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 const saving = ref(false);
@@ -58,6 +59,7 @@ const hydrateLocalJob = (target: JobProperties | null) => {
     name: target.name,
     code: target.code ?? "",
     startDate: target.startDate,
+    endDate: target.endDate,
     location: target.location ?? "",
     stage: target.stage,
     type: target.type,
@@ -155,13 +157,21 @@ const onReset = () => {
             />
           </VCol>
           <VCol cols="12" md="6">
+            <AppDateTimePicker
+              v-model="localJob.endDate"
+              label="End Date"
+              placeholder="YYYY-MM-DD HH:mm"
+              clearable
+            />
+          </VCol>
+          <VCol cols="12" md="6">
             <AppTextField
               v-model="localJob.location"
               label="Location"
               placeholder="Beirut, Lebanon"
             />
           </VCol>
-          <VCol cols="12" md="4">
+          <VCol cols="12" md="6">
             <AppSelect
               v-model="localJob.stage"
               label="Stage"
@@ -170,7 +180,7 @@ const onReset = () => {
               :rules="[requiredValidator]"
             />
           </VCol>
-          <VCol cols="12" md="4">
+          <VCol cols="12" md="6">
             <AppSelect
               v-model="localJob.type"
               label="Type"
@@ -179,7 +189,7 @@ const onReset = () => {
               :rules="[requiredValidator]"
             />
           </VCol>
-          <VCol cols="12" md="4">
+          <VCol cols="12" md="6">
             <AppSelect
               v-model="localJob.flag"
               label="Flag"
@@ -206,8 +216,8 @@ const onReset = () => {
               :items="contactOptions"
               multiple
               chips
+              closable-chips
               clearable
-              clear-icon="tabler-x"
             />
           </VCol>
           <VCol cols="12">

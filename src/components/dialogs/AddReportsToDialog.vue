@@ -96,7 +96,7 @@ const avatarInitials = (name?: string | null) => {
 
     <VCard class="pa-2 pa-sm-10">
       <VCardText>
-        <h4 class="text-h4 text-center mb-2">Add Reports To</h4>
+        <h4 class="text-h4 text-center mb-2">Reports To</h4>
         <p class="text-body-1 text-center mb-6">
           Select a manager this employee reports to
         </p>

@@ -7,7 +7,6 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
-import { useEmployeesStore } from "@/stores/employees";
 import { computed, nextTick, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 interface Props {
@@ -22,9 +21,7 @@ const emit = defineEmits<Emit>();
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 const contactsStore = useContactsStore();
-const employeesStore = useEmployeesStore();
 contactsStore.init();
-employeesStore.init();
 const stageOptions: JobStage[] = [
   "PRPSL",
   "In Review",
@@ -47,15 +44,6 @@ const contactOptions = computed(() =>
     title: contact.fullName,
     value: contact.id,
     avatar: (contact as any).avatar || (contact as any).picture || null,
-  }))
-);
-
-const employeeOptions = computed(() =>
-  employeesStore.all.map((employee) => ({
-    title: employee.fullName,
-    position: employee.employment?.positions?.[0]?.position || "",
-    value: employee.id,
-    avatar: (employee as any).picture || (employee as any).avatar || null,
   }))
 );
 const avatarText = (name?: string | null) => {
@@ -241,7 +229,7 @@ const onCancel = () => {
                 v-model="localJob.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"
-                :items="employeeOptions"
+                :items="contactOptions"
                 item-title="title"
                 item-value="value"
                 multiple
@@ -282,7 +270,7 @@ const onCancel = () => {
                     v-else-if="index === 4"
                     class="text-caption text-medium-emphasis"
                   >
-                    +{{ localJob.collaborators.length - index }}
+                    +{{ (localJob.collaborators?.length || 0) - index }}
                   </span>
                 </template>
 

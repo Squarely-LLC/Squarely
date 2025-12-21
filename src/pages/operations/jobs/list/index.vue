@@ -663,7 +663,6 @@ const updateItemsPerPage = (value: number | string) => {
         :items-length="totalJobs"
         :headers="headers"
         class="text-no-wrap"
-        show-select
         @update:options="updateOptions"
       >
         <template #item.project="{ item }">
@@ -692,45 +691,15 @@ const updateItemsPerPage = (value: number | string) => {
 
               <div class="text-sm text-medium-emphasis">
                 <span v-if="item.code">{{ item.code }}</span>
-                <span v-if="item.code && item.location"> � </span>
-                <span v-if="item.location">{{ item.location }}</span>
               </div>
 
-              <div
-                class="d-flex align-center gap-2 text-xs text-medium-emphasis"
-              >
-                <VAvatar
-                  v-if="getContactEntry(item.relatedTo)"
-                  size="24"
-                  :variant="
-                    getContactEntry(item.relatedTo)?.picture
-                      ? undefined
-                      : 'tonal'
-                  "
-                  :color="
-                    getContactEntry(item.relatedTo)?.picture
-                      ? undefined
-                      : 'primary'
-                  "
-                  :class="
-                    getContactEntry(item.relatedTo)?.picture
-                      ? null
-                      : 'text-white font-weight-medium'
-                  "
-                >
-                  <template v-if="getContactEntry(item.relatedTo)?.picture">
-                    <VImg
-                      :src="getContactEntry(item.relatedTo)?.picture || ''"
-                    />
-                  </template>
-                  <template v-else>
-                    <span>{{ avatarText(relatedContactName(item)) }}</span>
-                  </template>
-                </VAvatar>
-
-                <span class="text-high-emphasis">{{
-                  relatedContactName(item)
-                }}</span>
+              <div class="text-sm text-medium-emphasis">
+                <VIcon
+                  v-if="item.code && item.location"
+                  icon="tabler-map-pin"
+                  size="14"
+                />
+                <span v-if="item.location">{{ item.location }}</span>
               </div>
             </div>
           </div>

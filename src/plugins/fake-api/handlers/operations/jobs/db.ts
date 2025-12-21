@@ -1,7 +1,8 @@
-import avatar10 from "@images/avatars/avatar-10.png";
-import avatar12 from "@images/avatars/avatar-12.png";
-import avatar7 from "@images/avatars/avatar-7.png";
+import figma from "@images/icons/project-icons/figma.png";
+import sketch from "@images/icons/project-icons/sketch.png";
+import vue from "@images/icons/project-icons/vue.png";
 import type { JobProperties } from "./types";
+
 interface DB {
   jobs: JobProperties[];
 }
@@ -11,14 +12,15 @@ export const db: DB = {
       id: 1,
       name: "Ted's Project",
       code: "P-1234",
-      avatar: avatar7,
+      avatar: figma,
       startDate: "2024-04-01T09:00:00Z",
+      endDate: "2024-08-15T17:00:00Z",
       location: "Beirut, Lebanon",
       stage: "PRPSL",
       type: "Architecture",
       flag: "Normal",
       relatedTo: 1,
-      collaborators: [1, 3, 4],
+      collaborators: [1, 3, 6],
       note: "Concept development for mixed-use complex with hospitality component.",
       stakeholders: [
         { id: 1, contactId: 1, role: "Client" },
@@ -69,8 +71,9 @@ export const db: DB = {
       id: 2,
       name: "Expo Pavilion",
       code: "EV-204",
-      avatar: avatar10,
+      avatar: sketch,
       startDate: "2024-02-12T08:00:00Z",
+      endDate: "2024-04-10T20:00:00Z",
       location: "Dubai, UAE",
       stage: "Project | In Progress",
       type: "Stands & Events",
@@ -127,8 +130,9 @@ export const db: DB = {
       id: 3,
       name: "Headquarters Renovation",
       code: "INT-88",
-      avatar: avatar12,
+      avatar: vue,
       startDate: "2024-06-10T09:30:00Z",
+      endDate: "2024-09-30T17:00:00Z",
       location: "Doha, Qatar",
       stage: "In Review",
       type: "Interior",
