@@ -144,17 +144,7 @@ export const db: DB = {
           note: "Deliver training manuals and orientation.",
         },
       ],
-      documents: [
-        {
-          id: 1,
-          category: "PDF",
-          type: "Contract",
-          name: "Exhibition Contract",
-          note: "Pavilion setup and teardown agreement",
-          fileUrl: "/documents/exhibition-contract.pdf",
-          createdAt: "2024-02-12T08:00:00Z",
-        },
-      ],
+      documents: [],
       createdAt: "2024-02-01T10:15:00Z",
     },
     {

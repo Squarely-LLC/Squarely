@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useJobsStore } from "@/stores/jobs";
 import { computed, nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -23,6 +24,7 @@ export interface NewMeetingPayload {
   durationMins: number;
   meetingType: string;
   linkedTo: ContactRef[];
+  relatedTo?: { id: string | number; name: string; type: string } | null;
   attachmentFile?: File | null;
   // compatibility aliases for other consumers (todos store expects these)
   subject?: string;
@@ -56,6 +58,9 @@ const emit = defineEmits<{
   (e: "save", payload: NewMeetingPayload): void;
 }>();
 
+const jobsStore = useJobsStore();
+jobsStore.init();
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 
@@ -69,6 +74,15 @@ const locationPreset = ref("");
 const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
+const selectedJobId = ref<string | number | null>(null);
+
+// Jobs for the Related to dropdown
+const jobOptions = computed(() =>
+  jobsStore.all.map((job) => ({
+    title: job.name,
+    value: job.id,
+  }))
+);
 
 // pending initial payload applied when the drawer opens
 const pendingInitial = ref<any | null>(null);
@@ -97,6 +111,9 @@ function applyInitial(initial?: any) {
     }
     if (Array.isArray(initial.linkedTo)) {
       selectedLinkedIds.value = initial.linkedTo.map((l: any) => l.id);
+    }
+    if (initial.relatedTo) {
+      selectedJobId.value = initial.relatedTo.id;
     }
     if (initial.attachmentFile)
       attachmentFile.value = initial.attachmentFile as File;
@@ -200,6 +217,7 @@ function initialiseForm() {
   locationDetails.value = "";
   notes.value = "";
   attachmentFile.value = null;
+  selectedJobId.value = null;
   linkedSearch.value = "";
 }
 
@@ -249,6 +267,13 @@ async function onSubmit() {
     meetingType: meetingType.value,
     linkedTo: linkedContacts.value,
     attachmentFile: attachmentFile.value,
+    relatedTo: selectedJobId.value
+      ? {
+          id: selectedJobId.value,
+          name: jobsStore.byId(selectedJobId.value)?.name || "",
+          type: "job",
+        }
+      : null,
     // compatibility fields expected by todos store and other consumers
     subject: subject.value.trim(),
     startAt: startDate.toISOString(),
@@ -413,6 +438,21 @@ function toDateTimeLocalString(input?: string | Date) {
                     </span>
                   </template>
                 </AppAutocomplete>
+              </VCol>
+
+              <!-- Related to job selection -->
+              <VCol cols="12">
+                <AppSelect
+                  v-model="selectedJobId"
+                  label="Related to"
+                  placeholder="Select a job"
+                  :items="jobOptions"
+                  clearable
+                >
+                  <template #prepend-inner>
+                    <VIcon icon="tabler-briefcase" size="20" class="me-2" />
+                  </template>
+                </AppSelect>
               </VCol>
 
               <VCol cols="12">

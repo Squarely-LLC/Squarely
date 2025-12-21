@@ -11,6 +11,7 @@ import { useTodos } from "@/stores/todos";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import JobCommunicationTab from "@/views/operations/jobs/view/JobCommunicationTab.vue";
 import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
 import JobMilestonesGoalsTab from "@/views/operations/jobs/view/JobMilestonesGoalsTab.vue";
 import JobProjectInfoTab from "@/views/operations/jobs/view/JobProjectInfoTab.vue";
@@ -83,11 +84,17 @@ const resolveJob = () => {
 const jobTab = ref<number | null>(null);
 
 // stable keys for tabs used in the URL query param (order must match `tabs`)
-const tabKeys = ["project-info", "milestones-goals", "documents"] as const;
+const tabKeys = [
+  "project-info",
+  "milestones-goals",
+  "communication",
+  "documents",
+] as const;
 
 const tabs = [
   { icon: "tabler-clipboard", title: "Project Info" },
   { icon: "tabler-flag", title: "Milestones & Goals" },
+  { icon: "tabler-message", title: "Communication" },
   { icon: "tabler-folder", title: "Documents" },
 ] as const;
 
@@ -230,6 +237,13 @@ const handleStakeholderMeeting = (contact: {
               },
             ]
           : [],
+        relatedTo: job.value
+          ? {
+              id: job.value.id,
+              name: job.value.name,
+              type: "job",
+            }
+          : null,
         attendees: [
           {
             id: contact.id,
@@ -238,7 +252,40 @@ const handleStakeholderMeeting = (contact: {
           },
         ],
         notes: `Meeting regarding ${job.value?.name || "project"}`,
-        location: job.value?.location || "",
+        // Don't prefill meetingType, location, or locationDetails when adding from stakeholders card
+      });
+    } catch {}
+    isAddMeetingOpen.value = true;
+  });
+};
+
+const handleAddMeetingFromCommunication = () => {
+  nextTick(() => {
+    try {
+      addMeetingRef.value?.openWith?.({
+        title: `Meeting: ${job.value?.name || "Project"}`,
+        initialStart: new Date(),
+        durationMins: 60,
+        linkedTo: job.value
+          ? [
+              {
+                id: job.value.id,
+                name: job.value.name,
+                avatarUrl: job.value.avatar || null,
+                type: "job",
+              },
+            ]
+          : [],
+        relatedTo: job.value
+          ? {
+              id: job.value.id,
+              name: job.value.name,
+              type: "job",
+            }
+          : null,
+        attendees: [],
+        notes: `Meeting regarding ${job.value?.name || "project"}`,
+        // Don't prefill meetingType, location, or locationDetails when adding from communication tab
       });
     } catch {}
     isAddMeetingOpen.value = true;
@@ -431,6 +478,13 @@ const closeMeetingDrawer = () => {
 
           <VWindowItem>
             <JobMilestonesGoalsTab :job-id="job.id" />
+          </VWindowItem>
+
+          <VWindowItem>
+            <JobCommunicationTab
+              :job-id="job.id"
+              @open-add-meeting="handleAddMeetingFromCommunication"
+            />
           </VWindowItem>
 
           <VWindowItem>

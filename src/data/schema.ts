@@ -79,6 +79,7 @@ export type Meeting = {
   endAt: string; // ISO — computed from startAt + duration
   type: MeetingType;
   linkedTo?: Array<{ id: string | number; name: string }>;
+  relatedTo?: { id: string | number; name: string; type: string } | null; // Job reference when created from job context
   location?: string;
   note?: string; // single quick note (optional)
   notes?: string[]; // multiple notes allowed
