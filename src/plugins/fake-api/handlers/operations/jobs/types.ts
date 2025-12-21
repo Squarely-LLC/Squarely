@@ -31,6 +31,19 @@ export interface JobGoal {
   priority: JobFlag;
   note?: string | null;
 }
+
+export interface JobDocument {
+  id: number;
+  category?: string;
+  type?: string;
+  name: string;
+  expiry?: string | null;
+  expiryReminder?: boolean;
+  note?: string;
+  fileUrl?: string;
+  createdAt?: string;
+}
+
 export interface JobProperties {
   id: number;
   name: string;
@@ -48,5 +61,6 @@ export interface JobProperties {
   stakeholders: JobStakeholder[];
   milestones: JobMilestone[];
   goals: JobGoal[];
+  documents?: JobDocument[];
   createdAt: string;
 }

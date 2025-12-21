@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, toRaw, watch } from "vue";
+import { useRouter } from "vue-router";
 
 import AddStakeholderDialog from "@/components/dialogs/AddStakeholderDialog.vue";
 import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
@@ -10,13 +11,14 @@ import { useTodos } from "@/stores/todos";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
 import JobMilestonesGoalsTab from "@/views/operations/jobs/view/JobMilestonesGoalsTab.vue";
 import JobProjectInfoTab from "@/views/operations/jobs/view/JobProjectInfoTab.vue";
 import JobStakeholdersCard from "@/views/operations/jobs/view/JobStakeholdersCard.vue";
-import JobStakeholdersTab from "@/views/operations/jobs/view/JobStakeholdersTab.vue";
 import JobSummaryCard from "@/views/operations/jobs/view/JobSummaryCard.vue";
 
 const route = useRoute("operations-jobs-view-id");
+const router = useRouter();
 
 const jobsStore = useJobsStore();
 jobsStore.init();
@@ -78,7 +80,31 @@ const resolveJob = () => {
   loading.value = false;
 };
 
-onMounted(resolveJob);
+const jobTab = ref<number | null>(null);
+
+// stable keys for tabs used in the URL query param (order must match `tabs`)
+const tabKeys = ["project-info", "milestones-goals", "documents"] as const;
+
+const tabs = [
+  { icon: "tabler-clipboard", title: "Project Info" },
+  { icon: "tabler-flag", title: "Milestones & Goals" },
+  { icon: "tabler-folder", title: "Documents" },
+] as const;
+
+const setTabFromQuery = () => {
+  try {
+    const q = String(route.query.tab || tabKeys[0]);
+    const idx = (tabKeys as readonly string[]).indexOf(q);
+    jobTab.value = idx === -1 ? 0 : idx;
+  } catch (e) {
+    jobTab.value = 0;
+  }
+};
+
+onMounted(() => {
+  resolveJob();
+  setTabFromQuery();
+});
 watch(() => route.params.id, resolveJob);
 watch(
   () => jobsStore.byId(route.params.id),
@@ -93,13 +119,32 @@ watch(
   }
 );
 
-const jobTab = ref(0);
+// keep jobTab in sync with the route query param
+watch(
+  () => route.query.tab,
+  () => {
+    setTabFromQuery();
+  }
+);
 
-const tabs = [
-  { icon: "tabler-clipboard", title: "Project Info" },
-  { icon: "tabler-flag", title: "Milestones & Goals" },
-  { icon: "tabler-users", title: "Stakeholders" },
-] as const;
+// update the route when the user changes tabs
+watch(
+  () => jobTab.value,
+  (val) => {
+    if (val == null) return;
+    const key = (tabKeys as readonly string[])[val] || tabKeys[0];
+    if (String(route.query.tab) === key) return;
+    try {
+      router.replace({
+        name: route.name as any,
+        params: route.params,
+        query: { ...(route.query || {}), tab: key },
+      });
+    } catch (e) {
+      // ignore router replace errors
+    }
+  }
+);
 
 // Drawer and dialog refs
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
@@ -291,6 +336,25 @@ const performDeleteStakeholder = () => {
   deleteStakeholderCandidateId.value = null;
 };
 
+// Handle todo creation from documents tab
+const handleDocumentTodoRequest = (payload: {
+  initial: Record<string, any>;
+  collaborators: Array<{
+    id: number | string;
+    name: string;
+    avatarUrl?: string | null;
+  }>;
+}) => {
+  addTodoInitial.value = payload?.initial ?? null;
+  isAddTodoDrawerVisible.value = true;
+  nextTick(() => {
+    try {
+      addTodoDrawerRef.value?.openWith?.(payload?.initial);
+    } catch {}
+    addTodoInitial.value = null;
+  });
+};
+
 const onTodoCreated = (payload: any) => {
   try {
     try {
@@ -370,7 +434,10 @@ const closeMeetingDrawer = () => {
           </VWindowItem>
 
           <VWindowItem>
-            <JobStakeholdersTab :job-id="job.id" />
+            <JobDocumentsTab
+              :job-id="job.id"
+              @open-add-todo="handleDocumentTodoRequest"
+            />
           </VWindowItem>
         </VWindow>
       </VCol>

@@ -65,6 +65,26 @@ export const db: DB = {
           note: "Align drawings with latest BIM model.",
         },
       ],
+      documents: [
+        {
+          id: 1,
+          category: "PDF",
+          type: "Contract",
+          name: "Project Agreement",
+          note: "Main contract document",
+          fileUrl: "/documents/project-agreement.pdf",
+          createdAt: "2024-03-28T12:00:00Z",
+        },
+        {
+          id: 2,
+          category: "PDF",
+          type: "Proposals",
+          name: "Initial Concept Proposal",
+          note: "First design proposal submitted to client",
+          fileUrl: "/documents/concept-proposal.pdf",
+          createdAt: "2024-04-01T10:00:00Z",
+        },
+      ],
       createdAt: "2024-03-28T12:00:00Z",
     },
     {
@@ -124,6 +144,17 @@ export const db: DB = {
           note: "Deliver training manuals and orientation.",
         },
       ],
+      documents: [
+        {
+          id: 1,
+          category: "PDF",
+          type: "Contract",
+          name: "Exhibition Contract",
+          note: "Pavilion setup and teardown agreement",
+          fileUrl: "/documents/exhibition-contract.pdf",
+          createdAt: "2024-02-12T08:00:00Z",
+        },
+      ],
       createdAt: "2024-02-01T10:15:00Z",
     },
     {
@@ -172,6 +203,17 @@ export const db: DB = {
           dueDate: "2024-08-18T18:00:00Z",
           priority: "Normal",
           note: "Coordinate snagging with facility team.",
+        },
+      ],
+      documents: [
+        {
+          id: 1,
+          category: "PDF",
+          type: "Proposals",
+          name: "Renovation Proposal",
+          note: "Phased renovation plan and timeline",
+          fileUrl: "/documents/renovation-proposal.pdf",
+          createdAt: "2024-06-10T09:30:00Z",
         },
       ],
       createdAt: "2024-05-20T14:45:00Z",
