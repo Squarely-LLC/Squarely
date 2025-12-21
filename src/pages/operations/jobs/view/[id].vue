@@ -10,6 +10,8 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
+import AddSiteSurveysDrawer from "@/views/apps/todo/list/AddSiteSurveysDrawer.vue";
+import AddSnaglistsDrawer from "@/views/apps/todo/list/AddSnaglistsDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import JobCommunicationTab from "@/views/operations/jobs/view/JobCommunicationTab.vue";
 import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
@@ -163,6 +165,10 @@ const addTodoInitial = ref<any | null>(null);
 const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
 const isAddMeetingOpen = ref(false);
 const lockMeetingRelatedTo = ref(false);
+const addSurveyRef = ref<InstanceType<typeof AddSiteSurveysDrawer> | null>(null);
+const isAddSurveyOpen = ref(false);
+const addSnagRef = ref<InstanceType<typeof AddSnaglistsDrawer> | null>(null);
+const isAddSnagOpen = ref(false);
 
 const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
@@ -328,6 +334,120 @@ const handleAddMeetingFromCommunication = () => {
   });
 };
 
+const handleAddSurveyFromCommunication = () => {
+  nextTick(() => {
+    try {
+      const linkedSet = new Set<string | number>();
+      const linkedContacts: Array<{
+        id: number | string;
+        name: string;
+        avatarUrl: string | null;
+        type: "contact";
+        roles: ["contact"];
+        contactId: number | string;
+      }> = [];
+
+      const addContactById = (id?: number | null) => {
+        if (id === null || id === undefined) return;
+        const key = String(id);
+        if (linkedSet.has(key)) return;
+        linkedSet.add(key);
+        const entry = contactsStore.byId(id);
+        linkedContacts.push({
+          id,
+          contactId: id,
+          name: entry?.fullName || `Contact ${id}`,
+          avatarUrl: entry?.picture || null,
+          type: "contact",
+          roles: ["contact"],
+        });
+      };
+
+      (job.value?.stakeholders || []).forEach((s) =>
+        addContactById(s.contactId)
+      );
+      (job.value?.collaborators || []).forEach((cId) =>
+        addContactById(Number(cId))
+      );
+      addContactById(job.value?.relatedTo ?? null);
+
+      addSurveyRef.value?.openWith?.({
+        title: `Site Survey: ${job.value?.name || "Project"}`,
+        initialStart: new Date(),
+        durationMins: 60,
+        linkedTo: linkedContacts,
+        relatedTo: job.value
+          ? {
+              id: job.value.id,
+              name: job.value.name,
+              type: "job",
+            }
+          : null,
+        attendees: [],
+        notes: `Site survey for ${job.value?.name || "project"}`,
+      });
+    } catch {}
+    isAddSurveyOpen.value = true;
+  });
+};
+
+const handleAddSnagFromCommunication = () => {
+  nextTick(() => {
+    try {
+      const linkedSet = new Set<string | number>();
+      const linkedContacts: Array<{
+        id: number | string;
+        name: string;
+        avatarUrl: string | null;
+        type: "contact";
+        roles: ["contact"];
+        contactId: number | string;
+      }> = [];
+
+      const addContactById = (id?: number | null) => {
+        if (id === null || id === undefined) return;
+        const key = String(id);
+        if (linkedSet.has(key)) return;
+        linkedSet.add(key);
+        const entry = contactsStore.byId(id);
+        linkedContacts.push({
+          id,
+          contactId: id,
+          name: entry?.fullName || `Contact ${id}`,
+          avatarUrl: entry?.picture || null,
+          type: "contact",
+          roles: ["contact"],
+        });
+      };
+
+      (job.value?.stakeholders || []).forEach((s) =>
+        addContactById(s.contactId)
+      );
+      (job.value?.collaborators || []).forEach((cId) =>
+        addContactById(Number(cId))
+      );
+      addContactById(job.value?.relatedTo ?? null);
+
+      addSnagRef.value?.openWith?.({
+        title: `Snaglist: ${job.value?.name || "Project"}`,
+        initialStart: new Date(),
+        durationMins: 60,
+        linkedTo: linkedContacts,
+        relatedTo: job.value
+          ? {
+              id: job.value.id,
+              name: job.value.name,
+              type: "job",
+            }
+          : null,
+        attendees: [],
+        notes: `Snaglist for ${job.value?.name || "project"}`,
+      });
+    } catch {}
+    isAddSnagOpen.value = true;
+  });
+};
+
 const handleStakeholderEmail = (contact: {
   id: number;
   name: string;
@@ -473,6 +593,14 @@ const closeMeetingDrawer = () => {
   isAddMeetingOpen.value = false;
   lockMeetingRelatedTo.value = false;
 };
+
+const closeSurveyDrawer = () => {
+  isAddSurveyOpen.value = false;
+};
+
+const closeSnagDrawer = () => {
+  isAddSnagOpen.value = false;
+};
 </script>
 
 <template>
@@ -488,11 +616,11 @@ const closeMeetingDrawer = () => {
       <VCol cols="12" md="5" lg="4">
         <JobSummaryCard :job="job" :contact-directory="contactDirectory" />
 
-        <JobStakeholdersCard
-          :job="job"
-          :contact-directory="contactDirectory"
-          class="mt-4"
-          @add-stakeholder="handleAddStakeholder"
+    <JobStakeholdersCard
+      :job="job"
+      :contact-directory="contactDirectory"
+      class="mt-4"
+      @add-stakeholder="handleAddStakeholder"
           @remove-stakeholder="handleRemoveStakeholder"
           @todo="handleStakeholderTodo"
           @meeting="handleStakeholderMeeting"
@@ -519,11 +647,13 @@ const closeMeetingDrawer = () => {
           </VWindowItem>
 
           <VWindowItem>
-            <JobCommunicationTab
-              :job-id="job.id"
-              @open-add-meeting="handleAddMeetingFromCommunication"
-            />
-          </VWindowItem>
+          <JobCommunicationTab
+            :job-id="job.id"
+            @open-add-meeting="handleAddMeetingFromCommunication"
+            @open-add-survey="handleAddSurveyFromCommunication"
+            @open-add-snag="handleAddSnagFromCommunication"
+          />
+        </VWindowItem>
 
           <VWindowItem>
             <JobDocumentsTab
@@ -556,6 +686,26 @@ const closeMeetingDrawer = () => {
       :lock-related-to="lockMeetingRelatedTo"
       @cancel="closeMeetingDrawer"
       @save="onMeetingCreated"
+    />
+
+    <!-- Site Survey Drawer -->
+    <AddSiteSurveysDrawer
+      ref="addSurveyRef"
+      v-model:modelValue="isAddSurveyOpen"
+      :contacts="contactOptions"
+      :lock-related-to="true"
+      @cancel="closeSurveyDrawer"
+      @save="closeSurveyDrawer"
+    />
+
+    <!-- Snaglist Drawer -->
+    <AddSnaglistsDrawer
+      ref="addSnagRef"
+      v-model:modelValue="isAddSnagOpen"
+      :contacts="contactOptions"
+      :lock-related-to="true"
+      @cancel="closeSnagDrawer"
+      @save="closeSnagDrawer"
     />
 
     <!-- Email Dialog -->
