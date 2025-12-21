@@ -244,6 +244,7 @@ export const useTodos = defineStore("todos", {
         endAt: computeEndAt(startAt, duration),
         type: (meeting.type as Meeting["type"]) || "Sales",
         linkedTo: (meeting.linkedTo as any) || [],
+        relatedTo: (meeting as any).relatedTo || null,
         location: meeting.location || "",
         note: meeting.note || "",
         attachments: meeting.attachments || [],
@@ -265,17 +266,21 @@ export const useTodos = defineStore("todos", {
       if (idx === -1) return;
       const prev = this.meetings[idx];
       const startAt = patch.startAt ?? prev.startAt;
-      const duration =
-        typeof patch.duration === "number" ? patch.duration : prev.duration;
+        const duration =
+          typeof patch.duration === "number" ? patch.duration : prev.duration;
 
-      const next: Meeting = {
-        ...prev,
-        ...patch,
-        endAt: computeEndAt(startAt, duration),
-        updatedAt: new Date().toISOString(),
-      };
-      this.meetings.splice(idx, 1, next);
-      return next;
+        const next: Meeting = {
+          ...prev,
+          ...patch,
+          relatedTo:
+            patch.relatedTo !== undefined
+              ? (patch.relatedTo as any)
+              : prev.relatedTo ?? null,
+          endAt: computeEndAt(startAt, duration),
+          updatedAt: new Date().toISOString(),
+        };
+        this.meetings.splice(idx, 1, next);
+        return next;
     },
 
     removeMeeting(id: number | string) {

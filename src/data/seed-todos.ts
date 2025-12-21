@@ -37,6 +37,20 @@ const C: Record<string, ContactRef> = new Proxy(
   }
 ) as Record<string, ContactRef>;
 
+// shared meeting time helpers
+const MEET_NOW = new Date();
+const atMin = (mins: number) => {
+  const d = new Date(MEET_NOW);
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
+};
+
+const endAtFrom = (startISO: string, mins: number) => {
+  const d = new Date(startISO);
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
+};
+
 // 1 day in ms
 const DAY = 86400000;
 // === paste the big todos array here as a plain array (no ref) ===
@@ -2862,20 +2876,39 @@ export const SeedTodos: ToDo[] = [
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
+  {
+    id: 9,
+    subject: "Project sync — HQ Renovation",
+    startAt: atMin(12 * 60), // later today
+    duration: 60,
+    type: "Operation",
+    linkedTo: [C.ted, C.pierre],
+    relatedTo: { id: 3, name: "Headquarters Renovation", type: "job" },
+    location: "Zoom",
+    note: "Progress check with stakeholders",
+    attachments: [],
+    requestedBy: { id: C.ted.id, name: C.ted.name },
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(12 * 60), 60),
+  },
+  {
+    id: 10,
+    subject: "Client review — Expo Pavilion",
+    startAt: atMin(2 * 24 * 60 + 11 * 60), // in 2 days
+    duration: 45,
+    type: "Brief",
+    linkedTo: [C.dana, C.alex],
+    relatedTo: { id: 2, name: "Expo Pavilion", type: "job" },
+    location: "Google Meet",
+    note: "Design review with sponsor",
+    attachments: [],
+    requestedBy: { id: C.alex.id, name: C.alex.name },
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(2 * 24 * 60 + 11 * 60), 45),
+  },
 ];
-
-const MEET_NOW = new Date();
-const atMin = (mins: number) => {
-  const d = new Date(MEET_NOW);
-  d.setMinutes(d.getMinutes() + mins);
-  return d.toISOString();
-};
-
-const endAtFrom = (startISO: string, mins: number) => {
-  const d = new Date(startISO);
-  d.setMinutes(d.getMinutes() + mins);
-  return d.toISOString();
-};
 
 export const SeedMeetings: Meeting[] = [
   {
@@ -2997,5 +3030,37 @@ export const SeedMeetings: Meeting[] = [
     createdAt: MEET_NOW.toISOString(),
     updatedAt: MEET_NOW.toISOString(),
     endAt: endAtFrom(atMin(7 * 24 * 60 + 15 * 60), 40),
+  },
+  {
+    id: 9,
+    subject: "Project sync HQ Renovation",
+    startAt: atMin(12 * 60), // later today
+    duration: 60,
+    type: "Operation",
+    linkedTo: [C.ted, C.pierre],
+    relatedTo: { id: 3, name: "Headquarters Renovation", type: "job" },
+    location: "Zoom",
+    note: "Progress check with stakeholders",
+    attachments: [],
+    requestedBy: { id: C.ted.id, name: C.ted.name },
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(12 * 60), 60),
+  },
+  {
+    id: 10,
+    subject: "Client review \u0192?\u00a0Expo Pavilion",
+    startAt: atMin(2 * 24 * 60 + 11 * 60), // in 2 days
+    duration: 45,
+    type: "Brief",
+    linkedTo: [C.dana, C.alex],
+    relatedTo: { id: 2, name: "Expo Pavilion", type: "job" },
+    location: "Google Meet",
+    note: "Design review with sponsor",
+    attachments: [],
+    requestedBy: { id: C.alex.id, name: C.alex.name },
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(2 * 24 * 60 + 11 * 60), 45),
   },
 ];

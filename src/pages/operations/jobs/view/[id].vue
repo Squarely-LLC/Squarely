@@ -162,6 +162,7 @@ const addTodoInitial = ref<any | null>(null);
 
 const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
 const isAddMeetingOpen = ref(false);
+const lockMeetingRelatedTo = ref(false);
 
 const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
@@ -221,6 +222,7 @@ const handleStakeholderMeeting = (contact: {
   name: string;
   avatar: string | null;
 }) => {
+  lockMeetingRelatedTo.value = false;
   nextTick(() => {
     try {
       addMeetingRef.value?.openWith?.({
@@ -268,6 +270,7 @@ const handleStakeholderMeeting = (contact: {
 };
 
 const handleAddMeetingFromCommunication = () => {
+  lockMeetingRelatedTo.value = true;
   nextTick(() => {
     try {
       const linkedSet = new Set<string | number>();
@@ -304,28 +307,18 @@ const handleAddMeetingFromCommunication = () => {
       );
       addContactById(job.value?.relatedTo ?? null);
 
-      const relatedContactId = job.value?.relatedTo ?? null;
-      const relatedContactEntry =
-        relatedContactId !== null && relatedContactId !== undefined
-          ? contactsStore.byId(relatedContactId)
-          : null;
-
       addMeetingRef.value?.openWith?.({
         title: `Meeting: ${job.value?.name || "Project"}`,
         initialStart: new Date(),
         durationMins: 60,
         linkedTo: linkedContacts,
-        relatedTo:
-          relatedContactId !== null && relatedContactId !== undefined
-            ? {
-                id: relatedContactId,
-                name:
-                  relatedContactEntry?.fullName ||
-                  relatedContactEntry?.name ||
-                  `Contact ${relatedContactId}`,
-                type: "contact",
-              }
-            : null,
+        relatedTo: job.value
+          ? {
+              id: job.value.id,
+              name: job.value.name,
+              type: "job",
+            }
+          : null,
         attendees: [],
         notes: `Meeting regarding ${job.value?.name || "project"}`,
         // Don't prefill meetingType, location, or locationDetails when adding from communication tab
@@ -472,11 +465,13 @@ const onMeetingCreated = (payload: any) => {
     notifications.push("Meeting created", "success", 3500);
   } finally {
     isAddMeetingOpen.value = false;
+    lockMeetingRelatedTo.value = false;
   }
 };
 
 const closeMeetingDrawer = () => {
   isAddMeetingOpen.value = false;
+  lockMeetingRelatedTo.value = false;
 };
 </script>
 
@@ -558,6 +553,7 @@ const closeMeetingDrawer = () => {
       ref="addMeetingRef"
       v-model:modelValue="isAddMeetingOpen"
       :contacts="contactOptions"
+      :lock-related-to="lockMeetingRelatedTo"
       @cancel="closeMeetingDrawer"
       @save="onMeetingCreated"
     />

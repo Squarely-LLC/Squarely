@@ -52,11 +52,13 @@ const props = withDefaults(
     contacts?: ContactRef[];
     // 'contacts' (default) or 'employees' - determines which data is being linked
     source?: "contacts" | "employees";
+    lockRelatedTo?: boolean;
   }>(),
   {
     initialDurationMins: 60,
     contacts: () => [],
     source: "contacts",
+    lockRelatedTo: false,
   }
 );
 
@@ -85,7 +87,7 @@ const locationPreset = ref("");
 const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
-const selectedJobId = ref<string | number | null>(null);
+const selectedRelatedKey = ref<string | null>(null);
 
 // build stable keys so contact/employee ids don't collide
 const contactKey = (id: string | number) => `contact-${id}`;
@@ -101,11 +103,13 @@ const combinedKey = (
     .toLowerCase()
     .trim();
 
-// Jobs for the Related to dropdown
-const jobOptions = computed(() =>
+// Options for the Related to dropdown (jobs only)
+const relatedOptions = computed(() =>
   jobsStore.all.map((job) => ({
     title: job.name,
-    value: job.id,
+    value: `job-${job.id}`,
+    type: "job" as const,
+    rawId: job.id,
   }))
 );
 
@@ -325,8 +329,8 @@ function applyInitial(initial?: any) {
         .map((l: any) => resolveLinkedValue(l))
         .filter((v): v is string => !!v);
     }
-    if (initial.relatedTo) {
-      selectedJobId.value = initial.relatedTo.id;
+    if (initial.relatedTo && initial.relatedTo.type === "job") {
+      selectedRelatedKey.value = `job-${initial.relatedTo.id}`;
     }
     if (initial.attachmentFile)
       attachmentFile.value = initial.attachmentFile as File;
@@ -465,6 +469,19 @@ watch(
 );
 
 watch(
+  () => relatedOptions.value,
+  (opts) => {
+    if (
+      selectedRelatedKey.value &&
+      !opts.some((opt) => opt.value === selectedRelatedKey.value)
+    ) {
+      selectedRelatedKey.value = null;
+    }
+  },
+  { deep: true }
+);
+
+watch(
   () => props.modelValue,
   (open) => {
     if (open) {
@@ -494,7 +511,7 @@ function initialiseForm() {
   locationDetails.value = "";
   notes.value = "";
   attachmentFile.value = null;
-  selectedJobId.value = null;
+  selectedRelatedKey.value = null;
   linkedSearch.value = "";
 }
 
@@ -528,6 +545,10 @@ async function onSubmit() {
 
   const location = buildLocation();
 
+  const relatedOption = relatedOptions.value.find(
+    (opt) => opt.value === selectedRelatedKey.value
+  );
+
   const payload: NewMeetingPayload = {
     id: `${Date.now()}`,
     // primary fields used by this drawer
@@ -544,11 +565,11 @@ async function onSubmit() {
     meetingType: meetingType.value,
     linkedTo: linkedContactsPayload.value,
     attachmentFile: attachmentFile.value,
-    relatedTo: selectedJobId.value
+    relatedTo: relatedOption
       ? {
-          id: selectedJobId.value,
-          name: jobsStore.byId(selectedJobId.value)?.name || "",
-          type: "job",
+          id: relatedOption.rawId,
+          name: relatedOption.title,
+          type: relatedOption.type,
         }
       : null,
     // compatibility fields expected by todos store and other consumers
@@ -749,11 +770,14 @@ function toDateTimeLocalString(input?: string | Date) {
               <!-- Related to job selection -->
               <VCol cols="12">
                 <AppSelect
-                  v-model="selectedJobId"
+                  v-model="selectedRelatedKey"
                   label="Related to"
                   placeholder="Select a job"
-                  :items="jobOptions"
+                  item-title="title"
+                  item-value="value"
+                  :items="relatedOptions"
                   clearable
+                  :disabled="props.lockRelatedTo"
                 >
                   <template #prepend-inner>
                     <VIcon icon="tabler-briefcase" size="20" class="me-2" />

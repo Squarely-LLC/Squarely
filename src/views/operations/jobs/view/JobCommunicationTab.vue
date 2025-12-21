@@ -19,18 +19,17 @@ const docsList = computed<JobDocument[]>(() => {
   return (Array.isArray(docs) ? docs.slice().reverse() : []).slice();
 });
 
-// Meetings linked to this job
+// Meetings linked to this job (relatedTo.id = jobId)
 const jobMeetings = computed(() => {
   const id = props.jobId;
   if (!id) return [] as any[];
+  const jobIdStr = String(id);
   return (todosStore.meetings || []).filter((m: any) => {
-    // Check if meeting is linked to this job
-    const linked = Array.isArray(m.linkedTo)
-      ? m.linkedTo.some(
-          (l: any) => String(l?.id) === String(id) && l?.type === "job"
-        )
-      : false;
-    return linked;
+    const relatedMatch =
+      m?.relatedTo &&
+      String(m.relatedTo.id) === jobIdStr &&
+      (m.relatedTo.type ? m.relatedTo.type === "job" : true);
+    return relatedMatch;
   });
 });
 
@@ -92,15 +91,6 @@ function openAdd() {
                     <span class="app-timeline-title">{{
                       meeting.subject || "Meeting"
                     }}</span>
-                    <VChip
-                      size="small"
-                      class="timeline-chip"
-                      color="success"
-                      text-color="on-success"
-                      density="compact"
-                    >
-                      Meeting
-                    </VChip>
                   </div>
                   <span class="app-timeline-meta">{{
                     meeting.startAt
