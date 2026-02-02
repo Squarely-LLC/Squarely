@@ -3,6 +3,7 @@ import type {
   ContactDocument,
   ContactProperties,
 } from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
@@ -24,7 +25,7 @@ const emit = defineEmits<{
         name: string;
         avatarUrl?: string | null;
       }>;
-    }
+    },
   ): void;
 }>();
 
@@ -58,7 +59,7 @@ const AutoOpenGroups = defineComponent({
 
     const expandGroups = (
       entries: unknown[],
-      present: Set<string> = new Set<string>()
+      present: Set<string> = new Set<string>(),
     ) => {
       for (const entry of entries) {
         if (!entry || typeof entry !== "object") continue;
@@ -93,7 +94,7 @@ const AutoOpenGroups = defineComponent({
           if (!present.has(id)) autoOpened.delete(id);
         }
       },
-      { immediate: true, deep: true }
+      { immediate: true, deep: true },
     );
 
     return () => null;
@@ -107,27 +108,34 @@ const searchQuery = ref("");
 const itemsPerPage = ref<number>(25);
 const page = ref(1);
 
-const documentTypes: string[] = [
-  "Contract",
-  "Passport",
-  "Visa",
-  "ID Card",
-  "Labor Card",
-  "Health Card",
-  "Insurance Card",
-  "Residency Card",
-  "Other",
-  "Tax Registration",
-  "Trade License",
-  "VAT Certificate",
-  "VAT ,License",
-  "Tax License",
-  "Payslip",
-  "Reimbursements Invoice",
-  "Bank Details",
-  "SOPs",
-  "Proposals",
-];
+const configStore = useConfigStore();
+configStore.init();
+
+const documentTypes = computed(() => {
+  return (
+    configStore.configurations?.crm?.documentTypes || [
+      "Contract",
+      "Passport",
+      "Visa",
+      "ID Card",
+      "Labor Card",
+      "Health Card",
+      "Insurance Card",
+      "Residency Card",
+      "Other",
+      "Tax Registration",
+      "Trade License",
+      "VAT Certificate",
+      "VAT ,License",
+      "Tax License",
+      "Payslip",
+      "Reimbursements Invoice",
+      "Bank Details",
+      "SOPs",
+      "Proposals",
+    ]
+  );
+});
 
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;
 
@@ -201,8 +209,8 @@ function onEmailSend(payload: any) {
     const recipients = Array.isArray(payload?.to)
       ? payload.to.filter(Boolean)
       : payload?.to
-      ? [String(payload.to)]
-      : [];
+        ? [String(payload.to)]
+        : [];
     const subject = String(payload?.subject || "(no subject)");
     const count = recipients.length;
     notifications.push(
@@ -210,7 +218,7 @@ function onEmailSend(payload: any) {
         count ? ` to ${count} recipient${count > 1 ? "s" : ""}` : ""
       }: ${subject}`,
       "success",
-      3500
+      3500,
     );
   } catch (e) {
     try {
@@ -227,7 +235,7 @@ const todoCollaboratorOptions = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
+  })),
 );
 
 function openAddTodoDrawerForDocument(d: ContactDocument) {
@@ -296,7 +304,7 @@ async function openPreview(d: ContactDocument) {
       // eslint-disable-next-line no-console
       console.error(
         "openPreview: anchor open failed, falling back to window.open",
-        err
+        err,
       );
       window.open(url, "_blank");
     }
@@ -308,7 +316,7 @@ async function openPreview(d: ContactDocument) {
       // eslint-disable-next-line no-console
       console.log(
         "openPreview: detected direct URL, opening",
-        raw.slice(0, 200)
+        raw.slice(0, 200),
       );
     } catch {}
     openUrl(raw);
@@ -345,7 +353,7 @@ async function openPreview(d: ContactDocument) {
       // eslint-disable-next-line no-console
       console.log(
         "openPreview: detected root-relative path, opening",
-        absolute
+        absolute,
       );
     } catch {}
     openUrl(absolute);
@@ -358,7 +366,7 @@ async function openPreview(d: ContactDocument) {
     // eslint-disable-next-line no-console
     console.log(
       "openPreview: value looks like plain filename or unsupported URL",
-      raw
+      raw,
     );
   } catch {}
 
@@ -389,11 +397,11 @@ async function openPreview(d: ContactDocument) {
         <h2>No preview available</h2>
         <div>
           The document "<strong>${safe(
-            d.name || raw
+            d.name || raw,
           )}</strong>" does not provide a directly previewable URL.
         </div>
         <div class="note">Stored file identifier: <code>${safe(
-          raw
+          raw,
         )}</code></div>
         <div class="note">To preview this document, attach a file or provide an absolute URL (https://...) when saving.</div>
       </body>
@@ -641,7 +649,7 @@ async function whatsappUserForDocument(d: ContactDocument) {
     notifications.push(
       "Failed to share to WhatsApp: " + String(err ?? "unknown"),
       "error",
-      4000
+      4000,
     );
   }
 }
@@ -653,7 +661,7 @@ function onDialogSave(payload: ContactDocument) {
       "UserTabDocuments.onDialogSave called",
       payload,
       "props.user",
-      props.user
+      props.user,
     );
   } catch {}
   if (!props.user) {
@@ -689,7 +697,7 @@ watch(
   () => props.user && props.user.documents,
   () => {
     localDocs.value = null;
-  }
+  },
 );
 
 defineExpose({ handleAddTodoSaved: onAddTodoSaved });
@@ -705,7 +713,10 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
               <AppSelect
                 v-model="selectedType"
                 placeholder="Filter Type"
-                :items="[{ title: 'All', value: '' }, ...documentTypes.map((t: string) => ({ title: t, value: t }))]"
+                :items="[
+                  { title: 'All', value: '' },
+                  ...documentTypes.map((t: string) => ({ title: t, value: t })),
+                ]"
                 clearable
               />
             </VCol>
@@ -823,8 +834,8 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                 docStatus(item) === 'Expired'
                   ? 'error'
                   : docStatus(item) === 'Expiring'
-                  ? 'warning'
-                  : 'success'
+                    ? 'warning'
+                    : 'success'
               "
               label
               >{{
