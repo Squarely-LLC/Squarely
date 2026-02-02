@@ -25,11 +25,14 @@ try {
     const { db: contactsDb } =
       require("@/plugins/fake-api/handlers/apps/contact/db") as any;
 
-    // register config fake-api handler so /api/configurations is available
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    try {
-      require("@/plugins/fake-api/handlers/config/index") as any;
-    } catch {}
+    // register config fake-api handler only when using local /api (not backend)
+    const apiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+    if (!apiBase || apiBase.startsWith("/")) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      try {
+        require("@/plugins/fake-api/handlers/config/index") as any;
+      } catch {}
+    }
 
     const contactsStore = useContactsStore(store);
     // init reads from localStorage or seeds from db.users; safe to call
@@ -65,6 +68,24 @@ try {
 } catch (error) {
   // eslint-disable-next-line no-console
   // console.warn('employees initialization failed', error);
+}
+
+// Dev-only backend connectivity check (no UI changes)
+try {
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    import("@/utils/api")
+      .then(({ $api }) => $api("/health"))
+      .then((res) => {
+        // eslint-disable-next-line no-console
+        console.info("[api] health ok", res);
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn("[api] health failed", error);
+      });
+  }
+} catch {
+  // ignore dev-only check failures
 }
 
 // Mount vue app

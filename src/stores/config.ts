@@ -1,8 +1,11 @@
 import { db as seedDb } from "@/plugins/fake-api/handlers/config/db";
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
+import { $api } from "@/utils/api";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY = "app.configurations.v1";
+const API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const SHOULD_FETCH_REMOTE = !!API_BASE && API_BASE.startsWith("http");
 
 function loadFromStorage(): AppConfigurations | null {
   if (typeof window === "undefined") return null;
@@ -71,13 +74,15 @@ export const useConfigStore = defineStore("appConfigurations", {
         saveToStorage(this.configurations);
       }
       this.initialized = true;
+
+      if (SHOULD_FETCH_REMOTE) {
+        this.fetchRemote();
+      }
     },
 
     async fetchRemote() {
       try {
-        const res = await fetch("/api/configurations");
-        if (!res.ok) throw new Error("Failed to fetch configurations");
-        const data = await res.json();
+        const data = await $api("/configurations");
         this.configurations = data;
         saveToStorage(this.configurations);
         return this.configurations;
@@ -90,13 +95,11 @@ export const useConfigStore = defineStore("appConfigurations", {
     async saveRemote(patch: Partial<AppConfigurations>) {
       try {
         const payload = normalizePatch(this.configurations, patch || {});
-        const res = await fetch("/api/configurations", {
+        const data = (await $api("/configurations", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error("Failed to save configurations");
-        const data = (await res.json()) as AppConfigurations;
+          headers: { "Content-Type": "application/json" },
+        })) as AppConfigurations;
         // Only update sections that were part of the payload to avoid
         // clobbering other in-memory edits from different tabs/views.
         const keys = Object.keys(payload || {}) as (keyof AppConfigurations)[];
