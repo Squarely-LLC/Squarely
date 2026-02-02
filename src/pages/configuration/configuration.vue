@@ -17,8 +17,8 @@ const tabsData = [
   { icon: "tabler-currency-dollar", title: "Financial" },
   { icon: "tabler-man", title: "Human Resources" },
   { icon: "tabler-hierarchy", title: "CRM" },
-  { icon: "tabler-map-pin", title: "Location" },
-  { icon: "tabler-bell-ringing", title: "Notifications" },
+  // { icon: "tabler-map-pin", title: "Location" },
+  // { icon: "tabler-bell-ringing", title: "Notifications" },
 ];
 
 // stable keys for tabs used in the URL query param (order must match tabsData)

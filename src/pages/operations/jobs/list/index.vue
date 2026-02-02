@@ -432,29 +432,54 @@ const handleJobAction = (action: string, job: JobProperties) => {
     case "meeting":
       nextTick(() => {
         try {
+          // Build linkedTo list from stakeholders, collaborators, and relatedTo
+          const linkedSet = new Set<string | number>();
+          const linkedContacts: Array<{
+            id: number | string;
+            name: string;
+            avatarUrl: string | null;
+            type: "contact";
+            roles: ["contact"];
+            contactId: number | string;
+          }> = [];
+
+          const addContactById = (id?: number | null) => {
+            if (id === null || id === undefined) return;
+            const key = String(id);
+            if (linkedSet.has(key)) return;
+            linkedSet.add(key);
+            const entry = contactsStore.byId(id);
+            linkedContacts.push({
+              id,
+              contactId: id,
+              name: entry?.fullName || `Contact ${id}`,
+              avatarUrl: entry?.picture || null,
+              type: "contact",
+              roles: ["contact"],
+            });
+          };
+
+          // Add stakeholders
+          (job.stakeholders || []).forEach((s) => addContactById(s.contactId));
+          // Add collaborators
+          (job.collaborators || []).forEach((cId) =>
+            addContactById(Number(cId)),
+          );
+          // Add relatedTo
+          addContactById(job.relatedTo ?? null);
+
           addMeetingRef.value?.openWith?.({
             title: `Meeting: ${job.name}`,
             initialStart: new Date(),
             durationMins: 60,
-            linkedTo: [
-              {
-                id: job.id,
-                name: job.name,
-                avatarUrl: job.avatar || null,
-                type: "job",
-              },
-            ],
-            attendees: job.relatedTo
-              ? [
-                  {
-                    id: job.relatedTo as number,
-                    name: relatedContactName(job),
-                    avatarUrl: getContactEntry(job.relatedTo)?.picture || null,
-                  },
-                ]
-              : [],
-            notes: job.note || "",
-            location: job.location || "",
+            linkedTo: linkedContacts,
+            relatedTo: {
+              id: job.id,
+              name: job.name,
+              type: "job",
+            },
+            attendees: [],
+            notes: `Meeting regarding ${job.name}`,
           });
         } catch {}
         isAddMeetingOpen.value = true;
