@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useConfigStore } from "@/stores/config";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import type { VForm } from "vuetify/components/VForm";
 import {
@@ -23,11 +24,20 @@ const emit = defineEmits<Emit>();
 const display = useDisplay();
 const isFormValid = ref(false);
 const refForm = ref<VForm | undefined>();
+const configStore = useConfigStore();
+configStore.init();
+
+const defaultContactType = computed(() => {
+  const configType =
+    configStore.configurations?.crm?.DefaultContactType || "Individual";
+  // Map "Organization" from config to "Entity" used in the form
+  return configType === "Organization" ? "Entity" : configType;
+});
 
 const localContact = ref<Partial<ContactProperties>>({
   fullName: "",
   class: "Contact",
-  type: "Individual",
+  type: defaultContactType.value,
   category: "General",
   email: "",
   number: "",
@@ -87,12 +97,23 @@ const LB_DEFAULT =
   countryOptions.find((c) => c.code === "LB") || countryOptions[0];
 const selectedCountry = ref(LB_DEFAULT);
 
-// always default to LB when dialog opens
+// always default to LB and correct contact type when dialog opens
 watch(
   () => props.isDialogVisible,
   (open) => {
-    if (open) selectedCountry.value = LB_DEFAULT;
-  }
+    if (open) {
+      selectedCountry.value = LB_DEFAULT;
+      const computedType = defaultContactType.value;
+      console.log(
+        "Dialog opened - Setting contact type to:",
+        computedType,
+        "Config value:",
+        configStore.configurations?.crm?.DefaultContactType,
+      );
+      localContact.value.type = computedType;
+    }
+  },
+  { flush: "post" },
 );
 
 // (kept util if you ever want emoji flags)
@@ -101,7 +122,7 @@ const countryFlag = (cc: string) => {
   const upper = cc.toUpperCase();
   if (upper.length !== 2) return "";
   return upper.replace(/./g, (ch) =>
-    String.fromCodePoint(127397 + ch.charCodeAt(0))
+    String.fromCodePoint(127397 + ch.charCodeAt(0)),
   );
 };
 
@@ -114,7 +135,7 @@ const resetForm = () => {
   localContact.value = {
     fullName: "",
     class: "Contact",
-    type: "Individual",
+    type: defaultContactType.value,
     category: "General",
     email: "",
     number: "",
@@ -145,7 +166,7 @@ const onSubmit = async () => {
 
   localContact.value.number = withDialAttached(
     String(localContact.value.number ?? ""),
-    selectedCountry.value.dial
+    selectedCountry.value.dial,
   );
 
   emit("submit", { ...localContact.value });

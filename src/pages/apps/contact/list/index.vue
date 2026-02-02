@@ -1,5 +1,6 @@
 <!-- Contacts page -->
 <script setup lang="ts">
+import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
@@ -51,10 +52,10 @@ const headers = [
 ];
 
 const roleFilter = computed(() =>
-  selectedRole.value ? selectedRole.value : undefined
+  selectedRole.value ? selectedRole.value : undefined,
 );
 const planFilter = computed(() =>
-  selectedPlan.value ? selectedPlan.value : undefined
+  selectedPlan.value ? selectedPlan.value : undefined,
 );
 const statusFilter = computed(() => {
   if (!selectedStatus.value) return undefined;
@@ -64,6 +65,8 @@ const statusFilter = computed(() => {
 
 const contactsStore = useContactsStore();
 contactsStore.init();
+
+const configStore = useConfigStore();
 
 watch(selectedSort, (val) => {
   if (!val) {
@@ -206,7 +209,7 @@ type ConnectionDisplay = ContactConnection & {
 };
 
 const decorateConnections = (
-  connections: ContactConnection[] | undefined | null
+  connections: ContactConnection[] | undefined | null,
 ): ConnectionDisplay[] => {
   if (!Array.isArray(connections) || !connections.length) return [];
 
@@ -236,12 +239,20 @@ const roles = [
   { title: "Supplier", value: "Supplier" },
   { title: "Owner", value: "Owner" },
 ];
-const plans = [
-  { title: "All", value: "" },
-  { title: "General", value: "General" },
-  { title: "Real Estate", value: "Real Estate" },
-  { title: "VIP", value: "VIP" },
-];
+
+const plans = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const orgCategories = crmConfig?.organizationCategories || [];
+  const indCategories = crmConfig?.individualCategories || [];
+
+  // Combine both arrays and remove duplicates
+  const allCategories = [...new Set([...orgCategories, ...indCategories])];
+
+  return [
+    { title: "All", value: "" },
+    ...allCategories.map((cat) => ({ title: cat, value: cat })),
+  ];
+});
 
 const statusOptions = [
   { title: "All", value: "" },
@@ -325,7 +336,7 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
     } catch (error) {
       console.warn(
         "structuredClone failed for contact, falling back to JSON:",
-        error
+        error,
       );
     }
   }
@@ -370,11 +381,11 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     const referencingTodos = todosStore.items.filter(
       (t) =>
         Array.isArray(t.collaborators) &&
-        t.collaborators.some((c) => Number(c.id) === Number(id))
+        t.collaborators.some((c) => Number(c.id) === Number(id)),
     );
     if (referencingTodos.length) {
       reasons.push(
-        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`
+        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`,
       );
     }
 
@@ -384,11 +395,11 @@ const findDeleteBlockingReasons = (id: number): string[] => {
       .filter(
         (s) =>
           Array.isArray(s.collaborators) &&
-          s.collaborators.some((c) => Number(c.id) === Number(id))
+          s.collaborators.some((c) => Number(c.id) === Number(id)),
       );
     if (stepRefs.length) {
       reasons.push(
-        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`
+        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`,
       );
     }
 
@@ -403,7 +414,7 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     const messageRefs = todosStore.items
       .flatMap((t) => t.messages || [])
       .filter(
-        (m) => m && m.author && Number((m.author as any).id) === Number(id)
+        (m) => m && m.author && Number((m.author as any).id) === Number(id),
       );
     if (messageRefs.length) {
       reasons.push(`Author on ${messageRefs.length} message(s)`);
@@ -421,7 +432,7 @@ const findDeleteBlockingReasons = (id: number): string[] => {
       if (
         Array.isArray(m.notes) &&
         m.notes.some(
-          (n: any) => n && n.author && Number(n.author.id) === Number(id)
+          (n: any) => n && n.author && Number(n.author.id) === Number(id),
         )
       )
         return true;
@@ -435,17 +446,17 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     const referencedInConnections = contactsStore.all.filter(
       (c) =>
         Array.isArray(c.connections) &&
-        c.connections.some((conn) => Number(conn.contactId) === Number(id))
+        c.connections.some((conn) => Number(conn.contactId) === Number(id)),
     );
     if (referencedInConnections.length) {
       reasons.push(
-        `Connected to ${referencedInConnections.length} other contact(s)`
+        `Connected to ${referencedInConnections.length} other contact(s)`,
       );
     }
   } catch (e) {
     // If anything goes wrong, be conservative and block deletion with a generic reason
     reasons.push(
-      "Unable to guarantee safe deletion due to internal check failure"
+      "Unable to guarantee safe deletion due to internal check failure",
     );
   }
 
@@ -503,26 +514,30 @@ const cleanupAndDelete = () => {
   // Remove from top-level collaborators
   todosStore.items = todosStore.items.map((t) => {
     const collaborators = (t.collaborators || []).filter(
-      (c) => Number(c.id) !== Number(id)
+      (c) => Number(c.id) !== Number(id),
     );
 
     // steps
     const steps = (t.steps || []).map((s) => ({
       ...s,
       collaborators: (s.collaborators || []).filter(
-        (c) => Number(c.id) !== Number(id)
+        (c) => Number(c.id) !== Number(id),
       ),
     }));
 
     // activities: remove those authored by the contact
     const activities = (t.activities || []).filter(
-      (a) => !(a && a.author && Number(a.author.id) === Number(id))
+      (a) => !(a && a.author && Number(a.author.id) === Number(id)),
     );
 
     // messages: remove authored messages
     const messages = (t.messages || []).filter(
       (m) =>
-        !(m && (m.author as any) && Number((m.author as any).id) === Number(id))
+        !(
+          m &&
+          (m.author as any) &&
+          Number((m.author as any).id) === Number(id)
+        ),
     );
 
     return { ...t, collaborators, steps, activities, messages };
@@ -535,10 +550,10 @@ const cleanupAndDelete = () => {
         ? null
         : m.requestedBy;
     const linkedTo = (m.linkedTo || []).filter(
-      (l) => Number(l.id) !== Number(id)
+      (l) => Number(l.id) !== Number(id),
     );
     const notes = (m.notes || []).filter(
-      (n: any) => !(n && n.author && Number(n.author.id) === Number(id))
+      (n: any) => !(n && n.author && Number(n.author.id) === Number(id)),
     );
     return { ...m, requestedBy, linkedTo, notes };
   });
@@ -546,7 +561,7 @@ const cleanupAndDelete = () => {
   // Remove connections pointing to this contact
   contactsStore.items = contactsStore.items.map((c) => {
     const connections = (c.connections || []).filter(
-      (conn) => Number(conn.contactId) !== Number(id)
+      (conn) => Number(conn.contactId) !== Number(id),
     );
     return { ...c, connections };
   });
@@ -607,7 +622,7 @@ const contactsOptions = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
+  })),
 );
 
 const openAddTodoDrawerForContact = (contact: ContactProperties) => {
@@ -755,7 +770,8 @@ const updateOptions = (options: any) => {
 
   // keep dropdown visually in sync with header clicks
   const found = sortOptions.find(
-    (opt) => opt.value.key === sortBy.value && opt.value.order === orderBy.value
+    (opt) =>
+      opt.value.key === sortBy.value && opt.value.order === orderBy.value,
   );
   selectedSort.value = found?.value;
 };
@@ -962,7 +978,7 @@ const updateItemsPerPage = (value: number | string) => {
             >
               <template
                 v-for="connection in decorateConnections(
-                  item.connections
+                  item.connections,
                 ).slice(0, 3)"
                 :key="`${item.id}-${connection.contactId}`"
               >
@@ -1203,12 +1219,12 @@ const updateItemsPerPage = (value: number | string) => {
             const recipients = Array.isArray(payload?.to)
               ? payload.to
               : payload?.to
-              ? [String(payload.to)]
-              : [];
+                ? [String(payload.to)]
+                : [];
             notifications.push(
               `Email sent to ${recipients.length} recipient(s)`,
               'success',
-              3500
+              3500,
             );
           } catch (e) {
             notifications.push('Email sent', 'success', 3500);
