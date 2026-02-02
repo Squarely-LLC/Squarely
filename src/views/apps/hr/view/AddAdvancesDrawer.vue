@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import { useConfigStore } from "@/stores/config";
 import { computed, nextTick, ref, watch, withDefaults } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -22,7 +23,7 @@ const props = withDefaults(
   }>(),
   {
     advanceData: null,
-  }
+  },
 );
 
 const emit = defineEmits<{
@@ -31,15 +32,22 @@ const emit = defineEmits<{
   (e: "submit", payload: AdvancePayload): void;
 }>();
 
+const configStore = useConfigStore();
+configStore.init();
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 
-const advanceTypeOptions = [
-  { title: "Salary Advance", value: "salary-advance" },
-  { title: "Emergency", value: "emergency" },
-  { title: "Personal", value: "personal" },
-  { title: "Other", value: "other" },
-];
+const advanceTypeOptions = computed(() => {
+  const advances = configStore.configurations?.hr?.advances;
+  if (!advances || advances.length === 0) {
+    return [];
+  }
+  return advances.map((advance) => ({
+    title: advance,
+    value: advance.toLowerCase(),
+  }));
+});
 
 const emptyForm = (): AdvancePayload => {
   return {
@@ -66,7 +74,7 @@ const toIsoDateString = (value: any): string | null => {
 };
 
 const drawerTitle = computed(() =>
-  props.advanceData ? "Edit Advance" : "Add Advance"
+  props.advanceData ? "Edit Advance" : "Add Advance",
 );
 
 const datePickerConfig = computed(() => ({
@@ -116,14 +124,14 @@ watch(
       nextTick(() => resetForm());
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => props.advanceData,
   (payload) => {
     if (props.isDrawerOpen) hydrateForm(payload);
-  }
+  },
 );
 
 function handleDrawerModelValueUpdate(val: boolean) {

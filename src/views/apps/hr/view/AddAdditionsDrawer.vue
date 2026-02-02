@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import { useConfigStore } from "@/stores/config";
 import { computed, nextTick, ref, watch, withDefaults } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -23,7 +24,7 @@ const props = withDefaults(
   }>(),
   {
     additionData: null,
-  }
+  },
 );
 
 const emit = defineEmits<{
@@ -32,15 +33,22 @@ const emit = defineEmits<{
   (e: "submit", payload: AdditionPayload): void;
 }>();
 
+const configStore = useConfigStore();
+configStore.init();
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 
-const additionTypeOptions = [
-  { title: "Bonus", value: "bonus" },
-  { title: "Commission", value: "commission" },
-  { title: "Overtime", value: "overtime" },
-  { title: "Allowance", value: "allowance" },
-];
+const additionTypeOptions = computed(() => {
+  const additions = configStore.configurations?.hr?.additions;
+  if (!additions || additions.length === 0) {
+    return [];
+  }
+  return additions.map((addition) => ({
+    title: addition,
+    value: addition.toLowerCase(),
+  }));
+});
 
 const relatedTypeOptions = [
   { title: "Not Linked", value: "not-linked" },
@@ -75,7 +83,7 @@ const toIsoDateString = (value: any): string | null => {
 };
 
 const drawerTitle = computed(() =>
-  props.additionData ? "Edit Addition" : "Add Addition"
+  props.additionData ? "Edit Addition" : "Add Addition",
 );
 
 const datePickerConfig = computed(() => ({
@@ -125,14 +133,14 @@ watch(
       nextTick(() => resetForm());
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => props.additionData,
   (payload) => {
     if (props.isDrawerOpen) hydrateForm(payload);
-  }
+  },
 );
 
 function handleDrawerModelValueUpdate(val: boolean) {

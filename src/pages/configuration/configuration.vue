@@ -15,7 +15,7 @@ const router = useRouter();
 const tabsData = [
   { icon: "tabler-gavel", title: "Legal" },
   { icon: "tabler-currency-dollar", title: "Financial" },
-  { icon: "tabler-man", title: "Human Ressources" },
+  { icon: "tabler-man", title: "Human Resources" },
   { icon: "tabler-hierarchy", title: "CRM" },
   { icon: "tabler-map-pin", title: "Location" },
   { icon: "tabler-bell-ringing", title: "Notifications" },
@@ -52,7 +52,7 @@ watch(
   () => route.query.tab,
   () => {
     setTabFromQuery();
-  }
+  },
 );
 
 // update the route when the user changes tabs
@@ -71,7 +71,7 @@ watch(
     } catch (e) {
       // ignore router replace errors
     }
-  }
+  },
 );
 </script>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import { useConfigStore } from "@/stores/config";
 import { computed, nextTick, ref, watch, withDefaults } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -21,7 +22,7 @@ const props = withDefaults(
   }>(),
   {
     deductionData: null,
-  }
+  },
 );
 
 const emit = defineEmits<{
@@ -30,15 +31,22 @@ const emit = defineEmits<{
   (e: "submit", payload: DeductionPayload): void;
 }>();
 
+const configStore = useConfigStore();
+configStore.init();
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 
-const deductionTypeOptions = [
-  { title: "Absence", value: "absence" },
-  { title: "Late", value: "late" },
-  { title: "Penalty", value: "penalty" },
-  { title: "Other", value: "other" },
-];
+const deductionTypeOptions = computed(() => {
+  const deductions = configStore.configurations?.hr?.deductions;
+  if (!deductions || deductions.length === 0) {
+    return [];
+  }
+  return deductions.map((deduction) => ({
+    title: deduction,
+    value: deduction.toLowerCase(),
+  }));
+});
 
 const emptyForm = (): DeductionPayload => {
   return {
@@ -64,7 +72,7 @@ const toIsoDateString = (value: any): string | null => {
 };
 
 const drawerTitle = computed(() =>
-  props.deductionData ? "Edit Deduction" : "Add Deduction"
+  props.deductionData ? "Edit Deduction" : "Add Deduction",
 );
 
 const datePickerConfig = computed(() => ({
@@ -114,14 +122,14 @@ watch(
       nextTick(() => resetForm());
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => props.deductionData,
   (payload) => {
     if (props.isDrawerOpen) hydrateForm(payload);
-  }
+  },
 );
 
 function handleDrawerModelValueUpdate(val: boolean) {

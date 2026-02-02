@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import { useConfigStore } from "@/stores/config";
 import { computed, nextTick, ref, watch, withDefaults } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -29,7 +30,7 @@ const props = withDefaults(
     employeeName: "",
     availableDays: 0,
     leaveData: null,
-  }
+  },
 );
 
 const emit = defineEmits<{
@@ -38,19 +39,27 @@ const emit = defineEmits<{
   (e: "submit", payload: LeavePayload): void;
 }>();
 
+const configStore = useConfigStore();
+configStore.init();
+
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 
-const typeOptions = [
-  { title: "Vacation", value: "vacation" },
-  { title: "Sick Leave", value: "sick-leave" },
-  { title: "Parental Leave", value: "parental-leave" },
-];
+const typeOptions = computed(() => {
+  const leaveTypes = configStore.configurations?.hr?.leaves?.types;
+  if (!leaveTypes || leaveTypes.length === 0) {
+    return [];
+  }
+  return leaveTypes.map((type) => ({
+    title: type,
+    value: type.toLowerCase().replace(/\s+/g, "-"),
+  }));
+});
 
 const emptyForm = (): LeavePayload => {
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(
-    today.getMonth() + 1
+    today.getMonth() + 1,
   ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   return {
@@ -78,7 +87,7 @@ const toIsoDateString = (value: any): string | null => {
 };
 
 const drawerTitle = computed(() =>
-  props.leaveData ? "Edit Leave" : "Add Leave"
+  props.leaveData ? "Edit Leave" : "Add Leave",
 );
 
 const requestedDays = computed(() => {
@@ -190,14 +199,14 @@ watch(
       nextTick(() => resetForm());
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => props.leaveData,
   (payload) => {
     if (props.isDrawerOpen) hydrateForm(payload);
-  }
+  },
 );
 
 function handleDrawerModelValueUpdate(val: boolean) {
@@ -251,10 +260,7 @@ async function onSubmit() {
   >
     <AppDrawerHeaderSection :title="drawerTitle" @cancel="closeDrawer" />
 
-    <div
-      v-if="employeeName"
-      class="px-6 pb-2 text-body-2 text-medium-emphasis"
-    >
+    <div v-if="employeeName" class="px-6 pb-2 text-body-2 text-medium-emphasis">
       {{ employeeName }}
     </div>
 

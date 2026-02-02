@@ -32,7 +32,7 @@ employeesStore.init();
 const notifications = useNotificationsStore();
 
 // Helper to convert reactive arrays to plain objects
-const toPlain = <T>(value: T): T => {
+const toPlain = <T,>(value: T): T => {
   return JSON.parse(JSON.stringify(value));
 };
 
@@ -70,10 +70,35 @@ const defaultWorkSchedule = {
   Sunday: { active: false, remote: false, from: "09:00", to: "17:00" },
 };
 
+// Helper to get default leave days based on policy (only for new employees)
+const getDefaultLeaveDays = () => {
+  const leavesConfig = configStore.configurations?.hr?.leaves;
+  const policy = leavesConfig?.policy || "Annual leave";
+
+  // Default values based on policy
+  if (policy === "Annual leave") {
+    return 21; // Standard annual leave
+  } else if (policy === "Monthly Accrual") {
+    return 1.75; // 21 days / 12 months
+  }
+  return 0;
+};
+
+// Check if this is a new employee (no attendance data set)
+const isNewEmployee =
+  !props.userData.attendance ||
+  (props.userData.attendance.vacation === undefined &&
+    props.userData.attendance.sickLeave === undefined &&
+    props.userData.attendance.parentalLeave === undefined);
+
 const localAttendance = ref({
-  vacation: props.userData.attendance?.vacation || 0,
-  sickLeave: props.userData.attendance?.sickLeave || 0,
-  parentalLeave: props.userData.attendance?.parentalLeave || 0,
+  vacation:
+    props.userData.attendance?.vacation ??
+    (isNewEmployee ? getDefaultLeaveDays() : 0),
+  sickLeave:
+    props.userData.attendance?.sickLeave ??
+    (isNewEmployee ? getDefaultLeaveDays() : 0),
+  parentalLeave: props.userData.attendance?.parentalLeave ?? 0,
   carryoverDays: props.userData.attendance?.carryoverDays || 0,
   workSchedule: props.userData.attendance?.workSchedule
     ? {
@@ -118,7 +143,7 @@ watch(
       localEmployment.value.department = newEmployment.department || null;
     }
   },
-  { deep: true }
+  { deep: true },
 );
 
 // ==================== COMPUTED PROPERTIES ====================
@@ -134,7 +159,7 @@ const allContracts = computed(() => {
   // Add old single contract if exists and not already in contracts array
   if (props.userData.employment?.contract) {
     const existsInArray = contracts.some(
-      (c) => c.startDate === props.userData.employment?.contract?.startDate
+      (c) => c.startDate === props.userData.employment?.contract?.startDate,
     );
     if (!existsInArray) {
       contracts.push(props.userData.employment.contract);
@@ -150,7 +175,7 @@ const allContracts = computed(() => {
 });
 
 const activeContract = computed(() =>
-  allContracts.value.find((c) => c.status !== "Terminated")
+  allContracts.value.find((c) => c.status !== "Terminated"),
 );
 
 const allPositions = computed(() => {
@@ -186,7 +211,7 @@ const currentSalaryId = computed(() => {
 });
 
 const selectedSalary = computed(
-  () => allSalaries.value.find((s) => s.id === selectedSalaryId.value) || null
+  () => allSalaries.value.find((s) => s.id === selectedSalaryId.value) || null,
 );
 
 const allPaymentMethods = computed(() => {
@@ -196,8 +221,8 @@ const allPaymentMethods = computed(() => {
 const selectedPaymentMethod = computed(
   () =>
     allPaymentMethods.value.find(
-      (pm) => pm.id === selectedPaymentMethodId.value
-    ) || null
+      (pm) => pm.id === selectedPaymentMethodId.value,
+    ) || null,
 );
 
 const departmentOptions = computed(() => {
@@ -228,7 +253,7 @@ const onContractSubmit = (contract: EmployeeContract) => {
   if (selectedContractId.value) {
     // Edit existing contract
     const updatedContracts = currentContracts.map((c) =>
-      c.id === selectedContractId.value ? { ...c, ...contract } : c
+      c.id === selectedContractId.value ? { ...c, ...contract } : c,
     );
 
     employeesStore.updateEmployee(props.userData.id, {
@@ -297,24 +322,24 @@ const terminateContract = (contractId: number) => {
 
 const selectedContract = computed(
   () =>
-    allContracts.value.find((c) => c.id === selectedContractId.value) || null
+    allContracts.value.find((c) => c.id === selectedContractId.value) || null,
 );
 
 const selectedPosition = computed(
   () =>
-    allPositions.value.find((p) => p.id === selectedPositionId.value) || null
+    allPositions.value.find((p) => p.id === selectedPositionId.value) || null,
 );
 
 // ==================== POSITION FUNCTIONS ====================
 const onPositionSubmit = (
-  position: Omit<EmployeePosition, "id" | "createdAt">
+  position: Omit<EmployeePosition, "id" | "createdAt">,
 ) => {
   const currentPositions = props.userData.employment?.positions || [];
 
   if (selectedPositionId.value) {
     // Edit existing position
     const updatedPositions = currentPositions.map((p) =>
-      p.id === selectedPositionId.value ? { ...p, ...position } : p
+      p.id === selectedPositionId.value ? { ...p, ...position } : p,
     );
 
     employeesStore.updateEmployee(props.userData.id, {
@@ -419,7 +444,7 @@ watch(
   (department, previous) => {
     if (department === previous) return;
     saveDepartmentChanges();
-  }
+  },
 );
 
 watch(
@@ -431,19 +456,19 @@ watch(
   (_val, prev) => {
     if (!prev) return;
     updateSalesTeamInfo();
-  }
+  },
 );
 
 // ==================== SALARY FUNCTIONS ====================
 const onSalarySubmit = (
-  salary: Omit<EmployeeSalaryRecord, "id" | "createdAt">
+  salary: Omit<EmployeeSalaryRecord, "id" | "createdAt">,
 ) => {
   const currentSalaries = props.userData.salary?.history || [];
 
   if (selectedSalaryId.value) {
     // Edit existing salary
     const updatedSalaries = currentSalaries.map((s) =>
-      s.id === selectedSalaryId.value ? { ...s, ...salary } : s
+      s.id === selectedSalaryId.value ? { ...s, ...salary } : s,
     );
 
     employeesStore.updateEmployee(props.userData.id, {
@@ -526,7 +551,7 @@ const onPaymentMethodSubmit = (paymentData: any) => {
   if (selectedPaymentMethodId.value) {
     // Update existing payment method
     const updatedMethods = currentMethods.map((pm) =>
-      pm.id === selectedPaymentMethodId.value ? { ...pm, ...paymentData } : pm
+      pm.id === selectedPaymentMethodId.value ? { ...pm, ...paymentData } : pm,
     );
 
     employeesStore.updateEmployee(props.userData.id, {
@@ -587,7 +612,7 @@ const performDeletePayment = () => {
 
   const currentMethods = props.userData.paymentMethods || [];
   const updatedMethods = currentMethods.filter(
-    (pm) => pm.id !== deletePaymentCandidateId.value
+    (pm) => pm.id !== deletePaymentCandidateId.value,
   );
 
   employeesStore.updateEmployee(props.userData.id, {
@@ -641,7 +666,7 @@ const onTerminationSubmit = (terminationData: any) => {
 
   // Check if there are any active contracts remaining
   const hasActiveContract = updatedContracts.some(
-    (c) => c.status !== "Terminated"
+    (c) => c.status !== "Terminated",
   );
 
   // Update employee with new contracts and status
@@ -742,7 +767,7 @@ const onTerminationSubmit = (terminationData: any) => {
                           {{
                             contract.termination?.terminatedAt
                               ? new Date(
-                                  contract.termination.terminatedAt
+                                  contract.termination.terminatedAt,
                                 ).toLocaleDateString()
                               : "N/A"
                           }}
@@ -1114,7 +1139,9 @@ const onTerminationSubmit = (terminationData: any) => {
                   </VChip>
                 </div>
                 <div
-                  v-if="method.type === 'Bank Transfer' && (method as any).bankName"
+                  v-if="
+                    method.type === 'Bank Transfer' && (method as any).bankName
+                  "
                   class="text-caption text-medium-emphasis"
                 >
                   {{ (method as any).bankName }}
@@ -1464,7 +1491,11 @@ const onTerminationSubmit = (terminationData: any) => {
 
             <VCol cols="6" md="2">
               <AppDateTimePicker
-                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].from"
+                v-model="
+                  localAttendance.workSchedule[
+                    day as keyof typeof localAttendance.workSchedule
+                  ].from
+                "
                 label="From / To"
                 placeholder="Select time"
                 :config="{
@@ -1478,7 +1509,11 @@ const onTerminationSubmit = (terminationData: any) => {
 
             <VCol cols="6" md="2">
               <AppDateTimePicker
-                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].to"
+                v-model="
+                  localAttendance.workSchedule[
+                    day as keyof typeof localAttendance.workSchedule
+                  ].to
+                "
                 label=" "
                 placeholder="Select time"
                 :config="{
@@ -1497,7 +1532,11 @@ const onTerminationSubmit = (terminationData: any) => {
               style="padding-block-start: 30px"
             >
               <VSwitch
-                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].active"
+                v-model="
+                  localAttendance.workSchedule[
+                    day as keyof typeof localAttendance.workSchedule
+                  ].active
+                "
                 label="Active"
                 color="success"
                 hide-details
@@ -1512,7 +1551,11 @@ const onTerminationSubmit = (terminationData: any) => {
               style="padding-block-start: 30px"
             >
               <VSwitch
-                v-model="localAttendance.workSchedule[day as keyof typeof localAttendance.workSchedule].remote"
+                v-model="
+                  localAttendance.workSchedule[
+                    day as keyof typeof localAttendance.workSchedule
+                  ].remote
+                "
                 label="Remote"
                 color="primary"
                 hide-details

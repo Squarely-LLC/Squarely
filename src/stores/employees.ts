@@ -4,6 +4,7 @@ import { toRaw } from "vue";
 import { db } from "../plugins/fake-api/handlers/apps/employees/db";
 import type {
   EmployeeAccounting,
+  EmployeeAttendance,
   EmployeeContract,
   EmployeeEmployment,
   EmployeePosition,
@@ -12,6 +13,7 @@ import type {
 } from "../plugins/fake-api/handlers/apps/employees/types";
 
 import type { EmployeeRecord } from "../plugins/fake-api/handlers/apps/employees/types";
+import { useConfigStore } from "./config";
 
 const STORAGE_KEY = "app.employees.v2";
 
@@ -93,7 +95,7 @@ function saveToStorage(employees: EmployeeProperties[]) {
 }
 
 function ensureAccounting(
-  accounting: EmployeeAccounting | undefined | null
+  accounting: EmployeeAccounting | undefined | null,
 ): EmployeeAccounting {
   const base = accounting ? cloneAccounting(accounting) : {};
   return {
@@ -104,7 +106,7 @@ function ensureAccounting(
 }
 
 function ensureRecords(
-  records: EmployeeRecord[] | undefined | null
+  records: EmployeeRecord[] | undefined | null,
 ): EmployeeRecord[] {
   if (!Array.isArray(records)) return [];
   return records.map((r) => ({
@@ -119,7 +121,7 @@ function ensureRecords(
 }
 
 function ensureContract(
-  contract: EmployeeContract | undefined | null
+  contract: EmployeeContract | undefined | null,
 ): EmployeeContract | undefined {
   if (!contract) return undefined;
   return {
@@ -148,14 +150,14 @@ function ensureContract(
 }
 
 function ensureContracts(
-  contracts: EmployeeContract[] | undefined | null
+  contracts: EmployeeContract[] | undefined | null,
 ): EmployeeContract[] | undefined {
   if (!Array.isArray(contracts)) return undefined;
   return contracts.map((c) => ensureContract(c)!).filter(Boolean);
 }
 
 function ensureEmployment(
-  employment: EmployeeEmployment | undefined | null
+  employment: EmployeeEmployment | undefined | null,
 ): EmployeeEmployment | undefined {
   if (!employment) return undefined;
   return {
@@ -183,9 +185,50 @@ function ensureEmployment(
   };
 }
 
+function ensureAttendance(
+  attendance: EmployeeAttendance | undefined | null,
+): EmployeeAttendance {
+  // If attendance data exists, return it as is
+  if (attendance) {
+    return attendance;
+  }
+
+  // For new employees, get default values from HR configuration
+  const configStore = useConfigStore();
+  const leavesConfig = configStore.configurations?.hr?.leaves;
+  const policy = leavesConfig?.policy || "Annual leave";
+
+  // Calculate default leave days based on policy
+  let defaultLeaveDays = 0;
+  if (policy === "Annual leave") {
+    defaultLeaveDays = 21; // Standard annual leave
+  } else if (policy === "Monthly Accrual") {
+    defaultLeaveDays = 1.75; // 21 days / 12 months
+  }
+
+  const defaultWorkSchedule = {
+    Monday: { active: true, remote: false, from: "09:00", to: "17:00" },
+    Tuesday: { active: true, remote: false, from: "09:00", to: "17:00" },
+    Wednesday: { active: true, remote: false, from: "09:00", to: "17:00" },
+    Thursday: { active: true, remote: false, from: "09:00", to: "17:00" },
+    Friday: { active: true, remote: false, from: "09:00", to: "17:00" },
+    Saturday: { active: false, remote: false, from: "09:00", to: "17:00" },
+    Sunday: { active: false, remote: false, from: "09:00", to: "17:00" },
+  };
+
+  return {
+    vacation: defaultLeaveDays,
+    sickLeave: defaultLeaveDays,
+    parentalLeave: 0,
+    carryoverDays: 0,
+    workSchedule: defaultWorkSchedule,
+    allowedExtraTime: 0,
+  };
+}
+
 function normaliseEmployee(
   payload: Partial<EmployeeProperties>,
-  assignedId: number
+  assignedId: number,
 ): EmployeeProperties {
   const now = new Date().toISOString();
 
@@ -209,6 +252,7 @@ function normaliseEmployee(
     worksInSales: payload.worksInSales ?? false,
     createdAt: payload.createdAt || now,
     employment: ensureEmployment(payload.employment),
+    attendance: ensureAttendance(payload.attendance),
     salary: payload.salary || undefined,
     gender: payload.gender || undefined,
     paymentMethods: Array.isArray(payload.paymentMethods)
@@ -219,7 +263,7 @@ function normaliseEmployee(
 
 function mergeEmployee(
   original: EmployeeProperties,
-  patch: Partial<EmployeeProperties>
+  patch: Partial<EmployeeProperties>,
 ): EmployeeProperties {
   const merged = {
     ...original,
@@ -311,7 +355,7 @@ export const useEmployeesStore = defineStore("employees", {
           (_mutation, state) => {
             saveToStorage(cloneEmployeesArray(state.items));
           },
-          { detached: true }
+          { detached: true },
         );
       }
     },
@@ -327,7 +371,7 @@ export const useEmployeesStore = defineStore("employees", {
 
     updateEmployee(id: number | string, patch: Partial<EmployeeProperties>) {
       const index = this.items.findIndex(
-        (contact) => String(contact.id) === String(id)
+        (contact) => String(contact.id) === String(id),
       );
       if (index === -1) return null;
 
@@ -342,7 +386,7 @@ export const useEmployeesStore = defineStore("employees", {
      */
     addRecord(contactId: number | string, record: EmployeeRecord) {
       const index = this.items.findIndex(
-        (contact) => String(contact.id) === String(contactId)
+        (contact) => String(contact.id) === String(contactId),
       );
       if (index === -1) return null;
 
@@ -360,14 +404,14 @@ export const useEmployeesStore = defineStore("employees", {
      */
     updateRecord(contactId: number | string, record: EmployeeRecord) {
       const index = this.items.findIndex(
-        (contact) => String(contact.id) === String(contactId)
+        (contact) => String(contact.id) === String(contactId),
       );
       if (index === -1) return null;
 
       const original = this.items[index];
       const existing = Array.isArray(original.records) ? original.records : [];
       const updatedRecords = existing.map((r) =>
-        String(r.id) === String(record.id) ? { ...r, ...record } : r
+        String(r.id) === String(record.id) ? { ...r, ...record } : r,
       );
 
       const updated = mergeEmployee(original, { records: updatedRecords });
@@ -380,14 +424,14 @@ export const useEmployeesStore = defineStore("employees", {
      */
     removeRecord(contactId: number | string, recordId: number | string) {
       const index = this.items.findIndex(
-        (contact) => String(contact.id) === String(contactId)
+        (contact) => String(contact.id) === String(contactId),
       );
       if (index === -1) return null;
 
       const original = this.items[index];
       const existing = Array.isArray(original.records) ? original.records : [];
       const updatedRecords = existing.filter(
-        (r) => String(r.id) !== String(recordId)
+        (r) => String(r.id) !== String(recordId),
       );
 
       const updated = mergeEmployee(original, { records: updatedRecords });
@@ -397,7 +441,7 @@ export const useEmployeesStore = defineStore("employees", {
 
     removeEmployee(id: number | string) {
       const index = this.items.findIndex(
-        (contact) => String(contact.id) === String(id)
+        (contact) => String(contact.id) === String(id),
       );
       if (index === -1) return;
       this.items.splice(index, 1);
@@ -408,10 +452,10 @@ export const useEmployeesStore = defineStore("employees", {
      */
     addRequest(
       employeeId: number | string,
-      request: Partial<any> & { type: string }
+      request: Partial<any> & { type: string },
     ) {
       const index = this.items.findIndex(
-        (emp) => String(emp.id) === String(employeeId)
+        (emp) => String(emp.id) === String(employeeId),
       );
       if (index === -1) return null;
 
@@ -443,10 +487,10 @@ export const useEmployeesStore = defineStore("employees", {
     updateRequest(
       employeeId: number | string,
       requestId: number | string,
-      patch: Partial<any>
+      patch: Partial<any>,
     ) {
       const index = this.items.findIndex(
-        (emp) => String(emp.id) === String(employeeId)
+        (emp) => String(emp.id) === String(employeeId),
       );
       if (index === -1) return null;
 
@@ -455,7 +499,7 @@ export const useEmployeesStore = defineStore("employees", {
         ? employee.requests
         : [];
       const updatedRequests = existing.map((r) =>
-        String(r.id) === String(requestId) ? { ...r, ...patch } : r
+        String(r.id) === String(requestId) ? { ...r, ...patch } : r,
       );
 
       const updated = mergeEmployee(employee, { requests: updatedRequests });
@@ -468,7 +512,7 @@ export const useEmployeesStore = defineStore("employees", {
      */
     removeRequest(employeeId: number | string, requestId: number | string) {
       const index = this.items.findIndex(
-        (emp) => String(emp.id) === String(employeeId)
+        (emp) => String(emp.id) === String(employeeId),
       );
       if (index === -1) return null;
 
@@ -477,7 +521,7 @@ export const useEmployeesStore = defineStore("employees", {
         ? employee.requests
         : [];
       const updatedRequests = existing.filter(
-        (r) => String(r.id) !== String(requestId)
+        (r) => String(r.id) !== String(requestId),
       );
 
       const updated = mergeEmployee(employee, { requests: updatedRequests });
