@@ -70,62 +70,13 @@ const defaultWorkSchedule = {
   Sunday: { active: false, remote: false, from: "09:00", to: "17:00" },
 };
 
-// Helper to get default leave days based on policy (only for new employees)
-const getDefaultLeaveDays = () => {
-  const leavesConfig = configStore.configurations?.hr?.leaves;
-  const policy = leavesConfig?.policy || "Annual leave";
-
-  // Default values based on policy
-  if (policy === "Annual leave") {
-    return 21; // Standard annual leave
-  } else if (policy === "Monthly Accrual") {
-    return 1.75; // 21 days / 12 months
-  }
-  return 0;
-};
-
-// Check if this is a new employee (no attendance data set)
-const isNewEmployee =
-  !props.userData.attendance ||
-  (props.userData.attendance.vacation === undefined &&
-    props.userData.attendance.sickLeave === undefined &&
-    props.userData.attendance.parentalLeave === undefined);
-
 const localAttendance = ref({
-  vacation:
-    props.userData.attendance?.vacation ??
-    (isNewEmployee ? getDefaultLeaveDays() : 0),
-  sickLeave:
-    props.userData.attendance?.sickLeave ??
-    (isNewEmployee ? getDefaultLeaveDays() : 0),
+  vacation: props.userData.attendance?.vacation ?? 0,
+  sickLeave: props.userData.attendance?.sickLeave ?? 0,
   parentalLeave: props.userData.attendance?.parentalLeave ?? 0,
-  carryoverDays: props.userData.attendance?.carryoverDays || 0,
-  workSchedule: props.userData.attendance?.workSchedule
-    ? {
-        Monday:
-          props.userData.attendance.workSchedule.Monday ||
-          defaultWorkSchedule.Monday,
-        Tuesday:
-          props.userData.attendance.workSchedule.Tuesday ||
-          defaultWorkSchedule.Tuesday,
-        Wednesday:
-          props.userData.attendance.workSchedule.Wednesday ||
-          defaultWorkSchedule.Wednesday,
-        Thursday:
-          props.userData.attendance.workSchedule.Thursday ||
-          defaultWorkSchedule.Thursday,
-        Friday:
-          props.userData.attendance.workSchedule.Friday ||
-          defaultWorkSchedule.Friday,
-        Saturday:
-          props.userData.attendance.workSchedule.Saturday ||
-          defaultWorkSchedule.Saturday,
-        Sunday:
-          props.userData.attendance.workSchedule.Sunday ||
-          defaultWorkSchedule.Sunday,
-      }
-    : defaultWorkSchedule,
-  allowedExtraTime: props.userData.attendance?.allowedExtraTime || 0,
+  carryoverDays: props.userData.attendance?.carryoverDays ?? 0,
+  workSchedule: props.userData.attendance?.workSchedule || defaultWorkSchedule,
+  allowedExtraTime: props.userData.attendance?.allowedExtraTime ?? 0,
 });
 
 const isAttendanceExpanded = ref(false);
