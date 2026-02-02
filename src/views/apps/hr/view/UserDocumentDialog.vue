@@ -2,6 +2,7 @@
 @stylistic/no-eol-whitespace */
 <script setup lang="ts">
 import type { EmployeeDocument } from "@/plugins/fake-api/handlers/apps/employees/types";
+import { useConfigStore } from "@/stores/config";
 import { getFileInfo, saveFile } from "@/utils/fileStore";
 import { computed, reactive, ref, watch } from "vue";
 
@@ -16,6 +17,14 @@ const emits = defineEmits<{
   (e: "update:modelValue", value: boolean): void;
   (e: "save", payload: EmployeeDocument): void;
 }>();
+
+const configStore = useConfigStore();
+configStore.init();
+
+const isDocumentRenewable = computed(() => {
+  const renewable = configStore.configurations?.crm?.documentRenewable;
+  return renewable === "yes";
+});
 
 type FormModel = Partial<EmployeeDocument> & {
   linkUrl?: string | undefined;
@@ -72,7 +81,7 @@ const fileOrLink = computed<string | null>({
     if (!hasAttached) {
       if (!isAcceptableLink(v)) {
         fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
-          ", "
+          ", ",
         )}`;
         // do not set the link if invalid
         return;
@@ -94,7 +103,7 @@ function onHiddenFileChange(e: Event) {
   const okExt = ACCEPTED_EXT.some((ext) => name.endsWith(ext));
   if (!okExt) {
     fileError.value = `Unsupported file type. Allowed: ${ACCEPTED_EXT.join(
-      ","
+      ",",
     )}`;
     // clear any previous file
     clearFile();
@@ -105,7 +114,7 @@ function onHiddenFileChange(e: Event) {
   // validate size
   if (f.size > MAX_BYTES) {
     fileError.value = `File is too large. Max allowed is ${formatBytes(
-      MAX_BYTES
+      MAX_BYTES,
     )}.`;
     clearFile();
     input.value = "";
@@ -216,7 +225,7 @@ function populateForm(d: EmployeeDocument | null | undefined) {
 watch(
   () => props.doc,
   (d) => populateForm(d),
-  { immediate: true }
+  { immediate: true },
 );
 
 // When dialog is opened, we'll populate/reset the form — watch moved lower where `open` is defined.
@@ -296,7 +305,7 @@ async function save() {
   if (!form.fileAttachment && form.linkUrl) {
     if (!isAcceptableLink(form.linkUrl)) {
       fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
-        ", "
+        ", ",
       )}`;
       return;
     }
@@ -354,7 +363,7 @@ watch(
     if (inferred) form.category = inferred as any;
     // clear link when file is attached
     form.linkUrl = undefined;
-  }
+  },
 );
 
 function clearFile() {
@@ -381,7 +390,7 @@ watch(
       // validate that link matches accepted file types
       if (!isAcceptableLink(v)) {
         fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
-          ", "
+          ", ",
         )}`;
       } else {
         fileError.value = null;
@@ -390,7 +399,7 @@ watch(
         if (inferred) form.category = inferred as any;
       }
     }
-  }
+  },
 );
 
 watch(
@@ -399,7 +408,7 @@ watch(
     if (v) {
       form.linkUrl = undefined;
     }
-  }
+  },
 );
 </script>
 
@@ -439,7 +448,7 @@ watch(
             <AppTextField v-model="form.name" label="Name" />
           </VCol>
 
-          <VCol cols="12">
+          <VCol v-if="isDocumentRenewable" cols="12">
             <label class="d-block mb-2">Expiry</label>
             <VExpansionPanels v-model="expiryExpanded">
               <VExpansionPanel>

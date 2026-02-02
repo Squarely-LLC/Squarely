@@ -135,6 +135,11 @@ const documentTypes = computed(() => {
   );
 });
 
+const isDocumentRenewable = computed(() => {
+  const renewable = configStore.configurations?.crm?.documentRenewable;
+  return renewable === "yes" || renewable === true;
+});
+
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;
 
 function docStatus(doc: JobDocument) {
@@ -671,7 +676,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
               />
             </VCol>
 
-            <VCol cols="12" sm="3">
+            <VCol v-if="isDocumentRenewable" cols="12" sm="3">
               <AppSelect
                 v-model="selectedStatus"
                 placeholder="Status"
@@ -755,7 +760,10 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           <template #item.name="{ item }">
             <div>
               <a class="text-link">{{ item.name }}</a>
-              <div class="text-sm text-medium-emphasis">
+              <div
+                v-if="isDocumentRenewable"
+                class="text-sm text-medium-emphasis"
+              >
                 {{
                   item.expiry
                     ? "Expiry: " +
