@@ -63,9 +63,53 @@ const countryCustomFilter = (value: any, query: string, item: any) => {
 };
 
 const classOptions = ["Lead", "Client", "Supplier", "Contact", "Owner"];
-const categoryOptions = ["General", "VIP", "Real Estate"];
 const statusOptions = ["Active", "Dormant", "Potential", "Lost"];
 const typeOptions = ["Entity", "Individual"];
+
+const categoryOptions = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = localContact.value.type;
+
+  let categories: string[] = [];
+  if (contactType === "Entity" || contactType === "Organization") {
+    categories = crmConfig?.organizationCategories || ["General"];
+  } else {
+    categories = crmConfig?.individualCategories || ["General"];
+  }
+
+  // Sort alphabetically but keep "General" at the top
+  const sorted = [...categories].sort((a, b) => a.localeCompare(b));
+  const generalIndex = sorted.findIndex((cat) => cat === "General");
+  if (generalIndex > 0) {
+    sorted.splice(generalIndex, 1);
+    sorted.unshift("General");
+  }
+
+  return sorted;
+});
+
+// Conditional validators based on contact type and configuration
+const emailRules = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = localContact.value.type;
+  const isEntity = contactType === "Entity" || contactType === "Organization";
+  const requireEmail = isEntity
+    ? crmConfig?.organization?.requireEmail
+    : crmConfig?.individual?.requireEmail;
+
+  return requireEmail ? [requiredValidator, emailValidator] : [emailValidator];
+});
+
+const phoneRules = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = localContact.value.type;
+  const isEntity = contactType === "Entity" || contactType === "Organization";
+  const requirePhone = isEntity
+    ? crmConfig?.organization?.requirePhone
+    : crmConfig?.individual?.requirePhone;
+
+  return requirePhone ? [requiredValidator] : [];
+});
 
 // Build country options
 const rawCountries =
@@ -116,6 +160,20 @@ watch(
   { flush: "post" },
 );
 
+// Update category when contact type changes
+watch(
+  () => localContact.value.type,
+  () => {
+    const options = categoryOptions.value;
+    if (
+      options.length > 0 &&
+      !options.includes(localContact.value.category || "")
+    ) {
+      localContact.value.category = options[0];
+    }
+  },
+);
+
 // (kept util if you ever want emoji flags)
 const countryFlag = (cc: string) => {
   if (!cc) return "";
@@ -136,7 +194,7 @@ const resetForm = () => {
     fullName: "",
     class: "Contact",
     type: defaultContactType.value,
-    category: "General",
+    category: categoryOptions.value[0] || "General",
     email: "",
     number: "",
     status: "Active",
@@ -211,7 +269,7 @@ const onReset = () => {
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localContact.email"
-                :rules="[requiredValidator, emailValidator]"
+                :rules="emailRules"
                 label="Email"
                 placeholder="jane.doe@example.com"
               />
@@ -271,11 +329,11 @@ const onReset = () => {
                     </VAutocomplete>
                   </VCol>
 
-                  <!-- digits-only phone field (no validation rules besides required) -->
+                  <!-- digits-only phone field with conditional validation -->
                   <VCol cols="12" md="7" class="phone-input">
                     <AppTextField
                       v-model="localContact.number"
-                      :rules="[requiredValidator]"
+                      :rules="phoneRules"
                       placeholder="e.g. 71234567"
                       type="tel"
                       inputmode="numeric"

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { useConfigStore } from "@/stores/config";
 import { City, Country } from "country-state-city";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
-import { ref, toRaw, watch } from "vue";
+import { computed, ref, toRaw, watch } from "vue";
 
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 
@@ -60,7 +61,7 @@ const updateCitiesForCountry = (countryKey?: string | null) => {
   const existingCity = localContact.value?.city;
   if (existingCity) {
     const exists = cityOptions.value.find(
-      (c) => c.toLowerCase() === existingCity.toLowerCase()
+      (c) => c.toLowerCase() === existingCity.toLowerCase(),
     );
     if (!exists) {
       // put existing city at the top so it's selectable and visible
@@ -76,7 +77,7 @@ const onCountryKeydown = (e: KeyboardEvent) => {
   if (!q) return;
   const match = countries.find(
     (c) =>
-      c.label.toLowerCase().startsWith(q) || c.label.toLowerCase().includes(q)
+      c.label.toLowerCase().startsWith(q) || c.label.toLowerCase().includes(q),
   );
   if (match && localContact.value) {
     localContact.value.country = match.label;
@@ -89,7 +90,7 @@ const onCityKeydown = (e: KeyboardEvent) => {
   const q = (citySearch.value ?? "").toString().trim().toLowerCase();
   if (!q) return;
   const match = cityOptions.value.find(
-    (s) => s.toLowerCase().startsWith(q) || s.toLowerCase().includes(q)
+    (s) => s.toLowerCase().startsWith(q) || s.toLowerCase().includes(q),
   );
   if (match && localContact.value) {
     localContact.value.city = match;
@@ -141,7 +142,7 @@ const LB_DEFAULT =
 const digitsOnly = (val: string) => (val || "").replace(/[^\d]/g, "");
 
 const countryOptionsByDialLength = [...countryOptions].sort(
-  (a, b) => digitsOnly(b.dial).length - digitsOnly(a.dial).length
+  (a, b) => digitsOnly(b.dial).length - digitsOnly(a.dial).length,
 );
 
 const splitNumberByDial = (rawNumber: string | null | undefined) => {
@@ -214,7 +215,7 @@ const sanitizeContact = (contact: ContactProperties | null) => {
 };
 
 const localContact = ref<ContactProperties | null>(
-  sanitizeContact(props.contact)
+  sanitizeContact(props.contact),
 );
 
 // preload city dropdown when editing an existing contact
@@ -248,7 +249,7 @@ watch(
     countrySearch.value = "";
     // populate cities dropdown based on loaded contact country
     updateCitiesForCountry(localContact.value?.country);
-  }
+  },
 );
 
 // Reset localContact when the dialog is closed so edits are not preserved between openings
@@ -258,14 +259,14 @@ watch(
     if (!open) {
       localContact.value = sanitizeContact(props.contact);
       selectedCountry.value = splitNumberByDial(
-        props.contact?.number ?? ""
+        props.contact?.number ?? "",
       ).country;
       countrySearch.value = "";
       updateCitiesForCountry(localContact.value?.country);
       // ensure the stepper resets to the first tab when dialog is closed
       currentStep.value = 0;
     }
-  }
+  },
 );
 
 // watch for country changes in the Additional Info field and update cities
@@ -279,26 +280,93 @@ watch(
         localContact.value.city = "";
       }
     }
-  }
+  },
 );
 
+const configStore = useConfigStore();
+configStore.init();
+
 const classOptions = ["Lead", "Client", "Supplier", "Contact", "Owner"];
-const categoryOptions = ["General", "VIP", "Real Estate"];
 const statusOptions = ["Active", "Dormant", "Potential", "Lost"];
 const typeOptions = ["Entity", "Individual"];
-const channelOptions = [
-  "Social Media",
-  "Referral",
-  "Direct Sales",
-  "Website",
-  "Email Campaigns",
-];
+
+const channelOptions = computed(() => {
+  return (
+    configStore.configurations?.crm?.channels || [
+      "Social Media",
+      "Referral",
+      "Direct Sales",
+      "Website",
+      "Email Campaigns",
+    ]
+  );
+});
+
+const categoryOptions = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = localContact.value?.type;
+
+  let categories: string[] = [];
+  if (contactType === "Entity" || contactType === "Organization") {
+    categories = crmConfig?.organizationCategories || ["General"];
+  } else {
+    categories = crmConfig?.individualCategories || ["General"];
+  }
+
+  // Sort alphabetically but keep "General" at the top
+  const sorted = [...categories].sort((a, b) => a.localeCompare(b));
+  const generalIndex = sorted.findIndex((cat) => cat === "General");
+  if (generalIndex > 0) {
+    sorted.splice(generalIndex, 1);
+    sorted.unshift("General");
+  }
+
+  return sorted;
+});
+
+// Update category when contact type changes
+watch(
+  () => localContact.value?.type,
+  () => {
+    if (!localContact.value) return;
+    const options = categoryOptions.value;
+    if (
+      options.length > 0 &&
+      !options.includes(localContact.value.category || "")
+    ) {
+      localContact.value.category = options[0];
+    }
+  },
+);
 
 // simple validators
 const requiredValidator = (v: any) =>
   (v !== null && v !== undefined && String(v).trim() !== "") || "Required";
 const emailValidator = (v: any) =>
   !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v)) || "Invalid email";
+
+// Conditional validators based on contact type and configuration
+const emailRules = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = localContact.value?.type;
+  const isEntity = contactType === "Entity" || contactType === "Organization";
+  const requireEmail = isEntity
+    ? crmConfig?.organization?.requireEmail
+    : crmConfig?.individual?.requireEmail;
+
+  return requireEmail ? [requiredValidator, emailValidator] : [emailValidator];
+});
+
+const phoneRules = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = localContact.value?.type;
+  const isEntity = contactType === "Entity" || contactType === "Organization";
+  const requirePhone = isEntity
+    ? crmConfig?.organization?.requirePhone
+    : crmConfig?.individual?.requirePhone;
+
+  return requirePhone ? [requiredValidator] : [];
+});
 
 // simple website validator: allow empty or basic URL forms (with or without scheme)
 const websiteValidator = (v: any) => {
@@ -350,7 +418,7 @@ const saveContact = async (closeAfter = false) => {
     ...localContact.value,
     number: withDialAttached(
       String(localContact.value.number ?? ""),
-      selectedCountry.value.dial
+      selectedCountry.value.dial,
     ),
   };
   // mark that we're saving from this dialog so prop updates don't clobber local edits
@@ -362,7 +430,7 @@ const saveContact = async (closeAfter = false) => {
 const onReset = () => {
   localContact.value = sanitizeContact(props.contact);
   selectedCountry.value = splitNumberByDial(
-    props.contact?.number ?? ""
+    props.contact?.number ?? "",
   ).country;
   countrySearch.value = "";
   emit("update:isDialogVisible", false);
@@ -451,7 +519,7 @@ const onReset = () => {
                     v-model="localContact.email"
                     label="Email"
                     placeholder="john@example.com"
-                    :rules="[requiredValidator, emailValidator]"
+                    :rules="emailRules"
                   />
                 </VCol>
 
@@ -517,7 +585,7 @@ const onReset = () => {
                       <VCol cols="12" md="7" class="phone-input">
                         <AppTextField
                           v-model="localContact.number"
-                          :rules="[requiredValidator]"
+                          :rules="phoneRules"
                           placeholder="e.g. 71234567"
                           type="tel"
                           inputmode="numeric"
