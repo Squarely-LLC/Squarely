@@ -6,6 +6,7 @@ import type {
   JobStage,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -25,20 +26,26 @@ const props = withDefaults(defineProps<Props>(), {
   error: null,
 });
 const emit = defineEmits<Emit>();
+const configStore = useConfigStore();
 const contactsStore = useContactsStore();
+configStore.init();
 contactsStore.init();
+
 const contactOptions = computed(() =>
   contactsStore.all.map((contact) => ({
     title: contact.fullName,
     value: contact.id,
-  }))
+  })),
 );
-const stageOptions: JobStage[] = [
-  "PRPSL",
-  "In Review",
-  "Project | In Progress",
-  "RFI",
-];
+
+const stageOptions = computed(() => {
+  return (configStore.configurations?.crm?.jobStages || [
+    "PRPSL",
+    "In Review",
+    "Project | In Progress",
+    "RFI",
+  ]) as JobStage[];
+});
 const typeOptions: JobType[] = [
   "Architecture",
   "Interior",
@@ -70,7 +77,7 @@ watch(
     nextTick(() => {
       refForm.value?.resetValidation();
     });
-  }
+  },
 );
 const dialogModelValueUpdate = (value: boolean) => {
   emit("update:isDialogVisible", value);

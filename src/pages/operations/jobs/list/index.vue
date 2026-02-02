@@ -6,6 +6,7 @@ import type {
   JobProperties,
   JobStage,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -35,7 +36,7 @@ contactsStore.init();
 
 const notifications = useNotificationsStore();
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
-  null
+  null,
 );
 const isAddTodoDrawerVisible = ref(false);
 const addTodoInitial = ref<any | null>(null);
@@ -75,12 +76,18 @@ const headers = [
   { title: "Actions", key: "actions", sortable: false },
 ];
 
-const stageOptions = [
-  { title: "PRPSL", value: "PRPSL" },
-  { title: "In Review", value: "In Review" },
-  { title: "Project | In Progress", value: "Project | In Progress" },
-  { title: "RFI", value: "RFI" },
-];
+const configStore = useConfigStore();
+configStore.init();
+
+const stageOptions = computed(() => {
+  const stages = configStore.configurations?.crm?.jobStages || [
+    "PRPSL",
+    "In Review",
+    "Project | In Progress",
+    "RFI",
+  ];
+  return stages.map((s) => ({ title: s, value: s }));
+});
 
 const typeOptions = [
   { title: "Architecture", value: "Architecture" },
@@ -218,7 +225,9 @@ const compareJobs = (a: JobProperties, b: JobProperties) => {
 };
 
 const filteredJobs = computed<JobProperties[]>(() =>
-  jobsStore.all.map((job) => cloneJob(job)).filter((job) => matchesFilters(job))
+  jobsStore.all
+    .map((job) => cloneJob(job))
+    .filter((job) => matchesFilters(job)),
 );
 
 const sortedJobs = computed<JobProperties[]>(() => {
@@ -338,7 +347,7 @@ const meetingContacts = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture || null,
-  }))
+  })),
 );
 
 const confirmDelete = (id: number) => {
@@ -492,7 +501,7 @@ const performDelete = () => {
   jobsStore.removeJob(deleteCandidateId.value);
 
   const index = selectedRows.value.findIndex(
-    (row) => row === deleteCandidateId.value
+    (row) => row === deleteCandidateId.value,
   );
   if (index !== -1) selectedRows.value.splice(index, 1);
 
@@ -548,7 +557,7 @@ const updateOptions = (options: {
 
   const matched = sortOptions.find(
     (option) =>
-      option.value.key === sortBy.value && option.value.order === orderBy.value
+      option.value.key === sortBy.value && option.value.order === orderBy.value,
   );
 
   if (matched) selectedSort.value = matched.value;
@@ -866,12 +875,12 @@ const updateItemsPerPage = (value: number | string) => {
             const recipients = Array.isArray(payload?.to)
               ? payload.to
               : payload?.to
-              ? [String(payload.to)]
-              : [];
+                ? [String(payload.to)]
+                : [];
             notifications.push(
               `Email sent to ${recipients.length} recipient(s)`,
               'success',
-              3500
+              3500,
             );
           } catch (e) {
             notifications.push('Email sent', 'success', 3500);

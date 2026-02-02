@@ -6,6 +6,7 @@ import type {
   JobStage,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -18,13 +19,18 @@ const props = defineProps<Props>();
 const jobsStore = useJobsStore();
 const contactsStore = useContactsStore();
 const notifications = useNotificationsStore();
+const configStore = useConfigStore();
 contactsStore.init();
-const stageOptions: JobStage[] = [
-  "PRPSL",
-  "In Review",
-  "Project | In Progress",
-  "RFI",
-];
+configStore.init();
+
+const stageOptions = computed(() => {
+  return (configStore.configurations?.crm?.jobStages || [
+    "PRPSL",
+    "In Review",
+    "Project | In Progress",
+    "RFI",
+  ]) as JobStage[];
+});
 const typeOptions: JobType[] = [
   "Architecture",
   "Interior",
@@ -41,7 +47,7 @@ const contactOptions = computed(() =>
   contactsStore.all.map((contact) => ({
     title: contact.fullName,
     value: contact.id,
-  }))
+  })),
 );
 
 const refForm = ref<VForm>();
@@ -77,7 +83,7 @@ watch(
     hydrateLocalJob(value ?? null);
     nextTick(() => refForm.value?.resetValidation());
   },
-  { immediate: true }
+  { immediate: true },
 );
 const onSubmit = async () => {
   if (!localJob.value || !localJob.value.id) return;

@@ -6,6 +6,7 @@ import type {
   JobStage,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { computed, nextTick, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -21,13 +22,18 @@ const emit = defineEmits<Emit>();
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 const contactsStore = useContactsStore();
+const configStore = useConfigStore();
 contactsStore.init();
-const stageOptions: JobStage[] = [
-  "PRPSL",
-  "In Review",
-  "Project | In Progress",
-  "RFI",
-];
+configStore.init();
+
+const stageOptions = computed(() => {
+  return (configStore.configurations?.crm?.jobStages || [
+    "PRPSL",
+    "In Review",
+    "Project | In Progress",
+    "RFI",
+  ]) as JobStage[];
+});
 const typeOptions: JobType[] = [
   "Architecture",
   "Interior",
@@ -44,7 +50,7 @@ const contactOptions = computed(() =>
     title: contact.fullName,
     value: contact.id,
     avatar: (contact as any).avatar || (contact as any).picture || null,
-  }))
+  })),
 );
 const avatarText = (name?: string | null) => {
   const safe = (name || "").trim();
@@ -100,7 +106,7 @@ watch(
     nextTick(() => {
       refForm.value?.resetValidation();
     });
-  }
+  },
 );
 const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
