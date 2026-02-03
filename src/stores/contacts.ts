@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
 import { db } from "../plugins/fake-api/handlers/apps/contact/db";
+import { $api } from "@/utils/api";
 import type {
   ContactAccounting,
   ContactConnection,
@@ -11,6 +12,8 @@ import type {
 import type { ContactRecord } from "../plugins/fake-api/handlers/apps/contact/types";
 
 const STORAGE_KEY = "app.contacts.v2";
+const API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const SHOULD_FETCH_REMOTE = !!API_BASE && API_BASE.startsWith("http");
 
 function cloneConnection(connection: ContactConnection): ContactConnection {
   const raw = toRaw(connection) as ContactConnection;
@@ -256,6 +259,32 @@ export const useContactsStore = defineStore("contacts", {
           { detached: true }
         );
       }
+
+      if (SHOULD_FETCH_REMOTE) {
+        this.fetchRemoteAll();
+      }
+    },
+
+    async fetchRemoteAll() {
+      try {
+        const first = await $api("/apps/contacts", {
+          query: { itemsPerPage: 50, page: 1 },
+        });
+        const users = Array.isArray(first?.users) ? [...first.users] : [];
+        const totalPages = Number(first?.totalPages || 1);
+        for (let page = 2; page <= totalPages; page++) {
+          const res = await $api("/apps/contacts", {
+            query: { itemsPerPage: 50, page },
+          });
+          if (Array.isArray(res?.users)) users.push(...res.users);
+        }
+        if (users.length) {
+          this.items = cloneContactsArray(users);
+          saveToStorage(this.items);
+        }
+      } catch (error) {
+        console.warn("contacts fetchRemoteAll error", error);
+      }
     },
 
     addContact(payload: Partial<ContactProperties>) {
@@ -264,6 +293,24 @@ export const useContactsStore = defineStore("contacts", {
       const id = incomingId ?? nextContactId(this.items);
       const normalised = normaliseContact(payload, id);
       this.items.unshift(normalised);
+
+      if (SHOULD_FETCH_REMOTE) {
+        void $api("/apps/contacts", {
+          method: "POST",
+          body: normalised,
+        })
+          .then((res: any) => {
+            const created = res?.body ?? res;
+            if (!created?.id) return;
+            const idx = this.items.findIndex(
+              (c) => String(c.id) === String(normalised.id)
+            );
+            if (idx !== -1) this.items.splice(idx, 1, created);
+          })
+          .catch((error) =>
+            console.warn("contacts addContact remote error", error)
+          );
+      }
       return normalised;
     },
 
@@ -275,6 +322,24 @@ export const useContactsStore = defineStore("contacts", {
 
       const updated = mergeContact(this.items[index], patch);
       this.items.splice(index, 1, updated);
+
+      if (SHOULD_FETCH_REMOTE) {
+        void $api(`/apps/contacts/${id}`, {
+          method: "PUT",
+          body: patch,
+        })
+          .then((res: any) => {
+            const remote = res?.body ?? res;
+            if (!remote?.id) return;
+            const idx = this.items.findIndex(
+              (c) => String(c.id) === String(remote.id)
+            );
+            if (idx !== -1) this.items.splice(idx, 1, remote);
+          })
+          .catch((error) =>
+            console.warn("contacts updateContact remote error", error)
+          );
+      }
       return updated;
     },
 
@@ -294,6 +359,15 @@ export const useContactsStore = defineStore("contacts", {
 
       const updated = mergeContact(original, { records: newRecords });
       this.items.splice(index, 1, updated);
+
+      if (SHOULD_FETCH_REMOTE) {
+        void $api(`/apps/contacts/${contactId}/records`, {
+          method: "POST",
+          body: record,
+        }).catch((error) =>
+          console.warn("contacts addRecord remote error", error)
+        );
+      }
       return updated;
     },
 
@@ -314,6 +388,15 @@ export const useContactsStore = defineStore("contacts", {
 
       const updated = mergeContact(original, { records: updatedRecords });
       this.items.splice(index, 1, updated);
+
+      if (SHOULD_FETCH_REMOTE) {
+        void $api(`/apps/contacts/${contactId}/records/${record.id}`, {
+          method: "PUT",
+          body: record,
+        }).catch((error) =>
+          console.warn("contacts updateRecord remote error", error)
+        );
+      }
       return updated;
     },
 
@@ -334,6 +417,14 @@ export const useContactsStore = defineStore("contacts", {
 
       const updated = mergeContact(original, { records: updatedRecords });
       this.items.splice(index, 1, updated);
+
+      if (SHOULD_FETCH_REMOTE) {
+        void $api(`/apps/contacts/${contactId}/records/${recordId}`, {
+          method: "DELETE",
+        }).catch((error) =>
+          console.warn("contacts removeRecord remote error", error)
+        );
+      }
       return updated;
     },
 
@@ -343,6 +434,12 @@ export const useContactsStore = defineStore("contacts", {
       );
       if (index === -1) return;
       this.items.splice(index, 1);
+
+      if (SHOULD_FETCH_REMOTE) {
+        void $api(`/apps/contacts/${id}`, { method: "DELETE" }).catch((error) =>
+          console.warn("contacts removeContact remote error", error)
+        );
+      }
     },
 
     nextId() {

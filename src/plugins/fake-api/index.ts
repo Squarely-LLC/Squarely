@@ -24,13 +24,16 @@ import { handlerPagesProfile } from "@db/pages/profile/index";
 import { handlerAppsTodos } from "./handlers/apps/todos/data";
 import { handlerOperationsJobs } from "./handlers/operations/jobs/index";
 
+const apiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const useRemoteApi = !!apiBase && apiBase.startsWith("http");
+
 const worker = setupWorker(
   ...handlerAppsEcommerce,
   ...handlerAppsAcademy,
   ...handlerAppsInvoice,
   ...handlerAppsUsers,
   ...handlerAppsEmployees,
-  ...handlerAppsContacts,
+  ...(useRemoteApi ? [] : handlerAppsContacts),
   ...handlerAppsEmail,
   ...handlerAppsCalendar,
   ...handlerAppsChat,
