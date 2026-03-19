@@ -13,6 +13,7 @@ declare global {
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
+  const apiBaseUrl: typeof import('./src/utils/apiMode')['apiBaseUrl']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
@@ -132,6 +133,7 @@ declare global {
   const regexValidator: typeof import('./src/@core/utils/validators')['regexValidator']
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const registerPlugins_: typeof import('./src/@core/utils/plugins')['registerPlugins_']
+  const remoteApiEnabled: typeof import('./src/utils/apiMode')['remoteApiEnabled']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
@@ -388,6 +390,7 @@ declare module 'vue' {
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
+    readonly apiBaseUrl: UnwrapRef<typeof import('./src/utils/apiMode')['apiBaseUrl']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
@@ -504,6 +507,7 @@ declare module 'vue' {
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
+    readonly remoteApiEnabled: UnwrapRef<typeof import('./src/utils/apiMode')['remoteApiEnabled']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>

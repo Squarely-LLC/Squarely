@@ -138,18 +138,17 @@ const onCancel = () => {
               />
             </VCol>
             <VCol cols="12" md="6">
-              <AppTextField
-                v-model="localJob.avatar"
-                label="Avatar URL"
-                placeholder="https://example.com/image.png"
-                hint="Provide an image URL for the project avatar"
-                persistent-hint
+              <AppDateTimePicker
+                v-model="localJob.startDate"
+                label="Start Date"
+                placeholder="YYYY-MM-DD HH:mm"
+                clearable
               />
             </VCol>
             <VCol cols="12" md="6">
               <AppDateTimePicker
-                v-model="localJob.startDate"
-                label="Start Date"
+                v-model="localJob.endDate"
+                label="End Date"
                 placeholder="YYYY-MM-DD HH:mm"
                 clearable
               />
@@ -198,17 +197,28 @@ const onCancel = () => {
                 clear-icon="tabler-x"
               />
             </VCol>
-            <VCol cols="12">
+            <VCol cols="12" md="6">
               <AppSelect
                 v-model="localJob.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"
                 :items="contactOptions"
                 multiple
-                chips
                 clearable
                 clear-icon="tabler-x"
-              />
+              >
+                <template #selection="{ item, index }">
+                  <span v-if="index === 0" class="text-truncate">
+                    {{ item.raw.title }}
+                    <span
+                      v-if="(localJob.collaborators?.length ?? 0) > 1"
+                      class="text-medium-emphasis"
+                    >
+                      (+{{ (localJob.collaborators?.length ?? 0) - 1 }} more)
+                    </span>
+                  </span>
+                </template>
+              </AppSelect>
             </VCol>
             <VCol cols="12">
               <AppTextarea

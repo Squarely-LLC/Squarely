@@ -16,7 +16,7 @@ import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import JobCommunicationTab from "@/views/operations/jobs/view/JobCommunicationTab.vue";
 import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
 import JobMilestonesGoalsTab from "@/views/operations/jobs/view/JobMilestonesGoalsTab.vue";
-import JobProjectInfoTab from "@/views/operations/jobs/view/JobProjectInfoTab.vue";
+import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 import JobStakeholdersCard from "@/views/operations/jobs/view/JobStakeholdersCard.vue";
 import JobSummaryCard from "@/views/operations/jobs/view/JobSummaryCard.vue";
 
@@ -87,14 +87,12 @@ const jobTab = ref<number | null>(null);
 
 // stable keys for tabs used in the URL query param (order must match `tabs`)
 const tabKeys = [
-  "project-info",
   "milestones-goals",
   "communication",
   "documents",
 ] as const;
 
 const tabs = [
-  { icon: "tabler-clipboard", title: "Project Info" },
   { icon: "tabler-flag", title: "Milestones & Goals" },
   { icon: "tabler-message", title: "Communication" },
   { icon: "tabler-folder", title: "Documents" },
@@ -103,6 +101,10 @@ const tabs = [
 const setTabFromQuery = () => {
   try {
     const q = String(route.query.tab || tabKeys[0]);
+    if (q === "project-info") {
+      jobTab.value = 0;
+      return;
+    }
     const idx = (tabKeys as readonly string[]).indexOf(q);
     jobTab.value = idx === -1 ? 0 : idx;
   } catch (e) {
@@ -172,6 +174,9 @@ const isAddSnagOpen = ref(false);
 
 const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
+const isJobEditDialogVisible = ref(false);
+const isJobSaving = ref(false);
+const jobSaveError = ref<string | null>(null);
 
 // Stakeholder dialogs
 const isAddStakeholderDialogVisible = ref(false);
@@ -482,6 +487,37 @@ const handleAddStakeholder = () => {
   isAddStakeholderDialogVisible.value = true;
 };
 
+const handleEditJob = () => {
+  jobSaveError.value = null;
+  isJobEditDialogVisible.value = true;
+};
+
+const onEditJobSubmit = async (payload: JobProperties) => {
+  if (!job.value) return;
+
+  isJobSaving.value = true;
+  jobSaveError.value = null;
+
+  try {
+    const updated = jobsStore.updateJob(job.value.id, payload);
+
+    if (!updated) {
+      jobSaveError.value = "Failed to update project";
+      notifications.push("Unable to update job", "error", 4000);
+      return;
+    }
+
+    notifications.push("Project information updated", "success", 3000);
+    isJobEditDialogVisible.value = false;
+  } catch (error) {
+    console.error("Failed to update project info", error);
+    jobSaveError.value = "An unexpected error occurred";
+    notifications.push("Failed to update job", "error", 4000);
+  } finally {
+    isJobSaving.value = false;
+  }
+};
+
 const onAddStakeholder = (payload: {
   contactId: number | string;
   role?: string;
@@ -614,13 +650,17 @@ const closeSnagDrawer = () => {
 
     <VRow v-if="job">
       <VCol cols="12" md="5" lg="4">
-        <JobSummaryCard :job="job" :contact-directory="contactDirectory" />
+        <JobSummaryCard
+          :job="job"
+          :contact-directory="contactDirectory"
+          @edit="handleEditJob"
+        />
 
-    <JobStakeholdersCard
-      :job="job"
-      :contact-directory="contactDirectory"
-      class="mt-4"
-      @add-stakeholder="handleAddStakeholder"
+        <JobStakeholdersCard
+          :job="job"
+          :contact-directory="contactDirectory"
+          class="mt-4"
+          @add-stakeholder="handleAddStakeholder"
           @remove-stakeholder="handleRemoveStakeholder"
           @todo="handleStakeholderTodo"
           @meeting="handleStakeholderMeeting"
@@ -639,21 +679,17 @@ const closeSnagDrawer = () => {
 
         <VWindow v-model="jobTab" class="disable-tab-transition" :touch="false">
           <VWindowItem>
-            <JobProjectInfoTab :job-id="job.id" />
-          </VWindowItem>
-
-          <VWindowItem>
             <JobMilestonesGoalsTab :job-id="job.id" />
           </VWindowItem>
 
           <VWindowItem>
-          <JobCommunicationTab
-            :job-id="job.id"
-            @open-add-meeting="handleAddMeetingFromCommunication"
-            @open-add-survey="handleAddSurveyFromCommunication"
-            @open-add-snag="handleAddSnagFromCommunication"
-          />
-        </VWindowItem>
+            <JobCommunicationTab
+              :job-id="job.id"
+              @open-add-meeting="handleAddMeetingFromCommunication"
+              @open-add-survey="handleAddSurveyFromCommunication"
+              @open-add-snag="handleAddSnagFromCommunication"
+            />
+          </VWindowItem>
 
           <VWindowItem>
             <JobDocumentsTab
@@ -730,6 +766,14 @@ const closeSnagDrawer = () => {
           }
         }
       "
+    />
+
+    <JobEditDialog
+      v-model:is-dialog-visible="isJobEditDialogVisible"
+      :job="job"
+      :loading="isJobSaving"
+      :error="jobSaveError"
+      @submit="onEditJobSubmit"
     />
 
     <!-- Add Stakeholder Dialog -->

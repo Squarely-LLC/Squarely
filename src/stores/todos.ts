@@ -141,6 +141,8 @@ export const useTodos = defineStore("todos", {
         copy.messages = Array.isArray(t.messages)
           ? t.messages.map((m: any) => ({ ...m, author: resolveRef(m.author) }))
           : [];
+        copy.relatedTo = t.relatedTo ?? null;
+        copy.goalId = t.goalId ?? null;
         return copy as ToDo;
       };
 
@@ -188,6 +190,8 @@ export const useTodos = defineStore("todos", {
         notes: todo.notes || "",
         activities: todo.activities || [],
         messages: (todo as any).messages || [],
+        relatedTo: (todo as any).relatedTo || null,
+        goalId: (todo as any).goalId ?? null,
         createdAt: now,
         updatedAt: now,
       };

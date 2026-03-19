@@ -28,6 +28,8 @@ interface Emit {
       status: Status;
       notes: string;
       important: boolean;
+      relatedTo: { id: number | string; name: string; type: string } | null;
+      goalId: number | string | null;
     }>
   ): void;
 }
@@ -43,6 +45,8 @@ interface Props {
     status: Status;
     notes: string;
     important: boolean;
+    relatedTo: { id: number | string; name: string; type: string } | null;
+    goalId: number | string | null;
   }>;
   // if true, autofocus the due date/time picker when the drawer opens
   autofocusDue?: boolean;
@@ -64,6 +68,8 @@ const dueAt = ref<string | null>(null);
 const priority = ref<Priority>("normal"); // default = normal
 const notes = ref<string>("");
 const important = ref<boolean>(false);
+const relatedTo = ref<{ id: number | string; name: string; type: string } | null>(null);
+const goalId = ref<number | string | null>(null);
 
 // ref to the AppDateTimePicker component so we can focus/open its input
 const duePickerRef = ref<any>(null);
@@ -128,6 +134,8 @@ function resetForm() {
   priority.value = "normal";
   notes.value = "";
   important.value = false;
+  relatedTo.value = null;
+  goalId.value = null;
   selectedStatus.value = "pending";
   refForm.value?.reset();
   refForm.value?.resetValidation();
@@ -162,6 +170,8 @@ function loadInitialAndMaybeFocus() {
     priority.value = (init.priority as Priority) || priority.value;
     notes.value = init.notes || notes.value;
     important.value = !!init.important;
+    relatedTo.value = init.relatedTo ?? relatedTo.value;
+    goalId.value = init.goalId ?? goalId.value;
     selectedStatus.value = (init.status as any) || selectedStatus.value;
   }
 
@@ -205,6 +215,8 @@ function openWith(initial?: any) {
     priority.value = (initial.priority as Priority) || priority.value;
     notes.value = initial.notes || notes.value;
     important.value = !!initial.important;
+    relatedTo.value = initial.relatedTo ?? relatedTo.value;
+    goalId.value = initial.goalId ?? goalId.value;
     selectedStatus.value = (initial.status as any) || selectedStatus.value;
   }
   // emit both kebab and camel update events to be robust for v-model variants
@@ -237,6 +249,8 @@ async function onSubmit() {
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
+    relatedTo: relatedTo.value,
+    goalId: goalId.value,
   });
 
   emit("update:isDrawerOpen", false);

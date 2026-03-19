@@ -67,6 +67,8 @@ export type ToDo = {
   notes?: string;
   activities: Activity[];
   messages?: Message[]; // <-- new, optional
+  relatedTo?: { id: string | number; name: string; type: string } | null;
+  goalId?: string | number | null;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "../../../.."
+		},
+		{
+			"path": "../../../../../squarely-backend"
+		}
+	],
+	"settings": {
+		"highlight.regexFlags": "gi",
+		"highlight.regexes": {
+			"(100vh|translate|margin:|padding:|margin-left|margin-right|rotate|text-align|border-top|border-right|border-bottom|border-left|float|background-position|transform|width|height|top|left|bottom|right|float|clear|(p|m)(l|r)-|border-(start|end)-(start|end)-radius)": [
+				{
+					"borderWidth": "1px",
+					"borderColor": "tomato",
+					"borderStyle": "solid"
+				}
+			],
+			"(overflow-x:|overflow-y:)": [
+				{
+					"borderWidth": "1px",
+					"borderColor": "green",
+					"borderStyle": "solid"
+				}
+			]
+		}
+	}
+}
