@@ -64,7 +64,7 @@ const decoratedCollaborators = computed(() => {
   return props.job.collaborators.map((collaboratorId, index) => {
     const numericId = Number(collaboratorId);
     const entry = Number.isFinite(numericId)
-      ? props.contactDirectory.get(numericId) ?? null
+      ? (props.contactDirectory.get(numericId) ?? null)
       : null;
     const fallbackName = `Collaborator ${index + 1}`;
     return {
@@ -179,39 +179,6 @@ const collaboratorNames = computed(() => {
         <VListItem>
           <VListItemTitle>
             <h6 class="text-h6">
-              Stage:
-              <div class="d-inline-block text-body-1">
-                {{ job.stage }}
-              </div>
-            </h6>
-          </VListItemTitle>
-        </VListItem>
-
-        <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Type:
-              <div class="d-inline-block text-body-1">
-                {{ job.type }}
-              </div>
-            </h6>
-          </VListItemTitle>
-        </VListItem>
-
-        <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Flag:
-              <div class="d-inline-block text-body-1">
-                {{ job.flag }}
-              </div>
-            </h6>
-          </VListItemTitle>
-        </VListItem>
-
-        <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
               Related To:
               <div class="d-inline-block text-body-1">
                 {{ relatedContact?.name || "--" }}
@@ -250,3 +217,9 @@ const collaboratorNames = computed(() => {
     </VCardText>
   </VCard>
 </template>
+
+<style scoped>
+.card-list {
+  --v-card-list-gap: 0.5rem;
+}
+</style>
