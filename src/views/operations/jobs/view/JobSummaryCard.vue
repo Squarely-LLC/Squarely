@@ -33,8 +33,8 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
       return "primary";
   }
 };
-const formattedStartDate = computed(() => {
-  if (!props.job.startDate) return "--";
+const formatDate = (value?: string | null) => {
+  if (!value) return "--";
   try {
     return new Intl.DateTimeFormat(undefined, {
       year: "numeric",
@@ -42,12 +42,14 @@ const formattedStartDate = computed(() => {
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
-    }).format(new Date(props.job.startDate));
+    }).format(new Date(value));
   } catch (error) {
-    console.warn("Failed to format job start date", error);
-    return props.job.startDate;
+    console.warn("Failed to format job date", error);
+    return value;
   }
-});
+};
+const formattedStartDate = computed(() => formatDate(props.job.startDate));
+const formattedEndDate = computed(() => formatDate(props.job.endDate));
 const relatedContact = computed(() => {
   if (!props.job.relatedTo) return null;
   return props.contactDirectory.get(Number(props.job.relatedTo)) ?? null;
@@ -62,7 +64,7 @@ const decoratedCollaborators = computed(() => {
   return props.job.collaborators.map((collaboratorId, index) => {
     const numericId = Number(collaboratorId);
     const entry = Number.isFinite(numericId)
-      ? props.contactDirectory.get(numericId) ?? null
+      ? (props.contactDirectory.get(numericId) ?? null)
       : null;
     const fallbackName = `Collaborator ${index + 1}`;
     return {
@@ -72,8 +74,13 @@ const decoratedCollaborators = computed(() => {
     };
   });
 });
-const collaboratorCount = computed(() => decoratedCollaborators.value.length);
 const noteText = computed(() => props.job.note?.trim() || "No notes available");
+const collaboratorNames = computed(() => {
+  if (!decoratedCollaborators.value.length) return "--";
+  return decoratedCollaborators.value
+    .map((collaborator) => collaborator.name)
+    .join(", ");
+});
 </script>
 <template>
   <VCard>
@@ -117,6 +124,17 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
         <VListItem>
           <VListItemTitle>
             <h6 class="text-h6">
+              Project Name:
+              <div class="d-inline-block text-body-1">
+                {{ job.name }}
+              </div>
+            </h6>
+          </VListItemTitle>
+        </VListItem>
+
+        <VListItem>
+          <VListItemTitle>
+            <h6 class="text-h6">
               Code:
               <div class="d-inline-block text-body-1">
                 {{ job.code || "--" }}
@@ -147,12 +165,45 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
           </VListItemTitle>
         </VListItem>
 
-        <VListItem v-if="relatedContact">
+        <VListItem>
+          <VListItemTitle>
+            <h6 class="text-h6">
+              End Date:
+              <div class="d-inline-block text-body-1">
+                {{ formattedEndDate }}
+              </div>
+            </h6>
+          </VListItemTitle>
+        </VListItem>
+
+        <VListItem>
           <VListItemTitle>
             <h6 class="text-h6">
               Related To:
               <div class="d-inline-block text-body-1">
-                {{ relatedContact.name }}
+                {{ relatedContact?.name || "--" }}
+              </div>
+            </h6>
+          </VListItemTitle>
+        </VListItem>
+
+        <VListItem>
+          <VListItemTitle>
+            <h6 class="text-h6">
+              Collaborators:
+              <div class="d-inline-block text-body-1 text-wrap">
+                {{ collaboratorNames }}
+              </div>
+            </h6>
+          </VListItemTitle>
+        </VListItem>
+
+        <VListItem>
+          <VListItemTitle>
+            <h6 class="text-h6">
+              Notes:
+              <div class="d-inline-block text-body-1 text-wrap">
+                {{ noteText }}
               </div>
             </h6>
           </VListItemTitle>
@@ -161,7 +212,14 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
     </VCardText>
 
     <VCardText class="d-flex justify-center gap-4 pb-6">
+      <VBtn @click="emit('edit')">Edit</VBtn>
       <VBtn variant="tonal" color="error" @click="emit('delete')">Delete</VBtn>
     </VCardText>
   </VCard>
 </template>
+
+<style scoped>
+.card-list {
+  --v-card-list-gap: 0.5rem;
+}
+</style>

@@ -298,15 +298,11 @@ export const useJobsStore = defineStore("jobs", {
     addGoal(jobId: number | string, goal: Partial<JobGoal>) {
       const job = this.byId(jobId);
       if (!job) return null;
+      if (goal.milestoneId === undefined || goal.milestoneId === null) return null;
       const nextIdValue = nextNestedId(job.goals);
       const normalized: JobGoal = {
         id: goal.id && Number(goal.id) > 0 ? Number(goal.id) : nextIdValue,
-        milestoneId:
-          goal.milestoneId !== undefined
-            ? goal.milestoneId === null
-              ? null
-              : Number(goal.milestoneId)
-            : null,
+        milestoneId: Number(goal.milestoneId),
         name: goal.name?.trim() || "Untitled Goal",
         startDate: goal.startDate || undefined,
         dueDate: goal.dueDate || undefined,
@@ -337,8 +333,6 @@ export const useJobsStore = defineStore("jobs", {
         milestoneId:
           patch.milestoneId === undefined
             ? existing.milestoneId
-            : patch.milestoneId === null
-            ? null
             : Number(patch.milestoneId),
       };
       const goals = [...job.goals];
