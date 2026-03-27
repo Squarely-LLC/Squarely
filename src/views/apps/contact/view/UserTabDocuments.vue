@@ -12,9 +12,11 @@ import { deleteFile, getFileObjectUrl } from "@/utils/fileStore";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import type { PropType } from "vue";
 import { computed, defineComponent, reactive, ref, watch } from "vue";
+import { useTheme } from "vuetify";
 import UserDocumentDialog from "./UserDocumentDialog.vue";
 
 const props = defineProps<{ user: ContactProperties | null }>();
+const theme = useTheme();
 
 const emit = defineEmits<{
   (
@@ -144,6 +146,25 @@ const isDocumentRenewable = computed(() => {
 });
 
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;
+const tableHeaders = [
+  { title: "Name", key: "name" },
+  { title: "Type", key: "type" },
+  { title: "Category", key: "category" },
+  { title: "Actions", key: "actions", sortable: false },
+] as const;
+const groupHeaderStyle = computed(() => ({
+  backgroundColor: theme.current.value.dark
+    ? "rgba(255, 255, 255, 0.12)"
+    : "rgba(0, 0, 0, 0.08)",
+  borderTop: theme.current.value.dark
+    ? "1px solid rgba(255, 255, 255, 0.14)"
+    : "1px solid rgba(0, 0, 0, 0.12)",
+  borderBottom: theme.current.value.dark
+    ? "1px solid rgba(255, 255, 255, 0.14)"
+    : "1px solid rgba(0, 0, 0, 0.12)",
+  paddingBlock: "14px",
+  paddingInlineStart: "24px",
+}));
 
 function docStatus(doc: ContactDocument) {
   if (!doc.expiry) return "Active";
@@ -789,16 +810,9 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           :items="paged"
           :items-length="totalItems"
           item-value="id"
-          :headers="[
-            { title: '', key: 'select' },
-            { title: 'Name', key: 'name' },
-            { title: 'Type', key: 'type' },
-
-            { title: 'Category', key: 'category' },
-            { title: 'Actions', key: 'actions', sortable: false },
-          ]"
-          :group-by="[{ key: 'category' }]"
-          class="text-no-wrap"
+          :headers="tableHeaders"
+          :group-by="[{ key: 'type' }]"
+          class="text-no-wrap document-table"
         >
           <template #body.prepend="{ groupedItems, toggleGroup, isGroupOpen }">
             <AutoOpenGroups
@@ -806,6 +820,30 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
               :toggle-group="toggleGroup"
               :is-group-open="isGroupOpen"
             />
+          </template>
+
+          <template #group-header="{ item, columns, toggleGroup, isGroupOpen }">
+            <tr class="document-group-header">
+              <td :colspan="columns.length" :style="groupHeaderStyle">
+                <button
+                  type="button"
+                  class="document-group-toggle"
+                  @click="toggleGroup(item)"
+                >
+                  <VIcon
+                    :icon="
+                      isGroupOpen(item)
+                        ? 'tabler-chevron-down'
+                        : 'tabler-chevron-right'
+                    "
+                    size="18"
+                  />
+                  <span>
+                    {{ item.value }} ({{ item.items?.length ?? 0 }})
+                  </span>
+                </button>
+              </td>
+            </tr>
           </template>
 
           <template #item.name="{ item }">
@@ -956,17 +994,44 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 </template>
 
 <style lang="scss" scoped>
-.v-data-table table {
+.document-table {
+  :deep(table) {
   border-collapse: collapse;
   inline-size: 100%;
+  }
+
+  :deep(th),
+  :deep(td) {
+    border-block-end: 1px solid rgb(255 255 255 / 2%);
+    padding-block: 12px;
+    padding-inline: 8px;
+    text-align: start;
+  }
+
+  :deep(thead tr th:first-child) {
+    display: none;
+  }
+
+  :deep(tbody tr:not(.document-group-header) > td:first-child) {
+    display: none;
+  }
+
+  :deep(tbody tr:not(.document-group-header) > td) {
+    padding-block: 18px !important;
+  }
 }
 
-.v-data-table th,
-.v-data-table td {
-  border-block-end: 1px solid rgb(255 255 255 / 2%);
-  padding-block: 12px;
-  padding-inline: 8px;
-  text-align: start;
+.document-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
 }
 
 .text-link {
