@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ContactRef, Message } from "@/data/schema";
 import { formatSystemDate } from "@core/utils/formatters";
 import {
   computed,
@@ -53,18 +54,6 @@ onBeforeUnmount(() => {
   actionsAlignObserver = null;
 });
 
-/* Types */
-type ContactRef = {
-  id: number | string;
-  name: string;
-  avatarUrl?: string | null;
-};
-type Message = {
-  id: number | string;
-  author?: ContactRef;
-  body: string;
-  createdAt: string;
-};
 type ToDo = { id: number | string; messages?: Message[] | undefined };
 
 const props = defineProps<{
@@ -79,6 +68,14 @@ const emit = defineEmits<{
     e: "send",
     v: { id: number | string; body: string; author?: ContactRef }
   ): void;
+  (
+    e: "edit-message",
+    v: { id: number | string; messageId: number | string; body: string }
+  ): void;
+  (
+    e: "toggle-read",
+    v: { id: number | string; messageId: number | string; isRead: boolean }
+  ): void;
 }>();
 
 /* ===== Local state (mirrors parent, supports optimistic updates) ===== */
@@ -89,42 +86,50 @@ function readPropMessages(): Message[] {
   return props.todo?.messages ? [...props.todo.messages] : [];
 }
 
-// Reconcile from the parent only when it actually changed (length or last id)
+const messagesSignature = computed(() =>
+  (props.todo?.messages ?? [])
+    .map((message) =>
+      [
+        message.id,
+        message.body,
+        message.isRead ? 1 : 0,
+        message.editedAt ?? "",
+      ].join(":"),
+    )
+    .join("|"),
+);
+
+// Reconcile from the parent when ids or editable fields change.
 function reconcileFromParent() {
   const src = readPropMessages();
-  const a = localList.value;
-  const aLen = a.length;
-  const sLen = src.length;
-  const aLast = aLen ? a[aLen - 1]?.id : undefined;
-  const sLast = sLen ? src[sLen - 1]?.id : undefined;
-
-  if (aLen !== sLen || aLast !== sLast) {
+  if (
+    localList.value.length !== src.length ||
+    localList.value.some((message, index) => {
+      const next = src[index];
+      return (
+        !next ||
+        String(message.id) !== String(next.id) ||
+        message.body !== next.body ||
+        Boolean(message.isRead) !== Boolean(next.isRead) ||
+        (message.editedAt ?? null) !== (next.editedAt ?? null)
+      );
+    })
+  ) {
     localList.value = src;
   }
 }
 
-// Initial + when opening + when parent grows
 watch(
-  () => [props.isDrawerOpen, props.todo?.id, props.todo?.messages?.length],
-  () => {
-    if (props.isDrawerOpen) reconcileFromParent();
-  },
+  () => [props.isDrawerOpen, props.todo?.id, messagesSignature.value],
+  () => props.isDrawerOpen && reconcileFromParent(),
   { immediate: true }
-);
-
-// Also track last message id explicitly (covers same-length but different content)
-watch(
-  () =>
-    (props.todo?.messages &&
-      props.todo.messages[props.todo.messages.length - 1]?.id) ??
-    null,
-  () => props.isDrawerOpen && reconcileFromParent()
 );
 
 /* ===== Actions ===== */
 function close() {
   emit("update:isDrawerOpen", false);
   message.value = "";
+  cancelEditing();
 }
 
 function send() {
@@ -137,6 +142,8 @@ function send() {
     author: props.author,
     body,
     createdAt: new Date().toISOString(),
+    isRead: true,
+    editedAt: null,
   };
   localList.value = [...localList.value, optimistic];
   message.value = "";
@@ -153,6 +160,58 @@ const fmtDate = (iso?: string) => {
   if (!iso) return "";
   return formatSystemDate(iso);
 };
+const isOwnMessage = (message: Message) =>
+  String(message.author?.id ?? "") === String(props.author?.id ?? "");
+const editingMessageId = ref<number | string | null>(null);
+const editingBody = ref("");
+
+function startEditing(message: Message) {
+  editingMessageId.value = message.id;
+  editingBody.value = message.body;
+}
+
+function cancelEditing() {
+  editingMessageId.value = null;
+  editingBody.value = "";
+}
+
+function saveEdit() {
+  if (!props.todo || editingMessageId.value == null) return;
+  const body = editingBody.value.trim();
+  if (!body) return;
+
+  localList.value = localList.value.map((message) =>
+    String(message.id) === String(editingMessageId.value)
+      ? {
+          ...message,
+          body,
+          editedAt: new Date().toISOString(),
+        }
+      : message,
+  );
+
+  emit("edit-message", {
+    id: props.todo.id,
+    messageId: editingMessageId.value,
+    body,
+  });
+  cancelEditing();
+}
+
+function toggleRead(message: Message) {
+  if (!props.todo) return;
+  const nextIsRead = !Boolean(message.isRead);
+  localList.value = localList.value.map((entry) =>
+    String(entry.id) === String(message.id)
+      ? { ...entry, isRead: nextIsRead }
+      : entry,
+  );
+  emit("toggle-read", {
+    id: props.todo.id,
+    messageId: message.id,
+    isRead: nextIsRead,
+  });
+}
 
 /* ===== Sticky composer height → dynamic padding for the scroller ===== */
 const composerRef = ref<HTMLElement | null>(null);
@@ -250,11 +309,74 @@ const drawerKey = computed(() => `${props.todo?.id ?? "none"}`);
                           m.author?.name || "test@squarely.app"
                         }}</strong>
                       </div>
-                      <span class="text-caption text-medium-emphasis">{{
-                        fmtDate(m.createdAt)
-                      }}</span>
+                      <div class="d-flex align-center gap-2">
+                        <VChip
+                          size="x-small"
+                          :color="m.isRead ? 'success' : 'warning'"
+                          variant="tonal"
+                        >
+                          {{ m.isRead ? "Read" : "Unread" }}
+                        </VChip>
+                        <span class="text-caption text-medium-emphasis">{{
+                          fmtDate(m.createdAt)
+                        }}</span>
+                      </div>
                     </div>
-                    <div class="text-body-2">{{ m.body }}</div>
+                    <div class="d-flex align-start justify-space-between gap-3">
+                      <div v-if="editingMessageId === m.id" class="flex-grow-1">
+                        <AppTextarea
+                          v-model="editingBody"
+                          rows="2"
+                          auto-grow
+                          placeholder="Edit comment..."
+                        />
+                      </div>
+                      <div v-else class="text-body-2 flex-grow-1">
+                        {{ m.body }}
+                        <span
+                          v-if="m.editedAt"
+                          class="text-caption text-medium-emphasis ms-1"
+                        >
+                          (edited)
+                        </span>
+                      </div>
+                      <div class="message-actions">
+                        <IconBtn @click="toggleRead(m)">
+                          <VIcon
+                            :icon="m.isRead ? 'tabler-mail-opened' : 'tabler-mail'"
+                            :color="m.isRead ? 'primary' : 'error'"
+                          />
+                          <VTooltip activator="parent" location="top">
+                            {{ m.isRead ? "Mark as unread" : "Mark as read" }}
+                          </VTooltip>
+                        </IconBtn>
+                        <template v-if="isOwnMessage(m)">
+                          <IconBtn
+                            v-if="editingMessageId !== m.id"
+                            @click="startEditing(m)"
+                          >
+                            <VIcon icon="tabler-pencil" />
+                            <VTooltip activator="parent" location="top">
+                              Edit comment
+                            </VTooltip>
+                          </IconBtn>
+                          <template v-else>
+                            <IconBtn @click="saveEdit">
+                              <VIcon icon="tabler-check" />
+                              <VTooltip activator="parent" location="top">
+                                Save edit
+                              </VTooltip>
+                            </IconBtn>
+                            <IconBtn @click="cancelEditing">
+                              <VIcon icon="tabler-x" />
+                              <VTooltip activator="parent" location="top">
+                                Cancel edit
+                              </VTooltip>
+                            </IconBtn>
+                          </template>
+                        </template>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div v-else class="text-medium-emphasis">No messages yet.</div>
@@ -322,6 +444,13 @@ const drawerKey = computed(() => `${props.todo?.id ?? "none"}`);
   border: 1px solid rgba(255, 255, 255, 8%);
   border-radius: 12px;
   background: rgba(255, 255, 255, 6%);
+}
+
+.message-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 /* Compact actions */

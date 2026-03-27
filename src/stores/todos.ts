@@ -1,4 +1,4 @@
-import type { Meeting, ToDo } from "@/data/schema";
+import type { Meeting, Message, ToDo } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { useContactsStore } from "@/stores/contacts";
 import { defineStore } from "pinia";
@@ -48,6 +48,16 @@ function computeEndAt(startAt: string, durationMin: number): string {
   return d.toISOString();
 }
 
+function normalizeMessage(message: any): Message {
+  return {
+    ...message,
+    body: message?.body ?? "",
+    createdAt: message?.createdAt ?? new Date().toISOString(),
+    isRead: Boolean(message?.isRead),
+    editedAt: message?.editedAt ?? null,
+  };
+}
+
 export const useTodos = defineStore("todos", {
   state: () => ({
     items: [] as ToDo[],
@@ -61,6 +71,21 @@ export const useTodos = defineStore("todos", {
     byStatus: (s) => (status: ToDo["status"]) =>
       s.items.filter((t) => t.status === status),
     important: (s) => s.items.filter((t) => t.important),
+    unreadMessages: (s) =>
+      s.items.flatMap((todo) =>
+        Array.isArray(todo.messages)
+          ? todo.messages
+              .filter((message) => !message?.isRead)
+              .map((message) => ({
+                todoId: todo.id,
+                todoTitle: todo.title,
+                message,
+              }))
+          : [],
+      ),
+    unreadMessageCount(): number {
+      return this.unreadMessages.length;
+    },
     search: (s) => (q: string) => {
       const ql = q.trim().toLowerCase();
       if (!ql) return s.items;
@@ -151,7 +176,12 @@ export const useTodos = defineStore("todos", {
             }))
           : [];
         copy.messages = Array.isArray(t.messages)
-          ? t.messages.map((m: any) => ({ ...m, author: resolveRef(m.author) }))
+          ? t.messages.map((m: any) =>
+              normalizeMessage({
+                ...m,
+                author: resolveRef(m.author),
+              }),
+            )
           : [];
         delete copy.priority;
         copy.steps = copy.steps.map((step: any) => {
@@ -226,6 +256,10 @@ export const useTodos = defineStore("todos", {
           return nextStep;
         });
       }
+      if (Array.isArray(nextPatch.messages))
+        nextPatch.messages = nextPatch.messages.map((message: any) =>
+          normalizeMessage(message),
+        );
       delete nextPatch.priority;
       const updated = {
         ...this.items[idx],

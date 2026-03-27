@@ -48,7 +48,7 @@ const rows = computed(() =>
     employmentReportTo: resolveManager(emp)?.name ?? "",
     employmentReportToAvatar: resolveManager(emp)?.avatar ?? null,
     employmentReportToId: resolveManager(emp)?.id ?? null,
-  }))
+  })),
 );
 const headers = [
   { title: "Name", key: "user" },
@@ -232,13 +232,13 @@ const decorateManagers = (employee: EmployeeProperties) => {
     })
     .filter(
       (
-        m
+        m,
       ): m is {
         id: number | string;
         avatar: string;
         displayName: string;
         isPrimary: boolean;
-      } => m !== null
+      } => m !== null,
     );
 };
 
@@ -274,7 +274,7 @@ const managerOptions = computed(() => {
   const managers = employeesStore.all
     .filter(
       (emp) =>
-        emp?.id !== null && emp?.id !== undefined && managerIds.has(emp.id)
+        emp?.id !== null && emp?.id !== undefined && managerIds.has(emp.id),
     )
     .map((emp) => ({
       title: emp.fullName,
@@ -340,7 +340,7 @@ const cloneContact = (contact: EmployeeProperties | null | undefined) => {
     } catch (error) {
       console.warn(
         "structuredClone failed for contact, falling back to JSON:",
-        error
+        error,
       );
     }
   }
@@ -391,11 +391,11 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     const referencingTodos = todosStore.items.filter(
       (t) =>
         Array.isArray(t.collaborators) &&
-        t.collaborators.some((c) => Number(c.id) === Number(id))
+        t.collaborators.some((c) => Number(c.id) === Number(id)),
     );
     if (referencingTodos.length) {
       reasons.push(
-        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`
+        `Referenced as an assignee in ${referencingTodos.length} task(s)`,
       );
     }
 
@@ -405,11 +405,11 @@ const findDeleteBlockingReasons = (id: number): string[] => {
       .filter(
         (s) =>
           Array.isArray(s.collaborators) &&
-          s.collaborators.some((c) => Number(c.id) === Number(id))
+          s.collaborators.some((c) => Number(c.id) === Number(id)),
       );
     if (stepRefs.length) {
       reasons.push(
-        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`
+        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`,
       );
     }
 
@@ -424,7 +424,7 @@ const findDeleteBlockingReasons = (id: number): string[] => {
     const messageRefs = todosStore.items
       .flatMap((t) => t.messages || [])
       .filter(
-        (m) => m && m.author && Number((m.author as any).id) === Number(id)
+        (m) => m && m.author && Number((m.author as any).id) === Number(id),
       );
     if (messageRefs.length) {
       reasons.push(`Author on ${messageRefs.length} message(s)`);
@@ -442,7 +442,7 @@ const findDeleteBlockingReasons = (id: number): string[] => {
       if (
         Array.isArray(m.notes) &&
         m.notes.some(
-          (n: any) => n && n.author && Number(n.author.id) === Number(id)
+          (n: any) => n && n.author && Number(n.author.id) === Number(id),
         )
       )
         return true;
@@ -454,7 +454,7 @@ const findDeleteBlockingReasons = (id: number): string[] => {
   } catch (e) {
     // If anything goes wrong, be conservative and block deletion with a generic reason
     reasons.push(
-      "Unable to guarantee safe deletion due to internal check failure"
+      "Unable to guarantee safe deletion due to internal check failure",
     );
   }
 
@@ -512,26 +512,30 @@ const cleanupAndDelete = () => {
   // Remove from top-level collaborators
   todosStore.items = todosStore.items.map((t) => {
     const collaborators = (t.collaborators || []).filter(
-      (c) => Number(c.id) !== Number(id)
+      (c) => Number(c.id) !== Number(id),
     );
 
     // steps
     const steps = (t.steps || []).map((s) => ({
       ...s,
       collaborators: (s.collaborators || []).filter(
-        (c) => Number(c.id) !== Number(id)
+        (c) => Number(c.id) !== Number(id),
       ),
     }));
 
     // activities: remove those authored by the contact
     const activities = (t.activities || []).filter(
-      (a) => !(a && a.author && Number(a.author.id) === Number(id))
+      (a) => !(a && a.author && Number(a.author.id) === Number(id)),
     );
 
     // messages: remove authored messages
     const messages = (t.messages || []).filter(
       (m) =>
-        !(m && (m.author as any) && Number((m.author as any).id) === Number(id))
+        !(
+          m &&
+          (m.author as any) &&
+          Number((m.author as any).id) === Number(id)
+        ),
     );
 
     return { ...t, collaborators, steps, activities, messages };
@@ -544,10 +548,10 @@ const cleanupAndDelete = () => {
         ? null
         : m.requestedBy;
     const linkedTo = (m.linkedTo || []).filter(
-      (l) => Number(l.id) !== Number(id)
+      (l) => Number(l.id) !== Number(id),
     );
     const notes = (m.notes || []).filter(
-      (n: any) => !(n && n.author && Number(n.author.id) === Number(id))
+      (n: any) => !(n && n.author && Number(n.author.id) === Number(id)),
     );
     return { ...m, requestedBy, linkedTo, notes };
   });
@@ -616,10 +620,10 @@ const contactsOptions = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
+  })),
 );
 
-const openAddTodoDrawerForContact = (contact: EmployeeProperties) => {
+const openAddTaskDrawerForContact = (contact: EmployeeProperties) => {
   try {
     const initial = {
       title: `Follow up: ${contact.fullName ?? ""}`,
@@ -743,7 +747,7 @@ const handleLeaveSubmit = (payload: any) => {
 
   employeesStore.updateEmployee(target.id, {
     requests: JSON.parse(
-      JSON.stringify([...currentRequests, newRequest] as any[])
+      JSON.stringify([...currentRequests, newRequest] as any[]),
     ),
   });
 
@@ -776,7 +780,7 @@ const handleAdditionSubmit = (payload: any) => {
 
   employeesStore.updateEmployee(target.id, {
     requests: JSON.parse(
-      JSON.stringify([...currentRequests, newRequest] as any[])
+      JSON.stringify([...currentRequests, newRequest] as any[]),
     ),
   });
 
@@ -809,7 +813,7 @@ const handleDeductionSubmit = (payload: any) => {
 
   employeesStore.updateEmployee(target.id, {
     requests: JSON.parse(
-      JSON.stringify([...currentRequests, newRequest] as any[])
+      JSON.stringify([...currentRequests, newRequest] as any[]),
     ),
   });
 
@@ -842,7 +846,7 @@ const handleAdvanceSubmit = (payload: any) => {
 
   employeesStore.updateEmployee(target.id, {
     requests: JSON.parse(
-      JSON.stringify([...currentRequests, newRequest] as any[])
+      JSON.stringify([...currentRequests, newRequest] as any[]),
     ),
   });
 
@@ -892,17 +896,17 @@ const onMeetingCreated = (payload: any) => {
   }
 };
 
-const onTodoCreated = (payload: any) => {
+const onTaskCreated = (payload: any) => {
   try {
     const todos = useTodos();
     try {
       todos.init();
     } catch {}
     todos.addTodo && todos.addTodo(payload);
-    notifications.push("To Do created", "success", 3500);
+    notifications.push("Task created", "success", 3500);
   } catch (e) {
-    console.error("onTodoCreated failed:", e);
-    notifications.push("To Do created", "success", 3500);
+    console.error("onTaskCreated failed:", e);
+    notifications.push("Task created", "success", 3500);
   } finally {
     isAddTodoDrawerVisible.value = false;
   }
@@ -932,7 +936,8 @@ const updateOptions = (options: any) => {
 
   // keep dropdown visually in sync with header clicks
   const found = sortOptions.find(
-    (opt) => opt.value.key === sortBy.value && opt.value.order === orderBy.value
+    (opt) =>
+      opt.value.key === sortBy.value && opt.value.order === orderBy.value,
   );
   selectedSort.value = found?.value;
 };
@@ -1208,11 +1213,11 @@ const updateItemsPerPage = (value: number | string) => {
             <VIcon icon="tabler-dots-vertical" />
             <VMenu activator="parent">
               <VList>
-                <VListItem @click="openAddTodoDrawerForContact(item)">
+                <VListItem @click="openAddTaskDrawerForContact(item)">
                   <template #prepend>
                     <VIcon icon="tabler-list-check" />
                   </template>
-                  <VListItemTitle>To Do</VListItemTitle>
+                  <VListItemTitle>Task</VListItemTitle>
                 </VListItem>
 
                 <VListItem @click="openAddMeetingForContact(item)">
@@ -1332,13 +1337,13 @@ const updateItemsPerPage = (value: number | string) => {
       @close="handleAdvanceClose"
     />
 
-    <!-- To Do / Meeting / Email components wired for quick-create from contact list -->
+    <!-- Tasks / Meeting / Email components wired for quick-create from contact list -->
     <AddNewToDoDrawer
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
       source="employees"
-      @user-data="onTodoCreated"
+      @user-data="onTaskCreated"
     />
 
     <AddMeetingDrawer
@@ -1358,12 +1363,12 @@ const updateItemsPerPage = (value: number | string) => {
             const recipients = Array.isArray(payload?.to)
               ? payload.to
               : payload?.to
-              ? [String(payload.to)]
-              : [];
+                ? [String(payload.to)]
+                : [];
             notifications.push(
               `Email sent to ${recipients.length} recipient(s)`,
               'success',
-              3500
+              3500,
             );
           } catch (e) {
             notifications.push('Email sent', 'success', 3500);

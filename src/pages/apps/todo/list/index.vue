@@ -2,6 +2,7 @@
 import type {
   Activity,
   ContactRef,
+  Message,
   Status,
   ToDo,
   ToDoStep,
@@ -660,8 +661,10 @@ function openMessageDrawer(t: ToDo) {
 }
 
 // message count helper (keeps typing untouched)
-const msgCount = (t: any) =>
-  Array.isArray(t?.messages) ? t.messages.length : 0;
+const unreadMsgCount = (t: any) =>
+  Array.isArray(t?.messages)
+    ? t.messages.filter((message: any) => !message?.isRead).length
+    : 0;
 
 // handle send -> reuse your existing addActivityToTodo()
 function addMessageToTodo(payload: {
@@ -671,6 +674,8 @@ function addMessageToTodo(payload: {
 }) {
   const t = todosStore.byId(payload.id);
   if (!t) return;
+  const body = payload.body.trim();
+  if (!body) return;
   // store allows extra fields; keep messages on the record
   const messages = Array.isArray((t as any).messages)
     ? [...(t as any).messages]
@@ -678,8 +683,10 @@ function addMessageToTodo(payload: {
   messages.push({
     id: Date.now(),
     author: payload.author,
-    body: payload.body,
+    body,
     createdAt: new Date().toISOString(),
+    isRead: true,
+    editedAt: null,
   });
   todosStore.updateTodo(payload.id, { ...(t as any), messages } as any);
 }
@@ -689,6 +696,49 @@ function onMessageSend(payload: {
   author?: ContactRef;
 }) {
   addMessageToTodo(payload);
+}
+
+function onMessageEdit(payload: {
+  id: number | string;
+  messageId: number | string;
+  body: string;
+}) {
+  const t = todosStore.byId(payload.id);
+  if (!t) return;
+  const body = payload.body.trim();
+  if (!body) return;
+  const messages: Message[] = Array.isArray((t as any).messages)
+    ? (t as any).messages.map((message: any) =>
+        String(message.id) === String(payload.messageId)
+          ? {
+              ...message,
+              body,
+              editedAt: new Date().toISOString(),
+            }
+          : message,
+      )
+    : [];
+  todosStore.updateTodo(payload.id, { ...(t as any), messages } as any);
+}
+
+function onMessageReadStateChange(payload: {
+  id: number | string;
+  messageId: number | string;
+  isRead: boolean;
+}) {
+  const t = todosStore.byId(payload.id);
+  if (!t) return;
+  const messages: Message[] = Array.isArray((t as any).messages)
+    ? (t as any).messages.map((message: any) =>
+        String(message.id) === String(payload.messageId)
+          ? {
+              ...message,
+              isRead: payload.isRead,
+            }
+          : message,
+      )
+    : [];
+  todosStore.updateTodo(payload.id, { ...(t as any), messages } as any);
 }
 
 /* ========= NEW: row click Ã¢â€ â€™ open edit (ignore controls/icons/avatars) ========= */
@@ -1034,17 +1084,10 @@ function onRowClick(e: MouseEvent, payload: any) {
         <!-- ACTIONS -->
         <template #item.actions="{ item }">
           <div class="actions-cell">
-            <IconBtn @click.stop="togglePendingProgress(item)">
-              <VIcon icon="tabler-stopwatch" />
-            </IconBtn>
-
-            <IconBtn @click.stop="markForReview(item)">
-              <VIcon icon="tabler-user-check" />
-            </IconBtn>
             <VBadge
               class="msg-badge"
-              :model-value="msgCount(item) > 0"
-              :content="msgCount(item)"
+              :model-value="unreadMsgCount(item) > 0"
+              :content="unreadMsgCount(item)"
               color="error"
               location="top end"
               overlap
@@ -1276,7 +1319,10 @@ function onRowClick(e: MouseEvent, payload: any) {
     <MessageDrawer
       v-model:is-drawer-open="isMessageDrawerOpen"
       :todo="messageDrawerTodo"
+      :author="CURRENT_AUTHOR"
       @send="onMessageSend"
+      @edit-message="onMessageEdit"
+      @toggle-read="onMessageReadStateChange"
     />
 
     <VDialog v-model="isAssignDialogOpen" max-width="560">
@@ -1321,7 +1367,11 @@ function onRowClick(e: MouseEvent, payload: any) {
         </VCardText>
 
         <VCardActions class="px-6 pb-6 justify-space-between">
-          <VBtn color="primary" variant="tonal" @click="saveAssignedCollaborators">
+          <VBtn
+            color="primary"
+            variant="tonal"
+            @click="saveAssignedCollaborators"
+          >
             Save
           </VBtn>
           <VBtn variant="tonal" color="secondary" @click="closeAssignDialog">

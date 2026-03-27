@@ -39,6 +39,8 @@ export type Message = {
   author: ContactRef | { id: number | string; name: string }; // you used a raw object once
   body: string;
   createdAt: string;
+  isRead?: boolean;
+  editedAt?: string | null;
 };
 
 // Add below your MeetingSentiment export

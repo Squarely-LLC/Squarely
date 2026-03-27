@@ -10,7 +10,7 @@
     "editor.autoClosingBrackets": "always"
   },
   "[markdown]": {
-    "editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   // SCSS
   "[scss]": {

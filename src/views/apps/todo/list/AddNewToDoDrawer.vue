@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
-import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ContactRef, Status, ToDo } from "@/data/schema";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
-import type { CustomInputContent } from "@core/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -64,29 +62,14 @@ const titleFieldRef = ref<any>(null);
 // ref to the AppDateTimePicker component so we can focus/open its input
 const duePickerRef = ref<any>(null);
 
-/* ===== Status (compact tiles) ===== */
-/* ===== Status (compact tiles) ===== */
-const statusRadios: CustomInputContent[] = [
-  {
-    title: "Pending",
-    value: "pending",
-    icon: { icon: "tabler-clock", size: "24" },
-  },
-  {
-    // NBSP keeps it on one line
-    title: "In\u00A0Progress",
-    value: "in_progress",
-    icon: { icon: "tabler-rotate-clockwise", size: "24" },
-  },
-  {
-    // NBSP keeps it on one line
-    title: "For\u00A0Review",
-    value: "for_review",
-    icon: { icon: "tabler-eye-check", size: "24" },
-  },
+const statusOptions: { title: string; value: Status }[] = [
+  { title: "Pending", value: "pending" },
+  { title: "In Progress", value: "in_progress" },
+  { title: "For Review", value: "for_review" },
+  { title: "Completed", value: "completed" },
 ];
 
-const selectedStatus = ref<Exclude<Status, "completed">>("pending");
+const selectedStatus = ref<Status>("pending");
 
 /* ===== Helpers ===== */
 // Fallback to canonical contacts store when parent didn't provide options
@@ -435,13 +418,13 @@ async function onSubmit() {
               <VDivider />
 
               <VCol cols="12">
-                <div class="status-compact">
-                  <CustomRadiosWithIcon
-                    v-model:selected-radio="selectedStatus"
-                    :radio-content="statusRadios"
-                    :grid-column="{ sm: '4', cols: '12' }"
-                  />
-                </div>
+                <AppSelect
+                  v-model="selectedStatus"
+                  label="Status"
+                  :items="statusOptions"
+                  item-title="title"
+                  item-value="value"
+                />
               </VCol>
 
               <VDivider />
@@ -471,11 +454,14 @@ async function onSubmit() {
               </VCol>
 
               <VCol cols="12">
-                <DialogActionBar
-                  save-type="submit"
-                  @save="() => undefined"
-                  @cancel="closeNavigationDrawer"
-                />
+                <VBtn type="submit" class="me-3">Save</VBtn>
+                <VBtn
+                  type="button"
+                  variant="tonal"
+                  color="error"
+                  @click="closeNavigationDrawer"
+                  >Cancel</VBtn
+                >
               </VCol>
             </VRow>
           </VForm>
@@ -488,36 +474,6 @@ async function onSubmit() {
 <style scoped>
 /* stylelint-disable selector-pseudo-class-no-unknown, selector-pseudo-element-no-unknown, no-duplicate-selectors, selector-descendant-combinator-no-non-space, order/properties-order */
 
-/* Status tiles styling - using ::v-deep for scoped deep selectors */
-::v-deep(.status-compact .custom-radios-with-icon .v-card) {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  gap: 6px;
-  min-block-size: 84px;
-  padding-block: 10px;
-  padding-inline: 12px;
-  min-inline-size: 120px; /* prevents wrapping of two-word labels */
-}
-
-::v-deep(.status-compact .custom-radios-with-icon .custom-input__title),
-::v-deep(.status-compact .custom-radios-with-icon .custom-input-title),
-::v-deep(.status-compact .custom-radios-with-icon .custom-radio__title) {
-  overflow: hidden;
-  margin: 0;
-  line-height: 1.1;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-::v-deep(.status-compact .custom-radios-with-icon .custom-input__desc),
-::v-deep(.status-compact .custom-radios-with-icon .custom-input-desc),
-::v-deep(.status-compact .custom-radios-with-icon .custom-radio__desc) {
-  display: none !important;
-}
 
 ::v-deep(.status-compact .custom-radios-with-icon .v-icon) {
   block-size: 24px;

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { ContactRef, Status, ToDo, ToDoStep } from "@/data/schema";
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import type { ContactRef, Status, ToDo, ToDoStep } from "@/data/schema";
 import { useJobsStore } from "@/stores/jobs";
-import type { CustomInputContent } from "@core/types";
 import { formatSystemDate } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -34,7 +33,7 @@ interface Emit {
       title: string;
       collaborators: ContactRef[];
       dueAt: string;
-      status: Exclude<Status, "completed">;
+      status: Status;
       notes: string;
       important: boolean;
       relatedTo: { id: number | string; name: string; type: string } | null;
@@ -64,28 +63,16 @@ const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(null);
 const notes = ref<string>("");
 const important = ref<boolean>(false);
-const selectedStatus = ref<Exclude<Status, "completed">>("pending");
+const selectedStatus = ref<Status>("pending");
 const selectedRelatedKey = ref<string | null>(null);
 
 // ✅ Local completed toggle (pure UI; applied on Save)
-const completed = ref<boolean>(false);
 
-const statusRadios: CustomInputContent[] = [
-  {
-    title: "Pending",
-    value: "pending",
-    icon: { icon: "tabler-clock", size: "24" },
-  },
-  {
-    title: "In\u00A0Progress",
-    value: "in_progress",
-    icon: { icon: "tabler-rotate-clockwise", size: "24" },
-  },
-  {
-    title: "For\u00A0Review",
-    value: "for_review",
-    icon: { icon: "tabler-eye-check", size: "24" },
-  },
+const statusOptions: { title: string; value: Status }[] = [
+  { title: "Pending", value: "pending" },
+  { title: "In Progress", value: "in_progress" },
+  { title: "For Review", value: "for_review" },
+  { title: "Completed", value: "completed" },
 ];
 
 const jobsStore = useJobsStore();
@@ -215,22 +202,11 @@ function loadFromToDo(t: ToDo) {
   important.value = !!t.important;
   selectedRelatedKey.value =
     t.relatedTo?.type === "job" ? `job-${t.relatedTo.id}` : null;
-  selectedStatus.value = (t.status ?? "pending") as Exclude<
-    Status,
-    "completed"
-  >;
+  selectedStatus.value = (t.status ?? "pending") as Status;
 
   steps.value = JSON.parse(JSON.stringify(t.steps ?? [])) as ToDoStep[];
 
   // ✅ Initialize local completed toggle from any possible flags/shape
-  const anyT: any = t as any;
-  completed.value = Boolean(
-    anyT?.completed ||
-    anyT?.isCompleted ||
-    anyT?.doneAt ||
-    anyT?.status === "completed",
-  );
-
   nextTick(() => {
     refForm.value?.resetValidation();
     collabSearch.value = "";
@@ -245,7 +221,6 @@ function resetForm() {
   selectedRelatedKey.value = null;
   selectedStatus.value = "pending";
   steps.value = [];
-  completed.value = false; // reset local toggle
   activeTab.value = "details";
   refForm.value?.reset();
   refForm.value?.resetValidation();
@@ -307,8 +282,7 @@ async function onSaveAll() {
       : null,
   };
 
-  // attach completion flags based on local switch
-  if (completed.value) {
+  if (selectedStatus.value === "completed") {
     payload.completed = true;
     payload.isCompleted = true;
     payload.doneAt = new Date().toISOString();
@@ -337,7 +311,7 @@ async function onSaveAll() {
     <VDivider />
 
     <!-- Full-width tabs -->
-    <VTabs v-model="activeTab" grow class="px-4 w-100">
+    <VTabs v-model="activeTab" grow class="px-4 w-100 todo-drawer-tabs">
       <VTab value="details" class="flex-1">Details</VTab>
       <VTab value="steps" class="flex-1">Steps</VTab>
     </VTabs>
@@ -454,13 +428,13 @@ async function onSaveAll() {
 
                   <!-- ✅ Match Add drawer props & wrapper -->
                   <VCol cols="12">
-                    <div class="status-compact">
-                      <CustomRadiosWithIcon
-                        v-model:selected-radio="selectedStatus"
-                        :radio-content="statusRadios"
-                        :grid-column="{ sm: '4', cols: '12' }"
-                      />
-                    </div>
+                    <AppSelect
+                      v-model="selectedStatus"
+                      label="Status"
+                      :items="statusOptions"
+                      item-title="title"
+                      item-value="value"
+                    />
                   </VCol>
 
                   <VDivider />
@@ -485,16 +459,6 @@ async function onSaveAll() {
                   </VCol>
 
                   <!-- ✅ Mark as completed (as a Switch; no auto-save) -->
-                  <VCol cols="12" class="pt-0">
-                    <VSwitch
-                      v-model="completed"
-                      color="success"
-                      inset
-                      label="Mark as completed"
-                      hide-details
-                    />
-                  </VCol>
-
                   <VCol cols="12">
                     <VFileInput label="Attachment File" />
                   </VCol>
@@ -504,9 +468,8 @@ async function onSaveAll() {
 
             <!-- ========= STEPS ========= -->
             <VWindowItem value="steps">
-              <div class="d-flex justify-space-between align-center mb-3">
+              <div class="mb-3">
                 <h6 class="text-subtitle-1">Steps</h6>
-                <VBtn size="small" icon="tabler-plus" @click="addStep" />
               </div>
 
               <div class="d-flex flex-column gap-3">
@@ -516,6 +479,7 @@ async function onSaveAll() {
                   :key="s.id"
                   class="px-3 py-2 step-row"
                   variant="tonal"
+                  @click="openStepEditDialog(idx)"
                 >
                   <div class="d-flex align-center justify-space-between">
                     <div class="d-flex align-center gap-3">
@@ -525,7 +489,7 @@ async function onSaveAll() {
                         :model-value="s.status === 'completed'"
                         @click.stop="toggleStepCompleted(idx)"
                       />
-                      <VIcon icon="tabler-subtask" size="18" />
+
                       <div class="d-flex flex-column">
                         <strong class="text-body-1">{{
                           s.title || "Untitled step"
@@ -595,7 +559,7 @@ async function onSaveAll() {
 
                       <VMenu>
                         <template #activator="{ props: m }">
-                          <IconBtn v-bind="m"
+                          <IconBtn v-bind="m" @click.stop
                             ><VIcon icon="tabler-dots-vertical"
                           /></IconBtn>
                         </template>
@@ -603,16 +567,7 @@ async function onSaveAll() {
                           <VListItem @click="openStepEditDialog(idx)"
                             ><VListItemTitle>Edit</VListItemTitle></VListItem
                           >
-                          <VListItem
-                            @click="
-                              () => {
-                                s.status = 'for_review';
-                                scheduleSaveSteps();
-                              }
-                            "
-                          >
-                            <VListItemTitle>Submit for review</VListItemTitle>
-                          </VListItem>
+
                           <VListItem @click="removeStep(idx)"
                             ><VListItemTitle class="text-error"
                               >Delete</VListItemTitle
@@ -653,7 +608,10 @@ async function onSaveAll() {
                       clearable
                       @update:model-value="newSearch = ''"
                     />
-                    <DialogActionBar @save="saveNewDraft" @cancel="cancelNewDraft" />
+                    <DialogActionBar
+                      @save="saveNewDraft"
+                      @cancel="cancelNewDraft"
+                    />
                   </div>
                 </VCard>
 
@@ -662,6 +620,16 @@ async function onSaveAll() {
                   class="text-medium-emphasis text-center py-6"
                 >
                   No steps yet. Click the “+” to add one.
+                </div>
+
+                <div class="d-flex justify-end pt-2">
+                  <VBtn
+                    size="small"
+                    icon="tabler-plus"
+                    color="primary"
+                    variant="tonal"
+                    @click="addStep"
+                  />
                 </div>
               </div>
             </VWindowItem>
@@ -724,6 +692,51 @@ async function onSaveAll() {
 :deep(.status-compact .custom-radios-with-icon .custom-input-desc),
 :deep(.status-compact .custom-radios-with-icon .custom-radio__desc) {
   display: none !important;
+}
+
+:deep(.todo-drawer-tabs .v-slide-group__content) {
+  align-items: stretch;
+}
+
+:deep(.todo-drawer-tabs) {
+  block-size: 56px;
+}
+
+:deep(.todo-drawer-tabs .v-slide-group) {
+  block-size: 56px;
+}
+
+:deep(.todo-drawer-tabs .v-tab) {
+  block-size: 56px;
+  min-block-size: 56px;
+  padding-block: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.todo-drawer-tabs .v-btn__content) {
+  display: flex;
+  block-size: 56px;
+  align-items: center;
+  justify-content: center;
+  padding-block: 0;
+  margin-block: 0;
+  transform: translateY(0);
+  line-height: 56px;
+  vertical-align: middle;
+}
+
+:deep(.todo-drawer-tabs .v-tab__slider) {
+  inset-block-end: 0;
+}
+
+:deep(.todo-drawer-tabs .v-tab__content) {
+  display: flex;
+  block-size: 56px;
+  align-items: center;
+  justify-content: center;
+  line-height: 56px;
 }
 
 :deep(.status-compact .custom-radios-with-icon .custom-input__title),

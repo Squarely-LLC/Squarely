@@ -1,4 +1,4 @@
-import type { App } from 'vue'
+import type { App } from "vue";
 
 /**
  * This is helper function to register plugins like a nuxt
@@ -41,13 +41,36 @@ import type { App } from 'vue'
  */
 
 export const registerPlugins = (app: App) => {
-  const imports = import.meta.glob<{ default: (app: App) => void }>(['../../plugins/*.{ts,js}', '../../plugins/*/index.{ts,js}'], { eager: true })
+  const imports = import.meta.glob<{ default: (app: App) => void }>(
+    ["../../plugins/*.{ts,js}", "../../plugins/*/index.{ts,js}"],
+    { eager: true },
+  );
 
-  const importPaths = Object.keys(imports).sort()
+  const importPaths = Object.keys(imports).sort((a, b) => {
+    const rank = (path: string) => {
+      if (path.includes("/plugins/casl/")) return 0;
+      if (path.includes("/plugins/2.pinia.")) return 1;
+      if (path.includes("/plugins/1.router/")) return 2;
 
-  importPaths.forEach(path => {
-    const pluginImportModule = imports[path]
+      return 3;
+    };
 
-    pluginImportModule.default?.(app)
-  })
-}
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+
+  const seen = new Set<string>();
+
+  importPaths.forEach((path) => {
+    const normalizedPath = path
+      .replace(/\/index\.(ts|js)$/, "")
+      .replace(/\.(ts|js)$/, "");
+
+    if (seen.has(normalizedPath)) return;
+
+    seen.add(normalizedPath);
+
+    const pluginImportModule = imports[path];
+
+    pluginImportModule.default?.(app);
+  });
+};

@@ -1,78 +1,93 @@
 <script lang="ts" setup>
 import type { Notification } from '@layouts/types'
 
-import avatar3 from '@images/avatars/avatar-3.png'
-import avatar4 from '@images/avatars/avatar-4.png'
-import avatar5 from '@images/avatars/avatar-5.png'
-import paypal from '@images/cards/paypal-rounded.png'
+import { useTodos } from '@/stores/todos'
+import { formatSystemDate } from '@core/utils/formatters'
 
-const notifications = ref<Notification[]>([
-  {
-    id: 1,
-    img: avatar4,
-    title: 'Congratulation Flora! 🎉',
-    subtitle: 'Won the monthly best seller badge',
-    time: 'Today',
-    isSeen: true,
-  },
-  {
-    id: 2,
-    text: 'Tom Holland',
-    title: 'New user registered.',
-    subtitle: '5 hours ago',
-    time: 'Yesterday',
-    isSeen: false,
-  },
-  {
-    id: 3,
-    img: avatar5,
-    title: 'New message received 👋🏻',
-    subtitle: 'You have 10 unread messages',
-    time: '11 Aug',
-    isSeen: true,
-  },
-  {
-    id: 4,
-    img: paypal,
-    title: 'PayPal',
-    subtitle: 'Received Payment',
-    time: '25 May',
-    isSeen: false,
-    color: 'error',
-  },
-  {
-    id: 5,
-    img: avatar3,
-    title: 'Received Order 📦',
-    subtitle: 'New order received from john',
-    time: '19 Mar',
-    isSeen: true,
-  },
-])
+type TodoCommentNotification = Notification & {
+  meta: {
+    todoId: number | string
+    messageId: number | string
+  }
+}
+
+const todosStore = useTodos()
+todosStore.init()
+
+const notificationIdFor = (todoId: number | string, messageId: number | string) =>
+  `${todoId}:${messageId}`
+
+const unreadMessages = computed(() =>
+  Array.isArray(todosStore.items)
+    ? todosStore.items.flatMap(todo =>
+        Array.isArray(todo.messages)
+          ? todo.messages
+              .filter(message => !message?.isRead)
+              .map(message => ({
+                todoId: todo.id,
+                todoTitle: todo.title,
+                message,
+              }))
+          : [],
+      )
+    : [],
+)
+
+const notifications = computed<TodoCommentNotification[]>(() =>
+  unreadMessages.value
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.message.createdAt).getTime() - new Date(a.message.createdAt).getTime(),
+    )
+    .map(({ todoId, todoTitle, message }) => ({
+      id: Number(
+        notificationIdFor(todoId, message.id)
+          .split('')
+          .reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) >>> 0, 7),
+      ),
+      text: message.author?.name || 'Comment',
+      title: todoTitle,
+      subtitle: message.body,
+      time: formatSystemDate(message.createdAt),
+      isSeen: false,
+      meta: {
+        todoId,
+        messageId: message.id,
+      },
+    })),
+)
+
+const updateReadState = (notificationIds: number[], isRead: boolean) => {
+  const targets = notifications.value.filter(notification =>
+    notificationIds.includes(notification.id),
+  )
+
+  targets.forEach(notification => {
+    const todo = todosStore.byId(notification.meta.todoId)
+    if (!todo || !Array.isArray(todo.messages)) return
+
+    todosStore.updateTodo(notification.meta.todoId, {
+      ...todo,
+      messages: todo.messages.map(message =>
+        String(message.id) === String(notification.meta.messageId)
+          ? { ...message, isRead }
+          : message,
+      ),
+    })
+  })
+}
 
 const removeNotification = (notificationId: number) => {
-  notifications.value.forEach((item, index) => {
-    if (notificationId === item.id)
-      notifications.value.splice(index, 1)
-  })
+  updateReadState([notificationId], true)
 }
 
-const markRead = (notificationId: number[]) => {
-  notifications.value.forEach(item => {
-    notificationId.forEach(id => {
-      if (id === item.id)
-        item.isSeen = true
-    })
-  })
+const markRead = (notificationIds: number[]) => {
+  updateReadState(notificationIds, true)
 }
 
-const markUnRead = (notificationId: number[]) => {
-  notifications.value.forEach(item => {
-    notificationId.forEach(id => {
-      if (id === item.id)
-        item.isSeen = false
-    })
-  })
+const markUnRead = (notificationIds: number[]) => {
+  updateReadState(notificationIds, false)
 }
 
 const handleNotificationClick = (notification: Notification) => {
