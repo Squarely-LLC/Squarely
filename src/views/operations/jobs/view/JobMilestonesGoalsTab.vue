@@ -10,6 +10,7 @@ import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import { formatSystemDate } from "@core/utils/formatters";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 interface Props {
@@ -32,7 +33,7 @@ const milestoneDialog = reactive({
   visible: false,
   mode: "create" as "create" | "edit",
   draft: {
-    id: null as number | null,
+    id: undefined as number | undefined,
     name: "",
     startDate: undefined as string | undefined,
     dueDate: undefined as string | undefined,
@@ -44,8 +45,8 @@ const goalDialog = reactive({
   visible: false,
   mode: "create" as "create" | "edit",
   draft: {
-    id: null as number | null,
-    milestoneId: null as number | null,
+    id: undefined as number | undefined,
+    milestoneId: undefined as number | undefined,
     name: "",
     startDate: undefined as string | undefined,
     dueDate: undefined as string | undefined,
@@ -56,18 +57,20 @@ const goalDialog = reactive({
 const milestoneTargetId = ref<number | null>(null);
 const goalTargetId = ref<number | null>(null);
 const milestoneTitle = computed(() =>
-  milestoneDialog.mode === "create" ? "Add Milestone" : "Edit Milestone"
+  milestoneDialog.mode === "create" ? "Add Milestone" : "Edit Milestone",
 );
 const goalTitle = computed(() =>
-  goalDialog.mode === "create" ? "Add Goal" : "Edit Goal"
+  goalDialog.mode === "create" ? "Add Goal" : "Edit Goal",
 );
 const isAddTodoDrawerVisible = ref(false);
 const addTodoInitial = ref<any | null>(null);
-const addTodoDrawerRef =
-  ref<InstanceType<typeof AddNewToDoDrawer> | null>(null);
+const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
+  null,
+);
 
 type JobTodo = ToDo & {
   goalId?: number | string | null;
+  milestoneId?: number | string | null;
 };
 
 const jobTodos = computed<JobTodo[]>(() => {
@@ -81,6 +84,15 @@ const jobTodos = computed<JobTodo[]>(() => {
   }) as JobTodo[];
 });
 
+const milestoneTasksForMilestone = (milestoneId: number) =>
+  jobTodos.value.filter(
+    (todo) =>
+      String(todo.milestoneId ?? "") === String(milestoneId) &&
+      (todo.goalId === null ||
+        todo.goalId === undefined ||
+        String(todo.goalId).trim() === ""),
+  );
+
 const milestoneGoalTree = computed(() => {
   return milestones.value.map((milestone) => {
     const nestedGoals = goals.value
@@ -88,16 +100,41 @@ const milestoneGoalTree = computed(() => {
       .map((goal) => ({
         ...goal,
         tasks: jobTodos.value.filter(
-          (todo) => String(todo.goalId ?? "") === String(goal.id)
+          (todo) => String(todo.goalId ?? "") === String(goal.id),
         ),
       }));
 
     return {
       ...milestone,
+      tasks: milestoneTasksForMilestone(milestone.id),
       goals: nestedGoals,
     };
   });
 });
+
+const shouldExpandGoal = (goalId: number) => {
+  const tasks = jobTodos.value.filter(
+    (todo) => String(todo.goalId ?? "") === String(goalId),
+  );
+
+  if (!tasks.length) return false;
+
+  return tasks.some((task) => task.status !== "completed");
+};
+
+const shouldExpandMilestone = (milestoneId: number) => {
+  const directTasks = milestoneTasksForMilestone(milestoneId);
+  if (
+    directTasks.length &&
+    directTasks.some((task) => task.status !== "completed")
+  ) {
+    return true;
+  }
+
+  return goals.value
+    .filter((goal) => String(goal.milestoneId) === String(milestoneId))
+    .some((goal) => shouldExpandGoal(goal.id));
+};
 
 const milestoneFormRef = ref<VForm>();
 const goalFormRef = ref<VForm>();
@@ -108,60 +145,66 @@ const expandedGoals = ref<Array<number>>([]);
 const goalIdsForMilestone = (milestoneId: number) =>
   goals.value
     .filter((goal) => String(goal.milestoneId) === String(milestoneId))
+    .filter((goal) => shouldExpandGoal(goal.id))
     .map((goal) => goal.id);
 
 watch(
-  milestones,
-  (nextMilestones, previousMilestones) => {
+  [milestones, goals, jobTodos],
+  ([nextMilestones], previousValue) => {
+    const previousMilestones = previousValue?.[0];
     const nextIds = nextMilestones.map((milestone) => milestone.id);
+    const eligibleIds = nextIds.filter((id) => shouldExpandMilestone(id));
 
     if (!previousMilestones?.length) {
-      expandedMilestones.value = nextIds.length ? [nextIds[0]] : [];
-      expandedGoals.value = nextIds.length ? goalIdsForMilestone(nextIds[0]) : [];
+      expandedMilestones.value = eligibleIds;
+      expandedGoals.value = eligibleIds.flatMap((milestoneId) =>
+        goalIdsForMilestone(milestoneId),
+      );
       return;
     }
 
     const previousIds = new Set(
-      previousMilestones.map((milestone) => milestone.id)
+      previousMilestones.map((milestone) => milestone.id),
     );
     const preservedIds = expandedMilestones.value.filter((id) =>
-      nextIds.includes(id)
+      eligibleIds.includes(id),
     );
-    const addedIds = nextIds.filter((id) => !previousIds.has(id));
+    const addedIds = eligibleIds.filter((id) => !previousIds.has(id));
 
     expandedMilestones.value = [...new Set([...preservedIds, ...addedIds])];
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   expandedMilestones,
   (milestoneIds) => {
     const expandedGoalIds = milestoneIds.flatMap((milestoneId) =>
-      goalIdsForMilestone(milestoneId)
+      goalIdsForMilestone(milestoneId),
     );
 
     expandedGoals.value = [
       ...new Set([...expandedGoals.value, ...expandedGoalIds]),
     ];
   },
-  { deep: true }
+  { deep: true },
 );
 
 watch(
-  goals,
-  (nextGoals, previousGoals) => {
+  [goals, jobTodos],
+  ([nextGoals], previousValue) => {
+    const previousGoals = previousValue?.[0];
     const nextIds = nextGoals.map((goal) => goal.id);
 
     if (!previousGoals?.length) {
       expandedGoals.value = expandedMilestones.value.flatMap((milestoneId) =>
-        goalIdsForMilestone(milestoneId)
+        goalIdsForMilestone(milestoneId),
       );
       return;
     }
 
-    const milestoneExpandedGoalIds = expandedMilestones.value.flatMap((milestoneId) =>
-      goalIdsForMilestone(milestoneId)
+    const milestoneExpandedGoalIds = expandedMilestones.value.flatMap(
+      (milestoneId) => goalIdsForMilestone(milestoneId),
     );
 
     expandedGoals.value = [
@@ -169,15 +212,15 @@ watch(
         [
           ...expandedGoals.value.filter((id) => nextIds.includes(id)),
           ...milestoneExpandedGoalIds,
-        ].filter((id) => nextIds.includes(id))
+        ].filter((id) => nextIds.includes(id)),
       ),
     ];
   },
-  { immediate: true }
+  { immediate: true },
 );
 const resetMilestoneDraft = () => {
   milestoneDialog.draft = {
-    id: null,
+    id: undefined,
     name: "",
     startDate: undefined,
     dueDate: undefined,
@@ -187,8 +230,8 @@ const resetMilestoneDraft = () => {
 };
 const resetGoalDraft = () => {
   goalDialog.draft = {
-    id: null,
-    milestoneId: null,
+    id: undefined,
+    milestoneId: undefined,
     name: "",
     startDate: undefined,
     dueDate: undefined,
@@ -223,16 +266,21 @@ const saveMilestone = async () => {
   };
   if (!valid) return;
   if (milestoneDialog.mode === "create") {
+    const { id, ...draftWithoutId } = milestoneDialog.draft;
     const createdMilestone = jobsStore.addMilestone(job.value.id, {
-      ...milestoneDialog.draft,
+      ...draftWithoutId,
     });
     if (createdMilestone?.id !== undefined) {
-      expandedMilestones.value = [...expandedMilestones.value, createdMilestone.id];
+      expandedMilestones.value = [
+        ...expandedMilestones.value,
+        createdMilestone.id,
+      ];
     }
     notifications.push("Milestone added", "success", 3000);
   } else if (milestoneTargetId.value !== null) {
+    const { id, ...draftWithoutId } = milestoneDialog.draft;
     jobsStore.updateMilestone(job.value.id, milestoneTargetId.value, {
-      ...milestoneDialog.draft,
+      ...draftWithoutId,
     });
     notifications.push("Milestone updated", "success", 3000);
   }
@@ -245,7 +293,7 @@ const deleteMilestone = (milestone: JobMilestone) => {
   if (!job.value) return;
   jobsStore.removeMilestone(job.value.id, milestone.id);
   expandedMilestones.value = expandedMilestones.value.filter(
-    (id) => id !== milestone.id
+    (id) => id !== milestone.id,
   );
   notifications.push("Milestone removed", "success", 3000);
 };
@@ -263,7 +311,7 @@ const openEditGoal = (goal: JobGoal) => {
   goalTargetId.value = goal.id;
   goalDialog.draft = {
     id: goal.id,
-    milestoneId: goal.milestoneId ?? null,
+    milestoneId: goal.milestoneId ?? undefined,
     name: goal.name,
     startDate: goal.startDate ?? undefined,
     dueDate: goal.dueDate ?? undefined,
@@ -276,15 +324,20 @@ const saveGoal = async () => {
   if (!job.value) return;
   const { valid } = (await goalFormRef.value?.validate()) ?? { valid: true };
   if (!valid) return;
-  if (goalDialog.draft.milestoneId === null || goalDialog.draft.milestoneId === undefined) {
+  if (
+    goalDialog.draft.milestoneId === null ||
+    goalDialog.draft.milestoneId === undefined
+  ) {
     return;
   }
   if (goalDialog.mode === "create") {
-    jobsStore.addGoal(job.value.id, { ...goalDialog.draft });
+    const { id, ...draftWithoutId } = goalDialog.draft;
+    jobsStore.addGoal(job.value.id, { ...draftWithoutId });
     notifications.push("Goal added", "success", 3000);
   } else if (goalTargetId.value !== null) {
+    const { id, ...draftWithoutId } = goalDialog.draft;
     jobsStore.updateGoal(job.value.id, goalTargetId.value, {
-      ...goalDialog.draft,
+      ...draftWithoutId,
     });
     notifications.push("Goal updated", "success", 3000);
   }
@@ -299,10 +352,60 @@ const deleteGoal = (goal: JobGoal) => {
   expandedGoals.value = expandedGoals.value.filter((id) => id !== goal.id);
   notifications.push("Goal removed", "success", 3000);
 };
-const openCreateTodo = (goal: JobGoal) => {
+const buildTaskTitlePrefix = (
+  projectName?: string | null,
+  parentName?: string | null,
+) => {
+  const project = projectName?.trim() || "PROJECT NAME";
+  const parent = parentName?.trim() || "TASK";
+  return `${project} | ${parent} | `;
+};
+
+const normalizeTaskTitle = (
+  rawTitle: unknown,
+  projectName?: string | null,
+  parentName?: string | null,
+) => {
+  const prefix = buildTaskTitlePrefix(projectName, parentName);
+  const prefixBase = prefix.trimEnd();
+  const trimmedTitle = typeof rawTitle === "string" ? rawTitle.trim() : "";
+
+  if (!trimmedTitle) return prefix;
+  if (trimmedTitle === prefixBase) return prefix;
+  if (trimmedTitle.startsWith(prefixBase)) return trimmedTitle;
+
+  return `${prefix}${trimmedTitle}`;
+};
+
+const openCreateTodoForMilestone = (milestone: JobMilestone) => {
   if (!job.value) return;
   addTodoInitial.value = {
-    title: `Task: ${goal.name}`,
+    title: buildTaskTitlePrefix(job.value.name, milestone.name),
+    collaborators: [],
+    notes: `Created for milestone: ${milestone.name}`,
+    dueAt: milestone.dueDate || new Date().toISOString(),
+    priority:
+      milestone.priority === "High"
+        ? "high"
+        : milestone.priority === "Low"
+          ? "low"
+          : "normal",
+    status: "pending",
+    relatedTo: {
+      id: job.value.id,
+      name: job.value.name,
+      type: "job",
+    },
+    milestoneId: milestone.id,
+    goalId: null,
+  };
+  isAddTodoDrawerVisible.value = true;
+};
+
+const openCreateTodoForGoal = (goal: JobGoal) => {
+  if (!job.value) return;
+  addTodoInitial.value = {
+    title: buildTaskTitlePrefix(job.value.name, goal.name),
     collaborators: [],
     notes: `Created for goal: ${goal.name}`,
     dueAt: goal.dueDate || new Date().toISOString(),
@@ -310,8 +413,8 @@ const openCreateTodo = (goal: JobGoal) => {
       goal.priority === "High"
         ? "high"
         : goal.priority === "Low"
-        ? "low"
-        : "normal",
+          ? "low"
+          : "normal",
     status: "pending",
     relatedTo: {
       id: job.value.id,
@@ -319,32 +422,93 @@ const openCreateTodo = (goal: JobGoal) => {
       type: "job",
     },
     goalId: goal.id,
+    milestoneId: null,
   };
   isAddTodoDrawerVisible.value = true;
 };
+
+const normalizeTaskOwnership = (payload: any) => {
+  if (
+    payload?.goalId !== null &&
+    payload?.goalId !== undefined &&
+    String(payload.goalId).trim() !== ""
+  ) {
+    return {
+      ...payload,
+      goalId: payload.goalId,
+      milestoneId: null,
+    };
+  }
+
+  if (
+    payload?.milestoneId !== null &&
+    payload?.milestoneId !== undefined &&
+    String(payload.milestoneId).trim() !== ""
+  ) {
+    return {
+      ...payload,
+      milestoneId: payload.milestoneId,
+      goalId: null,
+    };
+  }
+
+  return {
+    ...payload,
+    goalId: null,
+    milestoneId: null,
+  };
+};
+
 const onTodoCreated = (payload: any) => {
-  const created = todosStore.addTodo(payload);
+  const ownedPayload = normalizeTaskOwnership(payload);
+  const goalName =
+    goals.value.find((goal) => String(goal.id) === String(ownedPayload?.goalId))
+      ?.name ?? null;
+  const milestoneName =
+    milestones.value.find(
+      (milestone) => String(milestone.id) === String(ownedPayload?.milestoneId),
+    )?.name ?? null;
+  const normalizedPayload = {
+    ...ownedPayload,
+    title: normalizeTaskTitle(
+      ownedPayload?.title,
+      job.value?.name,
+      goalName || milestoneName,
+    ),
+  };
+  const created = todosStore.addTodo(normalizedPayload);
   notifications.push(
-    `Task '${created?.title || payload?.title || "Untitled"}' created`,
+    `Task '${created?.title || normalizedPayload.title || "Untitled"}' created`,
     "success",
-    3000
+    3000,
   );
   isAddTodoDrawerVisible.value = false;
   addTodoInitial.value = null;
+};
+const toggleTaskCompleted = (taskId: number | string) => {
+  const task = todosStore.byId(taskId);
+  if (!task) return;
+
+  todosStore.updateTodo(taskId, {
+    status: task.status === "completed" ? "pending" : "completed",
+  });
 };
 const priorityColor = (priority: "Low" | "Normal" | "High") => {
   return priority === "High"
     ? "error"
     : priority === "Low"
-    ? "secondary"
-    : "primary";
+      ? "secondary"
+      : "primary";
 };
 const todoPriorityColor = (priority?: string) => {
   return priority === "high"
     ? "error"
     : priority === "low"
-    ? "secondary"
-    : "primary";
+      ? "secondary"
+      : "primary";
+};
+const todoPriorityLabel = (priority?: string) => {
+  return priority === "high" ? "High" : priority === "low" ? "Low" : "Normal";
 };
 const todoStatusLabel = (status?: string) => {
   switch (status) {
@@ -359,38 +523,49 @@ const todoStatusLabel = (status?: string) => {
       return "Pending";
   }
 };
+const collaboratorInitials = (name?: string | null) => {
+  if (!name) return "?";
+  const matches = name.trim().match(/\b\w/g) || [];
+  return (
+    matches.slice(0, 2).join("").toUpperCase() || name.slice(0, 1).toUpperCase()
+  );
+};
 const formatDate = (value?: string | null) => {
   if (!value) return "--";
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    }).format(new Date(value));
+    return formatSystemDate(value);
   } catch (error) {
     console.warn("Failed to format date", error);
     return value;
   }
 };
-
 </script>
 <template>
   <div class="d-flex flex-column gap-6">
     <VCard>
       <VCardText>
-        <div class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4">
+        <div
+          class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
+        >
           <div>
             <h5 class="text-h5 mb-1">Milestones, Goals & Tasks</h5>
             <p class="text-body-2 text-medium-emphasis mb-0">
-              Organize delivery as Milestone > Goal > Task.
+              Tasks can live directly under a milestone or under a goal.
             </p>
           </div>
-          <VBtn class="section-add-btn" prepend-icon="tabler-plus" @click="openCreateMilestone">
+          <VBtn
+            class="section-add-btn"
+            prepend-icon="tabler-plus"
+            @click="openCreateMilestone"
+          >
             Add Milestone
           </VBtn>
         </div>
 
-        <div v-if="!milestoneGoalTree.length" class="text-center text-medium-emphasis py-6">
+        <div
+          v-if="!milestoneGoalTree.length"
+          class="text-center text-medium-emphasis py-6"
+        >
           No milestones yet. Add one to get started.
         </div>
 
@@ -413,17 +588,35 @@ const formatDate = (value?: string | null) => {
 
                 <div class="flex-grow-1 min-w-0">
                   <div class="d-flex align-center gap-2 flex-wrap">
-                    <div class="font-weight-medium">{{ milestone.name }}</div>
+                    <VTooltip :text="milestone.name" location="top">
+                      <template #activator="{ props: tooltipProps }">
+                        <div
+                          v-bind="tooltipProps"
+                          class="font-weight-medium truncate-title truncate-title--header"
+                        >
+                          {{ milestone.name }}
+                        </div>
+                      </template>
+                    </VTooltip>
                     <VChip
                       :color="priorityColor(milestone.priority)"
                       size="small"
-                      variant="tonal"
+                      variant="text"
                     >
                       {{ milestone.priority }}
                     </VChip>
                   </div>
                   <div class="text-caption text-medium-emphasis">
-                    {{ milestone.goals.length }} Goal<span v-if="milestone.goals.length !== 1">s</span>
+                    {{ milestone.goals.length }} Goal<span
+                      v-if="milestone.goals.length !== 1"
+                      >s</span
+                    >
+                    <span v-if="milestone.tasks.length">
+                      | {{ milestone.tasks.length }} Task<span
+                        v-if="milestone.tasks.length !== 1"
+                        >s</span
+                      >
+                    </span>
                     | Due {{ formatDate(milestone.dueDate) }}
                   </div>
                   <div class="text-body-2 text-medium-emphasis mt-1">
@@ -431,26 +624,48 @@ const formatDate = (value?: string | null) => {
                   </div>
                 </div>
 
-                <div class="d-flex align-center gap-2 milestone-actions" @click.stop>
-                  <VBtn
-                    class="milestone-add-goal-btn"
-                    size="x-small"
-                    variant="text"
-                    prepend-icon="tabler-plus"
-                    @click="openCreateGoal(milestone.id)"
-                  >
-                    Add Goal
-                  </VBtn>
+                <div
+                  class="d-flex align-center gap-2 milestone-actions"
+                  @click.stop
+                >
+                  <VTooltip text="Add Task" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <VBtn
+                        v-bind="tooltipProps"
+                        class="milestone-add-task-btn"
+                        size="x-small"
+                        variant="text"
+                        icon="tabler-checkbox"
+                        @click="openCreateTodoForMilestone(milestone)"
+                      />
+                    </template>
+                  </VTooltip>
+                  <VTooltip text="Add Goal" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <VBtn
+                        v-bind="tooltipProps"
+                        class="milestone-add-goal-btn"
+                        size="x-small"
+                        variant="text"
+                        icon="tabler-target-arrow"
+                        @click="openCreateGoal(milestone.id)"
+                      />
+                    </template>
+                  </VTooltip>
                   <VBtn icon variant="text" size="x-small">
                     <VIcon icon="tabler-dots-vertical" size="18" />
                     <VMenu activator="parent">
                       <VList>
                         <VListItem @click="openEditMilestone(milestone)">
-                          <template #prepend><VIcon icon="tabler-edit" /></template>
+                          <template #prepend
+                            ><VIcon icon="tabler-edit"
+                          /></template>
                           <VListItemTitle>Edit</VListItemTitle>
                         </VListItem>
                         <VListItem @click="deleteMilestone(milestone)">
-                          <template #prepend><VIcon icon="tabler-trash" color="error" /></template>
+                          <template #prepend
+                            ><VIcon icon="tabler-trash" color="error"
+                          /></template>
                           <VListItemTitle>Delete</VListItemTitle>
                         </VListItem>
                       </VList>
@@ -462,6 +677,108 @@ const formatDate = (value?: string | null) => {
 
             <VExpansionPanelText>
               <VCard variant="flat" class="pa-4 milestone-panel-body">
+                <div
+                  v-if="milestone.tasks.length"
+                  class="d-flex flex-column gap-2 milestone-direct-tasks"
+                >
+                  <VCard
+                    v-for="task in milestone.tasks"
+                    :key="task.id"
+                    class="task-row"
+                    variant="tonal"
+                  >
+                    <div class="task-row-main">
+                      <div class="task-row-left">
+                        <VCheckbox
+                          hide-details
+                          density="compact"
+                          :model-value="task.status === 'completed'"
+                          @click.stop="toggleTaskCompleted(task.id)"
+                        />
+
+                        <div class="task-copy">
+                          <VTooltip :text="task.title" location="top">
+                            <template #activator="{ props: tooltipProps }">
+                              <strong
+                                v-bind="tooltipProps"
+                                class="text-body-1 truncate-title"
+                              >
+                                {{ task.title }}
+                              </strong>
+                            </template>
+                          </VTooltip>
+                          <span class="text-sm"
+                            >Due {{ formatDate(task.dueAt) }}</span
+                          >
+                          <span
+                            v-if="task.notes"
+                            class="text-sm text-medium-emphasis"
+                          >
+                            {{ task.notes }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="task-row-side">
+                        <div
+                          v-if="task.collaborators?.length"
+                          class="v-avatar-group demo-avatar-group"
+                        >
+                          <VAvatar
+                            v-for="collaborator in task.collaborators.slice(
+                              0,
+                              2,
+                            )"
+                            :key="collaborator.id"
+                            :size="28"
+                            color="primary"
+                          >
+                            <template v-if="collaborator.avatarUrl">
+                              <VImg :src="collaborator.avatarUrl" />
+                            </template>
+                            <template v-else>
+                              <span class="task-mono">
+                                {{ collaboratorInitials(collaborator.name) }}
+                              </span>
+                            </template>
+                            <VTooltip activator="parent" location="top">
+                              {{ collaborator.name }}
+                            </VTooltip>
+                          </VAvatar>
+                          <VAvatar
+                            v-if="task.collaborators.length > 2"
+                            :size="28"
+                            color="secondary"
+                          >
+                            +{{ task.collaborators.length - 2 }}
+                          </VAvatar>
+                        </div>
+
+                        <VChip
+                          :color="todoPriorityColor(task.priority)"
+                          size="x-small"
+                          label
+                          class="text-capitalize"
+                          variant="text"
+                        >
+                          {{ todoPriorityLabel(task.priority) }}
+                        </VChip>
+                        <span
+                          class="text-sm"
+                          :class="{
+                            'text-primary': task.status === 'in_progress',
+                            'text-warning': task.status === 'for_review',
+                            'text-medium-emphasis': task.status === 'pending',
+                            'text-success': task.status === 'completed',
+                          }"
+                        >
+                          {{ todoStatusLabel(task.status) }}
+                        </span>
+                      </div>
+                    </div>
+                  </VCard>
+                </div>
+
                 <VExpansionPanels
                   v-if="milestone.goals.length"
                   v-model="expandedGoals"
@@ -485,17 +802,29 @@ const formatDate = (value?: string | null) => {
 
                         <div class="flex-grow-1 min-w-0">
                           <div class="d-flex align-center gap-2 flex-wrap">
-                            <div class="font-weight-medium">{{ goal.name }}</div>
+                            <VTooltip :text="goal.name" location="top">
+                              <template #activator="{ props: tooltipProps }">
+                                <div
+                                  v-bind="tooltipProps"
+                                  class="font-weight-medium truncate-title truncate-title--header"
+                                >
+                                  {{ goal.name }}
+                                </div>
+                              </template>
+                            </VTooltip>
                             <VChip
                               :color="priorityColor(goal.priority)"
                               size="x-small"
-                              variant="tonal"
+                              variant="text"
                             >
                               {{ goal.priority }}
                             </VChip>
                           </div>
                           <div class="text-caption text-medium-emphasis">
-                            {{ goal.tasks.length }} Task<span v-if="goal.tasks.length !== 1">s</span>
+                            {{ goal.tasks.length }} Task<span
+                              v-if="goal.tasks.length !== 1"
+                              >s</span
+                            >
                             | Due {{ formatDate(goal.dueDate) }}
                           </div>
                           <div class="text-body-2 text-medium-emphasis mt-1">
@@ -503,26 +832,36 @@ const formatDate = (value?: string | null) => {
                           </div>
                         </div>
 
-                        <div class="d-flex align-center gap-1 goal-actions" @click.stop>
-                          <VBtn
-                            class="goal-add-task-btn"
-                            size="x-small"
-                            variant="text"
-                            prepend-icon="tabler-plus"
-                            @click="openCreateTodo(goal)"
-                          >
-                            Add Task
-                          </VBtn>
+                        <div
+                          class="d-flex align-center gap-1 goal-actions"
+                          @click.stop
+                        >
+                          <VTooltip text="Add Task" location="top">
+                            <template #activator="{ props: tooltipProps }">
+                              <VBtn
+                                v-bind="tooltipProps"
+                                class="goal-add-task-btn"
+                                size="x-small"
+                                variant="text"
+                                icon="tabler-checkbox"
+                                @click="openCreateTodoForGoal(goal)"
+                              />
+                            </template>
+                          </VTooltip>
                           <VBtn icon variant="text" size="x-small">
                             <VIcon icon="tabler-dots-vertical" size="18" />
                             <VMenu activator="parent">
                               <VList>
                                 <VListItem @click="openEditGoal(goal)">
-                                  <template #prepend><VIcon icon="tabler-edit" /></template>
+                                  <template #prepend
+                                    ><VIcon icon="tabler-edit"
+                                  /></template>
                                   <VListItemTitle>Edit</VListItemTitle>
                                 </VListItem>
                                 <VListItem @click="deleteGoal(goal)">
-                                  <template #prepend><VIcon icon="tabler-trash" color="error" /></template>
+                                  <template #prepend
+                                    ><VIcon icon="tabler-trash" color="error"
+                                  /></template>
                                   <VListItemTitle>Delete</VListItemTitle>
                                 </VListItem>
                               </VList>
@@ -535,39 +874,124 @@ const formatDate = (value?: string | null) => {
                     <VExpansionPanelText>
                       <VCard variant="flat" class="pa-4 goal-panel-body">
                         <div class="d-flex flex-column gap-2">
-                          <div v-if="goal.tasks.length" class="d-flex flex-column gap-2">
-                            <div
+                          <div
+                            v-if="goal.tasks.length"
+                            class="d-flex flex-column gap-2"
+                          >
+                            <VCard
                               v-for="task in goal.tasks"
                               :key="task.id"
                               class="task-row"
+                              variant="tonal"
                             >
                               <div class="task-row-main">
-                                <div class="d-flex align-center gap-2 flex-wrap">
-                                  <VIcon
-                                    icon="tabler-checkbox"
-                                    size="15"
-                                    class="task-icon"
+                                <div class="task-row-left">
+                                  <VCheckbox
+                                    hide-details
+                                    density="compact"
+                                    :model-value="task.status === 'completed'"
+                                    @click.stop="toggleTaskCompleted(task.id)"
                                   />
-                                  <span class="font-weight-medium">{{ task.title }}</span>
+
+                                  <div class="task-copy">
+                                    <VTooltip :text="task.title" location="top">
+                                      <template
+                                        #activator="{ props: tooltipProps }"
+                                      >
+                                        <strong
+                                          v-bind="tooltipProps"
+                                          class="text-body-1 truncate-title"
+                                        >
+                                          {{ task.title }}
+                                        </strong>
+                                      </template>
+                                    </VTooltip>
+                                    <span class="text-sm"
+                                      >Due {{ formatDate(task.dueAt) }}</span
+                                    >
+                                    <span
+                                      v-if="task.notes"
+                                      class="text-sm text-medium-emphasis"
+                                    >
+                                      {{ task.notes }}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div class="task-row-side">
+                                  <div
+                                    v-if="task.collaborators?.length"
+                                    class="v-avatar-group demo-avatar-group"
+                                  >
+                                    <VAvatar
+                                      v-for="collaborator in task.collaborators.slice(
+                                        0,
+                                        2,
+                                      )"
+                                      :key="collaborator.id"
+                                      :size="28"
+                                      color="primary"
+                                    >
+                                      <template v-if="collaborator.avatarUrl">
+                                        <VImg :src="collaborator.avatarUrl" />
+                                      </template>
+                                      <template v-else>
+                                        <span class="task-mono">
+                                          {{
+                                            collaboratorInitials(
+                                              collaborator.name,
+                                            )
+                                          }}
+                                        </span>
+                                      </template>
+                                      <VTooltip
+                                        activator="parent"
+                                        location="top"
+                                      >
+                                        {{ collaborator.name }}
+                                      </VTooltip>
+                                    </VAvatar>
+                                    <VAvatar
+                                      v-if="task.collaborators.length > 2"
+                                      :size="28"
+                                      color="secondary"
+                                    >
+                                      +{{ task.collaborators.length - 2 }}
+                                    </VAvatar>
+                                  </div>
+
                                   <VChip
                                     :color="todoPriorityColor(task.priority)"
                                     size="x-small"
-                                    variant="tonal"
+                                    label
+                                    class="text-capitalize"
+                                    variant="text"
                                   >
-                                    {{ task.priority }}
+                                    {{ todoPriorityLabel(task.priority) }}
                                   </VChip>
-                                  <VChip size="x-small" variant="tonal">
+                                  <span
+                                    class="text-sm"
+                                    :class="{
+                                      'text-primary':
+                                        task.status === 'in_progress',
+                                      'text-warning':
+                                        task.status === 'for_review',
+                                      'text-medium-emphasis':
+                                        task.status === 'pending',
+                                      'text-success':
+                                        task.status === 'completed',
+                                    }"
+                                  >
                                     {{ todoStatusLabel(task.status) }}
-                                  </VChip>
-                                </div>
-                                <div class="tree-meta">
-                                  Due {{ formatDate(task.dueAt) }}
-                                  <span v-if="task.notes"> | {{ task.notes }}</span>
+                                  </span>
                                 </div>
                               </div>
-                            </div>
+                            </VCard>
                           </div>
-                          <div v-else class="text-body-2 text-medium-emphasis empty-tasks">
+                          <div
+                            v-else
+                            class="text-body-2 text-medium-emphasis empty-tasks"
+                          >
                             No tasks linked to this goal yet.
                           </div>
                         </div>
@@ -576,14 +1000,16 @@ const formatDate = (value?: string | null) => {
                   </VExpansionPanel>
                 </VExpansionPanels>
 
-                <div v-else class="text-body-2 text-medium-emphasis">
-                  No goals under this milestone yet.
+                <div
+                  v-else-if="!milestone.tasks.length"
+                  class="text-body-2 text-medium-emphasis"
+                >
+                  No goals or tasks under this milestone yet.
                 </div>
               </VCard>
             </VExpansionPanelText>
           </VExpansionPanel>
         </VExpansionPanels>
-
       </VCardText>
     </VCard>
     <VDialog
@@ -738,6 +1164,7 @@ const formatDate = (value?: string | null) => {
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
+      autofocus-title-end
       :initial="addTodoInitial"
       @userData="onTodoCreated"
     />
@@ -752,12 +1179,14 @@ const formatDate = (value?: string | null) => {
 
 .milestone-panels :deep(.v-expansion-panel-title),
 .goal-panels :deep(.v-expansion-panel-title) {
-  padding: 1rem 1.25rem;
+  padding-block: 1rem;
+  padding-inline: 1.25rem;
 }
 
 .milestone-panels :deep(.v-expansion-panel-text__wrapper),
 .goal-panels :deep(.v-expansion-panel-text__wrapper) {
-  padding: 0 1rem 1rem;
+  padding-block: 0 1rem;
+  padding-inline: 1rem;
 }
 
 .milestone-panels :deep(.v-expansion-panel__shadow),
@@ -784,11 +1213,11 @@ const formatDate = (value?: string | null) => {
 }
 
 .milestone-status-dot {
-  inline-size: 10px;
-  block-size: 10px;
-  min-inline-size: 10px;
   border-radius: 999px;
   background: rgb(var(--v-theme-primary));
+  block-size: 10px;
+  inline-size: 10px;
+  min-inline-size: 10px;
 }
 
 .milestone-panel-body,
@@ -801,6 +1230,10 @@ const formatDate = (value?: string | null) => {
   margin-block-start: 1rem;
 }
 
+.milestone-direct-tasks {
+  margin-block-end: 1rem;
+}
+
 .goal-icon {
   color: rgb(var(--v-theme-info));
 }
@@ -810,11 +1243,11 @@ const formatDate = (value?: string | null) => {
 }
 
 .task-row {
-  padding: 0.75rem 0.875rem;
-  border: 0;
-  border-inline-start: 2px solid rgba(var(--v-theme-warning), 0.34);
-  border-radius: 10px;
-  background: rgba(var(--v-theme-warning), 0.035);
+  border: 1px solid rgba(255, 255, 255, 6%);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 3%);
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
 }
 
 .task-row-main,
@@ -823,25 +1256,95 @@ const formatDate = (value?: string | null) => {
   min-inline-size: 0;
 }
 
-.tree-meta {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.8125rem;
-  margin-block-start: 0.25rem;
+.milestone-actions,
+.goal-actions {
+  gap: 0.25rem !important;
+}
+
+.milestone-actions :deep(.v-btn),
+.goal-actions :deep(.v-btn) {
+  margin: 0;
+}
+
+.milestone-panel :deep(.v-expansion-panel-title__icon),
+.goal-panel :deep(.v-expansion-panel-title__icon) {
+  margin-inline-start: 0.25rem;
+}
+
+.task-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.task-row-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.task-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.task-copy strong,
+.task-copy span {
+  overflow-wrap: anywhere;
+}
+
+.truncate-title {
+  display: block;
+  overflow: hidden;
+  max-inline-size: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truncate-title--header {
+  max-inline-size: min(28rem, 100%);
+}
+
+.task-row-side {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.task-mono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  inline-size: 100%;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .empty-tasks {
-  padding: 0.5rem 0;
+  padding-block: 0.5rem;
+  padding-inline: 0;
 }
 
 @media (max-width: 767px) {
   .milestone-panels :deep(.v-expansion-panel-title),
   .goal-panels :deep(.v-expansion-panel-title) {
-    padding: 0.875rem 1rem;
+    padding-block: 0.875rem;
+    padding-inline: 1rem;
   }
 
   .milestone-panels :deep(.v-expansion-panel-text__wrapper),
   .goal-panels :deep(.v-expansion-panel-text__wrapper) {
-    padding: 0 0.875rem 0.875rem;
+    padding-block: 0 0.875rem;
+    padding-inline: 0.875rem;
   }
 
   .milestone-panel-body,
@@ -855,9 +1358,9 @@ const formatDate = (value?: string | null) => {
 
   .milestone-actions,
   .goal-actions {
-    justify-content: flex-start;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.375rem;
   }
 
@@ -868,58 +1371,39 @@ const formatDate = (value?: string | null) => {
   }
 
   .task-row {
-    padding: 0.5rem 0.625rem;
-    background: rgba(var(--v-theme-surface), 0.22);
-  }
-
-  .tree-meta {
-    overflow-wrap: anywhere;
-  }
-
-  .section-add-btn,
-  .milestone-add-goal-btn,
-  .goal-add-task-btn {
-    font-size: 0.75rem;
-  }
-
-  .section-add-btn :deep(.v-btn__content),
-  .milestone-add-goal-btn :deep(.v-btn__content),
-  .goal-add-task-btn :deep(.v-btn__content) {
-    gap: 0.25rem;
+    padding-block: 0.625rem;
+    padding-inline: 0.75rem;
   }
 
   .section-add-btn {
     align-self: flex-start;
   }
 
-  .section-add-btn :deep(.v-btn),
-  .milestone-add-goal-btn :deep(.v-btn),
-  .goal-add-task-btn :deep(.v-btn) {
+  .section-add-btn :deep(.v-btn) {
     padding-inline: 0.625rem;
   }
 
-  .section-add-btn :deep(.v-btn__prepend),
-  .milestone-add-goal-btn :deep(.v-btn__prepend),
-  .goal-add-task-btn :deep(.v-btn__prepend) {
+  .section-add-btn :deep(.v-btn__prepend) {
     margin-inline-end: 0;
   }
 
-  .milestone-add-goal-btn,
-  .goal-add-task-btn {
-    letter-spacing: 0;
+  .task-row-main {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  .task-row-main .font-weight-medium {
-    line-height: 1.25;
+  .task-row-left,
+  .task-row-side {
+    inline-size: 100%;
   }
 
-  .tree-meta {
-    font-size: 0.75rem;
-    margin-block-start: 0.125rem;
+  .task-row-side {
+    justify-content: flex-start;
   }
 
   .empty-tasks {
-    padding: 0.25rem 0 0;
+    padding-block: 0.25rem 0;
+    padding-inline: 0;
   }
 }
 </style>

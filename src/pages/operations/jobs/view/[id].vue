@@ -10,13 +10,13 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
+import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import AddSiteSurveysDrawer from "@/views/apps/todo/list/AddSiteSurveysDrawer.vue";
 import AddSnaglistsDrawer from "@/views/apps/todo/list/AddSnaglistsDrawer.vue";
-import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
+import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 import JobCommunicationTab from "@/views/operations/jobs/view/JobCommunicationTab.vue";
 import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
 import JobMilestonesGoalsTab from "@/views/operations/jobs/view/JobMilestonesGoalsTab.vue";
-import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 import JobStakeholdersCard from "@/views/operations/jobs/view/JobStakeholdersCard.vue";
 import JobSummaryCard from "@/views/operations/jobs/view/JobSummaryCard.vue";
 
@@ -90,12 +90,14 @@ const tabKeys = [
   "milestones-goals",
   "communication",
   "documents",
+  "expenses",
 ] as const;
 
 const tabs = [
   { icon: "tabler-flag", title: "Milestones & Goals" },
   { icon: "tabler-message", title: "Communication" },
   { icon: "tabler-folder", title: "Documents" },
+  { icon: "tabler-credit-card", title: "Expenses" },
 ] as const;
 
 const setTabFromQuery = () => {
@@ -127,7 +129,7 @@ watch(
     }
     job.value = cloneJob(value);
     error.value = null;
-  }
+  },
 );
 
 // keep jobTab in sync with the route query param
@@ -135,7 +137,7 @@ watch(
   () => route.query.tab,
   () => {
     setTabFromQuery();
-  }
+  },
 );
 
 // update the route when the user changes tabs
@@ -154,12 +156,12 @@ watch(
     } catch (e) {
       // ignore router replace errors
     }
-  }
+  },
 );
 
 // Drawer and dialog refs
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
-  null
+  null,
 );
 const isAddTodoDrawerVisible = ref(false);
 const addTodoInitial = ref<any | null>(null);
@@ -167,7 +169,9 @@ const addTodoInitial = ref<any | null>(null);
 const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
 const isAddMeetingOpen = ref(false);
 const lockMeetingRelatedTo = ref(false);
-const addSurveyRef = ref<InstanceType<typeof AddSiteSurveysDrawer> | null>(null);
+const addSurveyRef = ref<InstanceType<typeof AddSiteSurveysDrawer> | null>(
+  null,
+);
 const isAddSurveyOpen = ref(false);
 const addSnagRef = ref<InstanceType<typeof AddSnaglistsDrawer> | null>(null);
 const isAddSnagOpen = ref(false);
@@ -189,7 +193,7 @@ const contactOptions = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture || null,
-  }))
+  })),
 );
 
 // Stakeholder action handlers
@@ -311,10 +315,10 @@ const handleAddMeetingFromCommunication = () => {
       };
 
       (job.value?.stakeholders || []).forEach((s) =>
-        addContactById(s.contactId)
+        addContactById(s.contactId),
       );
       (job.value?.collaborators || []).forEach((cId) =>
-        addContactById(Number(cId))
+        addContactById(Number(cId)),
       );
       addContactById(job.value?.relatedTo ?? null);
 
@@ -369,10 +373,10 @@ const handleAddSurveyFromCommunication = () => {
       };
 
       (job.value?.stakeholders || []).forEach((s) =>
-        addContactById(s.contactId)
+        addContactById(s.contactId),
       );
       (job.value?.collaborators || []).forEach((cId) =>
-        addContactById(Number(cId))
+        addContactById(Number(cId)),
       );
       addContactById(job.value?.relatedTo ?? null);
 
@@ -426,10 +430,10 @@ const handleAddSnagFromCommunication = () => {
       };
 
       (job.value?.stakeholders || []).forEach((s) =>
-        addContactById(s.contactId)
+        addContactById(s.contactId),
       );
       (job.value?.collaborators || []).forEach((cId) =>
-        addContactById(Number(cId))
+        addContactById(Number(cId)),
       );
       addContactById(job.value?.relatedTo ?? null);
 
@@ -557,7 +561,7 @@ const performDeleteStakeholder = () => {
   if (!job.value || deleteStakeholderCandidateId.value === null) return;
 
   const updatedStakeholders = job.value.stakeholders.filter(
-    (s) => s.id !== deleteStakeholderCandidateId.value
+    (s) => s.id !== deleteStakeholderCandidateId.value,
   );
 
   try {
@@ -754,12 +758,12 @@ const closeSnagDrawer = () => {
             const recipients = Array.isArray(payload?.to)
               ? payload.to
               : payload?.to
-              ? [String(payload.to)]
-              : [];
+                ? [String(payload.to)]
+                : [];
             notifications.push(
               `Email sent to ${recipients.length} recipient(s)`,
               'success',
-              3500
+              3500,
             );
           } catch (e) {
             notifications.push('Email sent', 'success', 3500);

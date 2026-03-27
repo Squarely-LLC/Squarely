@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import { formatSystemMonthYear } from "@core/utils/formatters";
 import { useConfigStore } from "@/stores/config";
 import { computed, nextTick, ref, watch, withDefaults } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
@@ -139,29 +140,16 @@ const periodLabel = computed(() => {
     const sameYear = start.getFullYear() === end.getFullYear();
     const sameMonth = sameYear && start.getMonth() === end.getMonth();
     if (sameYear && !sameMonth) {
-      const startLabel = start.toLocaleDateString("en-US", {
-        month: "short",
-      });
-      const endLabel = end.toLocaleDateString("en-US", {
-        month: "short",
-      });
+      const startLabel = formatSystemMonthYear(start).split(" ")[0];
+      const endLabel = formatSystemMonthYear(end).split(" ")[0];
       return `${startLabel}-${endLabel} ${start.getFullYear()}`;
     }
-    const startLabel = start.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
-    const endLabel = end.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
+    const startLabel = formatSystemMonthYear(start);
+    const endLabel = formatSystemMonthYear(end);
     return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
   }
   if (start && !Number.isNaN(start.getTime())) {
-    return start.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
+    return formatSystemMonthYear(start);
   }
   return undefined;
 });

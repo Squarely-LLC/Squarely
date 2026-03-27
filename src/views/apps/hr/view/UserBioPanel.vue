@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from "@core/utils/formatters";
 import type {
   EmployeeConnection,
   EmployeeProperties,
@@ -893,6 +894,11 @@ const employeeInfoDisplay = computed(() => {
   return `${displayPosition.value} - ${displayDepartment.value} - ${displayTenure.value}`;
 });
 
+const formatDisplayDate = (value?: string | null) => {
+  if (!value) return "-";
+  return formatSystemDate(value);
+};
+
 // Computed property for Reports To (managers - can be multiple)
 const reportsToManagers = computed(() => {
   const reportToIds = props.userData.employment?.reportToIds ?? [];
@@ -987,7 +993,7 @@ const reportsToManagers = computed(() => {
                 <h6 class="text-h6">
                   Date of Birth:
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.birthdate }}
+                    {{ formatDisplayDate(props.userData.birthdate) }}
                   </div>
                 </h6>
               </VListItemTitle>
@@ -1058,7 +1064,7 @@ const reportsToManagers = computed(() => {
                 <h6 class="text-h6">
                   Start Date:
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.employment.startDate }}
+                    {{ formatDisplayDate(props.userData.employment.startDate) }}
                   </div>
                 </h6>
               </VListItemTitle>

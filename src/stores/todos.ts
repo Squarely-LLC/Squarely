@@ -143,6 +143,7 @@ export const useTodos = defineStore("todos", {
           : [];
         copy.relatedTo = t.relatedTo ?? null;
         copy.goalId = t.goalId ?? null;
+        copy.milestoneId = t.milestoneId ?? null;
         return copy as ToDo;
       };
 
@@ -192,10 +193,11 @@ export const useTodos = defineStore("todos", {
         messages: (todo as any).messages || [],
         relatedTo: (todo as any).relatedTo || null,
         goalId: (todo as any).goalId ?? null,
+        milestoneId: (todo as any).milestoneId ?? null,
         createdAt: now,
         updatedAt: now,
       };
-      this.items.unshift(newTodo);
+      this.items.push(newTodo);
       if (typeof window !== "undefined") {
         void this.pushTodoToMockApi(newTodo);
       }

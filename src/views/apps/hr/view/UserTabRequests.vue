@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate, formatSystemMonthYear } from "@core/utils/formatters";
 import type {
   AdvanceRequest,
   EmployeeProperties,
@@ -8,7 +9,7 @@ import type {
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import type { PropType } from "vue";
-import { computed, defineComponent, defineProps, ref, watch } from "vue";
+import { computed, defineComponent, ref, watch } from "vue";
 import AddAdditionsDrawer from "./AddAdditionsDrawer.vue";
 import AddAdvancesDrawer from "./AddAdvancesDrawer.vue";
 import AddDeductionDrawer from "./AddDeductionDrawer.vue";
@@ -584,8 +585,8 @@ function getRequestDescription(request: EmployeeRequest): string {
     const typeLabel = r.typeId?.replace("-", " ") || "Leave";
     const days = r.requestedDays || 0;
     const remaining = r.deductible ? 0 : days;
-    return `Leave\n${r.startDate} To ${
-      r.returnDate
+    return `Leave\n${formatSystemDate(String(r.startDate))} To ${
+      r.returnDate ? formatSystemDate(String(r.returnDate)) : "-"
     } | #${days} days\n${typeLabel} | ${remaining} Remaining Days${
       r.reason ? `\n${r.reason}` : ""
     }`;
@@ -662,30 +663,17 @@ function getRequestPeriod(request: EmployeeRequest): string {
     const sameYear = startDate.getFullYear() === endDate.getFullYear();
     const sameMonth = sameYear && startDate.getMonth() === endDate.getMonth();
     if (sameYear && !sameMonth) {
-      const startLabel = startDate.toLocaleDateString("en-US", {
-        month: "short",
-      });
-      const endLabel = endDate.toLocaleDateString("en-US", {
-        month: "short",
-      });
+      const startLabel = formatSystemMonthYear(startDate).split(" ")[0];
+      const endLabel = formatSystemMonthYear(endDate).split(" ")[0];
       return `${startLabel}-${endLabel} ${startDate.getFullYear()}`;
     }
-    const startLabel = startDate.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
-    const endLabel = endDate.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
+    const startLabel = formatSystemMonthYear(startDate);
+    const endLabel = formatSystemMonthYear(endDate);
     return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
   }
 
   if (startDate && !Number.isNaN(startDate.getTime())) {
-    return startDate.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
+    return formatSystemMonthYear(startDate);
   }
 
   return "-";
@@ -707,22 +695,13 @@ const formattedRequests = computed(() => {
     date: (() => {
       const d = getRequestDateValue(request);
       return d
-        ? d.toLocaleDateString("en-US", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })
+        ? formatSystemDate(d)
         : "-";
     })(),
     dateValue: getRequestDateValue(request),
     monthYear: (() => {
       const d = getRequestDateValue(request);
-      return d
-        ? d.toLocaleDateString("en-US", {
-            month: "long",
-            year: "numeric",
-          })
-        : "No Date";
+      return d ? formatSystemMonthYear(d) : "No Date";
     })(),
     amount: getRequestAmount(request),
     period: getRequestPeriod(request),
@@ -753,10 +732,7 @@ const filteredRequests = computed(() => {
   if (selectedMonth.value) {
     filtered = filtered.filter((r) => {
       if (!r.dateValue) return false;
-      const requestMonth = r.dateValue.toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      });
+      const requestMonth = formatSystemMonthYear(r.dateValue);
       return requestMonth === selectedMonth.value;
     });
   }
@@ -850,15 +826,12 @@ const availableMonths = computed(() => {
   const months = new Set<string>();
   formattedRequests.value.forEach((r) => {
     if (!r.dateValue) return;
-    const month = r.dateValue.toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
+    const month = formatSystemMonthYear(r.dateValue);
     months.add(month);
   });
   return Array.from(months).sort((a, b) => {
-    const dateA = new Date(a);
-    const dateB = new Date(b);
+    const dateA = new Date(`01 ${a}`);
+    const dateB = new Date(`01 ${b}`);
     return dateB.getTime() - dateA.getTime();
   });
 });

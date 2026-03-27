@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 // ==================== IMPORTS ====================
+import { formatSystemDate } from "@core/utils/formatters";
 import type {
   EmployeeContract,
   EmployeePosition,
@@ -196,6 +197,11 @@ const employmentTypeOptions = [
 ];
 
 const paymentTypeOptions = ["Bank Transfer", "Cash", "Check", "Payroll Card"];
+
+const formatDisplayDate = (value?: string | null, fallback = "Not specified") => {
+  if (!value) return fallback;
+  return formatSystemDate(value);
+};
 
 // ==================== CONTRACT FUNCTIONS ====================
 const onContractSubmit = (contract: EmployeeContract) => {
@@ -712,14 +718,14 @@ const onTerminationSubmit = (terminationData: any) => {
                         {{ contract.salaryPaid || "N/A" }}
                       </div>
                       <div class="text-caption text-medium-emphasis">
-                        Started: {{ contract.startDate || "Not specified" }}
+                        Started: {{ formatDisplayDate(contract.startDate) }}
                         <span v-if="contract.status === 'Terminated'">
                           | Terminated:
                           {{
                             contract.termination?.terminatedAt
-                              ? new Date(
+                              ? formatSystemDate(
                                   contract.termination.terminatedAt,
-                                ).toLocaleDateString()
+                                )
                               : "N/A"
                           }}
                         </span>
@@ -802,7 +808,7 @@ const onTerminationSubmit = (terminationData: any) => {
                             Start Date
                           </p>
                           <p class="text-body-1 font-weight-medium">
-                            {{ contract.startDate || "Not specified" }}
+                            {{ formatDisplayDate(contract.startDate) }}
                           </p>
                         </div>
                       </VCol>
@@ -813,7 +819,7 @@ const onTerminationSubmit = (terminationData: any) => {
                             Probation End Date
                           </p>
                           <p class="text-body-1 font-weight-medium">
-                            {{ contract.probationEndDate || "Not specified" }}
+                            {{ formatDisplayDate(contract.probationEndDate) }}
                           </p>
                         </div>
                       </VCol>
@@ -880,8 +886,9 @@ const onTerminationSubmit = (terminationData: any) => {
                             </p>
                             <p class="text-body-1 font-weight-medium">
                               {{
-                                contract.termination.lastDayAtWork ||
-                                "Not specified"
+                                formatDisplayDate(
+                                  contract.termination.lastDayAtWork,
+                                )
                               }}
                             </p>
                           </div>
@@ -996,7 +1003,7 @@ const onTerminationSubmit = (terminationData: any) => {
                   >{{ position.position }}</span
                 >
                 <span class="text-caption text-medium-emphasis ms-2">
-                  • {{ position.startingDate || "Not specified" }}
+                  • {{ formatDisplayDate(position.startingDate) }}
                 </span>
                 <span
                   v-if="position.note"
@@ -1303,7 +1310,7 @@ const onTerminationSubmit = (terminationData: any) => {
                 <div class="text-caption mb-1">
                   Date:
                   <span class="text-medium-emphasis">{{
-                    salary.date || "Not specified"
+                    formatDisplayDate(salary.date)
                   }}</span>
                 </div>
                 <div class="text-caption">

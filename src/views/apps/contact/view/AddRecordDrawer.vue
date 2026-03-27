@@ -240,9 +240,6 @@ defineExpose({ openWith });
                     <AppTextarea v-model="body" label="Body" auto-grow />
                   </VCol>
 
-                  <VCol cols="12">
-                    <AppTextField v-model="createdAt" label="Created At" />
-                  </VCol>
                 </template>
 
                 <VCol cols="12" class="d-flex justify-end" v-if="category">

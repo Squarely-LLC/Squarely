@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import type { Order } from '@db/apps/ecommerce/types'
 
 const searchQuery = ref('')
@@ -93,7 +94,7 @@ const deleteOrder = async (id: number) => {
 
       <!-- Date -->
       <template #item.date="{ item }">
-        {{ new Date(item.date).toDateString() }}
+        {{ formatSystemDate(item.date) }}
       </template>
 
       <!-- Status -->

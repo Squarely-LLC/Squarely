@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
 import type { MoveEmailToAction } from '@/views/apps/email/useEmail'
 import { useEmail } from '@/views/apps/email/useEmail'
@@ -274,7 +275,7 @@ const updateMailLabel = async (label: Email['labels'][number]) => {
 
               <div class="d-flex align-center gap-x-4">
                 <div class="text-disabled text-base">
-                  {{ new Date(props.email.time).toDateString() }}
+                  {{ formatSystemDate(props.email.time) }}
                 </div>
                 <div>
                   <IconBtn v-show="props.email.attachments.length">

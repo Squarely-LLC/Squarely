@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { formatSystemDate } from "@core/utils/formatters";
 import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { useTodos } from "@/stores/todos";
 import avatar1 from "@images/avatars/avatar-1.png";
@@ -135,7 +136,7 @@ function timeAgo(iso?: string) {
       const days = Math.round(hours / 24);
       if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`;
       // for older items, show a short date
-      return new Date(then).toLocaleDateString();
+      return formatSystemDate(then);
     }
 
     // Future dates
@@ -144,7 +145,7 @@ function timeAgo(iso?: string) {
     if (hours < 24) return `in ${hours} hour${hours > 1 ? "s" : ""}`;
     const days = Math.round(hours / 24);
     if (days < 7) return `in ${days} day${days > 1 ? "s" : ""}`;
-    return `on ${new Date(then).toLocaleDateString()}`;
+    return `on ${formatSystemDate(then)}`;
   } catch {
     return iso;
   }
@@ -450,13 +451,13 @@ function requestDetails(
     if (req.startDate)
       details.push({
         label: "Start",
-        value: new Date(req.startDate).toLocaleDateString(),
+        value: formatSystemDate(req.startDate),
         icon: "tabler-calendar",
       });
     if (req.returnDate)
       details.push({
         label: "Return",
-        value: new Date(req.returnDate).toLocaleDateString(),
+        value: formatSystemDate(req.returnDate),
         icon: "tabler-calendar-check",
       });
     if (req.requestedDays)
@@ -478,7 +479,7 @@ function requestDetails(
     if (req.date)
       details.push({
         label: "Date",
-        value: new Date(req.date).toLocaleDateString(),
+        value: formatSystemDate(req.date),
         icon: "tabler-calendar",
       });
   } else if (act.requestType === "Advance") {
@@ -504,7 +505,7 @@ function requestDetails(
     if (req.date)
       details.push({
         label: "Date",
-        value: new Date(req.date).toLocaleDateString(),
+        value: formatSystemDate(req.date),
         icon: "tabler-calendar",
       });
   }

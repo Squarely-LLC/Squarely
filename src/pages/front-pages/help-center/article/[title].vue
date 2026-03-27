@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Footer from '@/views/front-pages/front-page-footer.vue'
 import Navbar from '@/views/front-pages/front-page-navbar.vue'
+import { formatSystemDate } from '@core/utils/formatters'
 import { useConfigStore } from '@core/stores/config'
 import type { HelpCenterArticle } from '@db/pages/help-center/types'
 
@@ -51,7 +52,7 @@ setTimeout(async () => {
                 {{ articleData?.title }}
               </h4>
               <div class="text-body-1">
-                {{ articleData?.lastUpdated }}
+                {{ articleData?.lastUpdated ? formatSystemDate(articleData.lastUpdated) : '-' }}
               </div>
             </div>
             <VDivider class="my-6" />

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import type { Invoice } from '@db/apps/invoice/types'
 
 const searchQuery = ref('')
@@ -160,7 +161,7 @@ const deleteInvoice = async (id: number) => {
               Balance: {{ item.balance }}
             </p>
             <p class="mb-0">
-              Due date: {{ item.dueDate }}
+              Due date: {{ formatSystemDate(item.dueDate) }}
             </p>
           </VTooltip>
         </template>
@@ -172,7 +173,7 @@ const deleteInvoice = async (id: number) => {
 
         <!-- issued Date -->
         <template #item.date="{ item }">
-          {{ item.issuedDate }}
+          {{ formatSystemDate(item.issuedDate) }}
         </template>
 
         <!-- Actions -->

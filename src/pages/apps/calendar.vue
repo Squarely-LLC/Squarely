@@ -3,6 +3,7 @@
 <script setup lang="ts">
 import type { EventApi } from "@fullcalendar/core";
 import FullCalendar from "@fullcalendar/vue3";
+import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 
@@ -779,14 +780,8 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                             •
                             {{
                               event.allDay
-                                ? new Date(event.start).toLocaleDateString()
-                                : new Date(event.start).toLocaleString([], {
-                                    year: "numeric",
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })
+                                ? formatSystemDate(event.start)
+                                : formatSystemDateTime(event.start)
                             }}
                           </span></VListItemSubtitle
                         >
@@ -938,14 +933,8 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                           •
                           {{
                             event.allDay
-                              ? new Date(event.start).toLocaleDateString()
-                              : new Date(event.start).toLocaleString([], {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
+                              ? formatSystemDate(event.start)
+                              : formatSystemDateTime(event.start)
                           }}
                         </span>
                       </VListItem>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { CustomInputContent } from "@core/types";
+import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
 /* NEW: reusable dialog */
+import { requiredValidator } from "@/@core/utils/validators";
 import StepEditDialog from "../StepEditDialog.vue"; // ← import the component
 
 /* ===== Types — align with your table ===== */
@@ -61,7 +63,7 @@ interface Emit {
       status: Exclude<Status, "completed">;
       notes: string;
       important: boolean;
-    }
+    },
   ): void;
   (e: "saveSteps", v: { id: number | string; steps: ToDoStep[] }): void;
   (e: "addActivity", v: { id: number | string; body: string }): void;
@@ -114,24 +116,19 @@ const statusRadios: CustomInputContent[] = [
 
 /* ===== Helpers ===== */
 const idToContact = computed(
-  () => new Map(props.collaboratorsOptions.map((c) => [c.id, c] as const))
+  () => new Map(props.collaboratorsOptions.map((c) => [c.id, c] as const)),
 );
 const selectedCollaborators = computed<ContactRef[]>(
   () =>
     selectedCollaboratorIds.value
       .map((id) => idToContact.value.get(id))
-      .filter(Boolean) as ContactRef[]
+      .filter(Boolean) as ContactRef[],
 );
 const initials = (n?: string) =>
   n ? (n.trim().match(/\b\w/g) || []).slice(0, 2).join("").toUpperCase() : "?";
 const fmtShort = (iso?: string) => {
   if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${mm}/${dd}/${yyyy}`;
+  return formatSystemDate(iso);
 };
 
 /* ===== Steps state ===== */
@@ -245,9 +242,9 @@ function loadFromToDo(t: ToDo) {
   const anyT: any = t as any;
   completed.value = Boolean(
     anyT?.completed ||
-      anyT?.isCompleted ||
-      anyT?.doneAt ||
-      anyT?.status === "completed"
+    anyT?.isCompleted ||
+    anyT?.doneAt ||
+    anyT?.status === "completed",
   );
 
   nextTick(() => {
@@ -282,14 +279,14 @@ watch(
   (open) => {
     if (open && props.todo) loadFromToDo(props.todo);
     if (!open) nextTick(() => resetForm());
-  }
+  },
 );
 watch(
   () => props.todo,
   (t) => {
     if (props.isDrawerOpen && t) loadFromToDo(t);
   },
-  { deep: true }
+  { deep: true },
 );
 
 function closeDrawer() {
@@ -543,8 +540,8 @@ async function onSaveAll() {
                               s.priority === 'low'
                                 ? 'secondary'
                                 : s.priority === 'normal'
-                                ? 'primary'
-                                : 'error'
+                                  ? 'primary'
+                                  : 'error'
                             "
                             size="x-small"
                             label
@@ -554,8 +551,8 @@ async function onSaveAll() {
                               s.priority === "low"
                                 ? "Low"
                                 : s.priority === "normal"
-                                ? "Normal"
-                                : "High"
+                                  ? "Normal"
+                                  : "High"
                             }}
                           </VChip>
                           <span
@@ -571,10 +568,10 @@ async function onSaveAll() {
                               s.status === "pending"
                                 ? "Pending"
                                 : s.status === "in_progress"
-                                ? "In Progress"
-                                : s.status === "for_review"
-                                ? "For Review"
-                                : "Completed"
+                                  ? "In Progress"
+                                  : s.status === "for_review"
+                                    ? "For Review"
+                                    : "Completed"
                             }}
                           </span>
                         </div>
@@ -714,7 +711,7 @@ async function onSaveAll() {
                     <div class="text-sm mb-1">
                       <strong>{{ a.author?.name || "Someone" }}</strong>
                       <span class="text-disabled">
-                        • {{ new Date(a.createdAt).toLocaleString() }}</span
+                        • {{ formatSystemDateTime(a.createdAt) }}</span
                       >
                     </div>
                     <div>{{ a.body }}</div>

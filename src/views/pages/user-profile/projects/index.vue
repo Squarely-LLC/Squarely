@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import type { ProjectsTab } from '@db/pages/profile/types'
 
 const router = useRoute('pages-user-profile-tab')
@@ -75,7 +76,7 @@ const moreList = [
 
             <div>
               <h6 class="text-base font-weight-medium">
-                Start Date: <span class="text-body-1">{{ data.startDate }}</span>
+                Start Date: <span class="text-body-1">{{ formatSystemDate(data.startDate) }}</span>
               </h6>
               <h6 class="text-base font-weight-medium">
                 Deadline: <span class="text-body-1">{{ data.deadline }}</span>

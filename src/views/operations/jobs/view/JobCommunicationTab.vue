@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { formatSystemDate } from "@core/utils/formatters";
 import { useJobsStore } from "@/stores/jobs";
 import { useSiteSurveys } from "@/stores/siteSurveys";
 import { useSnaglists } from "@/stores/snaglists";
@@ -83,6 +84,11 @@ function linkedParticipants(meeting: any) {
   return meeting.linkedTo.filter((l: any) => l?.type !== "job");
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return "";
+  return formatSystemDate(value);
+}
+
 const emit = defineEmits<{
   "open-add-meeting": [];
   "open-add-survey": [];
@@ -144,13 +150,7 @@ function openAddSnag() {
                     }}</span>
                   </div>
                   <span class="app-timeline-meta">{{
-                    meeting.startAt
-                      ? new Date(meeting.startAt).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : ""
+                    formatDate(meeting.startAt)
                   }}</span>
                 </div>
                 <div v-if="meeting.agenda" class="app-timeline-text mt-1">
@@ -239,13 +239,7 @@ function openAddSnag() {
                     }}</span>
                   </div>
                   <span class="app-timeline-meta">{{
-                    survey.startAt
-                      ? new Date(survey.startAt).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : ""
+                    formatDate(survey.startAt)
                   }}</span>
                 </div>
                 <div v-if="survey.note" class="app-timeline-text mt-1">
@@ -324,13 +318,7 @@ function openAddSnag() {
                     }}</span>
                   </div>
                   <span class="app-timeline-meta">{{
-                    snag.startAt
-                      ? new Date(snag.startAt).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : ""
+                    formatDate(snag.startAt)
                   }}</span>
                 </div>
                 <div v-if="snag.note" class="app-timeline-text mt-1">

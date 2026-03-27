@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import type { Review } from '@db/apps/ecommerce/types'
 
 const selectedStatus = ref('All')
@@ -495,7 +496,7 @@ const reviewStatChartConfig = {
           </template>
 
           <template #item.date="{ item }">
-            {{ new Date(item.date).toDateString() }}
+            {{ formatSystemDate(item.date) }}
           </template>
 
           <template #item.status="{ item }">

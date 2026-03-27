@@ -2,6 +2,7 @@
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { formatSystemDate } from "@core/utils/formatters";
 import { storeToRefs } from "pinia";
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
 import { useRouter } from "vue-router";
@@ -178,14 +179,7 @@ const expanded = ref<number[]>([]);
 /* ================== helpers ================== */
 const fmtDateShort = (iso: string) => {
   try {
-    const d = new Date(iso);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const yy = String(d.getFullYear()).slice(-2);
-    const h = d.getHours() % 12 || 12;
-    const m = String(d.getMinutes()).padStart(2, "0");
-    const ampm = d.getHours() >= 12 ? "PM" : "AM";
-    return `${mm}/${dd}/${yy} ${h}:${m} ${ampm}`;
+    return formatSystemDate(iso);
   } catch {
     return iso;
   }

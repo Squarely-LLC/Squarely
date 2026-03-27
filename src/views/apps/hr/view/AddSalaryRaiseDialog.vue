@@ -17,6 +17,30 @@ const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
 
 const formRef = ref();
+
+const toIsoDateString = (value: any): string => {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    const legacyMatch = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (legacyMatch) {
+      const [, day, month, year] = legacyMatch;
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const pad = (part: number) => String(part).padStart(2, "0");
+
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+};
+
 const localSalaryData = ref<Omit<EmployeeSalaryRecord, "id" | "createdAt">>({
   basicSalary: 0,
   transportation: 0,
@@ -55,7 +79,7 @@ watch(
         transportation: newData.transportation || 0,
         housing: newData.housing || 0,
         allowance: newData.allowance || 0,
-        date: newData.date || "",
+        date: toIsoDateString(newData.date),
         startingPeriod: newData.startingPeriod || "",
         note: newData.note || "",
         isSalesTeamMember: newData.isSalesTeamMember || false,
@@ -73,7 +97,10 @@ const onSubmit = async () => {
   const { valid } = await formRef.value.validate();
   if (!valid) return;
 
-  emit("submit", localSalaryData.value);
+  emit("submit", {
+    ...localSalaryData.value,
+    date: toIsoDateString(localSalaryData.value.date),
+  });
   emit("update:isDialogVisible", false);
   resetForm();
 };
@@ -168,8 +195,8 @@ for (let year = currentYear - 5; year <= currentYear + 5; year++) {
               <AppDateTimePicker
                 v-model="localSalaryData.date"
                 label="DATE"
-                placeholder="DD-MM-YYYY"
-                :config="{ dateFormat: 'd-m-Y' }"
+                placeholder="YYYY-MM-DD"
+                :config="{ dateFormat: 'Y-m-d' }"
                 :rules="[requiredRule]"
               />
             </VCol>

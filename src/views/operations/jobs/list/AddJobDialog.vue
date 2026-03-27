@@ -68,6 +68,7 @@ const localJob = ref<Partial<JobProperties>>({
   code: "",
   avatar: "",
   startDate: undefined,
+  endDate: undefined,
   location: "",
   stage: "PRPSL",
   type: "Architecture",
@@ -87,6 +88,7 @@ const resetForm = () => {
     code: "",
     avatar: "",
     startDate: undefined,
+    endDate: undefined,
     location: "",
     stage: "PRPSL",
     type: "Architecture",
@@ -155,6 +157,14 @@ const onCancel = () => {
               <AppDateTimePicker
                 v-model="localJob.startDate"
                 label="Start Date"
+                placeholder="YYYY-MM-DD HH:mm"
+                clearable
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppDateTimePicker
+                v-model="localJob.endDate"
+                label="End Date"
                 placeholder="YYYY-MM-DD HH:mm"
                 clearable
               />
@@ -230,7 +240,7 @@ const onCancel = () => {
                 </template>
               </AppSelect>
             </VCol>
-            <VCol cols="12">
+            <VCol cols="6">
               <AppSelect
                 v-model="localJob.collaborators"
                 label="Collaborators"

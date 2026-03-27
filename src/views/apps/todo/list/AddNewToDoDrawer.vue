@@ -30,6 +30,7 @@ interface Emit {
       important: boolean;
       relatedTo: { id: number | string; name: string; type: string } | null;
       goalId: number | string | null;
+      milestoneId: number | string | null;
     }>
   ): void;
 }
@@ -47,9 +48,12 @@ interface Props {
     important: boolean;
     relatedTo: { id: number | string; name: string; type: string } | null;
     goalId: number | string | null;
+    milestoneId: number | string | null;
   }>;
   // if true, autofocus the due date/time picker when the drawer opens
   autofocusDue?: boolean;
+  // if true, focus the title input and move the caret to the end when the drawer opens
+  autofocusTitleEnd?: boolean;
   // 'contacts' (default) or 'employees' - determines which store to use for collaborators
   source?: "contacts" | "employees";
 }
@@ -70,6 +74,8 @@ const notes = ref<string>("");
 const important = ref<boolean>(false);
 const relatedTo = ref<{ id: number | string; name: string; type: string } | null>(null);
 const goalId = ref<number | string | null>(null);
+const milestoneId = ref<number | string | null>(null);
+const titleFieldRef = ref<any>(null);
 
 // ref to the AppDateTimePicker component so we can focus/open its input
 const duePickerRef = ref<any>(null);
@@ -136,6 +142,7 @@ function resetForm() {
   important.value = false;
   relatedTo.value = null;
   goalId.value = null;
+  milestoneId.value = null;
   selectedStatus.value = "pending";
   refForm.value?.reset();
   refForm.value?.resetValidation();
@@ -172,7 +179,27 @@ function loadInitialAndMaybeFocus() {
     important.value = !!init.important;
     relatedTo.value = init.relatedTo ?? relatedTo.value;
     goalId.value = init.goalId ?? goalId.value;
+    milestoneId.value = init.milestoneId ?? milestoneId.value;
     selectedStatus.value = (init.status as any) || selectedStatus.value;
+  }
+
+  if ((props as any).autofocusTitleEnd) {
+    try {
+      nextTick(() => {
+        const input =
+          titleFieldRef.value?.$el?.querySelector?.("input") ||
+          titleFieldRef.value?.$el?.querySelector?.("textarea") ||
+          titleFieldRef.value?.querySelector?.("input") ||
+          titleFieldRef.value?.querySelector?.("textarea");
+        if (input) {
+          const length = typeof title.value === "string" ? title.value.length : 0;
+          input.focus();
+          input.setSelectionRange(length, length);
+        }
+      });
+    } catch (e) {
+      // ignore
+    }
   }
 
   // autofocus the due picker if requested: find the input inside the child and focus/click it
@@ -217,6 +244,7 @@ function openWith(initial?: any) {
     important.value = !!initial.important;
     relatedTo.value = initial.relatedTo ?? relatedTo.value;
     goalId.value = initial.goalId ?? goalId.value;
+    milestoneId.value = initial.milestoneId ?? milestoneId.value;
     selectedStatus.value = (initial.status as any) || selectedStatus.value;
   }
   // emit both kebab and camel update events to be robust for v-model variants
@@ -251,6 +279,7 @@ async function onSubmit() {
     important: important.value,
     relatedTo: relatedTo.value,
     goalId: goalId.value,
+    milestoneId: milestoneId.value,
   });
 
   emit("update:isDrawerOpen", false);
@@ -282,6 +311,7 @@ async function onSubmit() {
             <VRow>
               <VCol cols="12">
                 <AppTextField
+                  ref="titleFieldRef"
                   v-model="title"
                   :rules="[requiredValidator]"
                   label="Title"

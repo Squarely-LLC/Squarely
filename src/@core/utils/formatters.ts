@@ -1,5 +1,7 @@
 import { isToday } from './helpers'
 
+const SYSTEM_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 export const avatarText = (value: string) => {
   if (!value)
     return ''
@@ -26,7 +28,49 @@ export const formatDate = (value: string, formatting: Intl.DateTimeFormatOptions
   if (!value)
     return value
 
+  if (
+    formatting.month === 'short'
+    && formatting.day === 'numeric'
+    && formatting.year === 'numeric'
+    && Object.keys(formatting).length === 3
+  )
+    return formatSystemDate(value)
+
   return new Intl.DateTimeFormat('en-US', formatting).format(new Date(value))
+}
+
+export const formatSystemDate = (value: string | number | Date) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime()))
+    return String(value)
+
+  const day = String(date.getDate()).padStart(2, '0')
+  const monthShort = SYSTEM_MONTHS[date.getMonth()]
+  const yearShort = String(date.getFullYear()).slice(-2)
+
+  return `${day}/${monthShort}/${yearShort}`
+}
+
+export const formatSystemDateTime = (value: string | number | Date) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime()))
+    return String(value)
+
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+
+  return `${formatSystemDate(date)} ${time}`
+}
+
+export const formatSystemMonthYear = (value: string | number | Date) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime()))
+    return String(value)
+
+  return `${SYSTEM_MONTHS[date.getMonth()]} ${date.getFullYear()}`
 }
 
 /**
@@ -41,6 +85,9 @@ export const formatDateToMonthShort = (value: string, toTimeForCurrentDay = true
 
   if (toTimeForCurrentDay && isToday(date))
     formatting = { hour: 'numeric', minute: 'numeric' }
+
+  if (formatting.month === 'short' && formatting.day === 'numeric')
+    return formatSystemDate(value)
 
   return new Intl.DateTimeFormat('en-US', formatting).format(new Date(value))
 }

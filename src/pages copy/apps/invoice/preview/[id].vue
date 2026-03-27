@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
 import { themeConfig } from '@themeConfig'
 
@@ -103,13 +104,13 @@ const printInvoice = () => {
               <!-- 👉 Issue Date -->
               <h6 class="text-h6 font-weight-regular">
                 <span>Date Issued: </span>
-                <span>{{ new Date(invoice.issuedDate).toLocaleDateString('en-GB') }}</span>
+                <span>{{ formatSystemDate(invoice.issuedDate) }}</span>
               </h6>
 
               <!-- 👉 Due Date -->
               <h6 class="text-h6 font-weight-regular">
                 <span>Due Date: </span>
-                <span>{{ new Date(invoice.dueDate).toLocaleDateString('en-GB') }}</span>
+                <span>{{ formatSystemDate(invoice.dueDate) }}</span>
               </h6>
             </div>
           </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from "@core/utils/formatters";
 import { computed, defineEmits, defineProps, ref } from "vue";
 import { useContactsStore } from "../../../../stores/contacts";
 
@@ -342,9 +343,7 @@ defineExpose({ handleSaveRecord });
               }}
             </td>
             <td>
-              {{
-                item.createdAt ? new Date(item.createdAt).toLocaleString() : "-"
-              }}
+              {{ item.createdAt ? formatSystemDate(item.createdAt) : "-" }}
             </td>
             <td>
               <IconBtn @click.stop="editRecord(item)">

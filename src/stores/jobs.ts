@@ -255,7 +255,7 @@ export const useJobsStore = defineStore("jobs", {
         priority: milestone.priority ?? "Normal",
         note: milestone.note?.trim() || undefined,
       };
-      const updatedMilestones = [normalized, ...job.milestones];
+      const updatedMilestones = [...job.milestones, normalized];
       this.updateJob(jobId, { milestones: updatedMilestones });
       return normalized;
     },
@@ -309,7 +309,7 @@ export const useJobsStore = defineStore("jobs", {
         priority: goal.priority ?? "Normal",
         note: goal.note?.trim() || undefined,
       };
-      const updatedGoals = [normalized, ...job.goals];
+      const updatedGoals = [...job.goals, normalized];
       this.updateJob(jobId, { goals: updatedGoals });
       return normalized;
     },

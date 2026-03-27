@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from '@core/utils/formatters'
 import type { Order } from '@db/apps/ecommerce/types'
 import masterCardDark from '@images/icons/payments/img/master-dark.png'
 import masterCardLight from '@images/icons/payments/img/mastercard.png'
@@ -204,7 +205,7 @@ const deleteOrder = async (id: number) => {
 
         <!-- Date -->
         <template #item.date="{ item }">
-          {{ new Date(item.date).toDateString() }}
+          {{ formatSystemDate(item.date) }}
         </template>
 
         <!-- Customers  -->

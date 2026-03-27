@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { formatSystemDate } from "@core/utils/formatters";
 import { computed } from "vue";
 interface Props {
   job: JobProperties;
@@ -36,13 +37,7 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
 const formatDate = (value?: string | null) => {
   if (!value) return "--";
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
+    return formatSystemDate(value);
   } catch (error) {
     console.warn("Failed to format job date", error);
     return value;
@@ -102,15 +97,15 @@ const collaboratorNames = computed(() => {
       </h5>
 
       <div class="d-flex justify-center gap-2 mt-2">
-        <VChip label size="small" color="info" variant="tonal">
+        <VChip label size="small" color="info" variant="text">
           {{ job.stage }}
         </VChip>
 
-        <VChip label size="small" color="primary" variant="tonal">
+        <VChip label size="small" color="primary" variant="text">
           {{ job.type }}
         </VChip>
 
-        <VChip label size="small" :color="resolveFlagColor(job.flag)">
+        <VChip label size="small" :color="resolveFlagColor(job.flag)" variant="text">
           {{ job.flag }}
         </VChip>
       </div>
@@ -213,7 +208,6 @@ const collaboratorNames = computed(() => {
 
     <VCardText class="d-flex justify-center gap-4 pb-6">
       <VBtn @click="emit('edit')">Edit</VBtn>
-      <VBtn variant="tonal" color="error" @click="emit('delete')">Delete</VBtn>
     </VCardText>
   </VCard>
 </template>

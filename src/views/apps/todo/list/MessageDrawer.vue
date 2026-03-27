@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from "@core/utils/formatters";
 import {
   computed,
   nextTick,
@@ -150,11 +151,7 @@ const initials = (n?: string) =>
   n ? (n.trim().match(/\b\w/g) || []).slice(0, 2).join("").toUpperCase() : "?";
 const fmtDate = (iso?: string) => {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(
-    d.getDate()
-  ).padStart(2, "0")}/${d.getFullYear()}`;
+  return formatSystemDate(iso);
 };
 
 /* ===== Sticky composer height → dynamic padding for the scroller ===== */

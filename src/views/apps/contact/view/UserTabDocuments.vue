@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from "@core/utils/formatters";
 import type {
   ContactDocument,
   ContactProperties,
@@ -817,7 +818,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                 {{
                   item.expiry
                     ? "Expiry: " +
-                      new Date(String(item.expiry)).toLocaleDateString()
+                      formatSystemDate(String(item.expiry))
                     : ""
                 }}
               </div>
@@ -830,9 +831,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           <template #item.type="{ item }">{{ item.type }}</template>
           <template #item.number="{ item }">-</template>
           <template #item.expiry="{ item }">{{
-            item.expiry
-              ? new Date(String(item.expiry)).toLocaleDateString()
-              : "-"
+            item.expiry ? formatSystemDate(String(item.expiry)) : "-"
           }}</template>
 
           <template #item.status="{ item }">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSystemDate } from "@core/utils/formatters";
 import { computed, ref } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
@@ -59,12 +60,7 @@ function onSend() {
 /* tiny helpers */
 const fmtDate = (iso?: string) => {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${mm}/${dd}/${yyyy}`;
+  return formatSystemDate(iso);
 };
 const initials = (n?: string) =>
   n ? (n.trim().match(/\b\w/g) || []).slice(0, 2).join("").toUpperCase() : "?";
