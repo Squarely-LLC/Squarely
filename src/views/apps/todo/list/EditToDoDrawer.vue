@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import type {
+  Activity,
+  ContactRef,
+  Priority,
+  Status,
+  ToDo,
+  ToDoStep,
+} from "@/data/schema";
 import type { CustomInputContent } from "@core/types";
 import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
@@ -9,42 +17,6 @@ import { requiredValidator } from "@/@core/utils/validators";
 import StepEditDialog from "../StepEditDialog.vue"; // ← import the component
 
 /* ===== Types — align with your table ===== */
-type Priority = "low" | "normal" | "high";
-type Status = "pending" | "in_progress" | "for_review" | "completed";
-type ContactRef = {
-  id: number | string;
-  name: string;
-  avatarUrl?: string | null;
-};
-type ToDoStep = {
-  id: number | string;
-  title: string;
-  collaborators: ContactRef[];
-  dueAt: string;
-  priority: Priority;
-  status: Exclude<Status, "completed"> | "completed";
-  notes?: string;
-};
-type Activity = {
-  id: number | string;
-  author?: ContactRef;
-  body: string;
-  createdAt: string;
-};
-type ToDo = {
-  id: number | string;
-  title: string;
-  collaborators: ContactRef[];
-  dueAt: string;
-  priority: Priority;
-  important: boolean;
-  status: Status;
-  steps: ToDoStep[];
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  activities?: Activity[];
-};
 
 /* Local alias for dialog payload type */
 type DialogStep = ToDoStep;
@@ -155,18 +127,23 @@ const newDraft = reactive<ToDoStep>({
   priority: "normal",
   status: "pending",
   notes: "",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 });
 function addStep() {
   showNewDraft.value = true;
   newSearch.value = "";
+  const now = new Date().toISOString();
   Object.assign(newDraft, {
     id: Date.now(),
     title: "",
     collaborators: [],
-    dueAt: new Date().toISOString(),
+    dueAt: now,
     priority: "normal",
     status: "pending",
     notes: "",
+    createdAt: now,
+    updatedAt: now,
   } as ToDoStep);
 }
 function saveNewDraft() {

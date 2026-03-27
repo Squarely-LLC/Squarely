@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import type {
+  Activity,
+  ContactRef,
+  Priority,
+  Status,
+  ToDo,
+  ToDoStep,
+} from "@/data/schema";
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
@@ -7,7 +15,7 @@ import { storeToRefs } from "pinia";
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useTheme } from "vuetify";
-/* 👉 Drawers/Dialogs */
+/* ðŸ‘‰ Drawers/Dialogs */
 import AddColaboratorDialog from "@/components/dialogs/AddColaboratorDialog.vue";
 import AddNewTaskDrawer from "@/views/apps/todo/list/AddNewTaskDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -20,51 +28,6 @@ import StepEditDialog from "@/views/apps/todo/StepEditDialog.vue";
 import avatar1 from "@images/avatars/avatar-1.png";
 import avatar2 from "@images/avatars/avatar-2.png";
 import avatar3 from "@images/avatars/avatar-3.png";
-
-/* ================== Types (schema) ================== */
-type Priority = "low" | "normal" | "high";
-type Status = "pending" | "in_progress" | "for_review" | "completed";
-
-type ContactRef = {
-  id: number | string;
-  name: string;
-  avatarUrl?: string | null;
-};
-
-type ToDoStep = {
-  id: number | string;
-  title: string;
-  collaborators: ContactRef[];
-  dueAt: string;
-  priority: Priority;
-  status: Status;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type Activity = {
-  id: number | string;
-  author: ContactRef;
-  body: string;
-  createdAt: string;
-  attachments?: string[];
-};
-
-type ToDo = {
-  id: number | string;
-  title: string;
-  collaborators: ContactRef[];
-  dueAt: string;
-  priority: Priority;
-  important: boolean;
-  status: Status; // 'completed' excluded from table
-  steps: ToDoStep[]; // single level
-  notes?: string;
-  activities: Activity[];
-  createdAt: string;
-  updatedAt: string;
-};
 
 const isMsgDialogOpen = ref(false);
 const msgTodo: any = ref(null);
@@ -79,7 +42,7 @@ const contactsOptions = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
+  })),
 );
 const { all } = storeToRefs(todosStore); // reactive list from store
 
@@ -111,10 +74,10 @@ const statusTextClass = (status: Status) =>
   status === "in_progress"
     ? "text-primary"
     : status === "for_review"
-    ? "text-warning"
-    : status === "pending"
-    ? "text-medium-emphasis"
-    : "text-success";
+      ? "text-warning"
+      : status === "pending"
+        ? "text-medium-emphasis"
+        : "text-success";
 
 /* people */
 const C: Record<string, ContactRef> = {
@@ -169,9 +132,9 @@ function onEditStepClose() {
 
 // add near your other helpers
 const clampNote = (s?: string, max = 35) => {
-  if (!s) return "—";
+  if (!s) return "â€”";
   const t = s.trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+  return t.length > max ? `${t.slice(0, max - 1)}â€¦` : t;
 };
 
 /* ================== UI state ================== */
@@ -189,8 +152,8 @@ const itemsPerPage = ref(15);
 const page = ref(1);
 const sortBy = ref<string | undefined>();
 const orderBy = ref<"asc" | "desc" | undefined>();
-const selectedRows = ref<number[]>([]);
-const expanded = ref<number[]>([]);
+const selectedRows = ref<string[]>([]);
+const expanded = ref<string[]>([]);
 
 /* ================== helpers ================== */
 const fmtDateShort = (iso: string) => {
@@ -242,7 +205,7 @@ const inMyDay = (iso: string) => {
 
 const isRowExpandable = (raw?: ToDo | null) =>
   Array.isArray(raw?.steps) && raw!.steps.length > 0;
-const getKey = (raw: ToDo) => Number(raw.id);
+const getKey = (raw: ToDo) => String(raw.id);
 const toggleRow = (raw: ToDo) => {
   if (!isRowExpandable(raw)) return;
   const key = getKey(raw);
@@ -250,9 +213,9 @@ const toggleRow = (raw: ToDo) => {
   if (i === -1) expanded.value.push(key);
   else expanded.value.splice(i, 1);
 };
-const isExpanded = (t: ToDo) => expanded.value.includes(Number(t.id));
+const isExpanded = (t: ToDo) => expanded.value.includes(String(t.id));
 
-/* ================== headers — required order ================== */
+/* ================== headers â€” required order ================== */
 const headers = [
   { title: "", key: "data-table-select", width: 44, sortable: false },
   { title: "", key: "star", width: 44, sortable: true },
@@ -265,7 +228,7 @@ const headers = [
   {
     title: "Actions",
     key: "actions",
-    align: "start", // or omit this line (start is default)
+    align: "start" as const, // or omit this line (start is default)
 
     sortable: false,
   },
@@ -274,10 +237,10 @@ const headers = [
 /* ================== filtering + excluding completed ================== */
 const normalizedQuery = computed(() => searchQuery.value.trim().toLowerCase());
 
-// ADD: normalize “completed” across status/flags
+// ADD: normalize â€œcompletedâ€ across status/flags
 function isCompletedRecord(t: any): boolean {
   return Boolean(
-    t?.status === "completed" || t?.completed || t?.isCompleted || t?.doneAt
+    t?.status === "completed" || t?.completed || t?.isCompleted || t?.doneAt,
   );
 }
 
@@ -310,7 +273,7 @@ const filtered = computed<ToDo[]>(() => {
         .toLowerCase()
         .includes(normalizedQuery.value);
       const inPeople = t.collaborators.some((c) =>
-        c.name.toLowerCase().includes(normalizedQuery.value)
+        c.name.toLowerCase().includes(normalizedQuery.value),
       );
       return inTitle || inNotes || inPeople;
     });
@@ -339,7 +302,7 @@ const sorted = computed(() => {
   const dir = orderBy.value === "desc" ? -1 : 1;
   const rows = [...filtered.value];
 
-  // DEFAULT: non-overdue first → important by nearest due, then others by nearest due.
+  // DEFAULT: non-overdue first â†’ important by nearest due, then others by nearest due.
   // Overdue tasks are pushed to the end, keeping the same internal ordering.
   if (!key) {
     const now = Date.now();
@@ -368,7 +331,7 @@ const sorted = computed(() => {
   } else if (key === "due") {
     rows.sort(
       (a, b) =>
-        (new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()) * dir
+        (new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()) * dir,
     );
   } else if (key === "priority") {
     rows.sort((a, b) => {
@@ -379,7 +342,7 @@ const sorted = computed(() => {
       const primary = dir === -1 ? -r : r;
       if (primary !== 0) return primary;
 
-      // deterministic tie-breakers so groups don’t “shuffle”
+      // deterministic tie-breakers so groups donâ€™t â€œshuffleâ€
       const ad = new Date(a.dueAt).getTime();
       const bd = new Date(b.dueAt).getTime();
       if (ad !== bd) return (ad - bd) * (dir === -1 ? -1 : 1);
@@ -391,7 +354,7 @@ const sorted = computed(() => {
       (a, b) =>
         (statusOrder.indexOf(a.status as any) -
           statusOrder.indexOf(b.status as any)) *
-        dir
+        dir,
     );
   } else if (key === "star") {
     rows.sort((a, b) => (Number(a.important) - Number(b.important)) * dir);
@@ -425,13 +388,18 @@ const updateOptions = (options: any) => {
   orderBy.value = options.sortBy[0]?.order;
 };
 
+const onRowDblClick = ({ item }: { item: ToDo }) => {
+  if (isRowExpandable(item)) toggleRow(item);
+};
+
 const togglePendingProgress = (t: ToDo) => {
   const next = t.status === "in_progress" ? "pending" : "in_progress";
   todosStore.setStatus(t.id, next);
 };
 
 const markForReview = (t: ToDo) => todosStore.setStatus(t.id, "for_review");
-const updateStatus = (t: ToDo, status: Status) => todosStore.setStatus(t.id, status);
+const updateStatus = (t: ToDo, status: Status) =>
+  todosStore.setStatus(t.id, status);
 
 /* ================== actions / drawer handlers ================== */
 const toggleImportant = (t: ToDo) => todosStore.toggleImportant(t.id);
@@ -450,7 +418,7 @@ const addNewToDo = (payload: Partial<ToDo>) => {
       useNotificationsStore().push(
         `To-do '${safeTitle}' created`,
         "success",
-        3000
+        3000,
       );
     } catch {}
   } catch (e) {
@@ -476,16 +444,16 @@ const markCompleted = (id: number | string) => {
 function toggleStepCompleted(todoId: number | string, stepId: number | string) {
   const t = todosStore.byId(todoId);
   if (!t) return;
-  const steps = t.steps.map((s) =>
+  const steps: ToDoStep[] = t.steps.map((s) =>
     s.id === stepId
       ? { ...s, status: s.status === "completed" ? "pending" : "completed" }
-      : s
+      : s,
   );
   todosStore.updateTodo(todoId, { steps });
 }
 const deleteRow = (id: number | string) => {
   todosStore.removeTodo(id);
-  const key = Number(id);
+  const key = String(id);
   const i = selectedRows.value.indexOf(key);
   if (i !== -1) selectedRows.value.splice(i, 1);
 };
@@ -538,7 +506,7 @@ const computeExpandedLeftPad = () => {
     const starW = (ths[1] as HTMLElement).offsetWidth;
     const todoCellPadLeft = 16;
     const chevronEl = table.querySelector(
-      ".todo-chevron"
+      ".todo-chevron",
     ) as HTMLElement | null;
     const chevronW = chevronEl ? chevronEl.offsetWidth : 28;
     const gap = 8;
@@ -587,10 +555,6 @@ function applyEdit(payload: any) {
 
   todosStore.updateTodo(payload.id, partial);
 }
-function saveSteps(payload: { id: number | string; steps: ToDoStep[] }) {
-  const i = todos.value.findIndex((t) => t.id === payload.id);
-  if (i !== -1) todos.value[i].steps = payload.steps;
-}
 
 function saveStepsForTodo(payload: { id: number | string; steps: ToDoStep[] }) {
   todosStore.updateTodo(payload.id, {
@@ -605,11 +569,12 @@ function addActivityToTodo(payload: {
 }) {
   const t = todosStore.byId(payload.id);
   if (!t) return;
-  const activities = [
+  const author = payload.author ?? CURRENT_AUTHOR;
+  const activities: Activity[] = [
     ...t.activities,
     {
       id: Date.now(),
-      author: payload.author,
+      author,
       body: payload.body,
       createdAt: new Date().toISOString(),
     },
@@ -658,7 +623,7 @@ function onMessageSend(payload: {
   addMessageToTodo(payload);
 }
 
-/* ========= NEW: row click → open edit (ignore controls/icons/avatars) ========= */
+/* ========= NEW: row click â†’ open edit (ignore controls/icons/avatars) ========= */
 function isNoEditTarget(el: Element | null): boolean {
   if (!el) return false;
   // Ignore clicks on interactive controls, icons, avatars, chevrons, inputs, etc.
@@ -682,8 +647,8 @@ function isNoEditTarget(el: Element | null): boolean {
         ".v-avatar-group",
         ".chevron-btn",
         "[role='button']",
-      ].join(",")
-    )
+      ].join(","),
+    ),
   );
 }
 
@@ -797,7 +762,7 @@ function onRowClick(e: MouseEvent, payload: any) {
         v-model:model-value="selectedRows"
         v-model:page="page"
         v-model:expanded="expanded"
-        :item-value="(item) => item.id"
+        :item-value="(item: ToDo) => String(item.id)"
         :items="pageRows"
         :items-length="totalRows"
         :headers="headers"
@@ -805,7 +770,7 @@ function onRowClick(e: MouseEvent, payload: any) {
         :must-sort="false"
         class="text-no-wrap"
         @update:options="updateOptions"
-        @dblclick:row="({ item }) => isRowExpandable(item) && toggleRow(item)"
+        @dblclick:row="onRowDblClick"
         @click:row="onRowClick"
       >
         <!-- remove select-all header -->
@@ -937,7 +902,7 @@ function onRowClick(e: MouseEvent, payload: any) {
               </VTooltip>
             </VAvatar>
           </div>
-          <span v-else>−</span>
+          <span v-else>âˆ’</span>
         </template>
 
         <!-- STATUS -->
@@ -968,7 +933,11 @@ function onRowClick(e: MouseEvent, payload: any) {
                   <VIcon
                     icon="tabler-check"
                     size="16"
-                    :class="item.status === option.value ? 'text-primary' : 'opacity-0'"
+                    :class="
+                      item.status === option.value
+                        ? 'text-primary'
+                        : 'opacity-0'
+                    "
                   />
                 </template>
 
@@ -1119,20 +1088,20 @@ function onRowClick(e: MouseEvent, payload: any) {
                           s.status === 'in_progress'
                             ? 'text-primary'
                             : s.status === 'for_review'
-                            ? 'text-warning'
-                            : s.status === 'pending'
-                            ? 'text-medium-emphasis'
-                            : ''
+                              ? 'text-warning'
+                              : s.status === 'pending'
+                                ? 'text-medium-emphasis'
+                                : ''
                         "
                       >
                         {{
                           s.status === "pending"
                             ? "Pending"
                             : s.status === "in_progress"
-                            ? "In Progress"
-                            : s.status === "for_review"
-                            ? "For Review"
-                            : "Completed"
+                              ? "In Progress"
+                              : s.status === "for_review"
+                                ? "For Review"
+                                : "Completed"
                         }}
                       </span>
                     </div>
@@ -1344,24 +1313,26 @@ function onRowClick(e: MouseEvent, payload: any) {
   line-height: 0; /* prevent extra baseline space */
 }
 
-/* Left-anchor the whole cell’s contents */
+/* Left-anchor the whole cellâ€™s contents */
 .actions-cell {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px; /* small, consistent gaps between icons */
+  gap: 4px;
+  margin-inline-start: 0;
+  padding-inline-end: 4px;
 }
 
-/* Compact badge; doesn’t affect cell width */
+/* Compact badge; doesnâ€™t affect cell width */
 :deep(.msg-badge .v-badge__badge) {
-  block-size: 16px;
+  block-size: 14px;
   font-size: 10px;
-  line-height: 16px;
-  min-inline-size: 16px;
-  padding-inline: 4px;
+  line-height: 14px;
+  min-inline-size: 14px;
+  padding-inline: 3px;
 }
 
-/* Make sure buttons inside actions don’t add side margins */
+/* Make sure buttons inside actions donâ€™t add side margins */
 :deep(td .actions-cell .v-btn) {
   margin-inline: 0;
 }
@@ -1380,28 +1351,6 @@ function onRowClick(e: MouseEvent, payload: any) {
   text-align: start !important;
 }
 
-/* Ensure the icon row itself sits flush-left */
-.actions-cell {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  margin-inline-start: 0; /* cancel any inherited auto margins */
-}
-
-/* Vuetify buttons sometimes add side margins—remove for this column */
-:deep(td:nth-child(8) .v-btn) {
-  margin-inline: 0 !important;
-}
-
-/* Tighter spacing & compact icon buttons in Actions */
-.actions-cell {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 4px; /* was 8px → closer */
-}
-
 /* Remove any padding/margins and force a compact square */
 :deep(td:nth-child(8) .v-btn.v-btn--icon) {
   padding: 0 !important;
@@ -1418,41 +1367,11 @@ function onRowClick(e: MouseEvent, payload: any) {
   line-height: 1 !important;
 }
 
-/* ---- Badge fix: don't let VBadge change layout/height ---- */
-:deep(.msg-badge) {
-  display: inline-flex; /* same inline box as the icons */
-  vertical-align: middle;
-}
-
-/* Prevent wrapper from adding extra inline height/width */
-:deep(.msg-badge .v-badge__wrapper) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0; /* kill baseline whitespace */
-}
-
-/* Make the bubble smaller & centered relative to the icon */
-:deep(.msg-badge .v-badge__badge) {
-  block-size: 14px;
-  font-size: 10px;
-  line-height: 14px;
-  min-inline-size: 14px;
-  padding-inline: 3px;
-}
-
-/* ACTIONS header label → left-aligned */
+/* ACTIONS header label â†’ left-aligned */
 :deep(.th-actions) {
   display: flex;
   justify-content: flex-start;
   inline-size: 100%;
   padding-inline-start: 6px;
-}
-
-/* ACTIONS cells → keep icons right-aligned (with your badge) */
-.actions-cell {
-  display: flex;
-  justify-content: flex-start;
-  padding-inline-end: 4px;
 }
 </style>

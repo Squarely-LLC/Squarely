@@ -1,23 +1,6 @@
 <script setup lang="ts">
+import type { ContactRef, ToDoStep } from "@/data/schema";
 import { computed, reactive, ref, watch } from "vue";
-
-/* ---- Types (match your app) ---- */
-type Priority = "low" | "normal" | "high";
-type Status = "pending" | "in_progress" | "for_review" | "completed";
-type ContactRef = {
-  id: number | string;
-  name: string;
-  avatarUrl?: string | null;
-};
-type ToDoStep = {
-  id: number | string;
-  title: string;
-  collaborators: ContactRef[];
-  dueAt: string;
-  priority: Priority;
-  status: Status;
-  notes?: string;
-};
 
 type Props = {
   modelValue: boolean;
@@ -42,6 +25,8 @@ const draft = reactive<ToDoStep>({
   priority: "normal",
   status: "pending",
   notes: "",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 });
 
 const collabSearch = ref("");
@@ -102,7 +87,7 @@ const initials = (n?: string) =>
               chips
               closable-chips
               clearable
-              density="fixed"
+              density="comfortable"
               @update:model-value="collabSearch = ''"
             >
               <template #item="{ props: itemProps, item }">
