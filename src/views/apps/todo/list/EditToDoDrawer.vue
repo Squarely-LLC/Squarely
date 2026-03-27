@@ -458,7 +458,6 @@ async function onSaveAll() {
                     />
                   </VCol>
 
-                  <!-- ✅ Mark as completed (as a Switch; no auto-save) -->
                   <VCol cols="12">
                     <VFileInput label="Attachment File" />
                   </VCol>
