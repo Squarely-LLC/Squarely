@@ -10,7 +10,6 @@ import type {
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -18,6 +17,9 @@ interface Props {
   jobId: number | string;
 }
 const props = defineProps<Props>();
+const emit = defineEmits<{
+  (e: "open-add-todo", payload: { initial: Record<string, any> }): void;
+}>();
 const jobsStore = useJobsStore();
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
@@ -36,8 +38,8 @@ const milestoneDialog = reactive({
   draft: {
     id: undefined as number | undefined,
     name: "",
-    startDate: undefined as string | undefined,
-    dueDate: undefined as string | undefined,
+    startDate: null as string | null,
+    dueDate: null as string | null,
     priority: "Normal" as JobMilestone["priority"],
     note: "",
   },
@@ -49,8 +51,8 @@ const goalDialog = reactive({
     id: undefined as number | undefined,
     milestoneId: undefined as number | undefined,
     name: "",
-    startDate: undefined as string | undefined,
-    dueDate: undefined as string | undefined,
+    startDate: null as string | null,
+    dueDate: null as string | null,
     priority: "Normal" as JobGoal["priority"],
     note: "",
   },
@@ -62,11 +64,6 @@ const milestoneTitle = computed(() =>
 );
 const goalTitle = computed(() =>
   goalDialog.mode === "create" ? "Add Goal" : "Edit Goal",
-);
-const isAddTodoDrawerVisible = ref(false);
-const addTodoInitial = ref<any | null>(null);
-const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
-  null,
 );
 
 type JobTodo = ToDo & {
@@ -223,8 +220,8 @@ const resetMilestoneDraft = () => {
   milestoneDialog.draft = {
     id: undefined,
     name: "",
-    startDate: undefined,
-    dueDate: undefined,
+    startDate: null,
+    dueDate: null,
     priority: "Normal",
     note: "",
   };
@@ -234,8 +231,8 @@ const resetGoalDraft = () => {
     id: undefined,
     milestoneId: undefined,
     name: "",
-    startDate: undefined,
-    dueDate: undefined,
+    startDate: null,
+    dueDate: null,
     priority: "Normal",
     note: "",
   };
@@ -253,8 +250,8 @@ const openEditMilestone = (milestone: JobMilestone) => {
   milestoneDialog.draft = {
     id: milestone.id,
     name: milestone.name,
-    startDate: milestone.startDate ?? undefined,
-    dueDate: milestone.dueDate ?? undefined,
+    startDate: milestone.startDate ?? null,
+    dueDate: milestone.dueDate ?? null,
     priority: milestone.priority,
     note: milestone.note ?? "",
   };
@@ -314,8 +311,8 @@ const openEditGoal = (goal: JobGoal) => {
     id: goal.id,
     milestoneId: goal.milestoneId ?? undefined,
     name: goal.name,
-    startDate: goal.startDate ?? undefined,
-    dueDate: goal.dueDate ?? undefined,
+    startDate: goal.startDate ?? null,
+    dueDate: goal.dueDate ?? null,
     priority: goal.priority,
     note: goal.note ?? "",
   };
@@ -362,130 +359,58 @@ const buildTaskTitlePrefix = (
   return `${project} | ${parent} | `;
 };
 
-const normalizeTaskTitle = (
-  rawTitle: unknown,
-  projectName?: string | null,
-  parentName?: string | null,
-) => {
-  const prefix = buildTaskTitlePrefix(projectName, parentName);
-  const prefixBase = prefix.trimEnd();
-  const trimmedTitle = typeof rawTitle === "string" ? rawTitle.trim() : "";
-
-  if (!trimmedTitle) return prefix;
-  if (trimmedTitle === prefixBase) return prefix;
-  if (trimmedTitle.startsWith(prefixBase)) return trimmedTitle;
-
-  return `${prefix}${trimmedTitle}`;
-};
-
 const openCreateTodoForMilestone = (milestone: JobMilestone) => {
   if (!job.value) return;
-  addTodoInitial.value = {
-    title: buildTaskTitlePrefix(job.value.name, milestone.name),
-    collaborators: [],
-    notes: `Created for milestone: ${milestone.name}`,
-    dueAt: milestone.dueDate || new Date().toISOString(),
-    priority:
-      milestone.priority === "High"
-        ? "high"
-        : milestone.priority === "Low"
-          ? "low"
-          : "normal",
-    status: "pending",
-    relatedTo: {
-      id: job.value.id,
-      name: job.value.name,
-      type: "job",
+  emit("open-add-todo", {
+    initial: {
+      title: buildTaskTitlePrefix(job.value.name, milestone.name),
+      collaborators: [],
+      notes: `Created for milestone: ${milestone.name}`,
+      dueAt: milestone.dueDate || new Date().toISOString(),
+      priority:
+        milestone.priority === "High"
+          ? "high"
+          : milestone.priority === "Low"
+            ? "low"
+            : "normal",
+      status: "pending",
+      relatedTo: {
+        id: job.value.id,
+        name: job.value.name,
+        type: "job",
+      },
+      milestoneId: milestone.id,
+      goalId: null,
     },
-    milestoneId: milestone.id,
-    goalId: null,
-  };
-  isAddTodoDrawerVisible.value = true;
+  });
 };
 
 const openCreateTodoForGoal = (goal: JobGoal) => {
   if (!job.value) return;
-  addTodoInitial.value = {
-    title: buildTaskTitlePrefix(job.value.name, goal.name),
-    collaborators: [],
-    notes: `Created for goal: ${goal.name}`,
-    dueAt: goal.dueDate || new Date().toISOString(),
-    priority:
-      goal.priority === "High"
-        ? "high"
-        : goal.priority === "Low"
-          ? "low"
-          : "normal",
-    status: "pending",
-    relatedTo: {
-      id: job.value.id,
-      name: job.value.name,
-      type: "job",
-    },
-    goalId: goal.id,
-    milestoneId: null,
-  };
-  isAddTodoDrawerVisible.value = true;
-};
-
-const normalizeTaskOwnership = (payload: any) => {
-  if (
-    payload?.goalId !== null &&
-    payload?.goalId !== undefined &&
-    String(payload.goalId).trim() !== ""
-  ) {
-    return {
-      ...payload,
-      goalId: payload.goalId,
+  emit("open-add-todo", {
+    initial: {
+      title: buildTaskTitlePrefix(job.value.name, goal.name),
+      collaborators: [],
+      notes: `Created for goal: ${goal.name}`,
+      dueAt: goal.dueDate || new Date().toISOString(),
+      priority:
+        goal.priority === "High"
+          ? "high"
+          : goal.priority === "Low"
+            ? "low"
+            : "normal",
+      status: "pending",
+      relatedTo: {
+        id: job.value.id,
+        name: job.value.name,
+        type: "job",
+      },
+      goalId: goal.id,
       milestoneId: null,
-    };
-  }
-
-  if (
-    payload?.milestoneId !== null &&
-    payload?.milestoneId !== undefined &&
-    String(payload.milestoneId).trim() !== ""
-  ) {
-    return {
-      ...payload,
-      milestoneId: payload.milestoneId,
-      goalId: null,
-    };
-  }
-
-  return {
-    ...payload,
-    goalId: null,
-    milestoneId: null,
-  };
+    },
+  });
 };
 
-const onTodoCreated = (payload: any) => {
-  const ownedPayload = normalizeTaskOwnership(payload);
-  const goalName =
-    goals.value.find((goal) => String(goal.id) === String(ownedPayload?.goalId))
-      ?.name ?? null;
-  const milestoneName =
-    milestones.value.find(
-      (milestone) => String(milestone.id) === String(ownedPayload?.milestoneId),
-    )?.name ?? null;
-  const normalizedPayload = {
-    ...ownedPayload,
-    title: normalizeTaskTitle(
-      ownedPayload?.title,
-      job.value?.name,
-      goalName || milestoneName,
-    ),
-  };
-  const created = todosStore.addTodo(normalizedPayload);
-  notifications.push(
-    `Task '${created?.title || normalizedPayload.title || "Untitled"}' created`,
-    "success",
-    3000,
-  );
-  isAddTodoDrawerVisible.value = false;
-  addTodoInitial.value = null;
-};
 const toggleTaskCompleted = (taskId: number | string) => {
   const task = todosStore.byId(taskId);
   if (!task) return;
@@ -500,16 +425,6 @@ const priorityColor = (priority: "Low" | "Normal" | "High") => {
     : priority === "Low"
       ? "secondary"
       : "primary";
-};
-const todoPriorityColor = (priority?: string) => {
-  return priority === "high"
-    ? "error"
-    : priority === "low"
-      ? "secondary"
-      : "primary";
-};
-const todoPriorityLabel = (priority?: string) => {
-  return priority === "high" ? "High" : priority === "low" ? "Low" : "Normal";
 };
 const todoStatusLabel = (status?: string) => {
   switch (status) {
@@ -755,15 +670,12 @@ const formatDate = (value?: string | null) => {
                           </VAvatar>
                         </div>
 
-                        <VChip
-                          :color="todoPriorityColor(task.priority)"
-                          size="x-small"
-                          label
-                          class="text-capitalize"
-                          variant="text"
-                        >
-                          {{ todoPriorityLabel(task.priority) }}
-                        </VChip>
+                        <VIcon
+                          v-if="task.important"
+                          icon="tabler-star-filled"
+                          color="warning"
+                          size="18"
+                        />
                         <span
                           class="text-sm"
                           :class="{
@@ -961,15 +873,12 @@ const formatDate = (value?: string | null) => {
                                     </VAvatar>
                                   </div>
 
-                                  <VChip
-                                    :color="todoPriorityColor(task.priority)"
-                                    size="x-small"
-                                    label
-                                    class="text-capitalize"
-                                    variant="text"
-                                  >
-                                    {{ todoPriorityLabel(task.priority) }}
-                                  </VChip>
+                                  <VIcon
+                                    v-if="task.important"
+                                    icon="tabler-star-filled"
+                                    color="warning"
+                                    size="18"
+                                  />
                                   <span
                                     class="text-sm"
                                     :class="{
@@ -1015,6 +924,7 @@ const formatDate = (value?: string | null) => {
     </VCard>
     <VDialog
       :model-value="milestoneDialog.visible"
+      attach="body"
       :width="$vuetify.display.smAndDown ? 'auto' : 560"
       @update:model-value="(val: boolean) => (milestoneDialog.visible = val)"
     >
@@ -1079,6 +989,7 @@ const formatDate = (value?: string | null) => {
     </VDialog>
     <VDialog
       :model-value="goalDialog.visible"
+      attach="body"
       :width="$vuetify.display.smAndDown ? 'auto' : 560"
       @update:model-value="(val: boolean) => (goalDialog.visible = val)"
     >
@@ -1155,14 +1066,6 @@ const formatDate = (value?: string | null) => {
         </VCardText>
       </VCard>
     </VDialog>
-    <AddNewToDoDrawer
-      ref="addTodoDrawerRef"
-      v-model:is-drawer-open="isAddTodoDrawerVisible"
-      :collaborators-options="[]"
-      autofocus-title-end
-      :initial="addTodoInitial"
-      @user-data="onTodoCreated"
-    />
   </div>
 </template>
 

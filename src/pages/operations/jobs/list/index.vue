@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, toRaw, watch } from "vue";
 
 import type {
   JobFlag,
@@ -117,19 +117,31 @@ watch([selectedStage, selectedType, selectedFlag, searchQuery], () => {
 });
 
 const cloneJob = (job: JobProperties) => {
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(job);
-    } catch (error) {
-      console.warn("structuredClone failed for job clone", error);
-    }
-  }
+  const raw = toRaw(job) as JobProperties;
+  const seen = new WeakSet<object>();
 
   try {
-    return JSON.parse(JSON.stringify(job)) as JobProperties;
+    return JSON.parse(
+      JSON.stringify(raw, (_key, value) => {
+        if (typeof value === "function" || typeof value === "symbol") {
+          return undefined;
+        }
+
+        if (typeof Window !== "undefined" && value instanceof Window) {
+          return undefined;
+        }
+
+        if (value && typeof value === "object") {
+          if (seen.has(value)) return undefined;
+          seen.add(value);
+        }
+
+        return value;
+      }),
+    ) as JobProperties;
   } catch (error) {
     console.warn("JSON clone failed for job", error);
-    return { ...job };
+    return { ...raw };
   }
 };
 

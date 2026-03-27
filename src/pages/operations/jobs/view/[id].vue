@@ -35,17 +35,27 @@ const todosStore = useTodos();
 const cloneJob = (job: JobProperties | null) => {
   if (!job) return null;
   const raw = toRaw(job) as JobProperties;
-
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed for job clone", error);
-    }
-  }
+  const seen = new WeakSet<object>();
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as JobProperties;
+    return JSON.parse(
+      JSON.stringify(raw, (_key, value) => {
+        if (typeof value === "function" || typeof value === "symbol") {
+          return undefined;
+        }
+
+        if (typeof Window !== "undefined" && value instanceof Window) {
+          return undefined;
+        }
+
+        if (value && typeof value === "object") {
+          if (seen.has(value)) return undefined;
+          seen.add(value);
+        }
+
+        return value;
+      }),
+    ) as JobProperties;
   } catch (error) {
     console.warn("JSON clone failed for job clone", error);
     return { ...raw };
@@ -616,6 +626,15 @@ const handleDocumentTodoRequest = (payload: {
   });
 };
 
+const handleMilestoneGoalTodoRequest = (payload: {
+  initial: Record<string, any>;
+}) => {
+  handleDocumentTodoRequest({
+    initial: payload?.initial ?? {},
+    collaborators: [],
+  });
+};
+
 const onTodoCreated = (payload: any) => {
   try {
     try {
@@ -701,7 +720,10 @@ const closeSnagDrawer = () => {
 
         <VWindow v-model="jobTab" class="disable-tab-transition" :touch="false">
           <VWindowItem>
-            <JobMilestonesGoalsTab :job-id="job.id" />
+            <JobMilestonesGoalsTab
+              :job-id="job.id"
+              @open-add-todo="handleMilestoneGoalTodoRequest"
+            />
           </VWindowItem>
 
           <VWindowItem>
