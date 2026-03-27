@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-import { formatSystemDate } from "@core/utils/formatters";
 import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { useTodos } from "@/stores/todos";
+import { formatSystemDate } from "@core/utils/formatters";
 import avatar1 from "@images/avatars/avatar-1.png";
 import avatar2 from "@images/avatars/avatar-2.png";
 import avatar3 from "@images/avatars/avatar-3.png";
@@ -162,7 +162,7 @@ const activities = computed(() => {
   // plus messages/activities authored by contact
   for (const todo of todosStore.items || []) {
     const isCollaborator = (todo.collaborators || []).some(
-      (c: any) => String(c?.id) === String(userId)
+      (c: any) => String(c?.id) === String(userId),
     );
 
     if (isCollaborator) {
@@ -211,7 +211,7 @@ const activities = computed(() => {
     if (Array.isArray(todo.steps)) {
       for (const st of todo.steps) {
         const isStepCollaborator = (st.collaborators || []).some(
-          (c: any) => String(c?.id) === String(userId)
+          (c: any) => String(c?.id) === String(userId),
         );
 
         if (isStepCollaborator) {
@@ -250,7 +250,7 @@ const activities = computed(() => {
           m.endAt ||
           (m.startAt
             ? new Date(
-                new Date(m.startAt).getTime() + (m.duration || 0) * 60000
+                new Date(m.startAt).getTime() + (m.duration || 0) * 60000,
               ).toISOString()
             : undefined),
         duration: typeof m.duration === "number" ? m.duration : undefined,
@@ -309,15 +309,15 @@ const activities = computed(() => {
         "todo-message",
         "meeting-note",
         "employee-request",
-      ].includes(it.kind)
+      ].includes(it.kind),
     )
     .filter((it) => {
       try {
         const ts = it.startAt
           ? new Date(it.startAt).getTime()
           : it.date
-          ? new Date(it.date).getTime()
-          : NaN;
+            ? new Date(it.date).getTime()
+            : NaN;
         if (isNaN(ts)) return true; // keep if no timestamp
         return ts <= now;
       } catch {
@@ -327,7 +327,7 @@ const activities = computed(() => {
 
   // sort newest first
   filtered.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
   return filtered;
@@ -391,12 +391,12 @@ function labelColorName(kind: string) {
   return kind === "meeting" || kind === "meeting-note"
     ? "success"
     : kind === "todo"
-    ? "warning"
-    : kind === "todo-step"
-    ? "secondary"
-    : kind === "employee-request"
-    ? "primary"
-    : "info";
+      ? "warning"
+      : kind === "todo-step"
+        ? "secondary"
+        : kind === "employee-request"
+          ? "primary"
+          : "info";
 }
 
 function labelTextForKind(kind: string) {
@@ -442,7 +442,7 @@ function requestStatusColor(status: string) {
 }
 
 function requestDetails(
-  act: any
+  act: any,
 ): Array<{ label: string; value: string; icon?: string }> {
   const details: Array<{ label: string; value: string; icon?: string }> = [];
   const req = act.meta?.request || {};
@@ -556,7 +556,7 @@ function stepCollaborators(act: any) {
     const step = t.steps.find((s: any) => String(s.id) === String(stepId));
     if (!step || !Array.isArray(step.collaborators)) return [];
     return step.collaborators.filter(
-      (c: any) => String(c?.id) !== String(userId)
+      (c: any) => String(c?.id) !== String(userId),
     );
   } catch {
     return [];
@@ -585,7 +585,7 @@ const contactTodos = computed(() => {
   return (todosStore.items || []).filter((t: any) =>
     Array.isArray(t.collaborators)
       ? t.collaborators.some((c: any) => String(c?.id) === String(id))
-      : false
+      : false,
   );
 });
 
@@ -605,13 +605,13 @@ const scheduledTodos = computed(() => {
 });
 
 const pendingTodos = computed(
-  () => contactTodos.value.filter((t: any) => t.status === "pending").length
+  () => contactTodos.value.filter((t: any) => t.status === "pending").length,
 );
 
 // Average time for todos — measured as average (updatedAt - createdAt) in minutes
 const averageTodoTimeMinutes = computed(() => {
   const list = contactTodos.value.filter(
-    (t: any) => t?.createdAt && t?.updatedAt && t.createdAt !== t.updatedAt
+    (t: any) => t?.createdAt && t?.updatedAt && t.createdAt !== t.updatedAt,
   );
   if (!list.length) return 0;
   let sum = 0;
@@ -657,7 +657,7 @@ function numsIsNaN(n: any) {
 
 // Todos breakdown
 const completedTodos = computed(
-  () => contactTodos.value.filter((t: any) => t.status === "completed").length
+  () => contactTodos.value.filter((t: any) => t.status === "completed").length,
 );
 
 // Meetings metrics
@@ -749,7 +749,7 @@ const currentFilterLabel = computed(() => {
     <VCol cols="12">
       <!-- 👉 User Activity timeline -->
       <VCard
-        title="Contact Activity Timeline"
+        title="Employee Activity Timeline"
         :class="hasAnyActivities ? 'activity-card' : ''"
       >
         <template #append>
@@ -803,12 +803,12 @@ const currentFilterLabel = computed(() => {
                   act.kind === 'meeting' || act.kind === 'meeting-note'
                     ? 'success'
                     : act.kind === 'todo'
-                    ? 'warning'
-                    : act.kind === 'todo-step'
-                    ? 'secondary'
-                    : act.kind === 'employee-request'
-                    ? 'primary'
-                    : 'info'
+                      ? 'warning'
+                      : act.kind === 'todo-step'
+                        ? 'secondary'
+                        : act.kind === 'employee-request'
+                          ? 'primary'
+                          : 'info'
                 "
                 size="x-small"
               >
@@ -853,7 +853,7 @@ const currentFilterLabel = computed(() => {
                       class="timeline-chip"
                       :color="requestStatusColor(act.requestStatus)"
                       :text-color="`on-${requestStatusColor(
-                        act.requestStatus
+                        act.requestStatus,
                       )}`"
                       density="compact"
                     >

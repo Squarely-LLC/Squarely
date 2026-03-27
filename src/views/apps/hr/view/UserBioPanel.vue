@@ -854,9 +854,9 @@ function onContactEditSubmit(payload: EmployeeProperties) {
 
 // Computed property for employee position
 const displayPosition = computed(() => {
-  const positions = props.userData.positions;
+  const positions = props.userData.employment?.positions;
   if (positions && positions.length > 0) {
-    return positions.join(", ");
+    return positions.map((position) => position.position).join(", ");
   }
   return "Unknown Position";
 });
@@ -1047,13 +1047,20 @@ const reportsToManagers = computed(() => {
             </VListItem>
 
             <VListItem
-              v-if="props.userData.positions && props.userData.positions.length"
+              v-if="
+                props.userData.employment?.positions &&
+                props.userData.employment.positions.length
+              "
             >
               <VListItemTitle>
                 <h6 class="text-h6">
                   Position(s):
                   <div class="d-inline-block text-body-1">
-                    {{ props.userData.positions.join(", ") }}
+                    {{
+                      props.userData.employment.positions
+                        .map((position) => position.position)
+                        .join(", ")
+                    }}
                   </div>
                 </h6>
               </VListItemTitle>

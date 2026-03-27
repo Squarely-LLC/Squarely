@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
 import { useConfigStore } from "@/stores/config";
-import { computed, nextTick, ref, watch, withDefaults } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 

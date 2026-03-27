@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineEmits, defineProps, nextTick, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 

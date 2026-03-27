@@ -1077,10 +1077,7 @@ const onTerminationSubmit = (terminationData: any) => {
               v-for="method in allPaymentMethods"
               :key="method.id"
               class="d-flex align-center justify-space-between pa-3 rounded"
-              style="
-                border: 1px solid
-                  rgba(var(--v-border-color), var(--v-border-opacity));
-              "
+              style="border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity))"
             >
               <div class="flex-grow-1">
                 <div class="d-flex align-center gap-2 mb-1">
@@ -1253,12 +1250,7 @@ const onTerminationSubmit = (terminationData: any) => {
                 variant="text"
                 icon
                 color="default"
-                style="
-                  position: absolute;
-                  inset-block-start: 8px;
-                  inset-inline-end: 8px;
-                  /* stylelint-disable-next-line @stylistic/no-eol-whitespace */
-                "
+                style="position: absolute; inset-block-start: 8px; inset-inline-end: 8px"
               >
                 <VIcon icon="tabler-dots-vertical" />
                 <VMenu activator="parent">

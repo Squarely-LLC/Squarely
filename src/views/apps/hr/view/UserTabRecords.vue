@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatSystemDate } from "@core/utils/formatters";
-import { computed, defineEmits, defineProps, ref } from "vue";
+import { computed, ref } from "vue";
 import { useEmployeesStore } from "../../../../stores/employees";
 
 const props = defineProps({

@@ -99,6 +99,22 @@ const router = useRouter();
 const nowISO = () => new Date().toISOString();
 const priorityColor = (p: Priority) =>
   p === "low" ? "secondary" : p === "normal" ? "primary" : "error";
+const statusOptions: { value: Status; title: string }[] = [
+  { value: "pending", title: "Pending" },
+  { value: "in_progress", title: "In Progress" },
+  { value: "for_review", title: "For Review" },
+  { value: "completed", title: "Completed" },
+];
+const statusLabel = (status: Status) =>
+  statusOptions.find((option) => option.value === status)?.title ?? status;
+const statusTextClass = (status: Status) =>
+  status === "in_progress"
+    ? "text-primary"
+    : status === "for_review"
+    ? "text-warning"
+    : status === "pending"
+    ? "text-medium-emphasis"
+    : "text-success";
 
 /* people */
 const C: Record<string, ContactRef> = {
@@ -415,6 +431,7 @@ const togglePendingProgress = (t: ToDo) => {
 };
 
 const markForReview = (t: ToDo) => todosStore.setStatus(t.id, "for_review");
+const updateStatus = (t: ToDo, status: Status) => todosStore.setStatus(t.id, status);
 
 /* ================== actions / drawer handlers ================== */
 const toggleImportant = (t: ToDo) => todosStore.toggleImportant(t.id);
@@ -925,26 +942,42 @@ function onRowClick(e: MouseEvent, payload: any) {
 
         <!-- STATUS -->
         <template #item.status="{ item }">
-          <div
-            class="text-capitalize text-body-1"
-            :class="
-              item.status === 'in_progress'
-                ? 'text-primary' // blue
-                : item.status === 'for_review'
-                ? 'text-warning' // orange
-                : item.status === 'pending'
-                ? 'text-medium-emphasis' // gray
-                : '' // (completed won't appear in table)
-            "
-          >
-            {{
-              item.status === "pending"
-                ? "Pending"
-                : item.status === "in_progress"
-                ? "In Progress"
-                : "For Review"
-            }}
-          </div>
+          <VMenu location="bottom start">
+            <template #activator="{ props }">
+              <VBtn
+                v-bind="props"
+                variant="text"
+                size="small"
+                class="status-trigger px-0 text-none"
+                :class="statusTextClass(item.status)"
+                @click.stop
+              >
+                <span class="text-body-1">{{ statusLabel(item.status) }}</span>
+                <VIcon icon="tabler-chevron-down" size="16" class="ms-1" />
+              </VBtn>
+            </template>
+
+            <VList density="compact" min-width="180">
+              <VListItem
+                v-for="option in statusOptions"
+                :key="option.value"
+                :active="item.status === option.value"
+                @click.stop="updateStatus(item, option.value)"
+              >
+                <template #prepend>
+                  <VIcon
+                    icon="tabler-check"
+                    size="16"
+                    :class="item.status === option.value ? 'text-primary' : 'opacity-0'"
+                  />
+                </template>
+
+                <VListItemTitle :class="statusTextClass(option.value)">
+                  {{ option.title }}
+                </VListItemTitle>
+              </VListItem>
+            </VList>
+          </VMenu>
         </template>
 
         <!-- PRIORITY (flag icon, color = priority) -->
@@ -1248,6 +1281,11 @@ function onRowClick(e: MouseEvent, payload: any) {
   inline-size: 100%;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+}
+
+.status-trigger {
+  justify-content: flex-start;
+  min-inline-size: 0;
 }
 
 /* ---------- Subtask layout aligned to table columns ---------- */

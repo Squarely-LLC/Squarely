@@ -140,7 +140,7 @@ const documentTypes = computed(() => {
 
 const isDocumentRenewable = computed(() => {
   const renewable = configStore.configurations?.crm?.documentRenewable;
-  return renewable === "yes" || renewable === true;
+  return renewable === "yes";
 });
 
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { formatSystemDate } from "@core/utils/formatters";
 import { useJobsStore } from "@/stores/jobs";
 import { useSiteSurveys } from "@/stores/siteSurveys";
@@ -9,93 +8,176 @@ import { computed } from "vue";
 
 const props = defineProps<{ jobId: number | string }>();
 
-const jobsStore = useJobsStore();
-const todosStore = useTodos();
-jobsStore.init();
-todosStore.init();
-const siteSurveysStore = useSiteSurveys();
-siteSurveysStore.init();
-const snaglistsStore = useSnaglists();
-snaglistsStore.init();
-
-const job = computed(() => jobsStore.byId(props.jobId));
-
-const docsList = computed<JobDocument[]>(() => {
-  const fromStore = job.value;
-  const docs = fromStore?.documents ?? [];
-  return (Array.isArray(docs) ? docs.slice().reverse() : []).slice();
-});
-
-const hasMeetings = computed(() => (jobMeetings.value?.length || 0) > 0);
-const hasSurveys = computed(() => (jobSiteSurveys.value?.length || 0) > 0);
-const hasSnags = computed(() => (jobSnaglists.value?.length || 0) > 0);
-
-// Meetings linked to this job (relatedTo.id = jobId)
-const jobMeetings = computed(() => {
-  const id = props.jobId;
-  if (!id) return [] as any[];
-  const jobIdStr = String(id);
-  return (todosStore.meetings || []).filter((m: any) => {
-    const relatedMatch =
-      m?.relatedTo &&
-      String(m.relatedTo.id) === jobIdStr &&
-      (m.relatedTo.type ? m.relatedTo.type === "job" : true);
-    return relatedMatch;
-  });
-});
-
-// Site surveys linked to this job (relatedTo.id = jobId)
-const jobSiteSurveys = computed(() => {
-  const id = props.jobId;
-  if (!id) return [] as any[];
-  const jobIdStr = String(id);
-  return (siteSurveysStore.all || []).filter((s: any) => {
-    const relatedMatch =
-      s?.relatedTo &&
-      String(s.relatedTo.id) === jobIdStr &&
-      (s.relatedTo.type ? s.relatedTo.type === "job" : true);
-    return relatedMatch;
-  });
-});
-
-// Snaglists linked to this job (relatedTo.id = jobId)
-const jobSnaglists = computed(() => {
-  const id = props.jobId;
-  if (!id) return [] as any[];
-  const jobIdStr = String(id);
-  return (snaglistsStore.all || []).filter((s: any) => {
-    const relatedMatch =
-      s?.relatedTo &&
-      String(s.relatedTo.id) === jobIdStr &&
-      (s.relatedTo.type ? s.relatedTo.type === "job" : true);
-    return relatedMatch;
-  });
-});
-
-function formatDuration(mins?: number) {
-  if (!mins && mins !== 0) return "";
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h ? `${h}h ${m}m` : `${m}m`;
-}
-
-function linkedParticipants(meeting: any) {
-  if (!meeting || !Array.isArray(meeting.linkedTo)) return [];
-  return meeting.linkedTo.filter((l: any) => l?.type !== "job");
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "";
-  return formatSystemDate(value);
-}
-
 const emit = defineEmits<{
   "open-add-meeting": [];
   "open-add-survey": [];
   "open-add-snag": [];
 }>();
 
-function openAdd() {
+const jobsStore = useJobsStore();
+const todosStore = useTodos();
+const siteSurveysStore = useSiteSurveys();
+const snaglistsStore = useSnaglists();
+
+jobsStore.init();
+todosStore.init();
+siteSurveysStore.init();
+snaglistsStore.init();
+
+const job = computed(() => jobsStore.byId(props.jobId));
+
+const jobMeetings = computed(() => {
+  const id = props.jobId;
+  if (!id) return [] as any[];
+  const jobIdStr = String(id);
+
+  return (todosStore.meetings || []).filter((meeting: any) => {
+    const relatedMatch =
+      meeting?.relatedTo &&
+      String(meeting.relatedTo.id) === jobIdStr &&
+      (meeting.relatedTo.type ? meeting.relatedTo.type === "job" : true);
+
+    return relatedMatch;
+  });
+});
+
+const jobSiteSurveys = computed(() => {
+  const id = props.jobId;
+  if (!id) return [] as any[];
+  const jobIdStr = String(id);
+
+  return (siteSurveysStore.all || []).filter((survey: any) => {
+    const relatedMatch =
+      survey?.relatedTo &&
+      String(survey.relatedTo.id) === jobIdStr &&
+      (survey.relatedTo.type ? survey.relatedTo.type === "job" : true);
+
+    return relatedMatch;
+  });
+});
+
+const jobSnaglists = computed(() => {
+  const id = props.jobId;
+  if (!id) return [] as any[];
+  const jobIdStr = String(id);
+
+  return (snaglistsStore.all || []).filter((snag: any) => {
+    const relatedMatch =
+      snag?.relatedTo &&
+      String(snag.relatedTo.id) === jobIdStr &&
+      (snag.relatedTo.type ? snag.relatedTo.type === "job" : true);
+
+    return relatedMatch;
+  });
+});
+
+function timeAgo(iso?: string) {
+  if (!iso) return "";
+
+  try {
+    const then = new Date(iso).getTime();
+    const now = Date.now();
+    const diff = now - then;
+    const absMins = Math.round(Math.abs(diff) / 60000);
+
+    if (diff >= 0) {
+      if (absMins < 1) return "just now";
+      if (absMins < 60) return `${absMins} min${absMins > 1 ? "s" : ""} ago`;
+
+      const hours = Math.round(absMins / 60);
+      if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+
+      const days = Math.round(hours / 24);
+      if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`;
+
+      return formatSystemDate(then);
+    }
+
+    if (absMins < 60) return `in ${absMins} min${absMins > 1 ? "s" : ""}`;
+
+    const hours = Math.round(absMins / 60);
+    if (hours < 24) return `in ${hours} hour${hours > 1 ? "s" : ""}`;
+
+    const days = Math.round(hours / 24);
+    if (days < 7) return `in ${days} day${days > 1 ? "s" : ""}`;
+
+    return `on ${formatSystemDate(then)}`;
+  } catch {
+    return iso;
+  }
+}
+
+function formatDuration(mins?: number) {
+  if (!mins && mins !== 0) return "";
+
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function linkedParticipants(item: any) {
+  if (!item || !Array.isArray(item.linkedTo)) return [];
+
+  return item.linkedTo.filter((linked: any) => linked?.type !== "job");
+}
+
+function labelColorName(kind: string) {
+  if (kind === "meeting") return "success";
+  if (kind === "survey") return "primary";
+  return "info";
+}
+
+function labelText(kind: string) {
+  if (kind === "meeting") return "Meeting";
+  if (kind === "survey") return "Survey";
+  return "Snaglist";
+}
+
+const communicationActivities = computed(() => {
+  const meetings = jobMeetings.value.map((meeting: any) => ({
+    id: `meeting-${meeting.id}`,
+    kind: "meeting",
+    title: meeting.subject || "Meeting",
+    body: meeting.agenda || meeting.note || "",
+    date: meeting.startAt || meeting.createdAt,
+    duration: meeting.duration,
+    linkedTo: linkedParticipants(meeting),
+  }));
+
+  const surveys = jobSiteSurveys.value.map((survey: any) => ({
+    id: `survey-${survey.id}`,
+    kind: "survey",
+    title: survey.subject || "Site Survey",
+    body: survey.note || "",
+    date: survey.startAt || survey.createdAt,
+    duration: survey.duration,
+    linkedTo: linkedParticipants(survey),
+  }));
+
+  const snags = jobSnaglists.value.map((snag: any) => ({
+    id: `snag-${snag.id}`,
+    kind: "snag",
+    title: snag.subject || "Snaglist",
+    body: snag.note || "",
+    date: snag.startAt || snag.createdAt,
+    duration: snag.duration,
+    linkedTo: linkedParticipants(snag),
+  }));
+
+  return [...meetings, ...surveys, ...snags].sort((a, b) => {
+    const aTime = a.date ? new Date(a.date).getTime() : 0;
+    const bTime = b.date ? new Date(b.date).getTime() : 0;
+
+    return bTime - aTime;
+  });
+});
+
+const hasAnyActivities = computed(
+  () => communicationActivities.value.length > 0,
+);
+
+function openAddMeeting() {
   emit("open-add-meeting");
 }
 
@@ -110,23 +192,47 @@ function openAddSnag() {
 
 <template>
   <VRow>
-    <!-- Three Cards Section -->
     <VCol cols="12">
       <VCard
-        title="Minutes of Meetings"
-        :class="hasMeetings ? 'meeting-card' : ''"
+        :title="`${job?.name || 'Job'} Communication Timeline`"
+        :class="hasAnyActivities ? 'activity-card' : ''"
       >
         <template #append>
-          <VBtn variant="text" color="primary" @click="openAdd">
-            + Meeting
+          <VBtn icon variant="text" color="primary">
+            <VIcon icon="tabler-plus" />
+            <VTooltip activator="parent" location="top">Add</VTooltip>
+            <VMenu activator="parent">
+              <VList>
+                <VListItem @click="openAddMeeting">
+                  <template #prepend>
+                    <VIcon icon="tabler-calendar-plus" />
+                  </template>
+                  <VListItemTitle>Meeting</VListItemTitle>
+                </VListItem>
+                <VListItem @click="openAddSurvey">
+                  <template #prepend>
+                    <VIcon icon="tabler-clipboard-text" />
+                  </template>
+                  <VListItemTitle>Survey</VListItemTitle>
+                </VListItem>
+                <VListItem @click="openAddSnag">
+                  <template #prepend>
+                    <VIcon icon="tabler-list-details" />
+                  </template>
+                  <VListItemTitle>Snaglist</VListItemTitle>
+                </VListItem>
+              </VList>
+            </VMenu>
           </VBtn>
         </template>
-        <VCardText :class="hasMeetings ? 'meeting-card__body' : ''">
-          <template v-if="jobMeetings.length === 0">
+
+        <VCardText :class="hasAnyActivities ? 'activity-card__body' : ''">
+          <template v-if="!hasAnyActivities">
             <div class="d-flex justify-center align-center pa-6">
-              <div class="text-subtitle-1">No meetings yet</div>
+              <div class="text-subtitle-1">No communication activity yet</div>
             </div>
           </template>
+
           <template v-else>
             <VTimeline
               side="end"
@@ -136,221 +242,80 @@ function openAddSnag() {
               density="compact"
             >
               <VTimelineItem
-                v-for="meeting in jobMeetings.slice(0, 7)"
-                :key="meeting.id"
-                dot-color="success"
+                v-for="activity in communicationActivities"
+                :key="activity.id"
+                :dot-color="labelColorName(activity.kind)"
                 size="x-small"
               >
                 <div
                   class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
                 >
                   <div class="d-flex align-center">
-                    <span class="app-timeline-title">{{
-                      meeting.subject || "Meeting"
-                    }}</span>
+                    <span class="app-timeline-title">{{ activity.title }}</span>
+                    <VChip
+                      size="small"
+                      class="timeline-chip"
+                      :color="labelColorName(activity.kind)"
+                      density="compact"
+                    >
+                      {{ labelText(activity.kind) }}
+                    </VChip>
                   </div>
+
                   <span class="app-timeline-meta">{{
-                    formatDate(meeting.startAt)
+                    timeAgo(activity.date)
                   }}</span>
                 </div>
-                <div v-if="meeting.agenda" class="app-timeline-text mt-1">
-                  {{ meeting.agenda }}
+
+                <div v-if="activity.body" class="app-timeline-text mt-1">
+                  {{ activity.body }}
                 </div>
-                <div class="mt-2">
+
+                <div
+                  v-if="activity.duration || activity.linkedTo.length"
+                  class="mt-2"
+                >
                   <div
-                    v-if="meeting.duration"
+                    v-if="activity.duration"
                     class="d-flex gap-3 align-center flex-wrap mb-2"
                   >
                     <div class="text-sm text-medium-emphasis">
-                      <VIcon icon="tabler-stopwatch" size="16" />
-                      {{ formatDuration(meeting.duration) }}
+                      <VIcon icon="tabler-stopwatch" size="16" class="me-1" />
+                      {{ formatDuration(activity.duration) }}
                     </div>
                   </div>
 
-                  <div class="v-avatar-group demo-avatar-group">
+                  <div v-if="activity.linkedTo.length" class="v-avatar-group">
                     <template
-                      v-for="(l, i) in linkedParticipants(meeting).slice(0, 4)"
-                      :key="l.id || i"
+                      v-for="(linked, index) in activity.linkedTo.slice(0, 4)"
+                      :key="linked.id || index"
                     >
                       <VTooltip location="top">
-                        <template #activator="{ props }">
-                          <VAvatar v-bind="props" :size="32" color="primary">
-                            <VImg v-if="l.avatarUrl" :src="l.avatarUrl" />
+                        <template #activator="{ props: tooltipProps }">
+                          <VAvatar
+                            v-bind="tooltipProps"
+                            :size="32"
+                            color="primary"
+                          >
+                            <VImg v-if="linked.avatarUrl" :src="linked.avatarUrl" />
                             <span v-else class="text-xs font-weight-medium">{{
-                              (l.name?.match(/\b\w/g) || [])
+                              (linked.name?.match(/\b\w/g) || [])
                                 .slice(0, 2)
                                 .join("")
                                 .toUpperCase() || "?"
                             }}</span>
                           </VAvatar>
                         </template>
-                        {{ l.name }}
+                        {{ linked.name }}
                       </VTooltip>
                     </template>
+
                     <VAvatar
-                      v-if="linkedParticipants(meeting).length > 4"
+                      v-if="activity.linkedTo.length > 4"
                       :size="32"
                       color="secondary"
                     >
-                      +{{ linkedParticipants(meeting).length - 4 }}
-                    </VAvatar>
-                  </div>
-                </div>
-              </VTimelineItem>
-            </VTimeline>
-          </template>
-        </VCardText>
-      </VCard>
-    </VCol>
-
-    <VCol cols="12">
-      <VCard title="Site Surveys" :class="hasSurveys ? 'meeting-card' : ''">
-        <template #append>
-          <VBtn variant="text" color="primary" @click="openAddSurvey">
-            + Survey
-          </VBtn>
-        </template>
-        <VCardText :class="hasSurveys ? 'meeting-card__body' : ''">
-          <template v-if="jobSiteSurveys.length === 0">
-            <div class="d-flex justify-center align-center pa-6">
-              <div class="text-subtitle-1">No surveys yet</div>
-            </div>
-          </template>
-          <template v-else>
-            <VTimeline
-              side="end"
-              align="start"
-              line-inset="8"
-              truncate-line="start"
-              density="compact"
-            >
-              <VTimelineItem
-                v-for="survey in jobSiteSurveys.slice(0, 7)"
-                :key="survey.id"
-                dot-color="primary"
-                size="x-small"
-              >
-                <div
-                  class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
-                >
-                  <div class="d-flex align-center">
-                    <span class="app-timeline-title">{{
-                      survey.subject || "Site Survey"
-                    }}</span>
-                  </div>
-                  <span class="app-timeline-meta">{{
-                    formatDate(survey.startAt)
-                  }}</span>
-                </div>
-                <div v-if="survey.note" class="app-timeline-text mt-1">
-                  {{ survey.note }}
-                </div>
-                <div class="mt-2">
-                  <div class="v-avatar-group demo-avatar-group">
-                    <template
-                      v-for="(l, i) in linkedParticipants(survey).slice(0, 4)"
-                      :key="l.id || i"
-                    >
-                      <VTooltip location="top">
-                        <template #activator="{ props }">
-                          <VAvatar v-bind="props" :size="32" color="primary">
-                            <VImg v-if="l.avatarUrl" :src="l.avatarUrl" />
-                            <span v-else class="text-xs font-weight-medium">{{
-                              (l.name?.match(/\b\w/g) || [])
-                                .slice(0, 2)
-                                .join("")
-                                .toUpperCase() || "?"
-                            }}</span>
-                          </VAvatar>
-                        </template>
-                        {{ l.name }}
-                      </VTooltip>
-                    </template>
-                    <VAvatar
-                      v-if="linkedParticipants(survey).length > 4"
-                      :size="32"
-                      color="warning"
-                    >
-                      +{{ linkedParticipants(survey).length - 4 }}
-                    </VAvatar>
-                  </div>
-                </div>
-              </VTimelineItem>
-            </VTimeline>
-          </template>
-        </VCardText>
-      </VCard>
-    </VCol>
-
-    <VCol cols="12">
-      <VCard title="Snaglists">
-        <template #append>
-          <VBtn variant="text" color="primary" @click="openAddSnag">
-            + Snag
-          </VBtn>
-        </template>
-        <VCardText :class="hasSnags ? 'meeting-card__body' : ''">
-          <template v-if="jobSnaglists.length === 0">
-            <div class="d-flex justify-center align-center pa-6">
-              <div class="text-subtitle-1">No snaglists yet</div>
-            </div>
-          </template>
-          <template v-else>
-            <VTimeline
-              side="end"
-              align="start"
-              line-inset="8"
-              truncate-line="start"
-              density="compact"
-            >
-              <VTimelineItem
-                v-for="snag in jobSnaglists.slice(0, 7)"
-                :key="snag.id"
-                dot-color="info"
-                size="x-small"
-              >
-                <div
-                  class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
-                >
-                  <div class="d-flex align-center">
-                    <span class="app-timeline-title">{{
-                      snag.subject || "Snaglist"
-                    }}</span>
-                  </div>
-                  <span class="app-timeline-meta">{{
-                    formatDate(snag.startAt)
-                  }}</span>
-                </div>
-                <div v-if="snag.note" class="app-timeline-text mt-1">
-                  {{ snag.note }}
-                </div>
-                <div class="mt-2">
-                  <div class="v-avatar-group demo-avatar-group">
-                    <template
-                      v-for="(l, i) in linkedParticipants(snag).slice(0, 4)"
-                      :key="l.id || i"
-                    >
-                      <VTooltip location="top">
-                        <template #activator="{ props }">
-                          <VAvatar v-bind="props" :size="32" color="primary">
-                            <VImg v-if="l.avatarUrl" :src="l.avatarUrl" />
-                            <span v-else class="text-xs font-weight-medium">{{
-                              (l.name?.match(/\b\w/g) || [])
-                                .slice(0, 2)
-                                .join("")
-                                .toUpperCase() || "?"
-                            }}</span>
-                          </VAvatar>
-                        </template>
-                        {{ l.name }}
-                      </VTooltip>
-                    </template>
-                    <VAvatar
-                      v-if="linkedParticipants(snag).length > 4"
-                      :size="32"
-                      color="info"
-                    >
-                      +{{ linkedParticipants(snag).length - 4 }}
+                      +{{ activity.linkedTo.length - 4 }}
                     </VAvatar>
                   </div>
                 </div>
@@ -363,9 +328,47 @@ function openAddSnag() {
   </VRow>
 </template>
 
-<style lang="scss" scoped>
+<style scoped>
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  block-size: 39rem;
+}
+
+.activity-card__body {
+  overflow: auto;
+  flex: 1 1 auto;
+  padding-inline-end: 0.5rem;
+  scrollbar-color: rgba(0 0 0 / 12%) transparent;
+  scrollbar-width: thin;
+}
+
+.activity-card__body::-webkit-scrollbar {
+  block-size: 10px;
+  inline-size: 10px;
+}
+
+.activity-card__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.activity-card__body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgba(0 0 0 / 12%);
+}
+
+.activity-card__body::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0 0 0 / 18%);
+}
+
+.activity-card__body .v-timeline {
+  min-block-size: 0;
+}
+
 .timeline-chip {
-  margin-inline-start: 0.5rem;
+  margin-inline-start: 8px;
 }
 
 .app-timeline-title {
@@ -380,44 +383,5 @@ function openAddSnag() {
 .app-timeline-text {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.875rem;
-}
-
-.meeting-card {
-  display: flex;
-  flex-direction: column;
-  max-block-size: 30rem;
-}
-
-.meeting-card__body {
-  overflow: auto;
-  flex: 1 1 auto;
-  min-block-size: 0;
-  padding-inline-end: 0.5rem;
-  scrollbar-color: rgba(0 0 0 / 12%) transparent;
-  scrollbar-width: thin;
-}
-
-.meeting-card__body::-webkit-scrollbar {
-  block-size: 10px;
-  inline-size: 10px;
-}
-
-.meeting-card__body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.meeting-card__body::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: padding-box;
-  background-color: rgba(0 0 0 / 12%);
-}
-
-.meeting-card__body::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0 0 0 / 18%);
-}
-
-.meeting-card__body .v-timeline {
-  min-block-size: 0;
 }
 </style>
