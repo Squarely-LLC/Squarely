@@ -8,65 +8,53 @@ import type {
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 const STORAGE_KEY = "app.jobs.v1";
-function cloneStakeholder(stakeholder: JobStakeholder): JobStakeholder {
-  const raw = toRaw(stakeholder) as JobStakeholder;
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning stakeholder:", error);
-    }
-  }
+function safeClone<T extends object>(value: T, label: string): T {
+  const raw = toRaw(value) as T;
+  const seen = new WeakSet<object>();
+
   try {
-    return JSON.parse(JSON.stringify(raw)) as JobStakeholder;
+    return JSON.parse(
+      JSON.stringify(raw, (_key, currentValue) => {
+        if (
+          typeof currentValue === "function" ||
+          typeof currentValue === "symbol"
+        ) {
+          return undefined;
+        }
+
+        if (
+          typeof Window !== "undefined" &&
+          currentValue instanceof Window
+        ) {
+          return undefined;
+        }
+
+        if (currentValue && typeof currentValue === "object") {
+          if (seen.has(currentValue)) return undefined;
+          seen.add(currentValue);
+        }
+
+        return currentValue;
+      }),
+    ) as T;
   } catch (error) {
-    console.warn("JSON clone failed while cloning stakeholder:", error);
+    console.warn(`JSON clone failed while cloning ${label}:`, error);
     return { ...raw };
   }
+}
+function cloneStakeholder(stakeholder: JobStakeholder): JobStakeholder {
+  return safeClone(stakeholder, "stakeholder");
 }
 function cloneMilestone(milestone: JobMilestone): JobMilestone {
-  const raw = toRaw(milestone) as JobMilestone;
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning milestone:", error);
-    }
-  }
-  try {
-    return JSON.parse(JSON.stringify(raw)) as JobMilestone;
-  } catch (error) {
-    console.warn("JSON clone failed while cloning milestone:", error);
-    return { ...raw };
-  }
+  return safeClone(milestone, "milestone");
 }
 function cloneGoal(goal: JobGoal): JobGoal {
-  const raw = toRaw(goal) as JobGoal;
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning goal:", error);
-    }
-  }
-  try {
-    return JSON.parse(JSON.stringify(raw)) as JobGoal;
-  } catch (error) {
-    console.warn("JSON clone failed while cloning goal:", error);
-    return { ...raw };
-  }
+  return safeClone(goal, "goal");
 }
 function cloneJob(job: JobProperties): JobProperties {
   const raw = toRaw(job) as JobProperties;
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(raw);
-    } catch (error) {
-      console.warn("structuredClone failed while cloning job:", error);
-    }
-  }
   try {
-    return JSON.parse(JSON.stringify(raw)) as JobProperties;
+    return safeClone(raw, "job");
   } catch (error) {
     console.warn("JSON clone failed while cloning job:", error);
     return {

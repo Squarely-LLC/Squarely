@@ -66,7 +66,12 @@ const emit = defineEmits<{
   (e: "update:isDrawerOpen", v: boolean): void;
   (
     e: "send",
-    v: { id: number | string; body: string; author?: ContactRef }
+    v: {
+      id: number | string;
+      body: string;
+      author?: ContactRef;
+      messageId?: number | string;
+    }
   ): void;
   (
     e: "edit-message",
@@ -135,10 +140,11 @@ function close() {
 function send() {
   const body = message.value.trim();
   if (!body || !props.todo) return;
+  const optimisticId = `msg-${Date.now()}`;
 
   // 1) Optimistic append → instant UI
   const optimistic: Message = {
-    id: `temp-${Date.now()}`,
+    id: optimisticId,
     author: props.author,
     body,
     createdAt: new Date().toISOString(),
@@ -150,7 +156,12 @@ function send() {
   scrollToBottom();
 
   // 2) Notify parent to persist (parent will push a real message and our watchers will reconcile)
-  emit("send", { id: props.todo.id, body, author: props.author });
+  emit("send", {
+    id: props.todo.id,
+    body,
+    author: props.author,
+    messageId: optimisticId,
+  });
 }
 
 /* ===== Helpers ===== */
@@ -255,6 +266,7 @@ watch(
 /* ===== Derived ===== */
 const list = computed(() => localList.value);
 const drawerKey = computed(() => `${props.todo?.id ?? "none"}`);
+const canToggleRead = (message: Message) => !isOwnMessage(message);
 </script>
 
 <template>
@@ -341,10 +353,10 @@ const drawerKey = computed(() => `${props.todo?.id ?? "none"}`);
                         </span>
                       </div>
                       <div class="message-actions">
-                        <IconBtn @click="toggleRead(m)">
+                        <IconBtn v-if="canToggleRead(m)" @click="toggleRead(m)">
                           <VIcon
-                            :icon="m.isRead ? 'tabler-mail-opened' : 'tabler-mail'"
-                            :color="m.isRead ? 'primary' : 'error'"
+                            :icon="m.isRead ? 'tabler-mail' : 'tabler-mail-opened'"
+                            :color="m.isRead ? 'error' : 'primary'"
                           />
                           <VTooltip activator="parent" location="top">
                             {{ m.isRead ? "Mark as unread" : "Mark as read" }}

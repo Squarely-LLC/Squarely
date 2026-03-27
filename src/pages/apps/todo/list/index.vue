@@ -672,6 +672,7 @@ function addMessageToTodo(payload: {
   id: number | string;
   body: string;
   author?: ContactRef;
+  messageId?: number | string;
 }) {
   const t = todosStore.byId(payload.id);
   if (!t) return;
@@ -682,7 +683,7 @@ function addMessageToTodo(payload: {
     ? [...(t as any).messages]
     : [];
   messages.push({
-    id: Date.now(),
+    id: payload.messageId ?? Date.now(),
     author: payload.author,
     body,
     createdAt: new Date().toISOString(),
@@ -695,6 +696,7 @@ function onMessageSend(payload: {
   id: number | string;
   body: string;
   author?: ContactRef;
+  messageId?: number | string;
 }) {
   addMessageToTodo(payload);
 }
