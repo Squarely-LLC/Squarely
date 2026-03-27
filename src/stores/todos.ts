@@ -1,4 +1,4 @@
-import type { Meeting, Message, ToDo } from "@/data/schema";
+import type { Meeting, Message, ToDo, ToDoAttachment } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { useContactsStore } from "@/stores/contacts";
 import { defineStore } from "pinia";
@@ -55,6 +55,17 @@ function normalizeMessage(message: any): Message {
     createdAt: message?.createdAt ?? new Date().toISOString(),
     isRead: Boolean(message?.isRead),
     editedAt: message?.editedAt ?? null,
+  };
+}
+
+function normalizeAttachment(attachment: any): ToDoAttachment | null {
+  if (!attachment || typeof attachment !== "object") return null;
+  if (attachment.type !== "file" && attachment.type !== "link") return null;
+  return {
+    type: attachment.type,
+    name: attachment.name ?? "",
+    url: attachment.url ?? null,
+    fileKey: attachment.fileKey ?? null,
   };
 }
 
@@ -183,6 +194,7 @@ export const useTodos = defineStore("todos", {
               }),
             )
           : [];
+        copy.attachment = normalizeAttachment(t.attachment);
         delete copy.priority;
         copy.steps = copy.steps.map((step: any) => {
           const next = { ...step };
@@ -235,6 +247,7 @@ export const useTodos = defineStore("todos", {
         notes: todo.notes || "",
         activities: todo.activities || [],
         messages: (todo as any).messages || [],
+        attachment: normalizeAttachment((todo as any).attachment),
         relatedTo: (todo as any).relatedTo || null,
         goalId: (todo as any).goalId ?? null,
         milestoneId: (todo as any).milestoneId ?? null,
@@ -260,6 +273,8 @@ export const useTodos = defineStore("todos", {
         nextPatch.messages = nextPatch.messages.map((message: any) =>
           normalizeMessage(message),
         );
+      if ("attachment" in nextPatch)
+        nextPatch.attachment = normalizeAttachment(nextPatch.attachment);
       delete nextPatch.priority;
       const updated = {
         ...this.items[idx],

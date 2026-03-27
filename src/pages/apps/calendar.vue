@@ -626,9 +626,10 @@ function handleSave(payload: {
   collaborators: any[];
   dueAt: string;
   priority: "low" | "normal" | "high";
-  status: "pending" | "in_progress" | "for_review";
+  status: "pending" | "in_progress" | "for_review" | "completed";
   notes: string;
   important: boolean;
+  attachment?: any;
 }) {
   todos.updateTodo(payload.id, { ...payload });
 }

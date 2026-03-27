@@ -615,6 +615,7 @@ function applyEdit(payload: any) {
     status: payload.status,
     notes: payload.notes,
     important: payload.important,
+    attachment: payload.attachment,
     relatedTo: payload.relatedTo,
   };
   // ADD: carry completion flags if provided by the drawer switch

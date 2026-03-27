@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
-import type { ContactRef, Status, ToDo } from "@/data/schema";
+import type { ContactRef, Status, ToDo, ToDoAttachment } from "@/data/schema";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
+import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -58,6 +59,12 @@ const relatedToLocked = ref(false);
 const goalId = ref<number | string | null>(null);
 const milestoneId = ref<number | string | null>(null);
 const titleFieldRef = ref<any>(null);
+const attachmentInput = ref("");
+const attachmentFile = ref<File | null>(null);
+const attachment = ref<ToDoAttachment | null>(null);
+const attachmentFileInputRef = ref<HTMLInputElement | null>(null);
+const pendingInitial = ref<Partial<ToDo> | null>(null);
+const syncingAttachmentInput = ref(false);
 
 // ref to the AppDateTimePicker component so we can focus/open its input
 const duePickerRef = ref<any>(null);
@@ -115,6 +122,8 @@ const selectedCollaborators = computed<ContactRef[]>(() => {
 
 /* ===== Reset (also clears validation) ===== */
 function resetForm() {
+  syncingAttachmentInput.value = true;
+  refForm.value?.resetValidation();
   title.value = "";
   selectedCollaboratorIds.value = [];
   dueAt.value = getTodayISOString();
@@ -126,8 +135,12 @@ function resetForm() {
   goalId.value = null;
   milestoneId.value = null;
   selectedStatus.value = "pending";
-  refForm.value?.reset();
-  refForm.value?.resetValidation();
+  attachmentInput.value = "";
+  attachmentFile.value = null;
+  attachment.value = null;
+  nextTick(() => {
+    syncingAttachmentInput.value = false;
+  });
 }
 
 /* ===== Close / open handling ===== */
@@ -162,8 +175,11 @@ function loadInitialAndMaybeFocus() {
   resetForm();
 
   // load initial values if provided
-  const init = (props as any).initial as any | undefined;
+  const init = (pendingInitial.value ?? (props as any).initial) as
+    | Partial<ToDo>
+    | undefined;
   if (init) {
+    syncingAttachmentInput.value = true;
     title.value = init.title || title.value;
     selectedCollaboratorIds.value = (init.collaborators || []).map(
       (c: any) => c.id,
@@ -178,6 +194,14 @@ function loadInitialAndMaybeFocus() {
     goalId.value = init.goalId ?? goalId.value;
     milestoneId.value = init.milestoneId ?? milestoneId.value;
     selectedStatus.value = (init.status as any) || selectedStatus.value;
+    attachment.value = init.attachment ?? null;
+    attachmentInput.value =
+      init.attachment?.type === "link"
+        ? init.attachment?.url || ""
+        : init.attachment?.name || "";
+    nextTick(() => {
+      syncingAttachmentInput.value = false;
+    });
   }
 
   if ((props as any).autofocusTitleEnd) {
@@ -204,6 +228,69 @@ function loadInitialAndMaybeFocus() {
   } else if (!(props as any).autofocusTitleEnd) {
     focusTitleInput(false);
   }
+
+  pendingInitial.value = null;
+}
+
+function normalizeLink(raw: string | null | undefined) {
+  const value = (raw ?? "").trim();
+  if (!value) return "";
+  return /^(https?:)?\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function onAttachmentInputUpdate(value: string | null | undefined) {
+  if (syncingAttachmentInput.value) return;
+
+  const nextValue = typeof value === "string" ? value : "";
+  attachmentInput.value = nextValue;
+  if (attachmentFile.value && nextValue === attachmentFile.value.name) return;
+
+  attachmentFile.value = null;
+  const trimmed = nextValue.trim();
+  attachment.value = trimmed
+    ? {
+        type: "link",
+        name: trimmed,
+        url: normalizeLink(trimmed),
+        fileKey: null,
+      }
+    : null;
+}
+
+function openAttachmentPicker() {
+  attachmentFileInputRef.value?.click();
+}
+
+function onAttachmentFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement | null;
+  const file = input?.files?.[0] ?? null;
+  if (!file) return;
+
+  attachmentFile.value = file;
+  attachment.value = {
+    type: "file",
+    name: file.name,
+    fileKey: null,
+    url: null,
+  };
+  attachmentInput.value = file.name;
+  if (input) input.value = "";
+}
+
+async function viewAttachment() {
+  if (attachmentFile.value) {
+    const objectUrl = URL.createObjectURL(attachmentFile.value);
+    window.open(objectUrl, "_blank", "noopener");
+    return;
+  }
+  if (attachment.value?.type === "link" && attachment.value.url) {
+    window.open(attachment.value.url, "_blank", "noopener");
+    return;
+  }
+  if (attachment.value?.type === "file" && attachment.value.fileKey) {
+    const objectUrl = await getFileObjectUrl(attachment.value.fileKey);
+    if (objectUrl) window.open(objectUrl, "_blank", "noopener");
+  }
 }
 
 // also react to prop changes directly when parent toggles the drawer open
@@ -217,24 +304,7 @@ watch(
 
 // Allow parent to open this drawer programmatically with initial data
 function openWith(initial?: any) {
-  if (initial) {
-    // set values immediately
-    title.value = initial.title || title.value;
-    selectedCollaboratorIds.value = (initial.collaborators || []).map(
-      (c: any) => c.id,
-    );
-    dueAt.value = initial.dueAt || getTodayISOString();
-    notes.value = initial.notes || notes.value;
-    important.value = !!initial.important;
-    relatedTo.value = initial.relatedTo ?? relatedTo.value;
-    selectedRelatedKey.value =
-      initial.relatedTo?.type === "job" ? `job-${initial.relatedTo.id}` : null;
-    relatedToLocked.value = initial.relatedTo?.type === "job";
-    goalId.value = initial.goalId ?? goalId.value;
-    milestoneId.value = initial.milestoneId ?? milestoneId.value;
-    selectedStatus.value = (initial.status as any) || selectedStatus.value;
-  }
-  // emit both kebab and camel update events to be robust for v-model variants
+  pendingInitial.value = initial ?? null;
   emit("update:isDrawerOpen", true);
   nextTick(() => {
     loadInitialAndMaybeFocus();
@@ -257,6 +327,17 @@ async function onSubmit() {
     (option) => option.value === selectedRelatedKey.value,
   );
 
+  let nextAttachment: ToDoAttachment | null = attachment.value;
+  if (attachmentFile.value) {
+    const fileKey = await saveFile(attachmentFile.value);
+    nextAttachment = {
+      type: "file",
+      name: attachmentFile.value.name,
+      fileKey,
+      url: null,
+    };
+  }
+
   emit("userData", {
     title: trimmedTitle,
     collaborators: selectedCollaborators.value,
@@ -264,6 +345,7 @@ async function onSubmit() {
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
+    attachment: nextAttachment,
     relatedTo: relatedOption
       ? {
           id: relatedOption.rawId,
@@ -443,7 +525,38 @@ async function onSubmit() {
               </VCol>
 
               <VCol cols="12">
-                <VFileInput label="Attachment File" />
+                <input
+                  ref="attachmentFileInputRef"
+                  type="file"
+                  class="d-none"
+                  @change="onAttachmentFileSelected"
+                />
+                <AppTextField
+                  :model-value="attachmentInput"
+                  label="Attachment or Link"
+                  placeholder="Paste a link or upload a file"
+                  clearable
+                  @update:model-value="onAttachmentInputUpdate"
+                  @click:clear="onAttachmentInputUpdate('')"
+                >
+                  <template #append-inner>
+                    <div class="d-flex align-center">
+                      <IconBtn size="small" @click.stop="openAttachmentPicker">
+                        <VIcon icon="tabler-paperclip" />
+                      </IconBtn>
+                      <IconBtn
+                        size="small"
+                        :disabled="!attachment"
+                        @click.stop="viewAttachment"
+                      >
+                        <VIcon icon="tabler-external-link" />
+                        <VTooltip activator="parent" location="top">
+                          View
+                        </VTooltip>
+                      </IconBtn>
+                    </div>
+                  </template>
+                </AppTextField>
               </VCol>
 
               <VCol cols="12">

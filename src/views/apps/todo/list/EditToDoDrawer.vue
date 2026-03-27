@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
-import type { ContactRef, Status, ToDo, ToDoStep } from "@/data/schema";
+import type {
+  ContactRef,
+  Status,
+  ToDo,
+  ToDoAttachment,
+  ToDoStep,
+} from "@/data/schema";
 import { useJobsStore } from "@/stores/jobs";
 import { formatSystemDate } from "@core/utils/formatters";
+import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -36,6 +43,7 @@ interface Emit {
       status: Status;
       notes: string;
       important: boolean;
+      attachment?: ToDoAttachment | null;
       relatedTo: { id: number | string; name: string; type: string } | null;
     },
   ): void;
@@ -65,6 +73,11 @@ const notes = ref<string>("");
 const important = ref<boolean>(false);
 const selectedStatus = ref<Status>("pending");
 const selectedRelatedKey = ref<string | null>(null);
+const attachmentInput = ref("");
+const attachmentFile = ref<File | null>(null);
+const attachment = ref<ToDoAttachment | null>(null);
+const attachmentFileInputRef = ref<HTMLInputElement | null>(null);
+const syncingAttachmentInput = ref(false);
 
 // ✅ Local completed toggle (pure UI; applied on Save)
 
@@ -195,11 +208,16 @@ function onStepEditDialogClose() {
 
 /* ===== Load / Reset ===== */
 function loadFromToDo(t: ToDo) {
+  syncingAttachmentInput.value = true;
   title.value = t.title ?? "";
   selectedCollaboratorIds.value = (t.collaborators ?? []).map((c) => c.id);
   dueAt.value = t.dueAt ? new Date(t.dueAt).toISOString() : null;
   notes.value = t.notes ?? "";
   important.value = !!t.important;
+  attachment.value = t.attachment ?? null;
+  attachmentFile.value = null;
+  attachmentInput.value =
+    t.attachment?.type === "link" ? t.attachment?.url || "" : t.attachment?.name || "";
   selectedRelatedKey.value =
     t.relatedTo?.type === "job" ? `job-${t.relatedTo.id}` : null;
   selectedStatus.value = (t.status ?? "pending") as Status;
@@ -208,28 +226,35 @@ function loadFromToDo(t: ToDo) {
 
   // ✅ Initialize local completed toggle from any possible flags/shape
   nextTick(() => {
+    syncingAttachmentInput.value = false;
     refForm.value?.resetValidation();
     collabSearch.value = "";
   });
 }
 function resetForm() {
+  syncingAttachmentInput.value = true;
+  refForm.value?.resetValidation();
   title.value = "";
   selectedCollaboratorIds.value = [];
   dueAt.value = null;
   notes.value = "";
   important.value = false;
+  attachment.value = null;
+  attachmentFile.value = null;
+  attachmentInput.value = "";
   selectedRelatedKey.value = null;
   selectedStatus.value = "pending";
   steps.value = [];
   activeTab.value = "details";
-  refForm.value?.reset();
-  refForm.value?.resetValidation();
   collabSearch.value = "";
   showNewDraft.value = false;
   newSearch.value = "";
   StepEditDialogOpen.value = false;
   StepEditDialogIdx.value = null;
   StepEditDialogModel.value = null;
+  nextTick(() => {
+    syncingAttachmentInput.value = false;
+  });
 }
 
 /* Sync to open/prop changes */
@@ -252,6 +277,67 @@ function closeDrawer() {
   emit("update:isDrawerOpen", false);
 }
 
+function normalizeLink(raw: string | null | undefined) {
+  const value = (raw ?? "").trim();
+  if (!value) return "";
+  return /^(https?:)?\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function onAttachmentInputUpdate(value: string | null | undefined) {
+  if (syncingAttachmentInput.value) return;
+
+  const nextValue = typeof value === "string" ? value : "";
+  attachmentInput.value = nextValue;
+  if (attachmentFile.value && nextValue === attachmentFile.value.name) return;
+
+  attachmentFile.value = null;
+  const trimmed = nextValue.trim();
+  attachment.value = trimmed
+    ? {
+        type: "link",
+        name: trimmed,
+        url: normalizeLink(trimmed),
+        fileKey: null,
+      }
+    : null;
+}
+
+function openAttachmentPicker() {
+  attachmentFileInputRef.value?.click();
+}
+
+function onAttachmentFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement | null;
+  const file = input?.files?.[0] ?? null;
+  if (!file) return;
+
+  attachmentFile.value = file;
+  attachment.value = {
+    type: "file",
+    name: file.name,
+    fileKey: null,
+    url: null,
+  };
+  attachmentInput.value = file.name;
+  if (input) input.value = "";
+}
+
+async function viewAttachment() {
+  if (attachmentFile.value) {
+    const objectUrl = URL.createObjectURL(attachmentFile.value);
+    window.open(objectUrl, "_blank", "noopener");
+    return;
+  }
+  if (attachment.value?.type === "link" && attachment.value.url) {
+    window.open(attachment.value.url, "_blank", "noopener");
+    return;
+  }
+  if (attachment.value?.type === "file" && attachment.value.fileKey) {
+    const objectUrl = await getFileObjectUrl(attachment.value.fileKey);
+    if (objectUrl) window.open(objectUrl, "_blank", "noopener");
+  }
+}
+
 /* ===== Save details ===== */
 async function onSaveAll() {
   const { valid } = await (refForm.value?.validate() ??
@@ -265,6 +351,17 @@ async function onSaveAll() {
     (option) => option.value === selectedRelatedKey.value,
   );
 
+  let nextAttachment: ToDoAttachment | null = attachment.value;
+  if (attachmentFile.value) {
+    const fileKey = await saveFile(attachmentFile.value);
+    nextAttachment = {
+      type: "file",
+      name: attachmentFile.value.name,
+      fileKey,
+      url: null,
+    };
+  }
+
   const payload: any = {
     id: props.todo.id,
     title: (title.value ?? "").toString().trim(),
@@ -273,6 +370,7 @@ async function onSaveAll() {
     status: selectedStatus.value, // keep your status UX separate from completion toggle
     notes: (notes.value ?? "").toString().trim(),
     important: Boolean(important.value),
+    attachment: nextAttachment,
     relatedTo: relatedOption
       ? {
           id: relatedOption.rawId,
@@ -459,7 +557,38 @@ async function onSaveAll() {
                   </VCol>
 
                   <VCol cols="12">
-                    <VFileInput label="Attachment File" />
+                    <input
+                      ref="attachmentFileInputRef"
+                      type="file"
+                      class="d-none"
+                      @change="onAttachmentFileSelected"
+                    />
+                    <AppTextField
+                      :model-value="attachmentInput"
+                      label="Attachment or Link"
+                      placeholder="Paste a link or upload a file"
+                      clearable
+                      @update:model-value="onAttachmentInputUpdate"
+                      @click:clear="onAttachmentInputUpdate('')"
+                    >
+                      <template #append-inner>
+                        <div class="d-flex align-center">
+                          <IconBtn size="small" @click.stop="openAttachmentPicker">
+                            <VIcon icon="tabler-paperclip" />
+                          </IconBtn>
+                          <IconBtn
+                            size="small"
+                            :disabled="!attachment"
+                            @click.stop="viewAttachment"
+                          >
+                            <VIcon icon="tabler-external-link" />
+                            <VTooltip activator="parent" location="top">
+                              View
+                            </VTooltip>
+                          </IconBtn>
+                        </div>
+                      </template>
+                    </AppTextField>
                   </VCol>
                 </VRow>
               </VForm>

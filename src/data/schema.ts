@@ -43,6 +43,13 @@ export type Message = {
   editedAt?: string | null;
 };
 
+export type ToDoAttachment = {
+  type: "file" | "link";
+  name: string;
+  url?: string | null;
+  fileKey?: string | null;
+};
+
 // Add below your MeetingSentiment export
 export type MeetingNote = {
   id: number | string;
@@ -69,6 +76,7 @@ export type ToDo = {
   notes?: string;
   activities: Activity[];
   messages?: Message[]; // <-- new, optional
+  attachment?: ToDoAttachment | null;
   relatedTo?: { id: string | number; name: string; type: string } | null;
   goalId?: string | number | null;
   milestoneId?: string | number | null;
