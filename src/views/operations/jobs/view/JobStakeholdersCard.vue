@@ -170,7 +170,7 @@ const handleCall = (stakeholder: (typeof decoratedStakeholders.value)[0]) => {
                         <template #prepend>
                           <VIcon icon="tabler-notes" />
                         </template>
-                        <VListItemTitle>To Do</VListItemTitle>
+                        <VListItemTitle>Task</VListItemTitle>
                       </VListItem>
 
                       <VListItem @click.prevent="handleMeeting(stakeholder)">

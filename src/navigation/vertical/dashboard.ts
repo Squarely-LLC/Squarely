@@ -67,7 +67,7 @@ export default [
   },
   { heading: "Activities" },
   {
-    title: "To Do",
+    title: "Tasks",
     icon: { icon: "tabler-list-check" },
     to: "apps-todo-list",
   },

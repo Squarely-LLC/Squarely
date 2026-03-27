@@ -32,14 +32,14 @@ export const blankEvent = {
   allDay: true,
   url: "",
   extendedProps: {
-    calendar: "To-Dos",
+    calendar: "Tasks",
     guests: [] as any[],
     location: "",
     description: "",
   },
 };
 
-const TODO_CALENDAR_LABEL = "To-Dos";
+const TODO_CALENDAR_LABEL = "Tasks";
 
 // Local date string (YYYY-MM-DD)
 function toLocalDateStr(d: Date) {
@@ -135,7 +135,7 @@ export const useCalendar = (
           return !isDone;
         })
         .map((t) => {
-          const title = (t.title ?? "Untitled To-Do").toString();
+          const title = (t.title ?? "Untitled Task").toString();
 
           // Parse dueAt
           const raw = String(t.dueAt ?? "");

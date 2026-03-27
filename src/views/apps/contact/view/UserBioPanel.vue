@@ -1043,7 +1043,7 @@ function onContactEditSubmit(payload: ContactProperties) {
                               <template #prepend>
                                 <VIcon icon="tabler-notes" />
                               </template>
-                              <VListItemTitle>To Do</VListItemTitle>
+                              <VListItemTitle>Task</VListItemTitle>
                             </VListItem>
 
                             <VListItem
@@ -1173,7 +1173,7 @@ function onContactEditSubmit(payload: ContactProperties) {
                             <template #prepend>
                               <VIcon icon="tabler-notes" />
                             </template>
-                            <VListItemTitle>To Do</VListItemTitle>
+                            <VListItemTitle>Task</VListItemTitle>
                           </VListItem>
 
                           <VListItem

@@ -379,10 +379,10 @@ const onTodoCreated = (payload: any) => {
       todos.init();
     } catch {}
     todos.addTodo && todos.addTodo(payload);
-    notifications.push("To Do created", "success", 3500);
+    notifications.push("Task created", "success", 3500);
   } catch (e) {
     console.error("onTodoCreated failed:", e);
-    notifications.push("To Do created", "success", 3500);
+    notifications.push("Task created", "success", 3500);
   } finally {
     isAddTodoDrawerVisible.value = false;
   }

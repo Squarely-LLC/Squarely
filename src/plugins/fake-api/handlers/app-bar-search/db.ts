@@ -80,7 +80,7 @@ export const db: DB = {
         {
     url: { name: 'apps-todo' },
           icon: 'tabler-list-check',
-          title: 'To Do',
+          title: 'Tasks',
         },
         {
           url: { name: 'apps-chat' },

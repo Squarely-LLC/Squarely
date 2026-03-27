@@ -166,9 +166,9 @@ async function handleCreate(payload: NewTodoPayload) {
 
   isAddOpen.value = false;
 
-  if (!store.selectedCalendars.includes("To-Dos")) {
+  if (!store.selectedCalendars.includes("Tasks")) {
     store.selectedCalendars = [
-      ...new Set([...store.selectedCalendars, "To-Dos"]),
+      ...new Set([...store.selectedCalendars, "Tasks"]),
     ];
   }
 
@@ -673,7 +673,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                 prepend-icon="tabler-plus"
                 @click="isAddOpen = true"
               >
-                To-Do
+                Task
               </VBtn>
               <VBtn
                 class="w-50"
@@ -724,8 +724,8 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                 <!-- Subfilter only for To-Dos and only when To-Dos is selected -->
                 <VSwitch
                   v-if="
-                    calendar.label === 'To-Dos' &&
-                    store.selectedCalendars?.includes('To-Dos')
+                    calendar.label === 'Tasks' &&
+                    store.selectedCalendars?.includes('Tasks')
                   "
                   v-model="store.todoImportantOnly"
                   density="compact"

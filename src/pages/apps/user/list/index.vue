@@ -469,7 +469,7 @@ const saveEditedUser = async (payload: any) => {
                   <template #prepend>
                     <VIcon icon="tabler-notes" />
                   </template>
-                  <VListItemTitle>To Do</VListItemTitle>
+                  <VListItemTitle>Task</VListItemTitle>
                 </VListItem>
 
                 <VListItem @click="deleteUser(item.id)">

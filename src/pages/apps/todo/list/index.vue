@@ -242,7 +242,7 @@ const isExpanded = (t: ToDo) => expanded.value.includes(String(t.id));
 const headers = [
   { title: "", key: "data-table-select", width: 44, sortable: false },
   { title: "", key: "star", width: 44, sortable: true },
-  { title: "To Do", key: "todo" },
+  { title: "Task", key: "todo" },
   { title: "Due Date", key: "due" },
   { title: "Assigned", key: "assigned" },
   { title: "Status", key: "status" },
@@ -787,7 +787,7 @@ function onRowClick(e: MouseEvent, payload: any) {
   <section>
     <VCard class="mb-6">
       <VCardItem class="pb-4">
-        <VCardTitle>To Do</VCardTitle>
+        <VCardTitle>Tasks</VCardTitle>
       </VCardItem>
 
       <!-- Filters row -->
@@ -827,7 +827,7 @@ function onRowClick(e: MouseEvent, payload: any) {
             <div>
               <AppTextField
                 v-model="searchQuery"
-                placeholder="Search To Do"
+                placeholder="Search Task"
                 clearable
               />
             </div>
@@ -861,7 +861,7 @@ function onRowClick(e: MouseEvent, payload: any) {
             prepend-icon="tabler-plus"
             @click="isAddNewToDoDrawerVisible = true"
           >
-            To Do
+            Task
           </VBtn>
         </div>
       </VCardText>

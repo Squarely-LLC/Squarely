@@ -1245,7 +1245,7 @@ const reportsToManagers = computed(() => {
                             <template #prepend>
                               <VIcon icon="tabler-notes" />
                             </template>
-                            <VListItemTitle>To Do</VListItemTitle>
+                            <VListItemTitle>Task</VListItemTitle>
                           </VListItem>
 
                           <VListItem
@@ -1388,7 +1388,7 @@ const reportsToManagers = computed(() => {
                               <template #prepend>
                                 <VIcon icon="tabler-notes" />
                               </template>
-                              <VListItemTitle>To Do</VListItemTitle>
+                              <VListItemTitle>Task</VListItemTitle>
                             </VListItem>
 
                             <VListItem
@@ -1518,7 +1518,7 @@ const reportsToManagers = computed(() => {
                             <template #prepend>
                               <VIcon icon="tabler-notes" />
                             </template>
-                            <VListItemTitle>To Do</VListItemTitle>
+                            <VListItemTitle>Task</VListItemTitle>
                           </VListItem>
 
                           <VListItem

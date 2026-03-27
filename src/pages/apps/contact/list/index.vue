@@ -737,10 +737,10 @@ const onTodoCreated = (payload: any) => {
       todos.init();
     } catch {}
     todos.addTodo && todos.addTodo(payload);
-    notifications.push("To Do created", "success", 3500);
+    notifications.push("Task created", "success", 3500);
   } catch (e) {
     console.error("onTodoCreated failed:", e);
-    notifications.push("To Do created", "success", 3500);
+    notifications.push("Task created", "success", 3500);
   } finally {
     isAddTodoDrawerVisible.value = false;
   }
@@ -1120,7 +1120,7 @@ const updateItemsPerPage = (value: number | string) => {
                   <template #prepend>
                     <VIcon icon="tabler-list-check" />
                   </template>
-                  <VListItemTitle>To Do</VListItemTitle>
+                  <VListItemTitle>Task</VListItemTitle>
                 </VListItem>
 
                 <VListItem @click="openAddMeetingForContact(item)">

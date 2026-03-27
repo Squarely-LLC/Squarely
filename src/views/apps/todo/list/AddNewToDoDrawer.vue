@@ -372,7 +372,7 @@ async function onSubmit() {
     @update:model-value="handleDrawerModelValueUpdate"
   >
     <AppDrawerHeaderSection
-      title="Add New To Do"
+      title="Add New Task"
       @cancel="closeNavigationDrawer"
     />
 

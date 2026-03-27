@@ -80,7 +80,7 @@ const initials = (n?: string) =>
     <DialogCloseBtn variant="tonal" @click="onCancel" />
     <VCard>
       <VCardTitle class="px-6 pt-4 pb-2">
-        {{ props.title || "Edit Subtask" }}
+        {{ props.title || "Edit Sub Task" }}
       </VCardTitle>
 
       <VCardText class="px-6">

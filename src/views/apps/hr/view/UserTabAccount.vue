@@ -998,7 +998,7 @@ const currentFilterLabel = computed(() => {
                 <div class="d-flex flex-column">
                   <div class="d-flex align-baseline gap-2">
                     <div class="text-h6">{{ totalTodos }}</div>
-                    <div class="text-sm text-medium-emphasis">To-Dos</div>
+                    <div class="text-sm text-medium-emphasis">Tasks</div>
                   </div>
                   <div class="text-sm mt-1">Pending: {{ pendingTodos }}</div>
                 </div>

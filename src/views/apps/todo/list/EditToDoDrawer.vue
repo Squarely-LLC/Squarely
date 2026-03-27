@@ -405,13 +405,13 @@ async function onSaveAll() {
     :model-value="props.isDrawerOpen"
     @update:model-value="(val) => emit('update:isDrawerOpen', val)"
   >
-    <AppDrawerHeaderSection title="Edit To Do" @cancel="closeDrawer" />
+    <AppDrawerHeaderSection title="Edit Task" @cancel="closeDrawer" />
     <VDivider />
 
     <!-- Full-width tabs -->
     <VTabs v-model="activeTab" grow class="px-4 w-100 todo-drawer-tabs">
       <VTab value="details" class="flex-1">Details</VTab>
-      <VTab value="steps" class="flex-1">Steps</VTab>
+      <VTab value="steps" class="flex-1">Sub Tasks</VTab>
     </VTabs>
     <VDivider />
 
@@ -597,7 +597,7 @@ async function onSaveAll() {
             <!-- ========= STEPS ========= -->
             <VWindowItem value="steps">
               <div class="mb-3">
-                <h6 class="text-subtitle-1">Steps</h6>
+                <h6 class="text-subtitle-1">Sub Tasks</h6>
               </div>
 
               <div class="d-flex flex-column gap-3">
@@ -620,7 +620,7 @@ async function onSaveAll() {
 
                       <div class="d-flex flex-column">
                         <strong class="text-body-1">{{
-                          s.title || "Untitled step"
+                          s.title || "Untitled sub task"
                         }}</strong>
                         <span class="text-sm">{{ fmtShort(s.dueAt) }}</span>
                         <span
@@ -707,13 +707,13 @@ async function onSaveAll() {
                   </div>
                 </VCard>
 
-                <!-- New step draft editor -->
+                <!-- New sub task draft editor -->
                 <VCard
                   v-if="showNewDraft"
                   class="px-3 py-3 step-row"
                   variant="tonal"
                 >
-                  <h6 class="text-subtitle-2 mb-2">New step</h6>
+                  <h6 class="text-subtitle-2 mb-2">New Sub Task</h6>
                   <div class="d-flex flex-column gap-3">
                     <AppTextField v-model="newDraft.title" label="Title" />
                     <AppDateTimePicker
