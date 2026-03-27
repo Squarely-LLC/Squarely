@@ -90,11 +90,30 @@ const C: Record<string, ContactRef> = {
 const isEditStepDialogOpen = ref(false);
 const editStepDialogTodoId = ref<number | string | null>(null);
 const editStepDialogModel = ref<ToDoStep | null>(null);
+const editStepDialogTitle = ref("Edit Subtask");
 
 function openEditStep(todoId: number | string, step: ToDoStep) {
   editStepDialogTodoId.value = todoId;
   // deep clone so we don't mutate the row until Save
   editStepDialogModel.value = JSON.parse(JSON.stringify(step));
+  editStepDialogTitle.value = "Edit Subtask";
+  isEditStepDialogOpen.value = true;
+}
+
+function openAddStep(todoId: number | string) {
+  const now = new Date().toISOString();
+  editStepDialogTodoId.value = todoId;
+  editStepDialogModel.value = {
+    id: `step-${Date.now()}`,
+    title: "",
+    collaborators: [],
+    dueAt: now,
+    status: "pending",
+    notes: "",
+    createdAt: now,
+    updatedAt: now,
+  };
+  editStepDialogTitle.value = "Add Subtask";
   isEditStepDialogOpen.value = true;
 }
 
@@ -105,7 +124,12 @@ function onEditStepSave(edited: ToDoStep) {
   const t = todosStore.byId(todoId);
   if (!t) return;
 
-  const steps = t.steps.map((s) => (s.id === edited.id ? { ...edited } : s));
+  const existingIndex = t.steps.findIndex((s) => s.id === edited.id);
+  const nextStep = { ...edited, updatedAt: new Date().toISOString() };
+  const steps =
+    existingIndex === -1
+      ? [...t.steps, nextStep]
+      : t.steps.map((s) => (s.id === edited.id ? nextStep : s));
 
   todosStore.updateTodo(todoId, {
     steps,
@@ -122,6 +146,7 @@ function onEditStepClose() {
   isEditStepDialogOpen.value = false;
   editStepDialogTodoId.value = null;
   editStepDialogModel.value = null;
+  editStepDialogTitle.value = "Edit Subtask";
 }
 
 // add near your other helpers
@@ -149,6 +174,8 @@ const sortBy = ref<string | undefined>();
 const orderBy = ref<"asc" | "desc" | undefined>();
 const selectedRows = ref<string[]>([]);
 const expanded = ref<string[]>([]);
+const openTodoStatusMenuId = ref<number | string | null>(null);
+const openStepStatusMenuKey = ref<string | null>(null);
 
 /* ================== helpers ================== */
 const fmtDateShort = (iso: string) => {
@@ -418,6 +445,18 @@ const saveAssignedCollaborators = () => {
 /* ================== actions / drawer handlers ================== */
 const toggleImportant = (t: ToDo) => todosStore.toggleImportant(t.id);
 
+function setTodoStatusMenu(todoId: number | string, isOpen: boolean) {
+  openTodoStatusMenuId.value = isOpen ? todoId : null;
+}
+
+function setStepStatusMenu(
+  todoId: number | string,
+  stepId: number | string,
+  isOpen: boolean,
+) {
+  openStepStatusMenuKey.value = isOpen ? `${todoId}:${stepId}` : null;
+}
+
 const addNewToDo = (payload: Partial<ToDo>) => {
   try {
     const created = todosStore.addTodo(payload);
@@ -467,6 +506,20 @@ function toggleStepCompleted(todoId: number | string, stepId: number | string) {
   );
   todosStore.updateTodo(todoId, { steps });
 }
+
+function updateStepStatus(
+  todoId: number | string,
+  stepId: number | string,
+  status: Status,
+) {
+  const t = todosStore.byId(todoId);
+  if (!t) return;
+  const steps: ToDoStep[] = t.steps.map((s) =>
+    s.id === stepId ? { ...s, status } : s,
+  );
+  todosStore.updateTodo(todoId, { steps });
+  openStepStatusMenuKey.value = null;
+}
 const deleteRow = (id: number | string) => {
   todosStore.removeTodo(id);
   const key = String(id);
@@ -476,6 +529,7 @@ const deleteRow = (id: number | string) => {
 /* ================== subtask alignment & anchoring ================== */
 const expandedLeftPad = ref(112);
 const anchors = ref({
+  dueLeft: 0,
   assignedLeft: 0,
   statusLeft: 0,
   actionsLeft: 0,
@@ -504,6 +558,7 @@ const computeAnchors = () => {
     (ths[idx] as HTMLElement).getBoundingClientRect().left - rectTable.left + 8;
 
   anchors.value = {
+    dueLeft: leftFor(IDX.date),
     assignedLeft: leftFor(IDX.assigned),
     statusLeft: leftFor(IDX.status),
     actionsLeft: leftFor(IDX.actions),
@@ -559,6 +614,7 @@ function applyEdit(payload: any) {
     status: payload.status,
     notes: payload.notes,
     important: payload.important,
+    relatedTo: payload.relatedTo,
   };
   // ADD: carry completion flags if provided by the drawer switch
   if ("completed" in payload) partial.completed = payload.completed;
@@ -849,6 +905,7 @@ function onRowClick(e: MouseEvent, payload: any) {
                 v-if="item.steps && item.steps.length"
                 class="text-xs text-medium-emphasis mt-1"
               >
+                <VIcon icon="tabler-subtask" size="18" class="mr-2" />
                 Subtasks:
                 {{
                   item.steps.filter((s) => s.status === "completed").length
@@ -925,7 +982,11 @@ function onRowClick(e: MouseEvent, payload: any) {
 
         <!-- STATUS -->
         <template #item.status="{ item }">
-          <VMenu location="bottom start">
+          <VMenu
+            location="bottom start"
+            :model-value="openTodoStatusMenuId === item.id"
+            @update:model-value="setTodoStatusMenu(item.id, $event)"
+          >
             <template #activator="{ props }">
               <VBtn
                 v-bind="props"
@@ -945,7 +1006,10 @@ function onRowClick(e: MouseEvent, payload: any) {
                 v-for="option in statusOptions"
                 :key="option.value"
                 :active="item.status === option.value"
-                @click.stop="updateStatus(item, option.value)"
+                @click="
+                  updateStatus(item, option.value);
+                  openTodoStatusMenuId = null;
+                "
               >
                 <template #prepend>
                   <VIcon
@@ -1007,12 +1071,26 @@ function onRowClick(e: MouseEvent, payload: any) {
                 :style="{
                   padding: `12px 16px 16px ${expandedLeftPad}px`,
                   '--subtask-left': expandedLeftPad + 'px',
+                  '--due-left': anchors.dueLeft + 'px',
                   '--assigned-left': anchors.assignedLeft + 'px',
                   '--status-left': anchors.statusLeft + 'px',
                   '--actions-left': anchors.actionsLeft + 'px',
                 }"
               >
-                <h6 class="text-h6 mb-2">Subtasks</h6>
+                <div class="subtasks-header mb-2">
+                  <h6 class="text-h6 mb-0">Subtasks</h6>
+                  <VBtn
+                    icon
+                    size="x-small"
+                    color="primary"
+                    @click.stop="openAddStep(item.id)"
+                  >
+                    <VIcon icon="tabler-plus" size="16" />
+                    <VTooltip activator="parent" location="top">
+                      Add subtask
+                    </VTooltip>
+                  </VBtn>
+                </div>
 
                 <div class="d-flex flex-column gap-2">
                   <div
@@ -1031,11 +1109,14 @@ function onRowClick(e: MouseEvent, payload: any) {
                         :model-value="s.status === 'completed'"
                         @click.stop="toggleStepCompleted(item.id, s.id)"
                       />
-                      <VIcon icon="tabler-subtask" size="18" class="mr-2" />
+
                       <div class="d-flex flex-column">
-                        <strong>{{ s.title }}</strong>
-                        <span class="text-sm">{{ fmtDateShort(s.dueAt) }}</span>
+                        {{ s.title }}
                       </div>
+                    </div>
+
+                    <div class="subtask-date">
+                      <span class="text-sm">{{ fmtDateShort(s.dueAt) }}</span>
                     </div>
 
                     <!-- centered under ASSIGNED -->
@@ -1083,28 +1164,64 @@ function onRowClick(e: MouseEvent, payload: any) {
 
                     <!-- under STATUS -->
                     <div class="subtask-status">
-                      <span
-                        class="text-sm text-capitalize"
-                        :class="
-                          s.status === 'in_progress'
-                            ? 'text-primary'
-                            : s.status === 'for_review'
-                              ? 'text-warning'
-                              : s.status === 'pending'
-                                ? 'text-medium-emphasis'
-                                : ''
+                      <VMenu
+                        location="bottom start"
+                        :model-value="
+                          openStepStatusMenuKey === `${item.id}:${s.id}`
+                        "
+                        @update:model-value="
+                          setStepStatusMenu(item.id, s.id, $event)
                         "
                       >
-                        {{
-                          s.status === "pending"
-                            ? "Pending"
-                            : s.status === "in_progress"
-                              ? "In Progress"
-                              : s.status === "for_review"
-                                ? "For Review"
-                                : "Completed"
-                        }}
-                      </span>
+                        <template #activator="{ props }">
+                          <VBtn
+                            v-bind="props"
+                            variant="text"
+                            size="small"
+                            class="status-trigger px-0 text-none"
+                            :class="statusTextClass(s.status)"
+                            @click.stop
+                          >
+                            <span class="text-body-2">
+                              {{ statusLabel(s.status) }}
+                            </span>
+                            <VIcon
+                              icon="tabler-chevron-down"
+                              size="16"
+                              class="ms-1"
+                            />
+                          </VBtn>
+                        </template>
+
+                        <VList density="compact" min-width="180">
+                          <VListItem
+                            v-for="option in statusOptions"
+                            :key="option.value"
+                            :active="s.status === option.value"
+                            @click="
+                              updateStepStatus(item.id, s.id, option.value)
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon
+                                icon="tabler-check"
+                                size="16"
+                                :class="
+                                  s.status === option.value
+                                    ? 'text-primary'
+                                    : 'opacity-0'
+                                "
+                              />
+                            </template>
+
+                            <VListItemTitle
+                              :class="statusTextClass(option.value)"
+                            >
+                              {{ option.title }}
+                            </VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
                     </div>
                   </div>
                 </div>
@@ -1145,7 +1262,7 @@ function onRowClick(e: MouseEvent, payload: any) {
       v-model="isEditStepDialogOpen"
       :step="editStepDialogModel"
       :collaborators-options="contactsOptions"
-      title="Edit Subtask"
+      :title="editStepDialogTitle"
       @save="onEditStepSave"
       @close="onEditStepClose"
     />
@@ -1164,7 +1281,7 @@ function onRowClick(e: MouseEvent, payload: any) {
 
     <VDialog v-model="isAssignDialogOpen" max-width="560">
       <VCard>
-        <VCardItem title="Assign Collaborators" />
+        <VCardItem title="Assign To" />
         <VDivider />
 
         <VCardText>
@@ -1203,12 +1320,13 @@ function onRowClick(e: MouseEvent, payload: any) {
           </VAutocomplete>
         </VCardText>
 
-        <VCardActions class="px-6 pb-6">
-          <VSpacer />
-          <VBtn variant="text" color="secondary" @click="closeAssignDialog">
+        <VCardActions class="px-6 pb-6 justify-space-between">
+          <VBtn color="primary" variant="tonal" @click="saveAssignedCollaborators">
+            Save
+          </VBtn>
+          <VBtn variant="tonal" color="secondary" @click="closeAssignDialog">
             Cancel
           </VBtn>
-          <VBtn color="primary" @click="saveAssignedCollaborators"> Save </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>
@@ -1230,11 +1348,11 @@ function onRowClick(e: MouseEvent, payload: any) {
 /* --- Chevron slot: exact same width whether button exists or not --- */
 .chevron-slot {
   display: inline-flex;
+  flex: 0 0 26px;
   align-items: center;
   justify-content: center;
   block-size: 26px; /* fixed height */
   inline-size: 26px; /* fixed width */
-  flex: 0 0 26px;
   margin-inline-start: -4px;
 }
 
@@ -1246,10 +1364,10 @@ function onRowClick(e: MouseEvent, payload: any) {
 
 .lead-cell {
   display: inline-flex;
-  align-items: center;
-  inline-size: 26px;
-  block-size: 26px;
   flex: 0 0 26px;
+  align-items: center;
+  block-size: 26px;
+  inline-size: 26px;
 }
 
 .assigned-cell-wrap {
@@ -1291,12 +1409,13 @@ function onRowClick(e: MouseEvent, payload: any) {
 } */
 
 .todo-title-stack {
-  min-inline-size: 0;
   margin-inline-start: 8px;
+  min-inline-size: 0;
 }
 
 .todosquare {
-  padding: 0.5rem 0.5rem 0.5rem 0;
+  padding-block: 0.5rem;
+  padding-inline: 0.5rem 0;
 }
 
 /* 2-letter monogram for avatars without images */
@@ -1322,6 +1441,12 @@ function onRowClick(e: MouseEvent, payload: any) {
   position: relative;
 }
 
+.subtasks-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Card stops before Actions column */
 .subtask-card {
   position: relative;
@@ -1340,11 +1465,16 @@ function onRowClick(e: MouseEvent, payload: any) {
 }
 
 /* Anchored columns */
+.subtask-date,
 .subtask-assigned,
 .subtask-status {
   position: absolute;
   inset-block-start: 50%;
   transform: translateY(-50%);
+}
+
+.subtask-date {
+  inset-inline-start: calc(var(--due-left) - var(--subtask-left));
 }
 
 .subtask-assigned {

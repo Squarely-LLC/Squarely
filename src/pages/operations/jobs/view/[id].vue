@@ -205,6 +205,13 @@ const handleStakeholderTodo = (contact: {
   addTodoInitial.value = {
     title: `Follow up: ${contact.name}`,
     description: `Regarding ${job.value?.name || "project"}`,
+    relatedTo: job.value
+      ? {
+          id: job.value.id,
+          name: job.value.name,
+          type: "job",
+        }
+      : null,
     linkedTo: job.value
       ? [
           {
@@ -588,11 +595,22 @@ const handleDocumentTodoRequest = (payload: {
     avatarUrl?: string | null;
   }>;
 }) => {
-  addTodoInitial.value = payload?.initial ?? null;
+  addTodoInitial.value = {
+    ...(payload?.initial ?? {}),
+    relatedTo:
+      payload?.initial?.relatedTo ??
+      (job.value
+        ? {
+            id: job.value.id,
+            name: job.value.name,
+            type: "job",
+          }
+        : null),
+  };
   isAddTodoDrawerVisible.value = true;
   nextTick(() => {
     try {
-      addTodoDrawerRef.value?.openWith?.(payload?.initial);
+      addTodoDrawerRef.value?.openWith?.(addTodoInitial.value);
     } catch {}
     addTodoInitial.value = null;
   });

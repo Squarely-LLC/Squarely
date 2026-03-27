@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
 import { formatSystemMonthYear } from "@core/utils/formatters";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { computed, nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
@@ -371,15 +372,11 @@ async function onSubmit() {
               </VCol>
 
               <VCol cols="12">
-                <VBtn type="submit" class="me-3">Save</VBtn>
-                <VBtn
-                  type="button"
-                  variant="tonal"
-                  color="error"
-                  @click="closeDrawer"
-                >
-                  Cancel
-                </VBtn>
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="closeDrawer"
+                />
               </VCol>
             </VRow>
           </VForm>

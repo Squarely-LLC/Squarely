@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { City, Country } from "country-state-city";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
@@ -537,9 +538,12 @@ const onReset = () => {
         </VAlert>
       </VCardText>
 
-      <VCardText class="d-flex justify-end flex-wrap gap-3">
-        <VBtn variant="tonal" color="secondary" @click="onReset"> Cancel </VBtn>
-        <VBtn type="submit" @click="saveContact"> Save </VBtn>
+      <VCardText>
+        <DialogActionBar
+          save-type="submit"
+          @save="saveContact"
+          @cancel="onReset"
+        />
       </VCardText>
     </VCard>
   </VDialog>

@@ -1,13 +1,9 @@
 <script setup lang="ts">
-import type {
-  Activity,
-  ContactRef,
-  Status,
-  ToDo,
-  ToDoStep,
-} from "@/data/schema";
+import type { ContactRef, Status, ToDo, ToDoStep } from "@/data/schema";
+import DialogActionBar from "@/components/DialogActionBar.vue";
+import { useJobsStore } from "@/stores/jobs";
 import type { CustomInputContent } from "@core/types";
-import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
+import { formatSystemDate } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -41,10 +37,10 @@ interface Emit {
       status: Exclude<Status, "completed">;
       notes: string;
       important: boolean;
+      relatedTo: { id: number | string; name: string; type: string } | null;
     },
   ): void;
   (e: "saveSteps", v: { id: number | string; steps: ToDoStep[] }): void;
-  (e: "addActivity", v: { id: number | string; body: string }): void;
 }
 interface Props {
   isDrawerOpen: boolean;
@@ -55,7 +51,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
 
 /* ===== Tabs ===== */
-const activeTab = ref<"details" | "steps" | "activities">("details");
+const activeTab = ref<"details" | "steps">("details");
 
 /* ===== Details form ===== */
 const isFormValid = ref(false);
@@ -69,6 +65,7 @@ const dueAt = ref<string | null>(null);
 const notes = ref<string>("");
 const important = ref<boolean>(false);
 const selectedStatus = ref<Exclude<Status, "completed">>("pending");
+const selectedRelatedKey = ref<string | null>(null);
 
 // ✅ Local completed toggle (pure UI; applied on Save)
 const completed = ref<boolean>(false);
@@ -90,6 +87,20 @@ const statusRadios: CustomInputContent[] = [
     icon: { icon: "tabler-eye-check", size: "24" },
   },
 ];
+
+const jobsStore = useJobsStore();
+jobsStore.init();
+
+const relatedOptions = computed(() =>
+  jobsStore.all.map((job) => ({
+    title: job.name,
+    value: `job-${job.id}`,
+    type: "job" as const,
+    rawId: job.id,
+  })),
+);
+
+const isRelatedToLocked = computed(() => props.todo?.relatedTo?.type === "job");
 
 /* ===== Helpers ===== */
 const idToContact = computed(
@@ -195,14 +206,6 @@ function onStepEditDialogClose() {
   StepEditDialogIdx.value = null;
 }
 
-/* ===== Activities ===== */
-const newMessage = ref("");
-function sendMessage() {
-  if (!props.todo || !newMessage.value.trim()) return;
-  emit("addActivity", { id: props.todo.id, body: newMessage.value.trim() });
-  newMessage.value = "";
-}
-
 /* ===== Load / Reset ===== */
 function loadFromToDo(t: ToDo) {
   title.value = t.title ?? "";
@@ -210,6 +213,8 @@ function loadFromToDo(t: ToDo) {
   dueAt.value = t.dueAt ? new Date(t.dueAt).toISOString() : null;
   notes.value = t.notes ?? "";
   important.value = !!t.important;
+  selectedRelatedKey.value =
+    t.relatedTo?.type === "job" ? `job-${t.relatedTo.id}` : null;
   selectedStatus.value = (t.status ?? "pending") as Exclude<
     Status,
     "completed"
@@ -237,6 +242,7 @@ function resetForm() {
   dueAt.value = null;
   notes.value = "";
   important.value = false;
+  selectedRelatedKey.value = null;
   selectedStatus.value = "pending";
   steps.value = [];
   completed.value = false; // reset local toggle
@@ -280,6 +286,9 @@ async function onSaveAll() {
     return;
   }
   const dueISO = toDateOnlyISOString(dueAt.value);
+  const relatedOption = relatedOptions.value.find(
+    (option) => option.value === selectedRelatedKey.value,
+  );
 
   const payload: any = {
     id: props.todo.id,
@@ -289,6 +298,13 @@ async function onSaveAll() {
     status: selectedStatus.value, // keep your status UX separate from completion toggle
     notes: (notes.value ?? "").toString().trim(),
     important: Boolean(important.value),
+    relatedTo: relatedOption
+      ? {
+          id: relatedOption.rawId,
+          name: relatedOption.title,
+          type: relatedOption.type,
+        }
+      : null,
   };
 
   // attach completion flags based on local switch
@@ -324,7 +340,6 @@ async function onSaveAll() {
     <VTabs v-model="activeTab" grow class="px-4 w-100">
       <VTab value="details" class="flex-1">Details</VTab>
       <VTab value="steps" class="flex-1">Steps</VTab>
-      <VTab value="activities" class="flex-1">Activities</VTab>
     </VTabs>
     <VDivider />
 
@@ -341,10 +356,12 @@ async function onSaveAll() {
               <VForm ref="refForm" v-model="isFormValid" @submit.prevent>
                 <VRow>
                   <VCol cols="12">
-                    <AppTextField
+                    <AppTextarea
                       v-model="title"
                       :rules="[requiredValidator]"
                       label="Title"
+                      auto-grow
+                      rows="1"
                     />
                   </VCol>
 
@@ -352,10 +369,11 @@ async function onSaveAll() {
                     <VAutocomplete
                       v-model="selectedCollaboratorIds"
                       v-model:search="collabSearch"
+                      class="todo-collaborators"
                       :items="props.collaboratorsOptions"
                       item-title="name"
                       item-value="id"
-                      label="Collaborators"
+                      label="Assigned to"
                       multiple
                       chips
                       closable-chips
@@ -415,6 +433,23 @@ async function onSaveAll() {
                     />
                   </VCol>
 
+                  <VCol cols="12">
+                    <AppSelect
+                      v-model="selectedRelatedKey"
+                      label="Related to"
+                      placeholder="Select a job"
+                      item-title="title"
+                      item-value="value"
+                      :items="relatedOptions"
+                      clearable
+                      :disabled="isRelatedToLocked"
+                    >
+                      <template #prepend-inner>
+                        <VIcon icon="tabler-briefcase" size="20" class="me-2" />
+                      </template>
+                    </AppSelect>
+                  </VCol>
+
                   <VDivider />
 
                   <!-- ✅ Match Add drawer props & wrapper -->
@@ -436,6 +471,7 @@ async function onSaveAll() {
                       label="Notes"
                       placeholder="Notes"
                       auto-grow
+                      rows="1"
                     />
                   </VCol>
 
@@ -606,25 +642,18 @@ async function onSaveAll() {
                     <VAutocomplete
                       v-model="newDraft.collaborators"
                       v-model:search="newSearch"
+                      class="todo-collaborators"
                       :items="props.collaboratorsOptions"
                       item-title="name"
                       return-object
-                      label="Assign to someone else.."
+                      label="Assigned to"
                       multiple
                       chips
                       closable-chips
                       clearable
                       @update:model-value="newSearch = ''"
                     />
-                    <div class="d-flex justify-end gap-2">
-                      <VBtn
-                        variant="tonal"
-                        color="error"
-                        @click="cancelNewDraft"
-                        >Cancel</VBtn
-                      >
-                      <VBtn @click="saveNewDraft">Save</VBtn>
-                    </div>
+                    <DialogActionBar @save="saveNewDraft" @cancel="cancelNewDraft" />
                   </div>
                 </VCard>
 
@@ -638,58 +667,14 @@ async function onSaveAll() {
             </VWindowItem>
 
             <!-- ========= ACTIVITIES ========= -->
-            <VWindowItem value="activities">
-              <div class="activities-pane">
-                <div class="history">
-                  <div
-                    v-for="a in props.todo?.activities || []"
-                    :key="a.id"
-                    class="pa-3 rounded border mb-3"
-                    style="border-color: rgba(255, 255, 255, 8%)"
-                  >
-                    <div class="text-sm mb-1">
-                      <strong>{{ a.author?.name || "Someone" }}</strong>
-                      <span class="text-disabled">
-                        • {{ formatSystemDateTime(a.createdAt) }}</span
-                      >
-                    </div>
-                    <div>{{ a.body }}</div>
-                  </div>
-                  <div
-                    v-if="!props.todo?.activities?.length"
-                    class="text-medium-emphasis"
-                  >
-                    No messages yet.
-                  </div>
-                </div>
-              </div>
-            </VWindowItem>
           </VWindow>
         </VCardText>
       </PerfectScrollbar>
 
       <!-- Details actions -->
       <VCardActions class="px-6 pb-6 pt-0" v-if="activeTab === 'details'">
-        <VBtn variant="tonal" class="me-3" @click="onSaveAll">Save</VBtn>
-        <VBtn type="button" variant="tonal" color="error" @click="closeDrawer"
-          >Cancel</VBtn
-        >
+        <DialogActionBar @save="onSaveAll" @cancel="closeDrawer" />
       </VCardActions>
-
-      <!-- Pinned composer for Activities -->
-      <!-- <VCardActions
-        v-if="activeTab === 'activities'"
-        class="px-6 py-4 composer align-center"
-      >
-        <AppTextarea
-          v-model="newMessage"
-          rows="4"
-          label="Write a message"
-          placeholder="Type and press Send"
-          class="flex-grow-1 me-3"
-        />
-        <VBtn variant="flat" @click="sendMessage">Send</VBtn>
-      </VCardActions> -->
     </VCard>
 
     <!-- ===== Reusable Step Dialog ===== -->
@@ -779,27 +764,6 @@ async function onSaveAll() {
   background: rgba(255, 255, 255, 6%);
 }
 
-/* Activities layout */
-.activities-pane {
-  display: flex;
-  flex-direction: column;
-  min-block-size: 100%;
-}
-
-.history {
-  flex: 1 1 auto;
-  padding-block-end: 88px;
-}
-
-.composer {
-  position: sticky;
-  z-index: 2;
-  background: transparent;
-  border-block-start: 1px solid rgba(255, 255, 255, 6%);
-  inset-block-end: 0;
-  margin-block-start: auto;
-}
-
 /* Monogram */
 .mono {
   display: flex;
@@ -811,5 +775,9 @@ async function onSaveAll() {
   inline-size: 100%;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+}
+
+::v-deep(.todo-collaborators .v-field__input) {
+  padding-block: 10px;
 }
 </style>

@@ -892,14 +892,13 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
             ?
           </div>
         </VCardText>
-        <VCardActions>
-          <VSpacer />
-          <VBtn variant="text" color="secondary" @click="cancelRemove"
-            >Cancel</VBtn
-          >
-          <VBtn variant="tonal" color="error" @click="performRemoveConfirmed"
-            >Delete</VBtn
-          >
+        <VCardActions class="justify-space-between">
+          <VBtn variant="tonal" color="secondary" @click="cancelRemove">
+            Cancel
+          </VBtn>
+          <VBtn variant="tonal" color="error" @click="performRemoveConfirmed">
+            Delete
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

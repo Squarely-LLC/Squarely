@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { requiredValidator } from "@/@core/utils/validators";
 import type {
   JobFlag,
@@ -331,11 +332,13 @@ const onCancel = () => {
                 rows="3"
               />
             </VCol>
-            <VCol cols="12" class="d-flex flex-wrap justify-center gap-4 mt-4">
-              <VBtn type="submit">Submit</VBtn>
-              <VBtn variant="tonal" color="secondary" @click="onCancel">
-                Cancel
-              </VBtn>
+            <VCol cols="12" class="mt-4">
+              <DialogActionBar
+                save-text="Submit"
+                save-type="submit"
+                @save="() => undefined"
+                @cancel="onCancel"
+              />
             </VCol>
           </VRow>
         </VForm>

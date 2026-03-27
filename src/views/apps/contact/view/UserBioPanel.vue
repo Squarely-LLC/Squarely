@@ -3,6 +3,7 @@ import type {
   ContactConnection,
   ContactProperties,
 } from "@/plugins/fake-api/handlers/apps/contact/types";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
@@ -1339,10 +1340,7 @@ function onContactEditSubmit(payload: ContactProperties) {
         <VTextField v-model="editRelation" label="Relation" />
       </VCardText>
       <VCardActions>
-        <VBtn variant="text" @click="closeEditRelation">Cancel</VBtn>
-        <VBtn color="primary" variant="tonal" @click="saveEditRelation"
-          >Save</VBtn
-        >
+        <DialogActionBar @save="saveEditRelation" @cancel="closeEditRelation" />
       </VCardActions>
     </VCard>
   </VDialog>

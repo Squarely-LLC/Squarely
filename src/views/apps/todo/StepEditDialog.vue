@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ContactRef, ToDoStep } from "@/data/schema";
+import { requiredValidator } from "@/@core/utils/validators";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { computed, reactive, ref, watch } from "vue";
 
 const toDateOnlyISOString = (value?: string | null) => {
@@ -61,6 +63,7 @@ function onCancel() {
 
 function onSubmit() {
   const title = (draft.title || "").trim();
+  if (!title) return;
   const payload: ToDoStep = JSON.parse(
     JSON.stringify({ ...draft, title, dueAt: toDateOnlyISOString(draft.dueAt) }),
   );
@@ -82,17 +85,22 @@ const initials = (n?: string) =>
 
       <VCardText class="px-6">
         <div class="d-flex flex-column gap-4">
-          <AppTextField v-model="draft.title" label="Title *" />
+          <AppTextField
+            v-model="draft.title"
+            label="Title *"
+            :rules="[requiredValidator]"
+          />
 
           <div class="d-flex gap-3">
-            <!-- Collaborators (one line, same height as select) -->
+            <!-- Assigned to -->
             <VAutocomplete
               v-model="draft.collaborators"
               v-model:search="collabSearch"
+              class="todo-collaborators"
               :items="props.collaboratorsOptions"
               item-title="name"
               return-object
-              label="Collaborators"
+              label="Assigned to"
               multiple
               chips
               closable-chips
@@ -138,27 +146,18 @@ const initials = (n?: string) =>
       </VCardText>
 
       <VCardActions class="px-6 pb-4">
-        <!-- Solid (tonal) like Cancel -->
-        <VBtn class="me-3" variant="tonal" color="success" @click="onSubmit">
-          Submit
-        </VBtn>
-        <VBtn variant="tonal" color="error" @click="onCancel">Cancel</VBtn>
+        <DialogActionBar
+          :save-disabled="!(draft.title || '').trim()"
+          @save="onSubmit"
+          @cancel="onCancel"
+        />
       </VCardActions>
     </VCard>
   </VDialog>
 </template>
 
 <style scoped>
-/* One-line chips + fixed control height without leaking styles */
-:deep(.collabOneLine .v-field__input) {
-  overflow: hidden;
-  align-items: center;
-  max-block-size: 56px;
-  min-block-size: 56px;
-  white-space: nowrap;
-}
-
-:deep(.collabOneLine .v-chip) {
-  margin-block-end: 0; /* keep height at one line */
+::v-deep(.todo-collaborators .v-field__input) {
+  padding-block: 10px;
 }
 </style>

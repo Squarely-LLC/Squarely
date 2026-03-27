@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { computed, nextTick, ref, watch } from "vue";
@@ -825,15 +826,11 @@ function toDateTimeLocalString(input?: string | Date) {
               </VCol>
 
               <VCol cols="12">
-                <VBtn type="submit" class="me-3">Save</VBtn>
-                <VBtn
-                  type="button"
-                  variant="tonal"
-                  color="error"
-                  @click="closeDrawer"
-                >
-                  Cancel
-                </VBtn>
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="closeDrawer"
+                />
               </VCol>
             </VRow>
           </VForm>

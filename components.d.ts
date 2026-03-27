@@ -371,6 +371,7 @@ declare module 'vue' {
     DemoTooltipTooltipOnVariousElements: typeof import('./src/views/demos/components/tooltip/DemoTooltipTooltipOnVariousElements.vue')['default']
     DemoTooltipTransition: typeof import('./src/views/demos/components/tooltip/DemoTooltipTransition.vue')['default']
     DemoTooltipVModelSupport: typeof import('./src/views/demos/components/tooltip/DemoTooltipVModelSupport.vue')['default']
+    DialogActionBar: typeof import('./src/components/DialogActionBar.vue')['default']
     DialogCloseBtn: typeof import('./src/@core/components/DialogCloseBtn.vue')['default']
     DropZone: typeof import('./src/@core/components/DropZone.vue')['default']
     EditableChipList: typeof import('./src/components/EditableChipList.vue')['default']

@@ -402,6 +402,11 @@ const handleJobAction = (action: string, job: JobProperties) => {
       addTodoInitial.value = {
         title: `Job: ${job.name}`,
         description: job.note || "",
+        relatedTo: {
+          id: job.id,
+          name: job.name,
+          type: "job",
+        },
         linkedTo: [
           {
             id: job.id,

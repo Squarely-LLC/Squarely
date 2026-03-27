@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { EmployeePosition } from "@/stores/employees";
 import { ref, watch } from "vue";
 
@@ -133,11 +134,13 @@ const onFormReset = () => {
         </VForm>
       </VCardText>
 
-      <VCardText class="d-flex justify-end gap-3">
-        <VBtn color="secondary" variant="tonal" @click="onFormReset">
-          Cancel
-        </VBtn>
-        <VBtn type="submit" @click="onSubmit"> Submit </VBtn>
+      <VCardText>
+        <DialogActionBar
+          save-text="Submit"
+          save-type="submit"
+          @save="onSubmit"
+          @cancel="onFormReset"
+        />
       </VCardText>
     </VCard>
   </VDialog>

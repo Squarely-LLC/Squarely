@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { EmployeeSalaryRecord } from "@/stores/employees";
 import DialogCloseBtn from "@core/components/DialogCloseBtn.vue";
 import { ref, watch } from "vue";
@@ -254,13 +255,13 @@ for (let year = currentYear - 5; year <= currentYear + 5; year++) {
             </VCol>
 
             <!-- Form Actions -->
-            <VCol cols="12" class="d-flex justify-center gap-4">
-              <VBtn color="secondary" variant="tonal" @click="onCancel">
-                Cancel
-              </VBtn>
-              <VBtn color="primary" type="submit">
-                {{ props.salaryData ? "Update" : "Add" }}
-              </VBtn>
+            <VCol cols="12">
+              <DialogActionBar
+                :save-text="props.salaryData ? 'Update' : 'Add'"
+                save-type="submit"
+                @save="() => undefined"
+                @cancel="onCancel"
+              />
             </VCol>
           </VRow>
         </VForm>

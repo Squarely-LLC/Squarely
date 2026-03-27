@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { EmployeeContract } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -194,13 +195,13 @@ watch(
         </VForm>
       </VCardText>
 
-      <VCardText class="d-flex justify-end flex-wrap gap-3">
-        <VBtn variant="tonal" color="secondary" @click="onFormReset">
-          Cancel
-        </VBtn>
-        <VBtn type="submit" @click="onFormSubmit">
-          {{ contractData ? "Update Contract" : "Create Contract" }}
-        </VBtn>
+      <VCardText>
+        <DialogActionBar
+          :save-text="contractData ? 'Update Contract' : 'Create Contract'"
+          save-type="submit"
+          @save="onFormSubmit"
+          @cancel="onFormReset"
+        />
       </VCardText>
     </VCard>
   </VDialog>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { ref } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 import { requiredValidator } from "../../../../@core/utils/validators";
@@ -200,13 +201,15 @@ const dialogModelValueUpdate = (val: boolean) => {
         </VForm>
       </VCardText>
 
-      <VCardText class="d-flex justify-end flex-wrap gap-3">
-        <VBtn variant="tonal" color="secondary" @click="onFormReset">
-          Cancel
-        </VBtn>
-        <VBtn type="submit" color="error" @click="onFormSubmit">
-          Terminate Contract
-        </VBtn>
+      <VCardText>
+        <DialogActionBar
+          save-text="Terminate Contract"
+          save-type="submit"
+          save-color="error"
+          save-variant="flat"
+          @save="onFormSubmit"
+          @cancel="onFormReset"
+        />
       </VCardText>
     </VCard>
   </VDialog>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ToDo } from "@/data/schema";
 import type {
   JobGoal,
@@ -1064,15 +1065,12 @@ const formatDate = (value?: string | null) => {
                   auto-grow
                 />
               </VCol>
-              <VCol cols="12" class="d-flex justify-end gap-4">
-                <VBtn
-                  variant="tonal"
-                  color="secondary"
-                  @click="milestoneDialog.visible = false"
-                >
-                  Cancel
-                </VBtn>
-                <VBtn type="submit">Save</VBtn>
+              <VCol cols="12">
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="milestoneDialog.visible = false"
+                />
               </VCol>
             </VRow>
           </VForm>
@@ -1145,15 +1143,12 @@ const formatDate = (value?: string | null) => {
                   auto-grow
                 />
               </VCol>
-              <VCol cols="12" class="d-flex justify-end gap-4">
-                <VBtn
-                  variant="tonal"
-                  color="secondary"
-                  @click="goalDialog.visible = false"
-                >
-                  Cancel
-                </VBtn>
-                <VBtn type="submit">Save</VBtn>
+              <VCol cols="12">
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="goalDialog.visible = false"
+                />
               </VCol>
             </VRow>
           </VForm>

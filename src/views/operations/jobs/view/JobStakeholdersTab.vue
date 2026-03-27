@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type {
   JobProperties,
   JobStakeholder,
@@ -169,15 +170,11 @@ const displayName = (stakeholder: JobStakeholder) => {
               placeholder="Project Sponsor"
             />
           </VCol>
-          <VCol cols="12" class="d-flex justify-end gap-4">
-            <VBtn
-              variant="tonal"
-              color="secondary"
-              @click="dialog.visible = false"
-            >
-              Cancel
-            </VBtn>
-            <VBtn @click="saveStakeholder">Save</VBtn>
+          <VCol cols="12">
+            <DialogActionBar
+              @save="saveStakeholder"
+              @cancel="dialog.visible = false"
+            />
           </VCol>
         </VRow>
       </VCardText>

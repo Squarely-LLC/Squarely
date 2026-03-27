@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { LegalConfig } from "@/plugins/fake-api/handlers/config/types";
 import { ref, watch } from "vue";
 
@@ -51,11 +52,9 @@ function cancel() {
         <AppTextField v-model="form.email" label="Email" />
         <AppTextField v-model="form.website" label="Website" />
       </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn text @click="cancel">Cancel</v-btn>
-        <v-btn color="primary" @click="save">Save</v-btn>
-      </v-card-actions>
+        <v-card-actions>
+          <DialogActionBar @save="save" @cancel="cancel" />
+        </v-card-actions>
     </v-card>
   </v-navigation-drawer>
 </template>

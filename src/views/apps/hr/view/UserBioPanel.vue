@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatSystemDate } from "@core/utils/formatters";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type {
   EmployeeConnection,
   EmployeeProperties,
@@ -1717,10 +1718,7 @@ const reportsToManagers = computed(() => {
         <VTextField v-model="editRelation" label="Relation" />
       </VCardText>
       <VCardActions>
-        <VBtn variant="text" @click="closeEditRelation">Cancel</VBtn>
-        <VBtn color="primary" variant="tonal" @click="saveEditRelation"
-          >Save</VBtn
-        >
+        <DialogActionBar @save="saveEditRelation" @cancel="closeEditRelation" />
       </VCardActions>
     </VCard>
   </VDialog>

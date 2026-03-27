@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import { nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -229,9 +230,12 @@ defineExpose({ openWith });
                 </VCol>
               </template>
 
-              <VCol cols="12" class="d-flex justify-end">
-                <VBtn type="submit" class="me-3">Save</VBtn>
-                <VBtn variant="tonal" @click="closeDrawer">Cancel</VBtn>
+              <VCol cols="12">
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="closeDrawer"
+                />
               </VCol>
             </VRow>
           </VForm>

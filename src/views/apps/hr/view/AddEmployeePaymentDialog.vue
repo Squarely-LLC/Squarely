@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { EmployeePaymentMethod } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -196,13 +197,13 @@ watch(
         </VForm>
       </VCardText>
 
-      <VCardText class="d-flex justify-end flex-wrap gap-3">
-        <VBtn variant="tonal" color="secondary" @click="onFormReset">
-          Cancel
-        </VBtn>
-        <VBtn type="submit" @click="onFormSubmit">
-          {{ paymentData ? "Update Payment Method" : "Add Payment Method" }}
-        </VBtn>
+      <VCardText>
+        <DialogActionBar
+          :save-text="paymentData ? 'Update Payment Method' : 'Add Payment Method'"
+          save-type="submit"
+          @save="onFormSubmit"
+          @cancel="onFormReset"
+        />
       </VCardText>
     </VCard>
   </VDialog>

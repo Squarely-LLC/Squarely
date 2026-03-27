@@ -1,7 +1,8 @@
 /* stylelint-disable @stylistic/no-eol-whitespace */ /* stylelint-disable
 @stylistic/no-eol-whitespace */
-<script setup lang="ts">
-import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
+  <script setup lang="ts">
+  import DialogActionBar from "@/components/DialogActionBar.vue";
+  import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
 import { getFileInfo, saveFile } from "@/utils/fileStore";
 import { computed, reactive, ref, watch } from "vue";
@@ -552,17 +553,12 @@ watch(
       </VCardText>
 
       <VCardActions>
-        <VSpacer />
-        <VBtn color="error" variant="tonal" @click="open = false">Cancel</VBtn>
-        <VBtn
-          color="primary"
-          variant="tonal"
-          :disabled="!isValid || uploading || !!fileError"
-          @click="save"
-        >
-          <span v-if="uploading">Uploading...</span>
-          <span v-else>Save</span>
-        </VBtn>
+        <DialogActionBar
+          :save-text="uploading ? 'Uploading...' : 'Save'"
+          :save-disabled="!isValid || uploading || !!fileError"
+          @save="save"
+          @cancel="open = false"
+        />
       </VCardActions>
     </VCard>
   </VDialog>

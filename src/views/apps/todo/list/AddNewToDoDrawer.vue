@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ContactRef, Status, ToDo } from "@/data/schema";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
+import { useJobsStore } from "@/stores/jobs";
 import type { CustomInputContent } from "@core/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -48,7 +50,13 @@ const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(getTodayISOString());
 const notes = ref<string>("");
 const important = ref<boolean>(false);
-const relatedTo = ref<{ id: number | string; name: string; type: string } | null>(null);
+const relatedTo = ref<{
+  id: number | string;
+  name: string;
+  type: string;
+} | null>(null);
+const selectedRelatedKey = ref<string | null>(null);
+const relatedToLocked = ref(false);
 const goalId = ref<number | string | null>(null);
 const milestoneId = ref<number | string | null>(null);
 const titleFieldRef = ref<any>(null);
@@ -88,6 +96,20 @@ contactsStore.init();
 const employeesStore = useEmployeesStore();
 employeesStore.init();
 
+const jobsStore = useJobsStore();
+jobsStore.init();
+
+const relatedOptions = computed(() =>
+  jobsStore.all.map((job) => ({
+    title: job.name,
+    value: `job-${job.id}`,
+    type: "job" as const,
+    rawId: job.id,
+  })),
+);
+
+const isRelatedToLocked = computed(() => relatedToLocked.value);
+
 // Use employees or contacts based on source prop
 const effectiveOptions = computed(() => {
   const store = props.source === "employees" ? employeesStore : contactsStore;
@@ -99,7 +121,7 @@ const effectiveOptions = computed(() => {
 });
 
 const idToContact = computed(
-  () => new Map(effectiveOptions.value.map((c) => [c.id, c] as const))
+  () => new Map(effectiveOptions.value.map((c) => [c.id, c] as const)),
 );
 const selectedCollaborators = computed<ContactRef[]>(() => {
   const mapAny = idToContact.value as Map<any, ContactRef>;
@@ -116,6 +138,8 @@ function resetForm() {
   notes.value = "";
   important.value = false;
   relatedTo.value = null;
+  selectedRelatedKey.value = null;
+  relatedToLocked.value = false;
   goalId.value = null;
   milestoneId.value = null;
   selectedStatus.value = "pending";
@@ -140,40 +164,48 @@ function handleDrawerModelValueUpdate(val: boolean) {
   }
 }
 
+function focusTitleInput(moveCaretToEnd = false) {
+  try {
+    nextTick(() => {
+      const input =
+        titleFieldRef.value?.$el?.querySelector?.("input") ||
+        titleFieldRef.value?.$el?.querySelector?.("textarea") ||
+        titleFieldRef.value?.querySelector?.("input") ||
+        titleFieldRef.value?.querySelector?.("textarea");
+      if (!input) return;
+      input.focus();
+      if (moveCaretToEnd) {
+        const length = typeof title.value === "string" ? title.value.length : 0;
+        input.setSelectionRange(length, length);
+      }
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
 function loadInitialAndMaybeFocus() {
   // load initial values if provided
   const init = (props as any).initial as any | undefined;
   if (init) {
     title.value = init.title || title.value;
     selectedCollaboratorIds.value = (init.collaborators || []).map(
-      (c: any) => c.id
+      (c: any) => c.id,
     );
     dueAt.value = init.dueAt || getTodayISOString();
     notes.value = init.notes || notes.value;
     important.value = !!init.important;
     relatedTo.value = init.relatedTo ?? relatedTo.value;
+    selectedRelatedKey.value =
+      init.relatedTo?.type === "job" ? `job-${init.relatedTo.id}` : null;
+    relatedToLocked.value = init.relatedTo?.type === "job";
     goalId.value = init.goalId ?? goalId.value;
     milestoneId.value = init.milestoneId ?? milestoneId.value;
     selectedStatus.value = (init.status as any) || selectedStatus.value;
   }
 
   if ((props as any).autofocusTitleEnd) {
-    try {
-      nextTick(() => {
-        const input =
-          titleFieldRef.value?.$el?.querySelector?.("input") ||
-          titleFieldRef.value?.$el?.querySelector?.("textarea") ||
-          titleFieldRef.value?.querySelector?.("input") ||
-          titleFieldRef.value?.querySelector?.("textarea");
-        if (input) {
-          const length = typeof title.value === "string" ? title.value.length : 0;
-          input.focus();
-          input.setSelectionRange(length, length);
-        }
-      });
-    } catch (e) {
-      // ignore
-    }
+    focusTitleInput(true);
   }
 
   // autofocus the due picker if requested: find the input inside the child and focus/click it
@@ -193,6 +225,8 @@ function loadInitialAndMaybeFocus() {
     } catch (e) {
       // ignore
     }
+  } else if (!(props as any).autofocusTitleEnd) {
+    focusTitleInput(false);
   }
 }
 
@@ -201,7 +235,7 @@ watch(
   () => props.isDrawerOpen,
   (val) => {
     if (val) nextTick(() => loadInitialAndMaybeFocus());
-  }
+  },
 );
 
 // Allow parent to open this drawer programmatically with initial data
@@ -210,12 +244,15 @@ function openWith(initial?: any) {
     // set values immediately
     title.value = initial.title || title.value;
     selectedCollaboratorIds.value = (initial.collaborators || []).map(
-      (c: any) => c.id
+      (c: any) => c.id,
     );
     dueAt.value = initial.dueAt || getTodayISOString();
     notes.value = initial.notes || notes.value;
     important.value = !!initial.important;
     relatedTo.value = initial.relatedTo ?? relatedTo.value;
+    selectedRelatedKey.value =
+      initial.relatedTo?.type === "job" ? `job-${initial.relatedTo.id}` : null;
+    relatedToLocked.value = initial.relatedTo?.type === "job";
     goalId.value = initial.goalId ?? goalId.value;
     milestoneId.value = initial.milestoneId ?? milestoneId.value;
     selectedStatus.value = (initial.status as any) || selectedStatus.value;
@@ -223,7 +260,7 @@ function openWith(initial?: any) {
   // emit both kebab and camel update events to be robust for v-model variants
   emit("update:isDrawerOpen", true);
   nextTick(() => {
-    if ((props as any).autofocusDue) loadInitialAndMaybeFocus();
+    loadInitialAndMaybeFocus();
   });
 }
 
@@ -239,6 +276,9 @@ async function onSubmit() {
   const trimmedNotes = (notes.value ?? "").trim();
 
   const dueISO = toDateOnlyISOString(dueAt.value);
+  const relatedOption = relatedOptions.value.find(
+    (option) => option.value === selectedRelatedKey.value,
+  );
 
   emit("userData", {
     title: trimmedTitle,
@@ -247,7 +287,13 @@ async function onSubmit() {
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
-    relatedTo: relatedTo.value,
+    relatedTo: relatedOption
+      ? {
+          id: relatedOption.rawId,
+          name: relatedOption.title,
+          type: relatedOption.type,
+        }
+      : null,
     goalId: goalId.value,
     milestoneId: milestoneId.value,
   });
@@ -280,11 +326,13 @@ async function onSubmit() {
           <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
             <VRow>
               <VCol cols="12">
-                <AppTextField
+                <AppTextarea
                   ref="titleFieldRef"
                   v-model="title"
                   :rules="[requiredValidator]"
                   label="Title"
+                  auto-grow
+                  rows="1"
                 />
               </VCol>
 
@@ -292,10 +340,11 @@ async function onSubmit() {
                 <VAutocomplete
                   v-model="selectedCollaboratorIds"
                   v-model:search="collabSearch"
+                  class="todo-collaborators"
                   :items="effectiveOptions"
                   item-title="name"
                   item-value="id"
-                  label="Collaborators"
+                  label="Assigned to"
                   multiple
                   chips
                   closable-chips
@@ -366,6 +415,23 @@ async function onSubmit() {
                 />
               </VCol>
 
+              <VCol cols="12">
+                <AppSelect
+                  v-model="selectedRelatedKey"
+                  label="Related to"
+                  placeholder="Select a job"
+                  item-title="title"
+                  item-value="value"
+                  :items="relatedOptions"
+                  clearable
+                  :disabled="isRelatedToLocked"
+                >
+                  <template #prepend-inner>
+                    <VIcon icon="tabler-briefcase" size="20" class="me-2" />
+                  </template>
+                </AppSelect>
+              </VCol>
+
               <VDivider />
 
               <VCol cols="12">
@@ -383,9 +449,11 @@ async function onSubmit() {
               <VCol cols="12">
                 <AppTextarea
                   v-model="notes"
+                  class="notes-singleline"
                   label="Notes"
                   placeholder="Placeholder Text"
                   auto-grow
+                  rows="1"
                 />
               </VCol>
 
@@ -403,14 +471,11 @@ async function onSubmit() {
               </VCol>
 
               <VCol cols="12">
-                <VBtn type="submit" class="me-3">Save</VBtn>
-                <VBtn
-                  type="button"
-                  variant="tonal"
-                  color="error"
-                  @click="closeNavigationDrawer"
-                  >Cancel</VBtn
-                >
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="closeNavigationDrawer"
+                />
               </VCol>
             </VRow>
           </VForm>
@@ -467,8 +532,8 @@ async function onSubmit() {
 ::v-deep(.status-compact .v-radio-group .v-icon--radio),
 ::v-deep(.status-compact .custom-radios-with-icon .v-selection-control),
 ::v-deep(
-    .status-compact .custom-radios-with-icon .v-selection-control__wrapper
-  ),
+  .status-compact .custom-radios-with-icon .v-selection-control__wrapper
+),
 ::v-deep(.status-compact .custom-radios-with-icon .v-selection-control__input),
 ::v-deep(.status-compact .custom-radios-with-icon .v-icon--radio) {
   display: none !important;
@@ -493,8 +558,8 @@ async function onSubmit() {
 ::v-deep(.status-compact .custom-radios-with-icon .v-card .custom-input__title),
 ::v-deep(.status-compact .custom-radios-with-icon .v-card .custom-input-title),
 ::v-deep(
-    .status-compact .custom-radios-with-icon .v-card .custom-radio__title
-  ) {
+  .status-compact .custom-radios-with-icon .v-card .custom-radio__title
+) {
   display: inline-flex !important;
   flex-wrap: nowrap !important;
   align-items: center;
@@ -506,14 +571,18 @@ async function onSubmit() {
 }
 
 ::v-deep(
-    .status-compact .custom-radios-with-icon .v-card .custom-input__title > *
-  ),
+  .status-compact .custom-radios-with-icon .v-card .custom-input__title > *
+),
 ::v-deep(
-    .status-compact .custom-radios-with-icon .v-card .custom-input-title > *
-  ),
+  .status-compact .custom-radios-with-icon .v-card .custom-input-title > *
+),
 ::v-deep(
-    .status-compact .custom-radios-with-icon .v-card .custom-radio__title > *
-  ) {
+  .status-compact .custom-radios-with-icon .v-card .custom-radio__title > *
+) {
   display: inline !important;
+}
+
+::v-deep(.todo-collaborators .v-field__input) {
+  padding-block: 10px;
 }
 </style>
