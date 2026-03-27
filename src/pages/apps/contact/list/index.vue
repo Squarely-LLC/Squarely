@@ -1200,7 +1200,7 @@ const updateItemsPerPage = (value: number | string) => {
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
-      @userData="onTodoCreated"
+      @user-data="onTodoCreated"
     />
 
     <AddMeetingDrawer

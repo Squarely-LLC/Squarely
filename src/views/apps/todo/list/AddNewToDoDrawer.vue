@@ -1,55 +1,32 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import type { ContactRef, Status, ToDo } from "@/data/schema";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import type { CustomInputContent } from "@core/types";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
-/* ===== Types aligned with your table ===== */
-type Priority = "low" | "normal" | "high";
-type Status = "pending" | "in_progress" | "for_review" | "completed";
-type ContactRef = {
-  id: number | string;
-  name: string;
-  avatarUrl?: string | null;
+const toDateOnlyISOString = (value?: string | null) => {
+  const date = value ? new Date(value) : new Date();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).toISOString();
 };
+const getTodayISOString = () => toDateOnlyISOString();
 
 /* ===== Emits / Props ===== */
 interface Emit {
   (e: "update:isDrawerOpen", value: boolean): void;
-  (
-    e: "userData",
-    value: Partial<{
-      title: string;
-      collaborators: ContactRef[];
-      dueAt: string;
-      priority: Priority;
-      status: Status;
-      notes: string;
-      important: boolean;
-      relatedTo: { id: number | string; name: string; type: string } | null;
-      goalId: number | string | null;
-      milestoneId: number | string | null;
-    }>
-  ): void;
+  (e: "userData", value: Partial<ToDo>): void;
 }
 interface Props {
   isDrawerOpen: boolean;
   collaboratorsOptions: ContactRef[];
   // optional initial payload to prefill the form when opening
-  initial?: Partial<{
-    title: string;
-    collaborators: ContactRef[];
-    dueAt: string;
-    priority: Priority;
-    status: Status;
-    notes: string;
-    important: boolean;
-    relatedTo: { id: number | string; name: string; type: string } | null;
-    goalId: number | string | null;
-    milestoneId: number | string | null;
-  }>;
+  initial?: Partial<ToDo>;
   // if true, autofocus the due date/time picker when the drawer opens
   autofocusDue?: boolean;
   // if true, focus the title input and move the caret to the end when the drawer opens
@@ -68,8 +45,7 @@ const collabSearch = ref("");
 
 const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
-const dueAt = ref<string | null>(null);
-const priority = ref<Priority>("normal"); // default = normal
+const dueAt = ref<string | null>(getTodayISOString());
 const notes = ref<string>("");
 const important = ref<boolean>(false);
 const relatedTo = ref<{ id: number | string; name: string; type: string } | null>(null);
@@ -136,8 +112,7 @@ const selectedCollaborators = computed<ContactRef[]>(() => {
 function resetForm() {
   title.value = "";
   selectedCollaboratorIds.value = [];
-  dueAt.value = null;
-  priority.value = "normal";
+  dueAt.value = getTodayISOString();
   notes.value = "";
   important.value = false;
   relatedTo.value = null;
@@ -173,8 +148,7 @@ function loadInitialAndMaybeFocus() {
     selectedCollaboratorIds.value = (init.collaborators || []).map(
       (c: any) => c.id
     );
-    dueAt.value = init.dueAt || dueAt.value;
-    priority.value = (init.priority as Priority) || priority.value;
+    dueAt.value = init.dueAt || getTodayISOString();
     notes.value = init.notes || notes.value;
     important.value = !!init.important;
     relatedTo.value = init.relatedTo ?? relatedTo.value;
@@ -238,8 +212,7 @@ function openWith(initial?: any) {
     selectedCollaboratorIds.value = (initial.collaborators || []).map(
       (c: any) => c.id
     );
-    dueAt.value = initial.dueAt || dueAt.value;
-    priority.value = (initial.priority as Priority) || priority.value;
+    dueAt.value = initial.dueAt || getTodayISOString();
     notes.value = initial.notes || notes.value;
     important.value = !!initial.important;
     relatedTo.value = initial.relatedTo ?? relatedTo.value;
@@ -265,15 +238,12 @@ async function onSubmit() {
   const trimmedTitle = (title.value ?? "").trim();
   const trimmedNotes = (notes.value ?? "").trim();
 
-  const dueISO = dueAt.value
-    ? new Date(dueAt.value).toISOString()
-    : new Date().toISOString();
+  const dueISO = toDateOnlyISOString(dueAt.value);
 
   emit("userData", {
     title: trimmedTitle,
     collaborators: selectedCollaborators.value,
     dueAt: dueISO,
-    priority: priority.value,
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
@@ -391,22 +361,8 @@ async function onSubmit() {
                   v-model="dueAt"
                   :rules="[requiredValidator]"
                   label="Due Date"
-                  placeholder="Select date and time"
-                  :config="{ enableTime: true, dateFormat: 'Y-m-d H:i' }"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <AppSelect
-                  v-model="priority"
-                  label="Priority"
-                  placeholder="Select Priority"
-                  :rules="[requiredValidator]"
-                  :items="[
-                    { title: 'Low', value: 'low' },
-                    { title: 'Normal', value: 'normal' },
-                    { title: 'High', value: 'high' },
-                  ]"
+                  placeholder="Select date"
+                  :config="{ dateFormat: 'Y-m-d' }"
                 />
               </VCol>
 

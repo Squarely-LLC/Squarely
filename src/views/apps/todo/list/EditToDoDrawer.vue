@@ -2,7 +2,6 @@
 import type {
   Activity,
   ContactRef,
-  Priority,
   Status,
   ToDo,
   ToDoStep,
@@ -20,6 +19,14 @@ import StepEditDialog from "../StepEditDialog.vue"; // ← import the component
 
 /* Local alias for dialog payload type */
 type DialogStep = ToDoStep;
+const toDateOnlyISOString = (value?: string | null) => {
+  const date = value ? new Date(value) : new Date();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).toISOString();
+};
 
 /* ===== Emits / Props ===== */
 interface Emit {
@@ -31,7 +38,6 @@ interface Emit {
       title: string;
       collaborators: ContactRef[];
       dueAt: string;
-      priority: Priority;
       status: Exclude<Status, "completed">;
       notes: string;
       important: boolean;
@@ -60,7 +66,6 @@ const collabSearch = ref("");
 const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(null);
-const priority = ref<Priority>("normal");
 const notes = ref<string>("");
 const important = ref<boolean>(false);
 const selectedStatus = ref<Exclude<Status, "completed">>("pending");
@@ -124,7 +129,6 @@ const newDraft = reactive<ToDoStep>({
   title: "",
   collaborators: [],
   dueAt: new Date().toISOString(),
-  priority: "normal",
   status: "pending",
   notes: "",
   createdAt: new Date().toISOString(),
@@ -139,7 +143,6 @@ function addStep() {
     title: "",
     collaborators: [],
     dueAt: now,
-    priority: "normal",
     status: "pending",
     notes: "",
     createdAt: now,
@@ -205,7 +208,6 @@ function loadFromToDo(t: ToDo) {
   title.value = t.title ?? "";
   selectedCollaboratorIds.value = (t.collaborators ?? []).map((c) => c.id);
   dueAt.value = t.dueAt ? new Date(t.dueAt).toISOString() : null;
-  priority.value = (t.priority ?? "normal") as Priority;
   notes.value = t.notes ?? "";
   important.value = !!t.important;
   selectedStatus.value = (t.status ?? "pending") as Exclude<
@@ -233,7 +235,6 @@ function resetForm() {
   title.value = "";
   selectedCollaboratorIds.value = [];
   dueAt.value = null;
-  priority.value = "normal";
   notes.value = "";
   important.value = false;
   selectedStatus.value = "pending";
@@ -278,16 +279,13 @@ async function onSaveAll() {
     activeTab.value = "details";
     return;
   }
-  const dueISO = dueAt.value
-    ? new Date(dueAt.value).toISOString()
-    : new Date().toISOString();
+  const dueISO = toDateOnlyISOString(dueAt.value);
 
   const payload: any = {
     id: props.todo.id,
     title: (title.value ?? "").toString().trim(),
     collaborators: selectedCollaborators.value,
     dueAt: dueISO,
-    priority: priority.value,
     status: selectedStatus.value, // keep your status UX separate from completion toggle
     notes: (notes.value ?? "").toString().trim(),
     important: Boolean(important.value),
@@ -412,22 +410,8 @@ async function onSaveAll() {
                       v-model="dueAt"
                       :rules="[requiredValidator]"
                       label="Due Date"
-                      placeholder="Select date and time"
-                      :config="{ enableTime: true, dateFormat: 'Y-m-d H:i' }"
-                    />
-                  </VCol>
-
-                  <VCol cols="12">
-                    <AppSelect
-                      v-model="priority"
-                      label="Priority"
-                      placeholder="Select Priority"
-                      :rules="[requiredValidator]"
-                      :items="[
-                        { title: 'Low', value: 'low' },
-                        { title: 'Normal', value: 'normal' },
-                        { title: 'High', value: 'high' },
-                      ]"
+                      placeholder="Select date"
+                      :config="{ dateFormat: 'Y-m-d' }"
                     />
                   </VCol>
 
@@ -511,47 +495,25 @@ async function onSaveAll() {
                           s.title || "Untitled step"
                         }}</strong>
                         <span class="text-sm">{{ fmtShort(s.dueAt) }}</span>
-                        <div class="d-flex align-center gap-2 mt-1">
-                          <VChip
-                            :color="
-                              s.priority === 'low'
-                                ? 'secondary'
-                                : s.priority === 'normal'
-                                  ? 'primary'
-                                  : 'error'
-                            "
-                            size="x-small"
-                            label
-                            class="text-capitalize"
-                          >
-                            {{
-                              s.priority === "low"
-                                ? "Low"
-                                : s.priority === "normal"
-                                  ? "Normal"
-                                  : "High"
-                            }}
-                          </VChip>
-                          <span
-                            class="text-xs text-capitalize"
-                            :class="{
-                              'text-primary': s.status === 'in_progress',
-                              'text-warning': s.status === 'for_review',
-                              'text-medium-emphasis': s.status === 'pending',
-                              'text-success': s.status === 'completed',
-                            }"
-                          >
-                            {{
-                              s.status === "pending"
-                                ? "Pending"
-                                : s.status === "in_progress"
-                                  ? "In Progress"
-                                  : s.status === "for_review"
-                                    ? "For Review"
-                                    : "Completed"
-                            }}
-                          </span>
-                        </div>
+                        <span
+                          class="text-xs text-capitalize mt-1"
+                          :class="{
+                            'text-primary': s.status === 'in_progress',
+                            'text-warning': s.status === 'for_review',
+                            'text-medium-emphasis': s.status === 'pending',
+                            'text-success': s.status === 'completed',
+                          }"
+                        >
+                          {{
+                            s.status === "pending"
+                              ? "Pending"
+                              : s.status === "in_progress"
+                                ? "In Progress"
+                                : s.status === "for_review"
+                                  ? "For Review"
+                                  : "Completed"
+                          }}
+                        </span>
                       </div>
                     </div>
 
@@ -638,8 +600,8 @@ async function onSaveAll() {
                     <AppDateTimePicker
                       v-model="newDraft.dueAt"
                       label="Due Date"
-                      placeholder="Select date and time"
-                      :config="{ enableTime: true, dateFormat: 'Y-m-d H:i' }"
+                      placeholder="Select date"
+                      :config="{ dateFormat: 'Y-m-d' }"
                     />
                     <VAutocomplete
                       v-model="newDraft.collaborators"

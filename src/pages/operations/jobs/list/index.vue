@@ -879,7 +879,7 @@ const updateItemsPerPage = (value: number | string) => {
       :collaborators-options="[]"
       source="contacts"
       :initial="addTodoInitial"
-      @userData="onTodoCreated"
+      @user-data="onTodoCreated"
     />
 
     <AddMeetingDrawer

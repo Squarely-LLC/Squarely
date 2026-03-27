@@ -1166,7 +1166,7 @@ const formatDate = (value?: string | null) => {
       :collaborators-options="[]"
       autofocus-title-end
       :initial="addTodoInitial"
-      @userData="onTodoCreated"
+      @user-data="onTodoCreated"
     />
   </div>
 </template>

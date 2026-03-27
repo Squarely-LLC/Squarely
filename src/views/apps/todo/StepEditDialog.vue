@@ -2,6 +2,15 @@
 import type { ContactRef, ToDoStep } from "@/data/schema";
 import { computed, reactive, ref, watch } from "vue";
 
+const toDateOnlyISOString = (value?: string | null) => {
+  const date = value ? new Date(value) : new Date();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).toISOString();
+};
+
 type Props = {
   modelValue: boolean;
   step: ToDoStep | null;
@@ -22,7 +31,6 @@ const draft = reactive<ToDoStep>({
   title: "",
   collaborators: [],
   dueAt: new Date().toISOString(),
-  priority: "normal",
   status: "pending",
   notes: "",
   createdAt: new Date().toISOString(),
@@ -53,7 +61,9 @@ function onCancel() {
 
 function onSubmit() {
   const title = (draft.title || "").trim();
-  const payload: ToDoStep = JSON.parse(JSON.stringify({ ...draft, title }));
+  const payload: ToDoStep = JSON.parse(
+    JSON.stringify({ ...draft, title, dueAt: toDateOnlyISOString(draft.dueAt) }),
+  );
   emit("save", payload);
   open.value = false;
 }
@@ -108,27 +118,12 @@ const initials = (n?: string) =>
               </template>
             </VAutocomplete>
           </div>
-          <VRow>
-            <VCol sm="6">
-              <AppSelect
-                v-model="draft.priority"
-                label="Priority"
-                :items="[
-                  { title: 'Low', value: 'low' },
-                  { title: 'Normal', value: 'normal' },
-                  { title: 'High', value: 'high' },
-                ]"
-              />
-            </VCol>
-            <VCol sm="6">
-              <AppDateTimePicker
-                v-model="draft.dueAt"
-                label="Due Date"
-                placeholder="Select date and time"
-                :config="{ enableTime: true, dateFormat: 'Y-m-d H:i' }"
-              />
-            </VCol>
-          </VRow>
+          <AppDateTimePicker
+            v-model="draft.dueAt"
+            label="Due Date"
+            placeholder="Select date"
+            :config="{ dateFormat: 'Y-m-d' }"
+          />
           <div class="d-flex gap-6 align-center">
             <VRadioGroup v-model="draft.status" inline>
               <VRadio label="Pending" value="pending" />

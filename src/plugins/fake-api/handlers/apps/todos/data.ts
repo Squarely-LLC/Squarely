@@ -5,6 +5,18 @@ import { destr } from 'destr'
 import type { PathParams } from 'msw'
 import { HttpResponse, http } from 'msw'
 
+const toDateOnlyISOString = (value?: string | null) => {
+  const date = value ? new Date(value) : new Date()
+  if (Number.isNaN(date.getTime()))
+    return new Date().toISOString()
+
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).toISOString()
+}
+
 export const handlerAppsTodos = [
   // 👉 list & filter todos
   http.get('/api/apps/todos', ({ request }) => {
@@ -107,15 +119,25 @@ export const handlerAppsTodos = [
 
     const now = new Date().toISOString()
 
+    const normalizeSteps = (steps: any[] | undefined, fallback: any[] = []) => {
+      const source = Array.isArray(steps) ? steps : fallback
+      return Array.isArray(source)
+        ? source.map(step => ({
+          ...step,
+          dueAt: toDateOnlyISOString(step?.dueAt),
+        }))
+        : []
+    }
+
     const newTodo = {
       id: resolvedId,
       title: payload.title ?? existing?.title ?? 'Untitled',
       collaborators: payload.collaborators ?? existing?.collaborators ?? [],
-      dueAt: payload.dueAt ?? existing?.dueAt ?? now,
+      dueAt: toDateOnlyISOString(payload.dueAt ?? existing?.dueAt ?? now),
       priority: payload.priority ?? existing?.priority ?? 'normal',
       important: payload.important ?? existing?.important ?? false,
       status: payload.status ?? existing?.status ?? 'pending',
-      steps: payload.steps ?? existing?.steps ?? [],
+      steps: normalizeSteps(payload.steps, existing?.steps ?? []),
       notes: payload.notes ?? existing?.notes ?? '',
       activities: payload.activities ?? existing?.activities ?? [],
       messages: payload.messages ?? existing?.messages ?? [],
@@ -140,7 +162,17 @@ export const handlerAppsTodos = [
       return HttpResponse.json({ message: 'ToDo not found' }, { status: 404 })
 
     const patch = await request.json() as any
-    const updated = { ...db.todos[idx], ...patch, updatedAt: new Date().toISOString() }
+    const normalizedPatch = { ...patch }
+    if ('dueAt' in normalizedPatch)
+      normalizedPatch.dueAt = toDateOnlyISOString(normalizedPatch.dueAt)
+    if (Array.isArray(normalizedPatch.steps)) {
+      normalizedPatch.steps = normalizedPatch.steps.map((step: any) => ({
+        ...step,
+        dueAt: toDateOnlyISOString(step?.dueAt),
+      }))
+    }
+
+    const updated = { ...db.todos[idx], ...normalizedPatch, updatedAt: new Date().toISOString() }
     db.todos[idx] = updated
     return HttpResponse.json(updated, { status: 200 })
   }),

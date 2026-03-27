@@ -19,7 +19,7 @@ export type ToDoStep = {
   title: string;
   collaborators: ContactRef[];
   dueAt: string;
-  priority: Priority;
+  priority?: Priority;
   status: Status;
   notes?: string;
   createdAt: string;
@@ -60,7 +60,7 @@ export type ToDo = {
   title: string;
   collaborators: ContactRef[];
   dueAt: string;
-  priority: Priority;
+  priority?: Priority;
   important: boolean;
   status: Status;
   steps: ToDoStep[];

@@ -1338,7 +1338,7 @@ const updateItemsPerPage = (value: number | string) => {
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
       source="employees"
-      @userData="onTodoCreated"
+      @user-data="onTodoCreated"
     />
 
     <AddMeetingDrawer

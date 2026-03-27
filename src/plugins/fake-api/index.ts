@@ -46,16 +46,25 @@ const worker = setupWorker(
   ...handlerAppsKanban,
   ...handlerDashboard,
   ...handlerAppsTodos,
-  ...handlerOperationsJobs
+  ...handlerOperationsJobs,
 );
 
 export default function () {
+  if (typeof window === "undefined") return;
+
+  const fakeApiWindow = window as typeof window & {
+    __squarelyMswStartPromise?: Promise<unknown>;
+  };
+
+  if (fakeApiWindow.__squarelyMswStartPromise) return;
+
   const workerUrl = `${import.meta.env.BASE_URL ?? "/"}mockServiceWorker.js`;
 
-  worker.start({
+  fakeApiWindow.__squarelyMswStartPromise = worker.start({
     serviceWorker: {
       url: workerUrl,
     },
     onUnhandledRequest: "bypass",
+    quiet: true,
   });
 }

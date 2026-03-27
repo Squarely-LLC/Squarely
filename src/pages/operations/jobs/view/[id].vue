@@ -715,7 +715,7 @@ const closeSnagDrawer = () => {
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
       :initial="addTodoInitial"
-      @userData="onTodoCreated"
+      @user-data="onTodoCreated"
     />
 
     <!-- Meeting Drawer -->

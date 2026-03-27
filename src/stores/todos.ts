@@ -31,6 +31,16 @@ function saveToStorage(items: ToDo[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
+function toDateOnlyISOString(value?: string | null): string {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).toISOString();
+}
+
 function computeEndAt(startAt: string, durationMin: number): string {
   const d = new Date(startAt);
   if (Number.isNaN(d.getTime())) return startAt;
@@ -121,12 +131,14 @@ export const useTodos = defineStore("todos", {
 
       const normalizeTodo = (t: any) => {
         const copy = { ...t } as any;
+        copy.dueAt = toDateOnlyISOString(t.dueAt);
         copy.collaborators = Array.isArray(t.collaborators)
           ? t.collaborators.map((c: any) => resolveRef(c))
           : [];
         copy.steps = Array.isArray(t.steps)
           ? t.steps.map((s: any) => ({
               ...s,
+              dueAt: toDateOnlyISOString(s.dueAt),
               collaborators: Array.isArray(s.collaborators)
                 ? s.collaborators.map((c: any) => resolveRef(c))
                 : [],
@@ -141,6 +153,12 @@ export const useTodos = defineStore("todos", {
         copy.messages = Array.isArray(t.messages)
           ? t.messages.map((m: any) => ({ ...m, author: resolveRef(m.author) }))
           : [];
+        delete copy.priority;
+        copy.steps = copy.steps.map((step: any) => {
+          const next = { ...step };
+          delete next.priority;
+          return next;
+        });
         copy.relatedTo = t.relatedTo ?? null;
         copy.goalId = t.goalId ?? null;
         copy.milestoneId = t.milestoneId ?? null;
@@ -167,9 +185,6 @@ export const useTodos = defineStore("todos", {
         { detached: true }
       );
 
-      if (typeof window !== "undefined") {
-        void this.syncExistingTodosWithMockApi();
-      }
     },
 
     addTodo(todo: Partial<ToDo>) {
@@ -183,8 +198,7 @@ export const useTodos = defineStore("todos", {
         id: nextId,
         title: todo.title || "Untitled",
         collaborators: todo.collaborators || [],
-        dueAt: todo.dueAt || now,
-        priority: (todo.priority as ToDo["priority"]) || "normal",
+        dueAt: toDateOnlyISOString(todo.dueAt),
         important: !!todo.important,
         status: (todo.status as ToDo["status"]) || "pending",
         steps: todo.steps || [],
@@ -198,17 +212,24 @@ export const useTodos = defineStore("todos", {
         updatedAt: now,
       };
       this.items.push(newTodo);
-      if (typeof window !== "undefined") {
-        void this.pushTodoToMockApi(newTodo);
-      }
       return newTodo;
     },
     updateTodo(id: number | string, patch: Partial<ToDo>) {
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx === -1) return;
+      const nextPatch = { ...patch } as any;
+      if ("dueAt" in nextPatch) nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
+      if (Array.isArray(nextPatch.steps)) {
+        nextPatch.steps = nextPatch.steps.map((step: any) => {
+          const nextStep = { ...step, dueAt: toDateOnlyISOString(step?.dueAt) };
+          delete nextStep.priority;
+          return nextStep;
+        });
+      }
+      delete nextPatch.priority;
       const updated = {
         ...this.items[idx],
-        ...patch,
+        ...nextPatch,
         updatedAt: new Date().toISOString(),
       };
       this.items.splice(idx, 1, updated);
@@ -294,35 +315,5 @@ export const useTodos = defineStore("todos", {
       if (idx !== -1) this.meetings.splice(idx, 1);
     },
     // ======================================================================
-    async pushTodoToMockApi(todo: ToDo) {
-      try {
-        await fetch("/api/apps/todos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(todo),
-        });
-      } catch (error) {
-        console.warn("Failed to upsert todo to mock API:", error);
-      }
-    },
-
-    async syncExistingTodosWithMockApi() {
-      const todos = [...this.items];
-      await Promise.all(
-        todos.map(async (todo) => {
-          try {
-            const res = await fetch(`/api/apps/todos/${todo.id}`);
-            if (res.status === 404) {
-              await this.pushTodoToMockApi(todo);
-            }
-          } catch (error) {
-            console.warn(
-              `Failed to sync todo ${todo.id} with mock API:`,
-              error
-            );
-          }
-        })
-      );
-    },
   },
 });

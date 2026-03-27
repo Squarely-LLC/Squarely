@@ -590,6 +590,25 @@ function onMeetingCreated(payload: any) {
   }
 }
 
+function onTodoCreated(payload: any) {
+  try {
+    try {
+      todosStore.addTodo && todosStore.addTodo(payload);
+    } catch (err) {
+      if (Array.isArray((todosStore as any).items)) {
+        (todosStore as any).items = [...(todosStore as any).items, payload];
+      }
+    }
+
+    notifications.push("To-do created", "success", 3500);
+  } catch (e) {
+    console.error("onTodoCreated failed:", e);
+    notifications.push("To-do created", "success", 3500);
+  } finally {
+    isAddTodoDrawerVisible.value = false;
+  }
+}
+
 function openAddTodoDrawerForContact(conn: any) {
   try {
     const initial = {
@@ -1214,6 +1233,7 @@ function onContactEditSubmit(payload: ContactProperties) {
     ref="addTodoDrawerRef"
     v-model:is-drawer-open="isAddTodoDrawerVisible"
     :collaborators-options="[]"
+    @user-data="onTodoCreated"
   />
   <AddMeetingDrawer
     ref="addMeetingRef"

@@ -1020,7 +1020,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
       :is-drawer-open="isAddOpen"
       :collaborators-options="collaboratorsOptions"
       @update:isDrawerOpen="isAddOpen = $event"
-      @userData="handleCreate"
+      @user-data="handleCreate"
     />
 
     <AddMeetingDrawer
