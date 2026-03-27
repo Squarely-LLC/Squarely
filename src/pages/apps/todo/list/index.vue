@@ -784,7 +784,7 @@ function onRowClick(e: MouseEvent, payload: any) {
 
         <!-- row checkbox -> mark completed -->
         <template #item.data-table-select="{ item }">
-          <div class="d-flex justify-center">
+          <div class="lead-cell justify-center">
             <VCheckbox
               hide-details
               density="compact"
@@ -795,7 +795,7 @@ function onRowClick(e: MouseEvent, payload: any) {
 
         <!-- star sortable -->
         <template #item.star="{ item }">
-          <div class="d-flex justify-center">
+          <div class="lead-cell justify-center">
             <VBtn
               icon
               variant="text"
@@ -1220,7 +1220,11 @@ function onRowClick(e: MouseEvent, payload: any) {
 <style scoped>
 /* Align "Note" header text with the title below (chevron slot = 28px + 8px gap) */
 :deep(.v-data-table thead th:nth-child(3) .v-data-table-header__content) {
-  padding-inline-start: 36px;
+  padding-inline-start: 30px;
+}
+
+:deep(.v-data-table tbody td:nth-child(3)) {
+  padding-inline-start: 4px !important;
 }
 
 /* --- Chevron slot: exact same width whether button exists or not --- */
@@ -1228,15 +1232,24 @@ function onRowClick(e: MouseEvent, payload: any) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  block-size: 28px; /* fixed height */
-  inline-size: 28px; /* fixed width */
-  margin-inline-end: 8px; /* same spacing after chevron area */
+  block-size: 26px; /* fixed height */
+  inline-size: 26px; /* fixed width */
+  flex: 0 0 26px;
+  margin-inline-start: -4px;
 }
 
 /* When there's no chevron, we still reserve identical space */
 .chevron-placeholder {
-  block-size: 28px;
-  inline-size: 28px;
+  block-size: 26px;
+  inline-size: 26px;
+}
+
+.lead-cell {
+  display: inline-flex;
+  align-items: center;
+  inline-size: 26px;
+  block-size: 26px;
+  flex: 0 0 26px;
 }
 
 .assigned-cell-wrap {
@@ -1256,6 +1269,15 @@ function onRowClick(e: MouseEvent, payload: any) {
   min-inline-size: 0;
 }
 
+:deep(.lead-cell .v-input) {
+  margin: 0;
+}
+
+:deep(.lead-cell .v-selection-control) {
+  justify-content: center;
+  min-block-size: 26px;
+}
+
 /* Expanded row colors (kept) */
 :deep(.v-data-table .expanded-row > td) {
   padding: 0 !important;
@@ -1270,21 +1292,11 @@ function onRowClick(e: MouseEvent, payload: any) {
 
 .todo-title-stack {
   min-inline-size: 0;
+  margin-inline-start: 8px;
 }
 
 .todosquare {
-  padding: 0.5rem;
-}
-
-/* === Equal width/spacing for rows with & without chevron === */
-.todo-chevron,
-.chevron-placeholder {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  block-size: 28px;
-  inline-size: 28px; /* must match pad calc fallback */
-  margin-inline-end: 8px; /* same horizontal spacing */
+  padding: 0.5rem 0.5rem 0.5rem 0;
 }
 
 /* 2-letter monogram for avatars without images */
