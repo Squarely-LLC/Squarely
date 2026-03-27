@@ -133,18 +133,9 @@ function resetForm() {
 /* ===== Close / open handling ===== */
 function closeNavigationDrawer() {
   emit("update:isDrawerOpen", false);
-  nextTick(() => resetForm());
 }
 function handleDrawerModelValueUpdate(val: boolean) {
   emit("update:isDrawerOpen", val);
-  if (!val) nextTick(() => resetForm());
-  // when opened, if props.initial exists, load values
-  if (val) {
-    // delegate to helper for consistency
-    nextTick(() => {
-      loadInitialAndMaybeFocus();
-    });
-  }
 }
 
 function focusTitleInput(moveCaretToEnd = false) {
@@ -168,6 +159,8 @@ function focusTitleInput(moveCaretToEnd = false) {
 }
 
 function loadInitialAndMaybeFocus() {
+  resetForm();
+
   // load initial values if provided
   const init = (props as any).initial as any | undefined;
   if (init) {
@@ -218,6 +211,7 @@ watch(
   () => props.isDrawerOpen,
   (val) => {
     if (val) nextTick(() => loadInitialAndMaybeFocus());
+    else resetForm();
   },
 );
 
@@ -282,7 +276,6 @@ async function onSubmit() {
   });
 
   emit("update:isDrawerOpen", false);
-  nextTick(() => resetForm());
 }
 </script>
 
