@@ -19,6 +19,7 @@ interface Props {
 const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: "open-add-todo", payload: { initial: Record<string, any> }): void;
+  (e: "open-edit-todo", todoId: number | string): void;
 }>();
 const jobsStore = useJobsStore();
 const notifications = useNotificationsStore();
@@ -74,11 +75,7 @@ type JobTodo = ToDo & {
 const jobTodos = computed<JobTodo[]>(() => {
   const jobId = String(props.jobId);
   return (todosStore.items || []).filter((todo: any) => {
-    return (
-      todo?.relatedTo &&
-      String(todo.relatedTo.id) === jobId &&
-      (todo.relatedTo.type ? todo.relatedTo.type === "job" : true)
-    );
+    return todo?.relatedTo && String(todo.relatedTo.id) === jobId;
   }) as JobTodo[];
 });
 
@@ -90,6 +87,15 @@ const milestoneTasksForMilestone = (milestoneId: number) =>
         todo.goalId === undefined ||
         String(todo.goalId).trim() === ""),
   );
+
+const generalTasks = computed(() =>
+  jobTodos.value.filter((todo) => {
+    const milestoneId = String(todo.milestoneId ?? "").trim();
+    const goalId = String(todo.goalId ?? "").trim();
+
+    return !milestoneId && !goalId;
+  }),
+);
 
 const milestoneGoalTree = computed(() => {
   return milestones.value.map((milestone) => {
@@ -602,6 +608,7 @@ const formatDate = (value?: string | null) => {
                     :key="task.id"
                     class="task-row"
                     variant="tonal"
+                    @click="emit('open-edit-todo', task.id)"
                   >
                     <div class="task-row-main">
                       <div class="task-row-left">
@@ -796,6 +803,7 @@ const formatDate = (value?: string | null) => {
                               :key="task.id"
                               class="task-row"
                               variant="tonal"
+                              @click="emit('open-edit-todo', task.id)"
                             >
                               <div class="task-row-main">
                                 <div class="task-row-left">
@@ -920,6 +928,111 @@ const formatDate = (value?: string | null) => {
             </VExpansionPanelText>
           </VExpansionPanel>
         </VExpansionPanels>
+      </VCardText>
+    </VCard>
+
+    <VCard>
+      <VCardText>
+        <div class="d-flex flex-column gap-1 mb-4">
+          <h5 class="text-h5 mb-0">General Tasks</h5>
+          <p class="text-body-2 text-medium-emphasis mb-0">
+            To dos linked to this project outside milestones and goals appear
+            here.
+          </p>
+        </div>
+
+        <div v-if="generalTasks.length" class="d-flex flex-column gap-2">
+          <VCard
+            v-for="task in generalTasks"
+            :key="task.id"
+            class="task-row"
+            variant="tonal"
+            @click="emit('open-edit-todo', task.id)"
+          >
+            <div class="task-row-main">
+              <div class="task-row-left">
+                <VCheckbox
+                  hide-details
+                  density="compact"
+                  :model-value="task.status === 'completed'"
+                  @click.stop="toggleTaskCompleted(task.id)"
+                />
+
+                <div class="task-copy">
+                  <VTooltip :text="task.title" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <strong
+                        v-bind="tooltipProps"
+                        class="text-body-1 truncate-title"
+                      >
+                        {{ task.title }}
+                      </strong>
+                    </template>
+                  </VTooltip>
+                  <span class="text-sm">Due {{ formatDate(task.dueAt) }}</span>
+                  <span v-if="task.notes" class="text-sm text-medium-emphasis">
+                    {{ task.notes }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="task-row-side">
+                <div
+                  v-if="task.collaborators?.length"
+                  class="v-avatar-group demo-avatar-group"
+                >
+                  <VAvatar
+                    v-for="collaborator in task.collaborators.slice(0, 2)"
+                    :key="collaborator.id"
+                    :size="28"
+                    color="primary"
+                  >
+                    <template v-if="collaborator.avatarUrl">
+                      <VImg :src="collaborator.avatarUrl" />
+                    </template>
+                    <template v-else>
+                      <span class="task-mono">
+                        {{ collaboratorInitials(collaborator.name) }}
+                      </span>
+                    </template>
+                    <VTooltip activator="parent" location="top">
+                      {{ collaborator.name }}
+                    </VTooltip>
+                  </VAvatar>
+                  <VAvatar
+                    v-if="task.collaborators.length > 2"
+                    :size="28"
+                    color="secondary"
+                  >
+                    +{{ task.collaborators.length - 2 }}
+                  </VAvatar>
+                </div>
+
+                <VIcon
+                  v-if="task.important"
+                  icon="tabler-star-filled"
+                  color="warning"
+                  size="18"
+                />
+                <span
+                  class="text-sm"
+                  :class="{
+                    'text-primary': task.status === 'in_progress',
+                    'text-warning': task.status === 'for_review',
+                    'text-medium-emphasis': task.status === 'pending',
+                    'text-success': task.status === 'completed',
+                  }"
+                >
+                  {{ todoStatusLabel(task.status) }}
+                </span>
+              </div>
+            </div>
+          </VCard>
+        </div>
+
+        <div v-else class="text-body-2 text-medium-emphasis empty-tasks">
+          No general tasks linked to this project yet.
+        </div>
       </VCardText>
     </VCard>
     <VDialog

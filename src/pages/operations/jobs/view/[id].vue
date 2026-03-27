@@ -13,12 +13,14 @@ import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import AddSiteSurveysDrawer from "@/views/apps/todo/list/AddSiteSurveysDrawer.vue";
 import AddSnaglistsDrawer from "@/views/apps/todo/list/AddSnaglistsDrawer.vue";
+import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
 import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 import JobCommunicationTab from "@/views/operations/jobs/view/JobCommunicationTab.vue";
 import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
 import JobMilestonesGoalsTab from "@/views/operations/jobs/view/JobMilestonesGoalsTab.vue";
 import JobStakeholdersCard from "@/views/operations/jobs/view/JobStakeholdersCard.vue";
 import JobSummaryCard from "@/views/operations/jobs/view/JobSummaryCard.vue";
+import type { ToDo, ToDoStep } from "@/data/schema";
 
 const route = useRoute("operations-jobs-view-id");
 const router = useRouter();
@@ -175,6 +177,8 @@ const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
 );
 const isAddTodoDrawerVisible = ref(false);
 const addTodoInitial = ref<any | null>(null);
+const isEditTodoDrawerVisible = ref(false);
+const editingTodo = ref<ToDo | null>(null);
 
 const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
 const isAddMeetingOpen = ref(false);
@@ -635,6 +639,40 @@ const handleMilestoneGoalTodoRequest = (payload: {
   });
 };
 
+const handleMilestoneGoalTodoEditRequest = (todoId: number | string) => {
+  const todo = todosStore.byId(todoId);
+  if (!todo) return;
+
+  editingTodo.value = todo;
+  isEditTodoDrawerVisible.value = true;
+};
+
+const onTodoEdited = (payload: any) => {
+  const partial: any = {
+    title: payload.title,
+    collaborators: payload.collaborators,
+    dueAt: payload.dueAt,
+    status: payload.status,
+    notes: payload.notes,
+    important: payload.important,
+    attachment: payload.attachment,
+    relatedTo: payload.relatedTo,
+  };
+
+  if ("completed" in payload) partial.completed = payload.completed;
+  if ("isCompleted" in payload) partial.isCompleted = payload.isCompleted;
+  if ("doneAt" in payload) partial.doneAt = payload.doneAt;
+
+  todosStore.updateTodo(payload.id, partial);
+  isEditTodoDrawerVisible.value = false;
+};
+
+const onTodoStepsEdited = (payload: { id: number | string; steps: ToDoStep[] }) => {
+  todosStore.updateTodo(payload.id, {
+    steps: payload.steps.map((step) => ({ ...step })),
+  });
+};
+
 const onTodoCreated = (payload: any) => {
   try {
     try {
@@ -723,6 +761,7 @@ const closeSnagDrawer = () => {
             <JobMilestonesGoalsTab
               :job-id="job.id"
               @open-add-todo="handleMilestoneGoalTodoRequest"
+              @open-edit-todo="handleMilestoneGoalTodoEditRequest"
             />
           </VWindowItem>
 
@@ -756,6 +795,14 @@ const closeSnagDrawer = () => {
       :collaborators-options="[]"
       :initial="addTodoInitial"
       @user-data="onTodoCreated"
+    />
+
+    <EditToDoDrawer
+      v-model:is-drawer-open="isEditTodoDrawerVisible"
+      :todo="editingTodo"
+      :collaborators-options="contactOptions"
+      @save="onTodoEdited"
+      @saveSteps="onTodoStepsEdited"
     />
 
     <!-- Meeting Drawer -->
