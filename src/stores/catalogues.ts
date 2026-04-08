@@ -252,6 +252,32 @@ function normalizeRecord(
     } as CatalogueRecord;
   }
 
+  if (mappedType === "Contractual Service") {
+    const phases = Array.isArray(payload.phases) ? payload.phases : [];
+    const salesTasks = Array.isArray(payload.salesTasks) ? payload.salesTasks : [];
+    const milestones = Array.isArray(payload.jobConfiguration?.milestones)
+      ? payload.jobConfiguration.milestones
+      : [];
+
+    return {
+      ...base,
+      phases: phases.map((phase, index) => ({
+        id: Number.isFinite(Number(phase.id)) ? Number(phase.id) : index + 1,
+        name: String(phase.name ?? "").trim(),
+        description: String(phase.description ?? "").trim(),
+      })),
+      salesTasks: salesTasks.map((task, index) => ({
+        id: Number.isFinite(Number(task.id)) ? Number(task.id) : index + 1,
+        title: String(task.title ?? "").trim(),
+      })),
+      jobConfiguration: {
+        milestones: milestones.map((milestone, index) =>
+          normalizeJobMilestone(milestone, index + 1),
+        ),
+      },
+    } as CatalogueRecord;
+  }
+
   if (qty === null) {
     return base as CatalogueRecord;
   }

@@ -36,6 +36,12 @@ export interface CatalogueRelatedItem {
   description: string;
 }
 
+export interface CataloguePhase {
+  id: number;
+  name: string;
+  description: string;
+}
+
 export interface CatalogueSalesTask {
   id: number;
   title: string;
@@ -104,6 +110,9 @@ export interface CatalogueOnetimeServiceRecord extends CatalogueServiceRecord {
 
 export interface CatalogueContractualServiceRecord extends CatalogueServiceRecord {
   type: "Contractual Service";
+  phases: CataloguePhase[];
+  salesTasks: CatalogueSalesTask[];
+  jobConfiguration: CatalogueJobConfiguration;
 }
 
 export interface CatalogueRetainerServiceRecord extends CatalogueServiceRecord {
@@ -142,6 +151,7 @@ export interface CatalogueItem {
 
 export interface CatalogueRecordInput extends Partial<CatalogueItem> {
   relatedItems?: CatalogueRelatedItem[];
+  phases?: CataloguePhase[];
   salesTasks?: CatalogueSalesTask[];
   jobConfiguration?: CatalogueJobConfiguration;
 }

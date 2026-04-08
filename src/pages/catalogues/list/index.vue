@@ -209,6 +209,16 @@ const truncateDescription = (value?: string | null, limit = 45) => {
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}...` : text;
 };
 
+const itemAvatarIcon = (type: CatalogueItemType) => {
+  if (type === "Product") return "tabler-package";
+  if (type === "Produced Product") return "tabler-building-factory-2";
+  if (type === "Rental") return "tabler-calendar-time";
+  if (type === "Onetime Service") return "tabler-bolt";
+  if (type === "Contractual Service") return "tabler-file-description";
+  if (type === "Retainer Service") return "tabler-briefcase";
+  return "tabler-repeat";
+};
+
 const hasInventoryQuantity = (product: CatalogueItem) =>
   product.type === "Product" ||
   product.type === "Produced Product" ||
@@ -456,6 +466,17 @@ const goToEditItemPage = (item: CatalogueItem) => {
               rounded
               :image="item.image"
             />
+            <VAvatar
+              v-else
+              size="38"
+              variant="tonal"
+              rounded
+            >
+              <VIcon
+                :icon="itemAvatarIcon(item.type)"
+                size="20"
+              />
+            </VAvatar>
             <div class="d-flex flex-column">
               <span class="text-body-1 font-weight-medium text-high-emphasis">
                 {{ item.name }}

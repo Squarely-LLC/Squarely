@@ -4,6 +4,7 @@ import DialogActionBar from "@/components/DialogActionBar.vue";
 import CatalogueCategoryTreeSelect from "@/components/catalogues/CatalogueCategoryTreeSelect.vue";
 import type {
   CatalogueActiveState,
+  CatalogueContractualServiceRecord,
   CatalogueItemType,
   CatalogueRecord,
   CatalogueOnetimeServiceRecord,
@@ -25,6 +26,12 @@ type RelatedItemDraft = {
   id: number;
   name: string;
   category: string;
+  description: string;
+};
+
+type PhaseDraft = {
+  id: number;
+  name: string;
   description: string;
 };
 
@@ -72,40 +79,8 @@ cataloguesStore.init();
 const configStore = useConfigStore();
 configStore.init();
 
-const activeTab = ref("Restock");
 const itemBestPrice = ref<number | null>(null);
 const isTaxChargeToItem = ref(true);
-
-const shippingList = [
-  {
-    desc: "You'll be responsible for item delivery.Any damage or delay during shipping may cost you a Damage fee",
-    title: "Fulfilled by Seller",
-    value: "Fulfilled by Seller",
-  },
-  {
-    desc: "Your item, Our responsibility.For a measly fee, we will handle the delivery process for you.",
-    title: "Fulfilled by Company name",
-    value: "Fulfilled by Company name",
-  },
-] as const;
-
-const shippingType = ref<(typeof shippingList)[number]["value"]>(
-  "Fulfilled by Company name",
-);
-const deliveryType = ref("Worldwide delivery");
-const selectedAttrs = ref(["Biodegradable", "Expiry Date"]);
-
-const inventoryTabsData = [
-  { icon: "tabler-cube", title: "Restock", value: "Restock" },
-  { icon: "tabler-car", title: "Shipping", value: "Shipping" },
-  {
-    icon: "tabler-map-pin",
-    title: "Global Delivery",
-    value: "Global Delivery",
-  },
-  { icon: "tabler-world", title: "Attributes", value: "Attributes" },
-  { icon: "tabler-lock", title: "Advanced", value: "Advanced" },
-];
 
 const content = ref("<p></p>");
 
@@ -158,12 +133,21 @@ const relatedItemErrors = ref({
   name: "",
   category: "",
 });
+const phaseId = ref(1);
+const phases = ref<PhaseDraft[]>([]);
+const isPhaseDialogOpen = ref(false);
+const phaseName = ref("");
+const phaseDescription = ref("<p></p>");
+const phaseErrors = ref({
+  name: "",
+});
 const salesTaskId = ref(1);
 const salesTasks = ref<SalesTaskDraft[]>([]);
 const salesTaskFieldRefs = ref<Record<number, HTMLElement | null>>({});
 const milestoneFormRef = ref<VForm>();
 const goalFormRef = ref<VForm>();
 const taskFormRef = ref<VForm>();
+const itemFormRef = ref<VForm>();
 const hasCustomMilestoneName = ref(false);
 const jobConfigGoalId = ref(1);
 const jobConfigTaskId = ref(1);
@@ -257,6 +241,10 @@ const activeStateOptions = computed(() => {
   return source.map((state) => ({ title: state, value: state }));
 });
 
+const isContractualService = computed(
+  () => selectedType.value === "Contractual Service",
+);
+
 watch(
   defaultMilestoneName,
   (nextName) => {
@@ -338,6 +326,42 @@ const saveRelatedItem = () => {
 
 const removeRelatedItem = (itemId: number) => {
   relatedItems.value = relatedItems.value.filter((item) => item.id !== itemId);
+};
+
+const resetPhaseDraft = () => {
+  phaseName.value = "";
+  phaseDescription.value = "<p></p>";
+  phaseErrors.value = {
+    name: "",
+  };
+};
+
+const openPhaseDialog = () => {
+  resetPhaseDraft();
+  isPhaseDialogOpen.value = true;
+};
+
+const savePhase = () => {
+  const trimmedName = phaseName.value.trim();
+
+  phaseErrors.value = {
+    name: trimmedName ? "" : "Title is required",
+  };
+
+  if (!trimmedName) return;
+
+  phases.value.push({
+    id: phaseId.value++,
+    name: trimmedName,
+    description: phaseDescription.value.replace(/<[^>]+>/g, " ").trim(),
+  });
+
+  isPhaseDialogOpen.value = false;
+  resetPhaseDraft();
+};
+
+const removePhase = (itemId: number) => {
+  phases.value = phases.value.filter((item) => item.id !== itemId);
 };
 
 const priorityColor = (priority: JobConfigPriority) => {
@@ -732,16 +756,32 @@ const applySharedRecord = (record: CatalogueRecord) => {
   expandedGoals.value = [];
 };
 
-const applyOnetimeServiceRecord = (record: CatalogueOnetimeServiceRecord) => {
+const applyServiceTemplateRecord = (
+  record: CatalogueOnetimeServiceRecord | CatalogueContractualServiceRecord,
+) => {
   applySharedRecord(record);
-  relatedItems.value = (record.relatedItems || []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    category: item.category,
-    description: item.description,
-  }));
-  relatedItemId.value =
-    relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+  if (record.type === "Onetime Service") {
+    relatedItems.value = (record.relatedItems || []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      description: item.description,
+    }));
+    relatedItemId.value =
+      relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+    phases.value = [];
+    phaseId.value = 1;
+  } else {
+    phases.value = (record.phases || []).map((phase) => ({
+      id: phase.id,
+      name: phase.name,
+      description: phase.description,
+    }));
+    phaseId.value =
+      phases.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+    relatedItems.value = [];
+    relatedItemId.value = 1;
+  }
 
   salesTasks.value = (record.salesTasks || []).map((task) => ({
     id: task.id,
@@ -811,6 +851,8 @@ const resetOnetimeServiceForm = () => {
   content.value = "<p></p>";
   relatedItems.value = [];
   relatedItemId.value = 1;
+  phases.value = [];
+  phaseId.value = 1;
   salesTasks.value = [];
   salesTaskId.value = 1;
   hasCustomMilestoneName.value = false;
@@ -831,12 +873,15 @@ const resetOnetimeServiceForm = () => {
   expandedGoals.value = [];
 };
 
-const saveOnetimeService = () => {
+const saveItem = async (mode: "draft" | "publish" = "publish") => {
+  const validation = await itemFormRef.value?.validate();
+  if (validation && !validation.valid) return;
+
   const payload = {
     type: selectedType.value as CatalogueItemType,
-    name: itemName.value.trim() || "Untitled Item",
+    name: itemName.value.trim(),
     category: selectedCategory.value.trim() || "Uncategorized",
-    activeState: selectedStatus.value,
+    activeState: mode === "draft" ? "Non-Active" : selectedStatus.value,
     image: itemImage.value?.trim() || null,
     bestPrice:
       itemBestPrice.value === null || itemBestPrice.value === undefined
@@ -846,12 +891,21 @@ const saveOnetimeService = () => {
           : null,
     chargeTax: isTaxChargeToItem.value,
     description: stripRichText(content.value),
-    relatedItems: relatedItems.value.map((item) => ({
-      id: item.id,
-      name: item.name.trim(),
-      category: item.category.trim(),
-      description: item.description.trim(),
-    })),
+    relatedItems: isContractualService.value
+      ? undefined
+      : relatedItems.value.map((item) => ({
+          id: item.id,
+          name: item.name.trim(),
+          category: item.category.trim(),
+          description: item.description.trim(),
+        })),
+    phases: isContractualService.value
+      ? phases.value.map((phase) => ({
+          id: phase.id,
+          name: phase.name.trim(),
+          description: phase.description.trim(),
+        }))
+      : undefined,
     salesTasks: salesTasks.value
       .map((task) => ({
         id: task.id,
@@ -918,11 +972,15 @@ watch(
       return;
     }
 
-    applySharedRecord(record);
-
-    if (record.type === "Onetime Service") {
-      applyOnetimeServiceRecord(record);
+    if (
+      record.type === "Onetime Service" ||
+      record.type === "Contractual Service"
+    ) {
+      applyServiceTemplateRecord(record);
+      return;
     }
+
+    applySharedRecord(record);
   },
   { immediate: true },
 );
@@ -946,10 +1004,10 @@ watch(
         <VBtn variant="tonal" color="secondary" @click="router.push('/catalogues/list')">
           Discard
         </VBtn>
-        <VBtn variant="tonal" color="primary" @click="saveOnetimeService">
+        <VBtn variant="tonal" color="primary" @click="saveItem('draft')">
           Save Draft
         </VBtn>
-        <VBtn @click="saveOnetimeService">{{ publishButtonLabel }}</VBtn>
+        <VBtn @click="saveItem('publish')">{{ publishButtonLabel }}</VBtn>
       </div>
     </div>
 
@@ -962,12 +1020,14 @@ watch(
           </VCardItem>
 
           <VCardText>
+            <VForm ref="itemFormRef" @submit.prevent="saveItem('publish')">
             <VRow>
               <VCol cols="12">
                 <AppTextField
                   v-model="itemName"
                   label="Name"
                   placeholder="iPhone 14"
+                  :rules="[requiredValidator]"
                 />
               </VCol>
               <VCol cols="12" md="6">
@@ -995,8 +1055,9 @@ watch(
                 />
               </VCol>
             </VRow>
+            </VForm>
 
-            <div v-if="relatedItems.length" class="mt-6">
+            <div v-if="!isContractualService && relatedItems.length" class="mt-6">
               <div class="text-body-2 text-medium-emphasis mb-4">
                 Related items
               </div>
@@ -1036,6 +1097,48 @@ watch(
                 </div>
               </div>
             </div>
+
+            <div v-if="isContractualService && phases.length" class="mt-6">
+              <div class="text-body-2 text-medium-emphasis mb-4">
+                Phases
+              </div>
+
+              <div class="d-flex flex-column gap-4">
+                <div
+                  v-for="phase in phases"
+                  :key="phase.id"
+                  class="related-item-card"
+                >
+                  <div class="related-item-card__header">
+                    <div class="related-item-card__dot" />
+
+                    <div class="related-item-card__content">
+                      <div class="d-flex flex-wrap align-center gap-x-3 gap-y-1">
+                        <div class="text-h6 font-weight-medium">
+                          {{ phase.name }}
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="phase.description"
+                        class="text-body-2 text-medium-emphasis"
+                      >
+                        {{ phase.description }}
+                      </div>
+                    </div>
+
+                    <VBtn
+                      icon
+                      variant="text"
+                      color="error"
+                      @click="removePhase(phase.id)"
+                    >
+                      <VIcon icon="tabler-trash" />
+                    </VBtn>
+                  </div>
+                </div>
+              </div>
+            </div>
           </VCardText>
 
           <VCardActions class="px-6 pb-6 pt-0 justify-end">
@@ -1043,10 +1146,10 @@ watch(
               size="small"
               color="primary"
               variant="elevated"
-              prepend-icon="tabler-link-plus"
-              @click="openRelatedItemDialog"
+              :prepend-icon="isContractualService ? 'tabler-layers-linked' : 'tabler-link-plus'"
+              @click="isContractualService ? openPhaseDialog() : openRelatedItemDialog()"
             >
-              Related Item
+              {{ isContractualService ? "Phase" : "Related Item" }}
             </VBtn>
           </VCardActions>
         </VCard>
@@ -1743,6 +1846,47 @@ watch(
             variant="tonal"
             color="secondary"
             @click="isRelatedItemDialogOpen = false"
+          >
+            Cancel
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isPhaseDialogOpen" max-width="760">
+      <VCard>
+        <VCardItem title="Add Phase" />
+
+        <VCardText>
+          <VRow>
+            <VCol cols="12">
+              <AppTextField
+                v-model="phaseName"
+                label="Name"
+                placeholder="Mobilization"
+                :error="Boolean(phaseErrors.name)"
+                :error-messages="phaseErrors.name"
+              />
+            </VCol>
+            <VCol cols="12">
+              <span class="mb-1">Description (optional)</span>
+              <ProductDescriptionEditor
+                v-model="phaseDescription"
+                placeholder="Phase Description"
+                class="border rounded"
+              />
+            </VCol>
+          </VRow>
+        </VCardText>
+
+        <VCardActions class="px-6 pb-6 justify-space-between">
+          <VBtn color="primary" variant="tonal" @click="savePhase">
+            Save Phase
+          </VBtn>
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isPhaseDialogOpen = false"
           >
             Cancel
           </VBtn>

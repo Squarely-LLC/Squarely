@@ -157,6 +157,61 @@ export const db: DB = {
         chargeTax: true,
         description: "Annual maintenance contract covering inspection, cleaning, and minor lighting repairs.",
         createdAt: "2026-02-02T13:40:00Z",
+        phases: [
+          {
+            id: 1,
+            name: "Mobilization",
+            description: "Kickoff, asset verification, and site-access coordination before recurring service begins.",
+          },
+          {
+            id: 2,
+            name: "Preventive Maintenance",
+            description: "Scheduled inspections, cleaning, testing, and minor corrective works during the contract term.",
+          },
+        ],
+        salesTasks: [
+          {
+            id: 1,
+            title: "Review contract scope",
+          },
+          {
+            id: 2,
+            title: "Confirm maintenance calendar",
+          },
+        ],
+        jobConfiguration: {
+          milestones: [
+            {
+              id: 1,
+              name: "Architectural Lighting Maintenance Contract",
+              dueDate: null,
+              priority: "Normal",
+              note: "",
+              tasks: [],
+              goals: [
+                {
+                  id: 1,
+                  milestoneId: 1,
+                  name: "Service kickoff",
+                  dueDate: null,
+                  priority: "Normal",
+                  note: "Confirm asset list, site access, and maintenance windows.",
+                  tasks: [
+                    {
+                      id: 1,
+                      title: "Validate lighting inventory",
+                      dueAt: null,
+                      manhours: 3,
+                      notes: "",
+                      status: "pending",
+                      important: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       },
     ],
     retainerServices: [
