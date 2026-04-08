@@ -1,62 +1,869 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { requiredValidator } from "@/@core/utils/validators";
+import DialogActionBar from "@/components/DialogActionBar.vue";
+import CatalogueCategoryTreeSelect from "@/components/catalogues/CatalogueCategoryTreeSelect.vue";
+import type {
+  CatalogueActiveState,
+  CatalogueRecord,
+  CatalogueOnetimeServiceRecord,
+} from "@/plugins/fake-api/handlers/catalogues/types";
+import type { CatalogueCategory } from "@/plugins/fake-api/handlers/config/types";
+import { useCataloguesStore } from "@/stores/catalogues";
+import { useConfigStore } from "@/stores/config";
+import { formatSystemDate } from "@core/utils/formatters";
+import { computed, nextTick, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import type { VForm } from "vuetify/components/VForm";
 
-const optionCounter = ref(1)
-const route = useRoute()
+type SalesTaskDraft = {
+  id: number;
+  title: string;
+};
 
-const activeTab = ref('Restock')
-const isTaxChargeToProduct = ref(true)
+type RelatedItemDraft = {
+  id: number;
+  name: string;
+  category: string;
+  description: string;
+};
+
+type JobConfigPriority = "Low" | "Normal" | "High";
+type JobConfigTaskStatus =
+  | "pending"
+  | "in_progress"
+  | "for_review"
+  | "completed";
+
+type JobConfigTask = {
+  id: number;
+  title: string;
+  dueAt: string | null;
+  manhours: number | null;
+  notes: string;
+  status: JobConfigTaskStatus;
+  important: boolean;
+};
+
+type JobConfigGoal = {
+  id: number;
+  milestoneId: number;
+  name: string;
+  dueDate: string | null;
+  priority: JobConfigPriority;
+  note: string;
+  tasks: JobConfigTask[];
+};
+
+type JobConfigMilestone = {
+  id: number;
+  name: string;
+  dueDate: string | null;
+  priority: JobConfigPriority;
+  note: string;
+  tasks: JobConfigTask[];
+  goals: JobConfigGoal[];
+};
+
+const route = useRoute();
+const router = useRouter();
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
+const configStore = useConfigStore();
+configStore.init();
+
+const activeTab = ref("Restock");
+const isTaxChargeToItem = ref(true);
 
 const shippingList = [
-  { desc: 'You\'ll be responsible for product delivery.Any damage or delay during shipping may cost you a Damage fee', title: 'Fulfilled by Seller', value: 'Fulfilled by Seller' },
-  { desc: 'Your product, Our responsibility.For a measly fee, we will handle the delivery process for you.', title: 'Fulfilled by Company name', value: 'Fulfilled by Company name' },
-] as const
+  {
+    desc: "You'll be responsible for item delivery.Any damage or delay during shipping may cost you a Damage fee",
+    title: "Fulfilled by Seller",
+    value: "Fulfilled by Seller",
+  },
+  {
+    desc: "Your item, Our responsibility.For a measly fee, we will handle the delivery process for you.",
+    title: "Fulfilled by Company name",
+    value: "Fulfilled by Company name",
+  },
+] as const;
 
-const shippingType = ref<typeof shippingList[number]['value']>('Fulfilled by Company name')
-const deliveryType = ref('Worldwide delivery')
-const selectedAttrs = ref(['Biodegradable', 'Expiry Date'])
+const shippingType = ref<(typeof shippingList)[number]["value"]>(
+  "Fulfilled by Company name",
+);
+const deliveryType = ref("Worldwide delivery");
+const selectedAttrs = ref(["Biodegradable", "Expiry Date"]);
 
 const inventoryTabsData = [
-  { icon: 'tabler-cube', title: 'Restock', value: 'Restock' },
-  { icon: 'tabler-car', title: 'Shipping', value: 'Shipping' },
-  { icon: 'tabler-map-pin', title: 'Global Delivery', value: 'Global Delivery' },
-  { icon: 'tabler-world', title: 'Attributes', value: 'Attributes' },
-  { icon: 'tabler-lock', title: 'Advanced', value: 'Advanced' },
-]
+  { icon: "tabler-cube", title: "Restock", value: "Restock" },
+  { icon: "tabler-car", title: "Shipping", value: "Shipping" },
+  {
+    icon: "tabler-map-pin",
+    title: "Global Delivery",
+    value: "Global Delivery",
+  },
+  { icon: "tabler-world", title: "Attributes", value: "Attributes" },
+  { icon: "tabler-lock", title: "Advanced", value: "Advanced" },
+];
 
-const content = ref(
-  `<p>
-    Keep your account secure with authentication step.
-    </p>`)
+const content = ref("<p></p>");
 
 const selectedType = computed(() => {
-  const rawType = route.query.type
-  return typeof rawType === 'string' && rawType.trim()
-    ? rawType
-    : 'Product'
-})
+  const rawType = route.query.type;
+  return typeof rawType === "string" && rawType.trim() ? rawType : "Product";
+});
 
 const typeDescriptions: Record<string, string> = {
-  'Onetime Service': 'Create a one-off service item for a single defined scope of work.',
-  Product: 'Create a stocked sellable inventory item.',
-  'Contractual Service': 'Create a service delivered under a contract or maintenance agreement.',
-  'Retainer Service': 'Create an ongoing retainer-based service offering.',
-  'Reccurent Service': 'Create a recurring service delivered on a repeating schedule.',
-  'Produced Product': 'Create an internally manufactured or custom-built catalogue item.',
-  Rental: 'Create a rentable asset tracked for availability and return.',
-}
+  "Onetime Service":
+    "Create a one-off service item for a single defined scope of work.",
+  Product: "Create a stocked sellable inventory item.",
+  "Contractual Service":
+    "Create a service delivered under a contract or maintenance agreement.",
+  "Retainer Service": "Create an ongoing retainer-based service offering.",
+  "Reccurent Service":
+    "Create a recurring service delivered on a repeating schedule.",
+  "Produced Product":
+    "Create an internally manufactured or custom-built catalogue item.",
+  Rental: "Create a rentable asset tracked for availability and return.",
+};
 
-const pageTitle = computed(() => `Add ${selectedType.value}`)
+const pageTitle = computed(() => `Add ${selectedType.value}`);
+const editingItemId = computed(() => {
+  const raw = route.query.id;
+  return typeof raw === "string" && raw.trim() ? raw : null;
+});
+const isEditing = computed(() => Boolean(editingItemId.value));
 const pageSubtitle = computed(
-  () => typeDescriptions[selectedType.value] || 'Create a new catalogue item.',
-)
-const publishButtonLabel = computed(() => `Publish ${selectedType.value}`)
+  () => typeDescriptions[selectedType.value] || "Create a new catalogue item.",
+);
+const publishButtonLabel = computed(() =>
+  isEditing.value ? `Save ${selectedType.value}` : `Publish ${selectedType.value}`,
+);
+
+const itemName = ref("");
+const selectedCategory = ref("");
+const selectedStatus = ref<CatalogueActiveState>("Active");
+const relatedItemId = ref(1);
+const relatedItems = ref<RelatedItemDraft[]>([]);
+const isRelatedItemDialogOpen = ref(false);
+const relatedItemName = ref("");
+const relatedItemCategory = ref("");
+const relatedItemDescription = ref("<p></p>");
+const relatedItemErrors = ref({
+  name: "",
+  category: "",
+});
+const salesTaskId = ref(1);
+const salesTasks = ref<SalesTaskDraft[]>([]);
+const salesTaskFieldRefs = ref<Record<number, HTMLElement | null>>({});
+const milestoneFormRef = ref<VForm>();
+const goalFormRef = ref<VForm>();
+const taskFormRef = ref<VForm>();
+const hasCustomMilestoneName = ref(false);
+const jobConfigGoalId = ref(1);
+const jobConfigTaskId = ref(1);
+const expandedMilestones = ref<number[]>([1]);
+const expandedGoals = ref<number[]>([]);
+const priorityOptions = [
+  { title: "Low", value: "Low" },
+  { title: "Normal", value: "Normal" },
+  { title: "High", value: "High" },
+];
+const taskStatusOptions = [
+  { title: "Pending", value: "pending" },
+  { title: "In Progress", value: "in_progress" },
+  { title: "For Review", value: "for_review" },
+  { title: "Completed", value: "completed" },
+];
+const defaultMilestoneName = computed(() => {
+  const trimmedName = itemName.value.trim();
+  return trimmedName || "New Item";
+});
+
+const jobConfigMilestones = ref<JobConfigMilestone[]>([
+  {
+    id: 1,
+    name: defaultMilestoneName.value,
+    dueDate: null,
+    priority: "Normal",
+    note: "",
+    tasks: [],
+    goals: [],
+  },
+]);
+const milestoneDialog = ref({
+  visible: false,
+  mode: "create" as "create" | "edit",
+  targetId: null as number | null,
+  draft: {
+    name: "",
+    dueDate: null as string | null,
+    priority: "Normal" as JobConfigPriority,
+    note: "",
+  },
+});
+const goalDialog = ref({
+  visible: false,
+  mode: "create" as "create" | "edit",
+  targetId: null as number | null,
+  milestoneId: null as number | null,
+  draft: {
+    name: "",
+    dueDate: null as string | null,
+    priority: "Normal" as JobConfigPriority,
+    note: "",
+  },
+});
+const taskDialog = ref({
+  visible: false,
+  mode: "create" as "create" | "edit",
+  parentType: "milestone" as "milestone" | "goal",
+  parentId: null as number | null,
+  targetId: null as number | null,
+  draft: {
+    title: "",
+    dueAt: null as string | null,
+    manhours: null as number | null,
+    notes: "",
+    status: "pending" as JobConfigTaskStatus,
+    important: false,
+  },
+});
+
+const cleanEntries = (values?: (string | null | undefined)[]) =>
+  Array.from(
+    new Set(
+      (values || []).map((value) => String(value ?? "").trim()).filter(Boolean),
+    ),
+  );
+
+const categoryTree = computed<CatalogueCategory[]>(
+  () => configStore.configurations.catalogue?.categories || [],
+);
+
+const activeStateOptions = computed(() => {
+  const configured = cleanEntries(
+    configStore.configurations.catalogue?.activeStates,
+  );
+  const source = configured.length
+    ? configured
+    : ["Active", "Non-Active", "Archived"];
+
+  return source.map((state) => ({ title: state, value: state }));
+});
+
+watch(
+  defaultMilestoneName,
+  (nextName) => {
+    const milestone = jobConfigMilestones.value[0];
+    if (!milestone || hasCustomMilestoneName.value) return;
+
+    milestone.name = nextName;
+  },
+  { immediate: true },
+);
+
+const addSalesTask = () => {
+  const taskId = salesTaskId.value++;
+
+  salesTasks.value.push({
+    id: taskId,
+    title: "",
+  });
+
+  nextTick(() => {
+    const fieldRoot = salesTaskFieldRefs.value[taskId];
+    const input = fieldRoot?.querySelector("input");
+
+    if (input instanceof HTMLInputElement) input.focus();
+  });
+};
+
+const removeSalesTask = (taskId: number) => {
+  salesTasks.value = salesTasks.value.filter((task) => task.id !== taskId);
+  delete salesTaskFieldRefs.value[taskId];
+};
+
+const pruneSalesTask = (taskId: number) => {
+  const task = salesTasks.value.find((entry) => entry.id === taskId);
+
+  if (!task) return;
+
+  task.title = task.title.trim();
+
+  if (!task.title) removeSalesTask(taskId);
+};
+
+const resetRelatedItemDraft = () => {
+  relatedItemName.value = "";
+  relatedItemCategory.value = "";
+  relatedItemDescription.value = "<p></p>";
+  relatedItemErrors.value = {
+    name: "",
+    category: "",
+  };
+};
+
+const openRelatedItemDialog = () => {
+  resetRelatedItemDraft();
+  isRelatedItemDialogOpen.value = true;
+};
+
+const saveRelatedItem = () => {
+  const trimmedName = relatedItemName.value.trim();
+  const trimmedCategory = relatedItemCategory.value.trim();
+
+  relatedItemErrors.value = {
+    name: trimmedName ? "" : "Title is required",
+    category: trimmedCategory ? "" : "Category is required",
+  };
+
+  if (!trimmedName || !trimmedCategory) return;
+
+  relatedItems.value.push({
+    id: relatedItemId.value++,
+    name: trimmedName,
+    category: trimmedCategory,
+    description: relatedItemDescription.value.replace(/<[^>]+>/g, " ").trim(),
+  });
+
+  isRelatedItemDialogOpen.value = false;
+  resetRelatedItemDraft();
+};
+
+const removeRelatedItem = (itemId: number) => {
+  relatedItems.value = relatedItems.value.filter((item) => item.id !== itemId);
+};
+
+const priorityColor = (priority: JobConfigPriority) => {
+  return priority === "High"
+    ? "error"
+    : priority === "Low"
+      ? "secondary"
+      : "primary";
+};
+
+const taskStatusLabel = (status?: JobConfigTaskStatus) => {
+  switch (status) {
+    case "in_progress":
+      return "In Progress";
+    case "for_review":
+      return "For Review";
+    case "completed":
+      return "Completed";
+    case "pending":
+    default:
+      return "Pending";
+  }
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "--";
+
+  try {
+    return formatSystemDate(value);
+  } catch {
+    return value;
+  }
+};
+
+const resetMilestoneDraft = () => {
+  milestoneDialog.value.targetId = null;
+  milestoneDialog.value.draft = {
+    name: "",
+    dueDate: null,
+    priority: "Normal",
+    note: "",
+  };
+};
+
+const resetGoalDraft = () => {
+  goalDialog.value.targetId = null;
+  goalDialog.value.milestoneId = null;
+  goalDialog.value.draft = {
+    name: "",
+    dueDate: null,
+    priority: "Normal",
+    note: "",
+  };
+};
+
+const resetTaskDraft = () => {
+  taskDialog.value.mode = "create";
+  taskDialog.value.parentType = "milestone";
+  taskDialog.value.parentId = null;
+  taskDialog.value.targetId = null;
+  taskDialog.value.draft = {
+    title: "",
+    dueAt: null,
+    manhours: null,
+    notes: "",
+    status: "pending",
+    important: false,
+  };
+};
+
+const openEditMilestone = (milestone: JobConfigMilestone) => {
+  milestoneDialog.value.mode = "edit";
+  milestoneDialog.value.visible = true;
+  milestoneDialog.value.targetId = milestone.id;
+  milestoneDialog.value.draft = {
+    name: milestone.name,
+    dueDate: milestone.dueDate,
+    priority: milestone.priority,
+    note: milestone.note,
+  };
+  nextTick(() => milestoneFormRef.value?.resetValidation());
+};
+
+const saveMilestone = async () => {
+  const result = await milestoneFormRef.value?.validate();
+  if (!result?.valid) return;
+
+  const draft = milestoneDialog.value.draft;
+
+  const milestone = jobConfigMilestones.value.find(
+    (entry) => entry.id === milestoneDialog.value.targetId,
+  );
+
+  if (milestone) {
+    milestone.name = draft.name.trim();
+    milestone.dueDate = draft.dueDate;
+    milestone.priority = draft.priority;
+    milestone.note = draft.note.trim();
+    hasCustomMilestoneName.value =
+      milestone.name !== defaultMilestoneName.value;
+  }
+
+  milestoneDialog.value.visible = false;
+  resetMilestoneDraft();
+};
+
+const openCreateGoal = (milestoneId: number) => {
+  resetGoalDraft();
+  goalDialog.value.mode = "create";
+  goalDialog.value.visible = true;
+  goalDialog.value.milestoneId = milestoneId;
+  expandedMilestones.value = [
+    ...new Set([...expandedMilestones.value, milestoneId]),
+  ];
+  nextTick(() => goalFormRef.value?.resetValidation());
+};
+
+const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
+  goalDialog.value.mode = "edit";
+  goalDialog.value.visible = true;
+  goalDialog.value.targetId = goal.id;
+  goalDialog.value.milestoneId = milestoneId;
+  goalDialog.value.draft = {
+    name: goal.name,
+    dueDate: goal.dueDate,
+    priority: goal.priority,
+    note: goal.note,
+  };
+  nextTick(() => goalFormRef.value?.resetValidation());
+};
+
+const saveGoal = async () => {
+  const result = await goalFormRef.value?.validate();
+  if (!result?.valid || goalDialog.value.milestoneId === null) return;
+
+  const milestone = jobConfigMilestones.value.find(
+    (entry) => entry.id === goalDialog.value.milestoneId,
+  );
+  if (!milestone) return;
+
+  const draft = goalDialog.value.draft;
+
+  if (goalDialog.value.mode === "edit" && goalDialog.value.targetId !== null) {
+    const goal = milestone.goals.find(
+      (entry) => entry.id === goalDialog.value.targetId,
+    );
+
+    if (goal) {
+      goal.name = draft.name.trim();
+      goal.dueDate = draft.dueDate;
+      goal.priority = draft.priority;
+      goal.note = draft.note.trim();
+    }
+  } else {
+    const id = jobConfigGoalId.value++;
+    milestone.goals.push({
+      id,
+      milestoneId: milestone.id,
+      name: draft.name.trim(),
+      dueDate: draft.dueDate,
+      priority: draft.priority,
+      note: draft.note.trim(),
+      tasks: [],
+    });
+    expandedGoals.value = [...new Set([...expandedGoals.value, id])];
+  }
+
+  goalDialog.value.visible = false;
+  resetGoalDraft();
+};
+
+const deleteGoal = (milestoneId: number, goalId: number) => {
+  const milestone = jobConfigMilestones.value.find(
+    (entry) => entry.id === milestoneId,
+  );
+  if (!milestone) return;
+
+  milestone.goals = milestone.goals.filter((entry) => entry.id !== goalId);
+  expandedGoals.value = expandedGoals.value.filter((entry) => entry !== goalId);
+};
+
+const openCreateTaskForMilestone = (milestoneId: number) => {
+  resetTaskDraft();
+  taskDialog.value.visible = true;
+  taskDialog.value.mode = "create";
+  taskDialog.value.parentType = "milestone";
+  taskDialog.value.parentId = milestoneId;
+  expandedMilestones.value = [
+    ...new Set([...expandedMilestones.value, milestoneId]),
+  ];
+  nextTick(() => taskFormRef.value?.resetValidation());
+};
+
+const openCreateTaskForGoal = (goalId: number) => {
+  resetTaskDraft();
+  taskDialog.value.visible = true;
+  taskDialog.value.mode = "create";
+  taskDialog.value.parentType = "goal";
+  taskDialog.value.parentId = goalId;
+  expandedGoals.value = [...new Set([...expandedGoals.value, goalId])];
+  nextTick(() => taskFormRef.value?.resetValidation());
+};
+
+const openEditTaskForMilestone = (milestoneId: number, task: JobConfigTask) => {
+  taskDialog.value.visible = true;
+  taskDialog.value.mode = "edit";
+  taskDialog.value.parentType = "milestone";
+  taskDialog.value.parentId = milestoneId;
+  taskDialog.value.targetId = task.id;
+  taskDialog.value.draft = {
+    title: task.title,
+    dueAt: task.dueAt,
+    manhours: task.manhours,
+    notes: task.notes,
+    status: task.status,
+    important: task.important,
+  };
+  nextTick(() => taskFormRef.value?.resetValidation());
+};
+
+const openEditTaskForGoal = (goalId: number, task: JobConfigTask) => {
+  taskDialog.value.visible = true;
+  taskDialog.value.mode = "edit";
+  taskDialog.value.parentType = "goal";
+  taskDialog.value.parentId = goalId;
+  taskDialog.value.targetId = task.id;
+  taskDialog.value.draft = {
+    title: task.title,
+    dueAt: task.dueAt,
+    manhours: task.manhours,
+    notes: task.notes,
+    status: task.status,
+    important: task.important,
+  };
+  nextTick(() => taskFormRef.value?.resetValidation());
+};
+
+const deleteTaskFromMilestone = (milestoneId: number, taskId: number) => {
+  const milestone = jobConfigMilestones.value.find(
+    (entry) => entry.id === milestoneId,
+  );
+  if (!milestone) return;
+
+  milestone.tasks = milestone.tasks.filter((entry) => entry.id !== taskId);
+};
+
+const deleteTaskFromGoal = (goalId: number, taskId: number) => {
+  const milestone = jobConfigMilestones.value.find((entry) =>
+    entry.goals.some((goal) => goal.id === goalId),
+  );
+  const goal = milestone?.goals.find((entry) => entry.id === goalId);
+  if (!goal) return;
+
+  goal.tasks = goal.tasks.filter((entry) => entry.id !== taskId);
+};
+
+const saveTask = async () => {
+  const result = await taskFormRef.value?.validate();
+  if (!result?.valid || taskDialog.value.parentId === null) return;
+
+  const draftTask: JobConfigTask = {
+    id: taskDialog.value.targetId ?? jobConfigTaskId.value++,
+    title: taskDialog.value.draft.title.trim(),
+    dueAt: taskDialog.value.draft.dueAt,
+    manhours: taskDialog.value.draft.manhours,
+    notes: taskDialog.value.draft.notes.trim(),
+    status: taskDialog.value.draft.status,
+    important: taskDialog.value.draft.important,
+  };
+
+  if (taskDialog.value.parentType === "milestone") {
+    const milestone = jobConfigMilestones.value.find(
+      (entry) => entry.id === taskDialog.value.parentId,
+    );
+    if (!milestone) return;
+    if (
+      taskDialog.value.mode === "edit" &&
+      taskDialog.value.targetId !== null
+    ) {
+      const task = milestone.tasks.find(
+        (entry) => entry.id === taskDialog.value.targetId,
+      );
+      if (task) Object.assign(task, draftTask);
+    } else {
+      milestone.tasks.push(draftTask);
+    }
+  } else {
+    const milestone = jobConfigMilestones.value.find((entry) =>
+      entry.goals.some((goal) => goal.id === taskDialog.value.parentId),
+    );
+    const goal = milestone?.goals.find(
+      (entry) => entry.id === taskDialog.value.parentId,
+    );
+    if (!goal) return;
+    if (
+      taskDialog.value.mode === "edit" &&
+      taskDialog.value.targetId !== null
+    ) {
+      const task = goal.tasks.find(
+        (entry) => entry.id === taskDialog.value.targetId,
+      );
+      if (task) Object.assign(task, draftTask);
+    } else {
+      goal.tasks.push(draftTask);
+    }
+  }
+
+  taskDialog.value.visible = false;
+  resetTaskDraft();
+};
+
+const stripRichText = (value: string) => value.replace(/<[^>]+>/g, " ").trim();
+
+const applySharedRecord = (record: CatalogueRecord) => {
+  itemName.value = record.name;
+  selectedCategory.value = record.category;
+  selectedStatus.value = record.activeState;
+  content.value = "<p></p>";
+  relatedItems.value = [];
+  relatedItemId.value = 1;
+  salesTasks.value = [];
+  salesTaskId.value = 1;
+  hasCustomMilestoneName.value = false;
+  jobConfigGoalId.value = 1;
+  jobConfigTaskId.value = 1;
+  jobConfigMilestones.value = [
+    {
+      id: 1,
+      name: record.name || defaultMilestoneName.value,
+      dueDate: null,
+      priority: "Normal",
+      note: "",
+      tasks: [],
+      goals: [],
+    },
+  ];
+  expandedMilestones.value = [1];
+  expandedGoals.value = [];
+};
+
+const applyOnetimeServiceRecord = (record: CatalogueOnetimeServiceRecord) => {
+  applySharedRecord(record);
+  content.value = record.description
+    ? `<p>${record.description}</p>`
+    : "<p></p>";
+  relatedItems.value = (record.relatedItems || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    description: item.description,
+  }));
+  relatedItemId.value =
+    relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+
+  salesTasks.value = (record.salesTasks || []).map((task) => ({
+    id: task.id,
+    title: task.title,
+  }));
+  salesTaskId.value =
+    salesTasks.value.reduce((max, task) => Math.max(max, task.id), 0) + 1;
+
+  const milestones = record.jobConfiguration?.milestones?.length
+    ? record.jobConfiguration.milestones.map((milestone) => ({
+        id: milestone.id,
+        name: milestone.name,
+        dueDate: milestone.dueDate,
+        priority: milestone.priority,
+        note: milestone.note,
+        tasks: (milestone.tasks || []).map((task) => ({ ...task })),
+        goals: (milestone.goals || []).map((goal) => ({
+          ...goal,
+          tasks: (goal.tasks || []).map((task) => ({ ...task })),
+        })),
+      }))
+    : [
+        {
+          id: 1,
+          name: record.name || defaultMilestoneName.value,
+          dueDate: null,
+          priority: "Normal" as JobConfigPriority,
+          note: "",
+          tasks: [],
+          goals: [],
+        },
+      ];
+
+  jobConfigMilestones.value = milestones;
+  expandedMilestones.value = milestones.map((milestone) => milestone.id);
+  expandedGoals.value = milestones.flatMap((milestone) =>
+    milestone.goals.map((goal) => goal.id),
+  );
+  hasCustomMilestoneName.value =
+    milestones[0]?.name !== defaultMilestoneName.value;
+  jobConfigGoalId.value =
+    milestones.reduce(
+      (max, milestone) =>
+        Math.max(max, ...milestone.goals.map((goal) => goal.id), 0),
+      0,
+    ) + 1;
+  jobConfigTaskId.value =
+    milestones.reduce((max, milestone) => {
+      const directTaskMax = Math.max(0, ...milestone.tasks.map((task) => task.id));
+      const goalTaskMax = Math.max(
+        0,
+        ...milestone.goals.flatMap((goal) => goal.tasks.map((task) => task.id)),
+      );
+
+      return Math.max(max, directTaskMax, goalTaskMax);
+    }, 0) + 1;
+};
+
+const resetOnetimeServiceForm = () => {
+  itemName.value = "";
+  selectedCategory.value = "";
+  selectedStatus.value = "Active";
+  content.value = "<p></p>";
+  relatedItems.value = [];
+  relatedItemId.value = 1;
+  salesTasks.value = [];
+  salesTaskId.value = 1;
+  hasCustomMilestoneName.value = false;
+  jobConfigGoalId.value = 1;
+  jobConfigTaskId.value = 1;
+  jobConfigMilestones.value = [
+    {
+      id: 1,
+      name: defaultMilestoneName.value,
+      dueDate: null,
+      priority: "Normal",
+      note: "",
+      tasks: [],
+      goals: [],
+    },
+  ];
+  expandedMilestones.value = [1];
+  expandedGoals.value = [];
+};
+
+const saveOnetimeService = () => {
+  const payload = {
+    type: "Onetime Service" as const,
+    name: itemName.value.trim() || "Untitled Item",
+    category: selectedCategory.value.trim() || "Uncategorized",
+    activeState: selectedStatus.value,
+    description: stripRichText(content.value),
+    relatedItems: relatedItems.value.map((item) => ({
+      id: item.id,
+      name: item.name.trim(),
+      category: item.category.trim(),
+      description: item.description.trim(),
+    })),
+    salesTasks: salesTasks.value
+      .map((task) => ({
+        id: task.id,
+        title: task.title.trim(),
+      }))
+      .filter((task) => task.title),
+    jobConfiguration: {
+      milestones: jobConfigMilestones.value.map((milestone) => ({
+        id: milestone.id,
+        name: milestone.name.trim(),
+        dueDate: milestone.dueDate,
+        priority: milestone.priority,
+        note: milestone.note.trim(),
+        tasks: milestone.tasks.map((task) => ({
+          id: task.id,
+          title: task.title.trim(),
+          dueAt: task.dueAt,
+          manhours: task.manhours,
+          notes: task.notes.trim(),
+          status: task.status,
+          important: task.important,
+        })),
+        goals: milestone.goals.map((goal) => ({
+          id: goal.id,
+          milestoneId: goal.milestoneId,
+          name: goal.name.trim(),
+          dueDate: goal.dueDate,
+          priority: goal.priority,
+          note: goal.note.trim(),
+          tasks: goal.tasks.map((task) => ({
+            id: task.id,
+            title: task.title.trim(),
+            dueAt: task.dueAt,
+            manhours: task.manhours,
+            notes: task.notes.trim(),
+            status: task.status,
+            important: task.important,
+          })),
+        })),
+      })),
+    },
+  };
+
+  if (editingItemId.value) {
+    cataloguesStore.updateItem(editingItemId.value, payload);
+  } else {
+    cataloguesStore.addItem(payload);
+  }
+
+  router.push("/catalogues/list");
+};
+
+watch(
+  editingItemId,
+  (nextId) => {
+    if (!nextId) {
+      resetOnetimeServiceForm();
+      return;
+    }
+
+    const record = cataloguesStore.recordById(nextId, selectedType.value);
+    if (!record) {
+      resetOnetimeServiceForm();
+      return;
+    }
+
+    applySharedRecord(record);
+
+    if (record.type === "Onetime Service") {
+      applyOnetimeServiceRecord(record);
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
   <div>
-    <div class="d-flex flex-wrap justify-start justify-sm-space-between gap-y-4 gap-x-6 mb-6">
+    <div
+      class="d-flex flex-wrap justify-start justify-sm-space-between gap-y-4 gap-x-6 mb-6"
+    >
       <div class="d-flex flex-column justify-center">
         <h4 class="text-h4 font-weight-medium">
           {{ pageTitle }}
@@ -67,75 +874,630 @@ const publishButtonLabel = computed(() => `Publish ${selectedType.value}`)
       </div>
 
       <div class="d-flex gap-4 align-center flex-wrap">
-        <VBtn
-          variant="tonal"
-          color="secondary"
-        >
+        <VBtn variant="tonal" color="secondary" @click="router.push('/catalogues/list')">
           Discard
         </VBtn>
-        <VBtn
-          variant="tonal"
-          color="primary"
-        >
+        <VBtn variant="tonal" color="primary" @click="saveOnetimeService">
           Save Draft
         </VBtn>
-        <VBtn>{{ publishButtonLabel }}</VBtn>
+        <VBtn @click="saveOnetimeService">{{ publishButtonLabel }}</VBtn>
       </div>
     </div>
 
     <VRow>
       <VCol md="8">
-        <!-- 👉 Product Information -->
-        <VCard
-          class="mb-6"
-          title="Product Information"
-        >
+        <!-- 👉 Item Information -->
+        <VCard class="mb-6">
+          <VCardItem>
+            <template #title> Item Information </template>
+          </VCardItem>
+
           <VCardText>
             <VRow>
               <VCol cols="12">
                 <AppTextField
+                  v-model="itemName"
                   label="Name"
                   placeholder="iPhone 14"
                 />
               </VCol>
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  label="SKU"
-                  placeholder="FXSK123U"
+              <VCol cols="12" md="6">
+                <CatalogueCategoryTreeSelect
+                  v-model="selectedCategory"
+                  label="Category"
+                  placeholder="Select Category"
+                  :items="categoryTree"
                 />
               </VCol>
-              <VCol
-                cols="12"
-                md="6"
-              >
-                <AppTextField
-                  label="Barcode"
-                  placeholder="0123-4567"
+              <VCol cols="12" md="6">
+                <AppSelect
+                  v-model="selectedStatus"
+                  label="Status"
+                  placeholder="Select Status"
+                  :items="activeStateOptions"
                 />
               </VCol>
               <VCol>
                 <span class="mb-1">Description (optional)</span>
                 <ProductDescriptionEditor
                   v-model="content"
-                  placeholder="Product Description"
+                  placeholder="Item Description"
                   class="border rounded"
                 />
               </VCol>
             </VRow>
+
+            <div v-if="relatedItems.length" class="mt-6">
+              <div class="text-body-2 text-medium-emphasis mb-4">
+                Related items
+              </div>
+
+              <div class="d-flex flex-column gap-4">
+                <div
+                  v-for="relatedItem in relatedItems"
+                  :key="relatedItem.id"
+                  class="related-item-card"
+                >
+                  <div class="related-item-card__header">
+                    <div class="related-item-card__dot" />
+
+                    <div class="related-item-card__content">
+                      <div
+                        class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                      >
+                        <div class="text-h6 font-weight-medium">
+                          {{ relatedItem.name }}
+                        </div>
+                      </div>
+
+                      <div class="text-body-2 text-medium-emphasis">
+                        {{ relatedItem.category || "Uncategorized" }}
+                      </div>
+                    </div>
+
+                    <VBtn
+                      icon
+                      variant="text"
+                      color="error"
+                      @click="removeRelatedItem(relatedItem.id)"
+                    >
+                      <VIcon icon="tabler-trash" />
+                    </VBtn>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </VCardText>
+
+          <VCardActions class="px-6 pb-6 pt-0 justify-end">
+            <VBtn
+              size="small"
+              color="primary"
+              variant="elevated"
+              prepend-icon="tabler-link-plus"
+              @click="openRelatedItemDialog"
+            >
+              Related Item
+            </VBtn>
+          </VCardActions>
+        </VCard>
+
+        <!-- 👉 Sales Tasks -->
+        <VCard class="mb-6">
+          <VCardItem>
+            <template #title> Sales Tasks </template>
+            <template #append>
+              <VBtn
+                size="small"
+                prepend-icon="tabler-plus"
+                @click="addSalesTask"
+              >
+                Add Task
+              </VBtn>
+            </template>
+          </VCardItem>
+
+          <VCardText>
+            <div class="d-flex flex-column gap-4">
+              <div
+                v-for="task in salesTasks"
+                :key="task.id"
+                class="sales-task-row"
+              >
+                <div class="sales-task-row__icon">
+                  <VIcon icon="tabler-checklist" size="20" />
+                </div>
+
+                <div
+                  class="sales-task-row__field"
+                  :ref="
+                    (el) =>
+                      (salesTaskFieldRefs[task.id] = el as HTMLElement | null)
+                  "
+                >
+                  <AppTextField
+                    v-model="task.title"
+                    label="Task"
+                    placeholder="Site inspection"
+                    @blur="pruneSalesTask(task.id)"
+                  />
+                </div>
+
+                <VBtn
+                  icon
+                  variant="text"
+                  color="error"
+                  class="sales-task-row__delete"
+                  @click="removeSalesTask(task.id)"
+                >
+                  <VIcon icon="tabler-trash" />
+                </VBtn>
+              </div>
+            </div>
           </VCardText>
         </VCard>
 
+        <VCard class="mb-6">
+          <VCardText>
+            <div
+              class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
+            >
+              <div>
+                <h5 class="text-h5 mb-1">Job Configuration</h5>
+                <p class="text-body-2 text-medium-emphasis mb-0">
+                  Tasks can live directly under a milestone or under a goal.
+                </p>
+              </div>
+            </div>
+
+            <VExpansionPanels
+              v-model="expandedMilestones"
+              variant="accordion"
+              multiple
+              class="expansion-panels-width-border milestone-panels"
+            >
+              <VExpansionPanel
+                v-for="milestone in jobConfigMilestones"
+                :key="milestone.id"
+                :value="milestone.id"
+                class="milestone-panel"
+              >
+                <VExpansionPanelTitle>
+                  <div class="d-flex align-center gap-3 w-100">
+                    <div class="rounded-circle milestone-status-dot" />
+
+                    <div class="flex-grow-1 min-w-0">
+                      <div class="d-flex align-center gap-2 flex-wrap">
+                        <div
+                          class="font-weight-medium truncate-title truncate-title--header"
+                        >
+                          {{ milestone.name }}
+                        </div>
+                        <VChip
+                          :color="priorityColor(milestone.priority)"
+                          size="small"
+                          variant="text"
+                        >
+                          {{ milestone.priority }}
+                        </VChip>
+                      </div>
+                      <div class="text-caption text-medium-emphasis">
+                        {{ milestone.goals.length }} Goal<span
+                          v-if="milestone.goals.length !== 1"
+                          >s</span
+                        >
+                        <span v-if="milestone.tasks.length">
+                          | {{ milestone.tasks.length }} Task<span
+                            v-if="milestone.tasks.length !== 1"
+                            >s</span
+                          >
+                        </span>
+                        | Due {{ formatDate(milestone.dueDate) }}
+                      </div>
+                      <div class="text-body-2 text-medium-emphasis mt-1">
+                        {{ milestone.note || "No milestone notes." }}
+                      </div>
+                    </div>
+
+                    <div
+                      class="d-flex align-center gap-2 milestone-actions"
+                      @click.stop
+                    >
+                      <VTooltip text="Add Task" location="top">
+                        <template #activator="{ props: tooltipProps }">
+                          <VBtn
+                            v-bind="tooltipProps"
+                            size="x-small"
+                            variant="text"
+                            icon="tabler-checkbox"
+                            @click="openCreateTaskForMilestone(milestone.id)"
+                          />
+                        </template>
+                      </VTooltip>
+                      <VTooltip text="Add Goal" location="top">
+                        <template #activator="{ props: tooltipProps }">
+                          <VBtn
+                            v-bind="tooltipProps"
+                            size="x-small"
+                            variant="text"
+                            icon="tabler-target-arrow"
+                            @click="openCreateGoal(milestone.id)"
+                          />
+                        </template>
+                      </VTooltip>
+                      <VBtn icon variant="text" size="x-small">
+                        <VIcon icon="tabler-dots-vertical" size="18" />
+                        <VMenu activator="parent">
+                          <VList>
+                            <VListItem @click="openEditMilestone(milestone)">
+                              <template #prepend>
+                                <VIcon icon="tabler-edit" />
+                              </template>
+                              <VListItemTitle>Edit</VListItemTitle>
+                            </VListItem>
+                          </VList>
+                        </VMenu>
+                      </VBtn>
+                    </div>
+                  </div>
+                </VExpansionPanelTitle>
+
+                <VExpansionPanelText>
+                  <VCard variant="flat" class="pa-4 milestone-panel-body">
+                    <div
+                      v-if="milestone.tasks.length"
+                      class="d-flex flex-column gap-2 milestone-direct-tasks"
+                    >
+                      <VCard
+                        v-for="task in milestone.tasks"
+                        :key="task.id"
+                        class="task-row"
+                        variant="tonal"
+                      >
+                        <div class="task-row-main">
+                          <div class="task-row-left">
+                            <VIcon
+                              icon="tabler-checklist"
+                              size="18"
+                              class="task-template-icon"
+                            />
+
+                            <div class="task-copy">
+                              <strong class="text-body-1 truncate-title">
+                                {{ task.title }}
+                              </strong>
+                              <span class="text-sm">
+                                Due {{ formatDate(task.dueAt) }}
+                                <span v-if="task.manhours !== null">
+                                  | {{ task.manhours }} Manhour<span
+                                    v-if="task.manhours !== 1"
+                                    >s</span
+                                  >
+                                </span>
+                              </span>
+                              <span
+                                v-if="task.notes"
+                                class="text-sm text-medium-emphasis"
+                              >
+                                {{ task.notes }}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div class="task-row-side">
+                            <VIcon
+                              v-if="task.important"
+                              icon="tabler-star-filled"
+                              color="warning"
+                              size="18"
+                            />
+                            <VBtn icon variant="text" size="x-small">
+                              <VIcon icon="tabler-dots-vertical" size="18" />
+                              <VMenu activator="parent">
+                                <VList>
+                                  <VListItem
+                                    @click="
+                                      openEditTaskForMilestone(
+                                        milestone.id,
+                                        task,
+                                      )
+                                    "
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-edit" />
+                                    </template>
+                                    <VListItemTitle>Edit</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem
+                                    @click="
+                                      deleteTaskFromMilestone(
+                                        milestone.id,
+                                        task.id,
+                                      )
+                                    "
+                                  >
+                                    <template #prepend>
+                                      <VIcon
+                                        icon="tabler-trash"
+                                        color="error"
+                                      />
+                                    </template>
+                                    <VListItemTitle>Delete</VListItemTitle>
+                                  </VListItem>
+                                </VList>
+                              </VMenu>
+                            </VBtn>
+                            <span
+                              class="text-sm"
+                              :class="{
+                                'text-primary': task.status === 'in_progress',
+                                'text-warning': task.status === 'for_review',
+                                'text-medium-emphasis':
+                                  task.status === 'pending',
+                                'text-success': task.status === 'completed',
+                              }"
+                            >
+                              {{ taskStatusLabel(task.status) }}
+                            </span>
+                          </div>
+                        </div>
+                      </VCard>
+                    </div>
+
+                    <VExpansionPanels
+                      v-if="milestone.goals.length"
+                      v-model="expandedGoals"
+                      variant="accordion"
+                      multiple
+                      class="expansion-panels-width-border goal-panels"
+                    >
+                      <VExpansionPanel
+                        v-for="goal in milestone.goals"
+                        :key="goal.id"
+                        :value="goal.id"
+                        class="goal-panel"
+                      >
+                        <VExpansionPanelTitle>
+                          <div class="d-flex align-center gap-3 w-100">
+                            <VIcon
+                              icon="tabler-target-arrow"
+                              size="16"
+                              class="goal-icon"
+                            />
+
+                            <div class="flex-grow-1 min-w-0">
+                              <div class="d-flex align-center gap-2 flex-wrap">
+                                <div
+                                  class="font-weight-medium truncate-title truncate-title--header"
+                                >
+                                  {{ goal.name }}
+                                </div>
+                                <VChip
+                                  :color="priorityColor(goal.priority)"
+                                  size="x-small"
+                                  variant="text"
+                                >
+                                  {{ goal.priority }}
+                                </VChip>
+                              </div>
+                              <div class="text-caption text-medium-emphasis">
+                                {{ goal.tasks.length }} Task<span
+                                  v-if="goal.tasks.length !== 1"
+                                  >s</span
+                                >
+                                | Due {{ formatDate(goal.dueDate) }}
+                              </div>
+                              <div
+                                class="text-body-2 text-medium-emphasis mt-1"
+                              >
+                                {{ goal.note || "No goal notes." }}
+                              </div>
+                            </div>
+
+                            <div
+                              class="d-flex align-center gap-1 goal-actions"
+                              @click.stop
+                            >
+                              <VTooltip text="Add Task" location="top">
+                                <template #activator="{ props: tooltipProps }">
+                                  <VBtn
+                                    v-bind="tooltipProps"
+                                    size="x-small"
+                                    variant="text"
+                                    icon="tabler-checkbox"
+                                    @click="openCreateTaskForGoal(goal.id)"
+                                  />
+                                </template>
+                              </VTooltip>
+                              <VBtn icon variant="text" size="x-small">
+                                <VIcon icon="tabler-dots-vertical" size="18" />
+                                <VMenu activator="parent">
+                                  <VList>
+                                    <VListItem
+                                      @click="openEditGoal(milestone.id, goal)"
+                                    >
+                                      <template #prepend>
+                                        <VIcon icon="tabler-edit" />
+                                      </template>
+                                      <VListItemTitle>Edit</VListItemTitle>
+                                    </VListItem>
+                                    <VListItem
+                                      @click="deleteGoal(milestone.id, goal.id)"
+                                    >
+                                      <template #prepend>
+                                        <VIcon
+                                          icon="tabler-trash"
+                                          color="error"
+                                        />
+                                      </template>
+                                      <VListItemTitle>Delete</VListItemTitle>
+                                    </VListItem>
+                                  </VList>
+                                </VMenu>
+                              </VBtn>
+                            </div>
+                          </div>
+                        </VExpansionPanelTitle>
+
+                        <VExpansionPanelText>
+                          <VCard variant="flat" class="pa-4 goal-panel-body">
+                            <div
+                              v-if="goal.tasks.length"
+                              class="d-flex flex-column gap-2"
+                            >
+                              <VCard
+                                v-for="task in goal.tasks"
+                                :key="task.id"
+                                class="task-row"
+                                variant="tonal"
+                              >
+                                <div class="task-row-main">
+                                  <div class="task-row-left">
+                                    <VIcon
+                                      icon="tabler-checklist"
+                                      size="18"
+                                      class="task-template-icon"
+                                    />
+
+                                    <div class="task-copy">
+                                      <strong
+                                        class="text-body-1 truncate-title"
+                                      >
+                                        {{ task.title }}
+                                      </strong>
+                                      <span class="text-sm">
+                                        Due {{ formatDate(task.dueAt) }}
+                                        <span v-if="task.manhours !== null">
+                                          | {{ task.manhours }} Manhour<span
+                                            v-if="task.manhours !== 1"
+                                            >s</span
+                                          >
+                                        </span>
+                                      </span>
+                                      <span
+                                        v-if="task.notes"
+                                        class="text-sm text-medium-emphasis"
+                                      >
+                                        {{ task.notes }}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div class="task-row-side">
+                                    <VIcon
+                                      v-if="task.important"
+                                      icon="tabler-star-filled"
+                                      color="warning"
+                                      size="18"
+                                    />
+                                    <VBtn icon variant="text" size="x-small">
+                                      <VIcon
+                                        icon="tabler-dots-vertical"
+                                        size="18"
+                                      />
+                                      <VMenu activator="parent">
+                                        <VList>
+                                          <VListItem
+                                            @click="
+                                              openEditTaskForGoal(goal.id, task)
+                                            "
+                                          >
+                                            <template #prepend>
+                                              <VIcon icon="tabler-edit" />
+                                            </template>
+                                            <VListItemTitle
+                                              >Edit</VListItemTitle
+                                            >
+                                          </VListItem>
+                                          <VListItem
+                                            @click="
+                                              deleteTaskFromGoal(
+                                                goal.id,
+                                                task.id,
+                                              )
+                                            "
+                                          >
+                                            <template #prepend>
+                                              <VIcon
+                                                icon="tabler-trash"
+                                                color="error"
+                                              />
+                                            </template>
+                                            <VListItemTitle
+                                              >Delete</VListItemTitle
+                                            >
+                                          </VListItem>
+                                        </VList>
+                                      </VMenu>
+                                    </VBtn>
+                                    <span
+                                      class="text-sm"
+                                      :class="{
+                                        'text-primary':
+                                          task.status === 'in_progress',
+                                        'text-warning':
+                                          task.status === 'for_review',
+                                        'text-medium-emphasis':
+                                          task.status === 'pending',
+                                        'text-success':
+                                          task.status === 'completed',
+                                      }"
+                                    >
+                                      {{ taskStatusLabel(task.status) }}
+                                    </span>
+                                  </div>
+                                </div>
+                              </VCard>
+                            </div>
+
+                            <div
+                              v-else
+                              class="text-body-2 text-medium-emphasis empty-tasks"
+                            >
+                              No tasks under this goal yet.
+                            </div>
+                          </VCard>
+                        </VExpansionPanelText>
+                      </VExpansionPanel>
+                    </VExpansionPanels>
+
+                    <div
+                      v-if="!milestone.tasks.length && !milestone.goals.length"
+                      class="text-body-2 text-medium-emphasis empty-tasks"
+                    >
+                      No goals or tasks under this milestone yet.
+                    </div>
+                  </VCard>
+                </VExpansionPanelText>
+              </VExpansionPanel>
+            </VExpansionPanels>
+          </VCardText>
+        </VCard>
+      </VCol>
+
+      <VCol md="4" cols="12">
+        <!-- 👉 Pricing -->
+        <VCard title="Pricing" class="mb-6">
+          <VCardText>
+            <AppTextField label="Best Price" placeholder="Price" class="mb-6" />
+
+            <VCheckbox
+              v-model="isTaxChargeToItem"
+              label="Charge Tax on this item"
+            />
+          </VCardText>
+        </VCard>
+
+        <!-- 👉 Image -->
         <!-- 👉 Media -->
         <VCard class="mb-6">
           <VCardItem>
-            <template #title>
-              Product Image
-            </template>
+            <template #title> Item Image </template>
             <template #append>
-              <span class="text-primary font-weight-medium text-sm cursor-pointer">Add Media from URL</span>
+              <span
+                class="text-primary font-weight-medium text-sm cursor-pointer"
+                >Add Media from URL</span
+              >
             </template>
           </VCardItem>
 
@@ -143,385 +1505,462 @@ const publishButtonLabel = computed(() => `Publish ${selectedType.value}`)
             <DropZone />
           </VCardText>
         </VCard>
-
-        <!-- 👉 Variants -->
-        <VCard
-          title="Variants"
-          class="mb-6"
-        >
-          <VCardText>
-            <template
-              v-for="i in optionCounter"
-              :key="i"
-            >
-              <VRow>
-                <VCol
-                  cols="12"
-                  md="4"
-                >
-                  <AppSelect
-                    :items="['Size', 'Color', 'Weight']"
-                    placeholder="Select Variant"
-                    label="Options"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  md="8"
-                  class="d-flex align-self-end"
-                >
-                  <AppTextField
-                    placeholder="38"
-                    type="number"
-                  />
-                </VCol>
-              </VRow>
-            </template>
-
-            <VBtn
-              class="mt-6"
-              prepend-icon="tabler-plus"
-              @click="optionCounter++"
-            >
-              Add another option
-            </VBtn>
-          </VCardText>
-        </VCard>
-
-        <!-- 👉 Inventory -->
-        <VCard
-          title="Inventory"
-          class="inventory-card"
-        >
-          <VCardText>
-            <VRow>
-              <VCol
-                cols="12"
-                md="4"
-              >
-                <div class="pe-3">
-                  <VTabs
-                    v-model="activeTab"
-                    direction="vertical"
-                    color="primary"
-                    class="v-tabs-pill"
-                  >
-                    <VTab
-                      v-for="(tab, index) in inventoryTabsData"
-                      :key="index"
-                    >
-                      <VIcon
-                        :icon="tab.icon"
-                        class="me-2"
-                      />
-                      <div class="text-truncate font-weight-medium text-start">
-                        {{ tab.title }}
-                      </div>
-                    </VTab>
-                  </VTabs>
-                </div>
-              </VCol>
-
-              <VDivider :vertical="!$vuetify.display.smAndDown" />
-
-              <VCol
-                cols="12"
-                md="8"
-              >
-                <VWindow
-                  v-model="activeTab"
-                  class="w-100"
-                  :touch="false"
-                >
-                  <VWindowItem value="Restock">
-                    <div class="d-flex flex-column gap-y-4 ps-3">
-                      <p class="mb-0">
-                        Options
-                      </p>
-
-                      <div class="d-flex gap-x-4 align-center">
-                        <AppTextField
-                          label="Add to Stock"
-                          placeholder="Quantity"
-                        />
-                        <VBtn class="align-self-end">
-                          Confirm
-                        </VBtn>
-                      </div>
-
-                      <div>
-                        <div class="text-base text-high-emphasis pb-2">
-                          Product in stock now: 54
-                        </div>
-                        <div class="text-base text-high-emphasis pb-2">
-                          Product in transit: 390
-                        </div>
-                        <div class="text-base text-high-emphasis pb-2">
-                          Last time restocked: 24th June, 2022
-                        </div>
-                        <div class="text-base text-high-emphasis pb-2">
-                          Total stock over lifetime: 2,430
-                        </div>
-                      </div>
-                    </div>
-                  </VWindowItem>
-
-                  <VWindowItem value="Shipping">
-                    <VRadioGroup
-                      v-model="shippingType"
-                      label="Shipping Type"
-                      class="ms-3"
-                    >
-                      <VRadio
-                        v-for="item in shippingList"
-                        :key="item.value"
-                        :value="item.value"
-                        class="mb-4"
-                      >
-                        <template #label>
-                          <div>
-                            <div class="text-high-emphasis font-weight-medium mb-1">
-                              {{ item.title }}
-                            </div>
-                            <div class="text-sm">
-                              {{ item.desc }}
-                            </div>
-                          </div>
-                        </template>
-                      </VRadio>
-                    </VRadioGroup>
-                  </VWindowItem>
-
-                  <VWindowItem value="Global Delivery">
-                    <div class="ps-3">
-                      <h5 class="text-h5 mb-6">
-                        Global Delivery
-                      </h5>
-
-                      <VRadioGroup
-                        v-model="deliveryType"
-                        label="Global Delivery"
-                      >
-                        <VRadio
-                          value="Worldwide delivery"
-                          class="mb-4"
-                        >
-                          <template #label>
-                            <div>
-                              <div class="text-high-emphasis font-weight-medium mb-1">
-                                Worldwide delivery
-                              </div>
-                              <div class="text-sm">
-                                Only available with Shipping method:
-                                <span class="text-primary">
-                                  Fulfilled by Company name
-                                </span>
-                              </div>
-                            </div>
-                          </template>
-                        </VRadio>
-
-                        <VRadio
-                          value="Selected Countries"
-                          class="mb-4"
-                        >
-                          <template #label>
-                            <div>
-                              <div class="text-high-emphasis font-weight-medium mb-1">
-                                Selected Countries
-                              </div>
-                              <VTextField
-                                placeholder="USA"
-                                style="min-inline-size: 200px;"
-                              />
-                            </div>
-                          </template>
-                        </VRadio>
-
-                        <VRadio>
-                          <template #label>
-                            <div>
-                              <div class="text-high-emphasis font-weight-medium mb-1">
-                                Local delivery
-                              </div>
-                              <div class="text-sm">
-                                Deliver to your country of residence
-                                <span class="text-primary">
-                                  Change profile address
-                                </span>
-                              </div>
-                            </div>
-                          </template>
-                        </VRadio>
-                      </VRadioGroup>
-                    </div>
-                  </VWindowItem>
-
-                  <VWindowItem value="Attributes">
-                    <div class="ps-3">
-                      <div class="mb-6 text-h6">
-                        Attributes
-                      </div>
-                      <div class="d-flex flex-column gap-y-1">
-                        <VCheckbox
-                          v-model="selectedAttrs"
-                          label="Fragile Product"
-                          value="Fragile Product"
-                        />
-                        <VCheckbox
-                          v-model="selectedAttrs"
-                          value="Biodegradable"
-                          label="Biodegradable"
-                        />
-                        <VCheckbox
-                          v-model="selectedAttrs"
-                          value="Frozen Product"
-                        >
-                          <template #label>
-                            <div class="d-flex flex-column mb-1">
-                              <div>Frozen Product</div>
-                              <VTextField
-                                placeholder="40 C"
-                                type="number"
-                              />
-                            </div>
-                          </template>
-                        </VCheckbox>
-                        <VCheckbox
-                          v-model="selectedAttrs"
-                          value="Expiry Date"
-                        >
-                          <template #label>
-                            <div class="d-flex flex-column mb-1">
-                              <div>Expiry Date of Product</div>
-                              <AppDateTimePicker
-                                model-value="2025-06-14"
-                                placeholder="Select a Date"
-                              />
-                            </div>
-                          </template>
-                        </VCheckbox>
-                      </div>
-                    </div>
-                  </VWindowItem>
-
-                  <VWindowItem value="Advanced">
-                    <div class="ps-3">
-                      <h5 class="text-h5 mb-6">
-                        Advanced
-                      </h5>
-                      <div class="d-flex flex-sm-row flex-column flex-wrap justify-space-between gap-x-6 gap-y-4">
-                        <AppSelect
-                          label="Product ID Type"
-                          placeholder="Select Product Type"
-                          :items="['ISBN', 'UPC', 'EAN', 'JAN']"
-                        />
-                        <AppTextField
-                          label="Product Id"
-                          placeholder="100023"
-                        />
-                      </div>
-                    </div>
-                  </VWindowItem>
-                </VWindow>
-              </VCol>
-            </VRow>
-          </VCardText>
-        </VCard>
-      </VCol>
-
-      <VCol
-        md="4"
-        cols="12"
-      >
-        <!-- 👉 Pricing -->
-        <VCard
-          title="Pricing"
-          class="mb-6"
-        >
-          <VCardText>
-            <AppTextField
-              label="Best Price"
-              placeholder="Price"
-              class="mb-6"
-            />
-            <AppTextField
-              label="Discounted Price"
-              placeholder="$499"
-              class="mb-6"
-            />
-
-            <VCheckbox
-              v-model="isTaxChargeToProduct"
-              label="Charge Tax on this product"
-            />
-
-            <VDivider class="my-2" />
-
-            <div class="d-flex flex-raw align-center justify-space-between ">
-              <span>In stock</span>
-              <VSwitch density="compact" />
-            </div>
-          </VCardText>
-        </VCard>
-
-        <!-- 👉 Organize -->
-        <VCard title="Organize">
-          <VCardText>
-            <div class="d-flex flex-column gap-y-4">
-              <AppSelect
-                placeholder="Select Vendor"
-                label="Vendor"
-                :items="['Men\'s Clothing', 'Women\'s Clothing', 'Kid\'s Clothing']"
-              />
-              <div>
-                <VLabel class="d-flex">
-                  <div class="d-flex text-sm justify-space-between w-100">
-                    <div class="text-high-emphasis">
-                      Category
-                    </div>
-                  </div>
-                </VLabel>
-
-                <div class="d-flex gap-x-4">
-                  <AppSelect
-                    placeholder="Select Category"
-                    :items="['Household', 'Office', 'Electronics', 'Management', 'Automotive']"
-                  />
-                  <VBtn
-                    rounded
-                    icon="tabler-plus"
-                    variant="tonal"
-                  />
-                </div>
-              </div>
-              <AppSelect
-                placeholder="Select Collection"
-                label="Collection"
-                :items="['Men\'s Clothing', 'Women\'s Clothing', 'Kid\'s Clothing']"
-              />
-              <AppSelect
-                placeholder="Select Status"
-                label="Status"
-                :items="['Published', 'Inactive', 'Scheduled']"
-              />
-              <AppTextField
-                label="Tags"
-                placeholder="Fashion, Trending, Summer"
-              />
-            </div>
-          </VCardText>
-        </VCard>
       </VCol>
     </VRow>
+
+    <VDialog v-model="isRelatedItemDialogOpen" max-width="760">
+      <VCard>
+        <VCardItem title="Add Related Item" />
+
+        <VCardText>
+          <VRow>
+            <VCol cols="6">
+              <AppTextField
+                v-model="relatedItemName"
+                label="Name"
+                placeholder="Acoustic Wall Panel"
+                :error="Boolean(relatedItemErrors.name)"
+                :error-messages="relatedItemErrors.name"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <CatalogueCategoryTreeSelect
+                v-model="relatedItemCategory"
+                label="Category"
+                placeholder="Select Category"
+                :items="categoryTree"
+              />
+              <div
+                v-if="relatedItemErrors.category"
+                class="text-error text-caption mt-1"
+              >
+                {{ relatedItemErrors.category }}
+              </div>
+            </VCol>
+            <VCol cols="12">
+              <span class="mb-1">Description (optional)</span>
+              <ProductDescriptionEditor
+                v-model="relatedItemDescription"
+                placeholder="Item Description"
+                class="border rounded"
+              />
+            </VCol>
+          </VRow>
+        </VCardText>
+
+        <VCardActions class="px-6 pb-6 justify-space-between">
+          <VBtn color="primary" variant="tonal" @click="saveRelatedItem">
+            Save Related Item
+          </VBtn>
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isRelatedItemDialogOpen = false"
+          >
+            Cancel
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="milestoneDialog.visible" max-width="560">
+      <VCard>
+        <VCardText>
+          <h5 class="text-h5 mb-4">Edit Milestone</h5>
+          <VForm ref="milestoneFormRef" @submit.prevent="saveMilestone">
+            <VRow>
+              <VCol cols="12" md="8">
+                <AppTextField
+                  v-model="milestoneDialog.draft.name"
+                  label="Milestone Name"
+                  placeholder="Milestone Name"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12" md="4">
+                <AppSelect
+                  v-model="milestoneDialog.draft.priority"
+                  label="Priority"
+                  placeholder="Select Priority"
+                  :items="priorityOptions"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppDateTimePicker
+                  v-model="milestoneDialog.draft.dueDate"
+                  label="Due Date"
+                  placeholder="YYYY-MM-DD"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppTextarea
+                  v-model="milestoneDialog.draft.note"
+                  label="Notes"
+                  placeholder="Notes about the milestone"
+                  auto-grow
+                />
+              </VCol>
+              <VCol cols="12">
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="milestoneDialog.visible = false"
+                />
+              </VCol>
+            </VRow>
+          </VForm>
+        </VCardText>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="goalDialog.visible" max-width="560">
+      <VCard>
+        <VCardText>
+          <h5 class="text-h5 mb-4">
+            {{ goalDialog.mode === "create" ? "Add Goal" : "Edit Goal" }}
+          </h5>
+          <VForm ref="goalFormRef" @submit.prevent="saveGoal">
+            <VRow>
+              <VCol cols="12" md="8">
+                <AppTextField
+                  v-model="goalDialog.draft.name"
+                  label="Goal Name"
+                  placeholder="Goal Name"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12" md="4">
+                <AppSelect
+                  v-model="goalDialog.draft.priority"
+                  label="Priority"
+                  placeholder="Select Priority"
+                  :items="priorityOptions"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppDateTimePicker
+                  v-model="goalDialog.draft.dueDate"
+                  label="Due Date"
+                  placeholder="YYYY-MM-DD"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppTextarea
+                  v-model="goalDialog.draft.note"
+                  label="Notes"
+                  placeholder="Notes about the goal"
+                  auto-grow
+                />
+              </VCol>
+              <VCol cols="12">
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="goalDialog.visible = false"
+                />
+              </VCol>
+            </VRow>
+          </VForm>
+        </VCardText>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="taskDialog.visible" max-width="560">
+      <VCard>
+        <VCardText>
+          <h5 class="text-h5 mb-4">
+            {{ taskDialog.mode === "create" ? "Add Task" : "Edit Task" }}
+          </h5>
+          <VForm ref="taskFormRef" @submit.prevent="saveTask">
+            <VRow>
+              <VCol cols="12" md="8">
+                <AppTextField
+                  v-model="taskDialog.draft.title"
+                  label="Task Title"
+                  placeholder="Task Title"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12" md="4">
+                <AppSelect
+                  v-model="taskDialog.draft.status"
+                  label="Status"
+                  placeholder="Select Status"
+                  :items="taskStatusOptions"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="6">
+                <AppDateTimePicker
+                  v-model="taskDialog.draft.dueAt"
+                  label="Due Date"
+                  placeholder="YYYY-MM-DD"
+                />
+              </VCol>
+              <VCol cols="12" md="6">
+                <AppTextField
+                  v-model.number="taskDialog.draft.manhours"
+                  label="Manhours"
+                  placeholder="8"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppTextarea
+                  v-model="taskDialog.draft.notes"
+                  label="Notes"
+                  placeholder="Task notes"
+                  auto-grow
+                />
+              </VCol>
+              <VCol cols="12">
+                <VCheckbox
+                  v-model="taskDialog.draft.important"
+                  label="Mark as important"
+                />
+              </VCol>
+              <VCol cols="12">
+                <DialogActionBar
+                  save-type="submit"
+                  @save="() => undefined"
+                  @cancel="taskDialog.visible = false"
+                />
+              </VCol>
+            </VRow>
+          </VForm>
+        </VCardText>
+      </VCard>
+    </VDialog>
   </div>
 </template>
 
 <style lang="scss" scoped>
-  .drop-zone {
-    border: 2px dashed rgba(var(--v-theme-on-surface), 0.12);
-    border-radius: 6px;
-  }
+.drop-zone {
+  border: 2px dashed rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 6px;
+}
+
+.sales-task-row {
+  display: flex;
+  align-items: flex-end;
+  padding: 1rem;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 14px;
+  background: rgba(var(--v-theme-on-surface), 0.02);
+  gap: 1rem;
+}
+
+.sales-task-row__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-primary), 0.14);
+  block-size: 2.5rem;
+  color: rgb(var(--v-theme-primary));
+  inline-size: 2.5rem;
+  margin-block-end: 0.25rem;
+}
+
+.sales-task-row__field {
+  flex: 1 1 auto;
+}
+
+.sales-task-row__delete {
+  flex: 0 0 auto;
+  margin-block-end: 0.25rem;
+}
+
+.related-item-card {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 16px;
+  background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.related-item-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding-block: 0.875rem;
+  padding-inline: 1rem;
+}
+
+.related-item-card__dot {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-primary));
+  block-size: 0.625rem;
+  inline-size: 0.625rem;
+  margin-block-start: 0.4rem;
+}
+
+.related-item-card__content {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.milestone-panels :deep(.v-expansion-panel),
+.goal-panels :deep(.v-expansion-panel) {
+  background: transparent;
+}
+
+.milestone-panels :deep(.v-expansion-panel-title),
+.goal-panels :deep(.v-expansion-panel-title) {
+  padding-block: 1rem;
+  padding-inline: 1.25rem;
+}
+
+.milestone-panels :deep(.v-expansion-panel-text__wrapper),
+.goal-panels :deep(.v-expansion-panel-text__wrapper) {
+  padding-block: 0 1rem;
+  padding-inline: 1rem;
+}
+
+.milestone-panels :deep(.v-expansion-panel__shadow),
+.goal-panels :deep(.v-expansion-panel__shadow) {
+  box-shadow: none;
+}
+
+.milestone-panel {
+  border-radius: 12px;
+}
+
+.goal-panels :deep(.v-expansion-panel) {
+  border: 0;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-info), 0.035);
+}
+
+.goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
+  margin-block-start: 0.625rem;
+}
+
+.goal-panels :deep(.v-expansion-panel-title) {
+  min-block-size: auto;
+}
+
+.milestone-status-dot {
+  border-radius: 999px;
+  background: rgb(var(--v-theme-primary));
+  block-size: 10px;
+  inline-size: 10px;
+  min-inline-size: 10px;
+}
+
+.milestone-panel-body,
+.goal-panel-body {
+  background: rgba(var(--v-theme-surface), 0.14);
+  box-shadow: none;
+}
+
+.milestone-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.goal-panels {
+  margin-block-start: 0;
+}
+
+.milestone-direct-tasks {
+  margin-block-end: 0;
+}
+
+.goal-icon {
+  color: rgb(var(--v-theme-info));
+}
+
+.task-row {
+  border: 1px solid rgba(255, 255, 255, 6%);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 3%);
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+}
+
+.task-template-icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+}
+
+.task-row-main,
+.milestone-actions,
+.goal-actions {
+  min-inline-size: 0;
+}
+
+.milestone-actions,
+.goal-actions {
+  gap: 0.25rem !important;
+}
+
+.milestone-actions :deep(.v-btn),
+.goal-actions :deep(.v-btn) {
+  margin: 0;
+}
+
+.milestone-panel :deep(.v-expansion-panel-title__icon),
+.goal-panel :deep(.v-expansion-panel-title__icon) {
+  margin-inline-start: 0.25rem;
+}
+
+.task-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.task-row-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.task-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.task-copy strong,
+.task-copy span {
+  overflow-wrap: anywhere;
+}
+
+.truncate-title {
+  display: block;
+  overflow: hidden;
+  max-inline-size: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truncate-title--header {
+  max-inline-size: min(28rem, 100%);
+}
+
+.task-row-side {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.empty-tasks {
+  padding-block: 0.5rem;
+  padding-inline: 0;
+}
 </style>
 
 <style lang="scss">

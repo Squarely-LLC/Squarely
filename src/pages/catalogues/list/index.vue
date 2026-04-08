@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 
 import type {
   CatalogueActiveState,
+  CatalogueItem,
   CatalogueItemType,
-  CatalogueProduct,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type { CatalogueCategory } from "@/plugins/fake-api/handlers/config/types";
 import { useCataloguesStore } from "@/stores/catalogues";
@@ -30,6 +31,7 @@ const cataloguesStore = useCataloguesStore();
 cataloguesStore.init();
 const configStore = useConfigStore();
 configStore.init();
+const router = useRouter();
 
 const headers = [
   { title: "Item", key: "product" },
@@ -86,7 +88,7 @@ const flattenCategoryNames = (items?: CatalogueCategory[]) => {
 
 const configuredTypes = computed<{ title: string; value: CatalogueItemType }[]>(() => {
   const values = cleanEntries(configStore.configurations.catalogue?.itemTypes);
-  const source = values.length ? values : DEFAULT_TYPE_OPTIONS;
+  const source = (values.length ? values : DEFAULT_TYPE_OPTIONS) as CatalogueItemType[];
 
   return source.map(value => ({ title: value, value }));
 });
@@ -119,7 +121,7 @@ const orderBy = ref<SortOrder | undefined>("desc");
 const openActiveMenuId = ref<number | string | null>(null);
 const isDeleteConfirmVisible = ref(false);
 const isAddItemTypeDialogVisible = ref(false);
-const deleteCandidate = ref<CatalogueProduct | null>(null);
+const deleteCandidate = ref<CatalogueItem | null>(null);
 const itemTypeChoices: ItemTypeChoice[] = [
   {
     title: "Onetime Service",
@@ -200,14 +202,14 @@ const activeTextClass = (activeState: CatalogueActiveState) =>
 const isArchivedState = (value?: string | null) =>
   String(value ?? "").trim().toLowerCase() === "archived";
 
-const hasInventoryQuantity = (product: CatalogueProduct) =>
+const hasInventoryQuantity = (product: CatalogueItem) =>
   product.type === "Product" ||
   product.type === "Produced Product" ||
   product.type === "Rental";
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
-const matchesFilters = (product: CatalogueProduct) => {
+const matchesFilters = (product: CatalogueItem) => {
   const query = normalizedSearch.value;
   if (query) {
     const haystacks = [
@@ -241,7 +243,7 @@ const matchesFilters = (product: CatalogueProduct) => {
   return true;
 };
 
-const normalizeSortValue = (product: CatalogueProduct, key?: SortKey) => {
+const normalizeSortValue = (product: CatalogueItem, key?: SortKey) => {
   switch (key) {
     case "name":
       return product.name?.toLowerCase() ?? "";
@@ -261,7 +263,7 @@ const normalizeSortValue = (product: CatalogueProduct, key?: SortKey) => {
   }
 };
 
-const compareProducts = (a: CatalogueProduct, b: CatalogueProduct) => {
+const compareProducts = (a: CatalogueItem, b: CatalogueItem) => {
   const key = sortBy.value ?? "createdAt";
   const order = orderBy.value ?? "desc";
 
@@ -283,17 +285,17 @@ const compareProducts = (a: CatalogueProduct, b: CatalogueProduct) => {
   return order === "asc" ? diff : -diff;
 };
 
-const filteredProducts = computed<CatalogueProduct[]>(() =>
+const filteredProducts = computed<CatalogueItem[]>(() =>
   cataloguesStore.all.filter(matchesFilters),
 );
 
-const sortedProducts = computed<CatalogueProduct[]>(() => {
+const sortedProducts = computed<CatalogueItem[]>(() => {
   const items = [...filteredProducts.value];
   if (items.length > 1) items.sort(compareProducts);
   return items;
 });
 
-const displayedProducts = computed<CatalogueProduct[]>(() => {
+const displayedProducts = computed<CatalogueItem[]>(() => {
   const start = (page.value - 1) * itemsPerPage.value;
   const end =
     itemsPerPage.value === -1
@@ -305,11 +307,11 @@ const displayedProducts = computed<CatalogueProduct[]>(() => {
 
 const totalProducts = computed(() => sortedProducts.value.length);
 
-const updateActiveState = (product: CatalogueProduct, activeState: string) => {
+const updateActiveState = (product: CatalogueItem, activeState: string) => {
   cataloguesStore.updateProduct(product.id, { activeState });
 };
 
-const confirmDeleteCandidate = (product: CatalogueProduct) => {
+const confirmDeleteCandidate = (product: CatalogueItem) => {
   deleteCandidate.value = product;
   isDeleteConfirmVisible.value = true;
 };
@@ -334,10 +336,20 @@ const openAddItemTypeDialog = () => {
 
 const goToAddItemPage = (type: string) => {
   isAddItemTypeDialogVisible.value = false;
-  $router.push({
+  router.push({
     path: "/catalogues/add",
     query: {
       type,
+    },
+  });
+};
+
+const goToEditItemPage = (item: CatalogueItem) => {
+  router.push({
+    path: "/catalogues/add",
+    query: {
+      type: item.type,
+      id: item.id,
     },
   });
 };
@@ -422,7 +434,14 @@ const goToAddItemPage = (type: string) => {
         @update:options="updateOptions"
       >
         <template #item.product="{ item }">
-          <div class="d-flex align-center gap-x-4">
+          <div
+            class="d-flex align-center gap-x-4 item-link-cell"
+            role="button"
+            tabindex="0"
+            @click="goToEditItemPage(item)"
+            @keydown.enter.prevent="goToEditItemPage(item)"
+            @keydown.space.prevent="goToEditItemPage(item)"
+          >
             <VAvatar
               v-if="item.image"
               size="38"
@@ -440,15 +459,40 @@ const goToAddItemPage = (type: string) => {
         </template>
 
         <template #item.category="{ item }">
-          <span class="text-body-1 text-high-emphasis">{{ item.category }}</span>
+          <span
+            class="text-body-1 text-high-emphasis item-link-cell"
+            role="button"
+            tabindex="0"
+            @click="goToEditItemPage(item)"
+            @keydown.enter.prevent="goToEditItemPage(item)"
+            @keydown.space.prevent="goToEditItemPage(item)"
+          >
+            {{ item.category }}
+          </span>
         </template>
 
         <template #item.type="{ item }">
-          <span class="text-body-1 text-high-emphasis">{{ item.type }}</span>
+          <span
+            class="text-body-1 text-high-emphasis item-link-cell"
+            role="button"
+            tabindex="0"
+            @click="goToEditItemPage(item)"
+            @keydown.enter.prevent="goToEditItemPage(item)"
+            @keydown.space.prevent="goToEditItemPage(item)"
+          >
+            {{ item.type }}
+          </span>
         </template>
 
         <template #item.qty="{ item }">
-          <span class="text-body-1 text-high-emphasis">
+          <span
+            class="text-body-1 text-high-emphasis item-link-cell"
+            role="button"
+            tabindex="0"
+            @click="goToEditItemPage(item)"
+            @keydown.enter.prevent="goToEditItemPage(item)"
+            @keydown.space.prevent="goToEditItemPage(item)"
+          >
             {{ hasInventoryQuantity(item) ? item.qty : "-" }}
           </span>
         </template>
@@ -504,7 +548,7 @@ const goToAddItemPage = (type: string) => {
         </template>
 
         <template #item.actions="{ item }">
-          <IconBtn>
+          <IconBtn @click="goToEditItemPage(item)">
             <VIcon icon="tabler-edit" />
           </IconBtn>
 
@@ -631,6 +675,15 @@ const goToAddItemPage = (type: string) => {
 .status-trigger {
   justify-content: flex-start;
   min-inline-size: 0;
+}
+
+.item-link-cell {
+  cursor: pointer;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: rgb(var(--v-theme-primary)) !important;
+  }
 }
 
 .item-type-card {
