@@ -4,12 +4,20 @@ export const useCalendarStore = defineStore("calendar", {
   // arrow function recommended for full type inference
   state: () => ({
     availableCalendars: [
-      { label: "Tasks", color: "primary" },
-      { label: "Meetings", color: "success" },
-      { label: "Leaves", color: "warning" },
+      { label: "Task", color: "primary" },
+      { label: "Meeting", color: "success" },
+      { label: "Leave", color: "warning" },
+      { label: "Sick Leave", color: "error" },
+      { label: "Sales Booking", color: "info" },
     ],
     // "View all" shows as checked because selected = all by default
-    selectedCalendars: ["Tasks", "Meetings", "Leaves"],
+    selectedCalendars: [
+      "Task",
+      "Meeting",
+      "Leave",
+      "Sick Leave",
+      "Sales Booking",
+    ],
     todoImportantOnly: false,
   }),
   actions: {

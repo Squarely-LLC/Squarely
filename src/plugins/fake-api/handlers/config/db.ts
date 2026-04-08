@@ -217,6 +217,49 @@ export const db: ConfigDB = {
       ],
       dealAlert: { enabled: true, days: 5 },
     },
+    catalogue: {
+      itemTypes: [
+        "Onetime Service",
+        "Product",
+        "Contractual Service",
+        "Retainer Service",
+        "Reccurent Service",
+        "Produced Product",
+        "Rental",
+      ],
+      activeStates: ["Active", "Non-Active", "Archived"],
+      hideArchivedByDefault: true,
+      categories: [
+        {
+          id: "cat-furniture",
+          name: "Furniture",
+          children: [
+            {
+              id: "cat-furniture-office",
+              name: "Office Furniture",
+              children: [
+                {
+                  id: "cat-furniture-office-desks",
+                  name: "Desks",
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "cat-lighting",
+          name: "Lighting",
+          children: [
+            {
+              id: "cat-lighting-decorative",
+              name: "Decorative",
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

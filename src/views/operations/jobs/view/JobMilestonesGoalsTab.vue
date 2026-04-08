@@ -1237,12 +1237,18 @@ const formatDate = (value?: string | null) => {
   box-shadow: none;
 }
 
+.milestone-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .goal-panels {
-  margin-block-start: 1rem;
+  margin-block-start: 0;
 }
 
 .milestone-direct-tasks {
-  margin-block-end: 1rem;
+  margin-block-end: 0;
 }
 
 .goal-icon {

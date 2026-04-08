@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import SettingsCRM from "@/views/apps/configuration/SettingsCRM.vue";
+import SettingsCatalogue from "@/views/apps/configuration/SettingsCatalogue.vue";
 import SettingsFinancial from "@/views/apps/configuration/SettingsFinancial.vue";
 import SettingsHR from "@/views/apps/configuration/SettingsHR.vue";
 import SettingsLegal from "@/views/apps/configuration/SettingsLegal.vue";
@@ -17,6 +18,7 @@ const tabsData = [
   { icon: "tabler-currency-dollar", title: "Financial" },
   { icon: "tabler-man", title: "Human Resources" },
   { icon: "tabler-hierarchy", title: "CRM" },
+  { icon: "tabler-library", title: "Catalogue" },
   // { icon: "tabler-map-pin", title: "Location" },
   // { icon: "tabler-bell-ringing", title: "Notifications" },
 ];
@@ -27,6 +29,7 @@ const tabKeys = [
   "financial",
   "HR",
   "CRM",
+  "catalogue",
   "location",
   "notifications",
 ] as const;
@@ -115,6 +118,10 @@ watch(
 
         <VWindowItem>
           <SettingsCRM />
+        </VWindowItem>
+
+        <VWindowItem>
+          <SettingsCatalogue />
         </VWindowItem>
 
         <VWindowItem>

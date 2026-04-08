@@ -107,12 +107,26 @@ export interface DealsConfig {
   dealAlert?: { enabled: boolean; days?: number };
 }
 
+export interface CatalogueConfig {
+  itemTypes?: string[];
+  activeStates?: string[];
+  hideArchivedByDefault?: boolean;
+  categories?: CatalogueCategory[];
+}
+
+export interface CatalogueCategory {
+  id: string;
+  name: string;
+  children?: CatalogueCategory[];
+}
+
 interface AppConfigurations {
   legal?: LegalConfig;
   financial?: FinancialConfig;
   hr?: HrConfig;
   crm?: CrmConfig;
   deals?: DealsConfig;
+  catalogue?: CatalogueConfig;
 }
 
 export default AppConfigurations;

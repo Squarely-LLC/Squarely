@@ -1,220 +1,245 @@
 <script setup lang="ts">
-import type { ECommerceProduct } from '@db/apps/ecommerce/types'
+import { computed, ref, watch } from "vue";
 
-const widgetData = ref([
-  { title: 'In-Store Sales', value: '$5,345', icon: 'tabler-smart-home', desc: '5k orders', change: 5.7 },
-  { title: 'Website Sales', value: '$674,347', icon: 'tabler-device-laptop', desc: '21k orders', change: 12.4 },
-  { title: 'Discount', value: '$14,235', icon: 'tabler-gift', desc: '6k orders' },
-  { title: 'Affiliate', value: '$8,345', icon: 'tabler-wallet', desc: '150 orders', change: -3.5 },
-])
+import type {
+  CatalogueActiveState,
+  CatalogueItemType,
+  CatalogueProduct,
+} from "@/plugins/fake-api/handlers/catalogues/types";
+import { useCataloguesStore } from "@/stores/catalogues";
+
+type SortKey =
+  | "name"
+  | "category"
+  | "activeState"
+  | "sku"
+  | "qty"
+  | "type"
+  | "createdAt";
+type SortOrder = "asc" | "desc";
+
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
 
 const headers = [
-  { title: 'Product', key: 'product' },
-  { title: 'Category', key: 'category' },
-  { title: 'Stock', key: 'stock', sortable: false },
-  { title: 'SKU', key: 'sku' },
-  { title: 'Price', key: 'price' },
-  { title: 'QTY', key: 'qty' },
-  { title: 'Status', key: 'status' },
-  { title: 'Actions', key: 'actions', sortable: false },
-]
+  { title: "Item", key: "product" },
+  { title: "Category", key: "category" },
+  { title: "Type", key: "type" },
+  { title: "Active", key: "activeState", sortable: false },
+  { title: "SKU", key: "sku" },
+  { title: "QTY", key: "qty" },
+  { title: "Actions", key: "actions", sortable: false },
+];
 
-const selectedStatus = ref()
-const selectedCategory = ref()
-const selectedStock = ref<boolean | undefined>()
-const searchQuery = ref('')
-const selectedRows = ref([])
+const selectedType = ref<CatalogueItemType | undefined>();
+const selectedCategory = ref<string | undefined>();
+const selectedActive = ref<CatalogueActiveState | undefined>();
+const searchQuery = ref("");
 
-const status = ref([
-  { title: 'Scheduled', value: 'Scheduled' },
-  { title: 'Publish', value: 'Published' },
-  { title: 'Inactive', value: 'Inactive' },
-])
+const types = ref<{ title: string; value: CatalogueItemType }[]>([
+  { title: "Onetime Service", value: "Onetime Service" },
+  { title: "Product", value: "Product" },
+  { title: "Contractual Service", value: "Contractual Service" },
+  { title: "Retainer Service", value: "Retainer Service" },
+  { title: "Reccurent Service", value: "Reccurent Service" },
+  { title: "Produced Product", value: "Produced Product" },
+  { title: "Rental", value: "Rental" },
+]);
 
-const categories = ref([
-  { title: 'Accessories', value: 'Accessories' },
-  { title: 'Home Decor', value: 'Home Decor' },
-  { title: 'Electronics', value: 'Electronics' },
-  { title: 'Shoes', value: 'Shoes' },
-  { title: 'Office', value: 'Office' },
-  { title: 'Games', value: 'Games' },
-])
+const categories = computed(() => {
+  const unique = Array.from(
+    new Set(cataloguesStore.all.map(product => product.category).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
 
-const stockStatus = ref([
-  { title: 'In Stock', value: true },
-  { title: 'Out of Stock', value: false },
-])
+  return unique.map(category => ({ title: category, value: category }));
+});
 
-// Data table options
-const itemsPerPage = ref(10)
-const page = ref(1)
-const sortBy = ref()
-const orderBy = ref()
+const activeOptions = ref<{ title: string; value: CatalogueActiveState }[]>([
+  { title: "Active", value: "Active" },
+  { title: "Non-Active", value: "Non-Active" },
+  { title: "Archived", value: "Archived" },
+]);
 
-// Update data table options
-const updateOptions = (options: any) => {
-  sortBy.value = options.sortBy[0]?.key
-  orderBy.value = options.sortBy[0]?.order
-}
+const itemsPerPage = ref(10);
+const page = ref(1);
+const sortBy = ref<SortKey | undefined>("createdAt");
+const orderBy = ref<SortOrder | undefined>("desc");
+const openActiveMenuId = ref<number | string | null>(null);
+const isDeleteConfirmVisible = ref(false);
+const deleteCandidate = ref<CatalogueProduct | null>(null);
 
-const resolveCategory = (category: string) => {
-  if (category === 'Accessories')
-    return { color: 'error', icon: 'tabler-device-watch' }
-  if (category === 'Home Decor')
-    return { color: 'info', icon: 'tabler-home' }
-  if (category === 'Electronics')
-    return { color: 'primary', icon: 'tabler-device-imac' }
-  if (category === 'Shoes')
-    return { color: 'success', icon: 'tabler-shoe' }
-  if (category === 'Office')
-    return { color: 'warning', icon: 'tabler-briefcase' }
-  if (category === 'Games')
-    return { color: 'primary', icon: 'tabler-device-gamepad-2' }
-}
+const updateOptions = (options: {
+  sortBy?: Array<{ key: SortKey; order: SortOrder }>;
+}) => {
+  sortBy.value = options.sortBy?.[0]?.key ?? "createdAt";
+  orderBy.value = options.sortBy?.[0]?.order ?? "desc";
+};
 
-const resolveStatus = (statusMsg: string) => {
-  if (statusMsg === 'Scheduled')
-    return { text: 'Scheduled', color: 'warning' }
-  if (statusMsg === 'Published')
-    return { text: 'Publish', color: 'success' }
-  if (statusMsg === 'Inactive')
-    return { text: 'Inactive', color: 'error' }
-}
+watch([selectedType, selectedCategory, selectedActive, searchQuery], () => {
+  page.value = 1;
+});
 
-const { data: productsData, execute: fetchProducts } = await useApi<any>(createUrl('/apps/ecommerce/products',
-  {
-    query: {
-      q: searchQuery,
-      stock: selectedStock,
-      category: selectedCategory,
-      status: selectedStatus,
-      page,
-      itemsPerPage,
-      sortBy,
-      orderBy,
-    },
-  },
-))
+const setActiveMenu = (id: number | string, value: boolean) => {
+  openActiveMenuId.value = value ? id : null;
+};
 
-const products = computed((): ECommerceProduct[] => productsData.value.products)
-const totalProduct = computed(() => productsData.value.total)
+const resolveActive = (activeState: CatalogueActiveState) => {
+  if (activeState === "Active") return { text: "Active", color: "success" };
+  if (activeState === "Non-Active")
+    return { text: "Non-Active", color: "warning" };
+  return { text: "Archived", color: "secondary" };
+};
 
-const deleteProduct = async (id: number) => {
-  await $api(`apps/ecommerce/products/${id}`, {
-    method: 'DELETE',
-  })
+const activeTextClass = (activeState: CatalogueActiveState) =>
+  activeState === "Active"
+    ? "text-success"
+    : activeState === "Non-Active"
+      ? "text-warning"
+      : "text-secondary";
 
-  // Delete from selectedRows
-  const index = selectedRows.value.findIndex(row => row === id)
-  if (index !== -1)
-    selectedRows.value.splice(index, 1)
+const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
-  // Refetch products
-  fetchProducts()
-}
+const matchesFilters = (product: CatalogueProduct) => {
+  const query = normalizedSearch.value;
+  if (query) {
+    const haystacks = [
+      product.name,
+      product.brand,
+      product.category,
+      product.type,
+      product.sku,
+      product.activeState,
+    ]
+      .filter(Boolean)
+      .map(value => String(value).toLowerCase());
+
+    if (!haystacks.some(value => value.includes(query))) return false;
+  }
+
+  if (selectedType.value && product.type !== selectedType.value) {
+    return false;
+  }
+
+  if (selectedCategory.value && product.category !== selectedCategory.value) {
+    return false;
+  }
+
+  if (selectedActive.value) {
+    if (product.activeState !== selectedActive.value) return false;
+  } else if (product.activeState === "Archived") {
+    return false;
+  }
+
+  return true;
+};
+
+const normalizeSortValue = (product: CatalogueProduct, key?: SortKey) => {
+  switch (key) {
+    case "name":
+      return product.name?.toLowerCase() ?? "";
+    case "category":
+      return product.category?.toLowerCase() ?? "";
+    case "activeState":
+      return product.activeState ?? "";
+    case "sku":
+      return product.sku?.toLowerCase() ?? "";
+    case "qty":
+      return product.qty ?? 0;
+    case "type":
+      return product.type ?? "";
+    case "createdAt":
+    default:
+      return product.createdAt ?? "";
+  }
+};
+
+const compareProducts = (a: CatalogueProduct, b: CatalogueProduct) => {
+  const key = sortBy.value ?? "createdAt";
+  const order = orderBy.value ?? "desc";
+
+  const aValue = normalizeSortValue(a, key);
+  const bValue = normalizeSortValue(b, key);
+
+  if (key === "createdAt") {
+    const aDate = aValue ? new Date(String(aValue)).getTime() : 0;
+    const bDate = bValue ? new Date(String(bValue)).getTime() : 0;
+    return order === "asc" ? aDate - bDate : bDate - aDate;
+  }
+
+  if (key === "qty") {
+    const diff = Number(aValue) - Number(bValue);
+    return order === "asc" ? diff : -diff;
+  }
+
+  const diff = String(aValue).localeCompare(String(bValue));
+  return order === "asc" ? diff : -diff;
+};
+
+const filteredProducts = computed<CatalogueProduct[]>(() =>
+  cataloguesStore.all.filter(matchesFilters),
+);
+
+const sortedProducts = computed<CatalogueProduct[]>(() => {
+  const items = [...filteredProducts.value];
+  if (items.length > 1) items.sort(compareProducts);
+  return items;
+});
+
+const displayedProducts = computed<CatalogueProduct[]>(() => {
+  const start = (page.value - 1) * itemsPerPage.value;
+  const end =
+    itemsPerPage.value === -1
+      ? sortedProducts.value.length
+      : start + itemsPerPage.value;
+
+  return sortedProducts.value.slice(start, end);
+});
+
+const totalProducts = computed(() => sortedProducts.value.length);
+
+const updateActiveState = (
+  product: CatalogueProduct,
+  activeState: CatalogueActiveState,
+) => {
+  cataloguesStore.updateProduct(product.id, { activeState });
+};
+
+const confirmDeleteCandidate = (product: CatalogueProduct) => {
+  deleteCandidate.value = product;
+  isDeleteConfirmVisible.value = true;
+};
+
+const performDeleteConfirmed = () => {
+  if (deleteCandidate.value) {
+    cataloguesStore.removeProduct(deleteCandidate.value.id);
+  }
+
+  isDeleteConfirmVisible.value = false;
+  deleteCandidate.value = null;
+};
+
+const cancelDelete = () => {
+  isDeleteConfirmVisible.value = false;
+  deleteCandidate.value = null;
+};
 </script>
 
 <template>
   <div>
-    <!-- 👉 widgets -->
-    <VCard class="mb-6">
-      <VCardText class="px-3">
-        <VRow>
-          <template
-            v-for="(data, id) in widgetData"
-            :key="id"
-          >
-            <VCol
-              cols="12"
-              sm="6"
-              md="3"
-              class="px-6"
-            >
-              <div
-                class="d-flex justify-space-between"
-                :class="$vuetify.display.xs
-                  ? id !== widgetData.length - 1 ? 'border-b pb-4' : ''
-                  : $vuetify.display.sm
-                    ? id < (widgetData.length / 2) ? 'border-b pb-4' : ''
-                    : ''"
-              >
-                <div class="d-flex flex-column gap-y-1">
-                  <div class="text-body-1 text-capitalize">
-                    {{ data.title }}
-                  </div>
-
-                  <h4 class="text-h4">
-                    {{ data.value }}
-                  </h4>
-
-                  <div class="d-flex align-center gap-x-2">
-                    <div class="text-no-wrap">
-                      {{ data.desc }}
-                    </div>
-
-                    <VChip
-                      v-if="data.change"
-                      label
-                      :color="data.change > 0 ? 'success' : 'error'"
-                      size="small"
-                    >
-                      {{ prefixWithPlus(data.change) }}%
-                    </VChip>
-                  </div>
-                </div>
-
-                <VAvatar
-                  variant="tonal"
-                  rounded
-                  size="44"
-                >
-                  <VIcon
-                    :icon="data.icon"
-                    size="28"
-                    class="text-high-emphasis"
-                  />
-                </VAvatar>
-              </div>
-            </VCol>
-            <VDivider
-              v-if="$vuetify.display.mdAndUp ? id !== widgetData.length - 1
-                : $vuetify.display.smAndUp ? id % 2 === 0
-                  : false"
-              vertical
-              inset
-              length="92"
-            />
-          </template>
-        </VRow>
-      </VCardText>
-    </VCard>
-
-    <!-- 👉 products -->
-    <VCard
-      title="Filters"
-      class="mb-6"
-    >
+    <VCard title="Filters" class="mb-6">
       <VCardText>
         <VRow>
-          <!-- 👉 Select Status -->
-          <VCol
-            cols="12"
-            sm="4"
-          >
+          <VCol cols="12" sm="4">
             <AppSelect
-              v-model="selectedStatus"
-              placeholder="Status"
-              :items="status"
+              v-model="selectedType"
+              placeholder="Type"
+              :items="types"
               clearable
               clear-icon="tabler-x"
             />
           </VCol>
 
-          <!-- 👉 Select Category -->
-          <VCol
-            cols="12"
-            sm="4"
-          >
+          <VCol cols="12" sm="4">
             <AppSelect
               v-model="selectedCategory"
               placeholder="Category"
@@ -224,15 +249,11 @@ const deleteProduct = async (id: number) => {
             />
           </VCol>
 
-          <!-- 👉 Select Stock Status -->
-          <VCol
-            cols="12"
-            sm="4"
-          >
+          <VCol cols="12" sm="4">
             <AppSelect
-              v-model="selectedStock"
-              placeholder="Stock"
-              :items="stockStatus"
+              v-model="selectedActive"
+              placeholder="Active"
+              :items="activeOptions"
               clearable
               clear-icon="tabler-x"
             />
@@ -244,55 +265,43 @@ const deleteProduct = async (id: number) => {
 
       <div class="d-flex flex-wrap gap-4 ma-6">
         <div class="d-flex align-center">
-          <!-- 👉 Search  -->
           <AppTextField
             v-model="searchQuery"
-            placeholder="Search Product"
-            style="inline-size: 200px;"
+            placeholder="Search Catalogue"
+            style="inline-size: 200px"
             class="me-3"
           />
         </div>
 
         <VSpacer />
         <div class="d-flex gap-4 flex-wrap align-center">
-          <AppSelect
-            v-model="itemsPerPage"
-            :items="[5, 10, 20, 25, 50]"
-          />
-          <!-- 👉 Export button -->
-          <VBtn
-            variant="tonal"
-            color="secondary"
-            prepend-icon="tabler-upload"
-          >
+          <AppSelect v-model="itemsPerPage" :items="[5, 10, 20, 25, 50]" />
+
+          <VBtn variant="tonal" color="secondary" prepend-icon="tabler-upload">
             Export
           </VBtn>
 
           <VBtn
             color="primary"
             prepend-icon="tabler-plus"
-            @click="$router.push('/apps/ecommerce/product/add')"
+            @click="$router.push('/catalogues/add')"
           >
-            Add Product
+            Add Item
           </VBtn>
         </div>
       </div>
 
       <VDivider class="mt-4" />
 
-      <!-- 👉 Datatable  -->
       <VDataTableServer
         v-model:items-per-page="itemsPerPage"
-        v-model:model-value="selectedRows"
         v-model:page="page"
         :headers="headers"
-        show-select
-        :items="products"
-        :items-length="totalProduct"
+        :items="displayedProducts"
+        :items-length="totalProducts"
         class="text-no-wrap"
         @update:options="updateOptions"
       >
-        <!-- product  -->
         <template #item.product="{ item }">
           <div class="d-flex align-center gap-x-4">
             <VAvatar
@@ -303,44 +312,72 @@ const deleteProduct = async (id: number) => {
               :image="item.image"
             />
             <div class="d-flex flex-column">
-              <span class="text-body-1 font-weight-medium text-high-emphasis">{{ item.productName }}</span>
-              <span class="text-body-2">{{ item.productBrand }}</span>
+              <span class="text-body-1 font-weight-medium text-high-emphasis">
+                {{ item.name }}
+              </span>
+              <span class="text-body-2">{{ item.brand }}</span>
             </div>
           </div>
         </template>
 
-        <!-- category -->
         <template #item.category="{ item }">
-          <VAvatar
-            size="30"
-            variant="tonal"
-            :color="resolveCategory(item.category)?.color"
-            class="me-4"
-          >
-            <VIcon
-              :icon="resolveCategory(item.category)?.icon"
-              size="18"
-            />
-          </VAvatar>
           <span class="text-body-1 text-high-emphasis">{{ item.category }}</span>
         </template>
 
-        <!-- stock -->
-        <template #item.stock="{ item }">
-          <VSwitch :model-value="item.stock" />
+        <template #item.type="{ item }">
+          <span class="text-body-1 text-high-emphasis">{{ item.type }}</span>
         </template>
 
-        <!-- status -->
-        <template #item.status="{ item }">
-          <VChip
-            v-bind="resolveStatus(item.status)"
-            density="default"
-            label
-            size="small"
-          />
+        <template #item.activeState="{ item }">
+          <VMenu
+            location="bottom start"
+            :model-value="openActiveMenuId === item.id"
+            @update:model-value="setActiveMenu(item.id, $event)"
+          >
+            <template #activator="{ props }">
+              <VBtn
+                v-bind="props"
+                variant="text"
+                size="small"
+                class="status-trigger px-0 text-none"
+                :class="activeTextClass(item.activeState)"
+                @click.stop
+              >
+                <span class="text-body-1">{{ item.activeState }}</span>
+                <VIcon icon="tabler-chevron-down" size="16" class="ms-1" />
+              </VBtn>
+            </template>
+
+            <VList density="compact" min-width="180">
+              <VListItem
+                v-for="option in activeOptions"
+                :key="option.value"
+                :active="item.activeState === option.value"
+                @click="
+                  updateActiveState(item, option.value);
+                  openActiveMenuId = null;
+                "
+              >
+                <template #prepend>
+                  <VIcon
+                    icon="tabler-check"
+                    size="16"
+                    :class="
+                      item.activeState === option.value
+                        ? 'text-primary'
+                        : 'opacity-0'
+                    "
+                  />
+                </template>
+
+                <VListItemTitle :class="activeTextClass(option.value)">
+                  {{ option.title }}
+                </VListItemTitle>
+              </VListItem>
+            </VList>
+          </VMenu>
         </template>
 
-        <!-- Actions -->
         <template #item.actions="{ item }">
           <IconBtn>
             <VIcon icon="tabler-edit" />
@@ -350,17 +387,14 @@ const deleteProduct = async (id: number) => {
             <VIcon icon="tabler-dots-vertical" />
             <VMenu activator="parent">
               <VList>
-                <VListItem
-                  value="download"
-                  prepend-icon="tabler-download"
-                >
+                <VListItem value="download" prepend-icon="tabler-download">
                   Download
                 </VListItem>
 
                 <VListItem
                   value="delete"
                   prepend-icon="tabler-trash"
-                  @click="deleteProduct(item.id)"
+                  @click="confirmDeleteCandidate(item)"
                 >
                   Delete
                 </VListItem>
@@ -368,6 +402,7 @@ const deleteProduct = async (id: number) => {
                 <VListItem
                   value="duplicate"
                   prepend-icon="tabler-copy"
+                  @click="cataloguesStore.duplicateProduct(item.id)"
                 >
                   Duplicate
                 </VListItem>
@@ -376,15 +411,43 @@ const deleteProduct = async (id: number) => {
           </IconBtn>
         </template>
 
-        <!-- pagination -->
         <template #bottom>
           <TablePagination
             v-model:page="page"
             :items-per-page="itemsPerPage"
-            :total-items="totalProduct"
+            :total-items="totalProducts"
           />
         </template>
       </VDataTableServer>
+
+      <VDialog v-model="isDeleteConfirmVisible" max-width="540">
+        <VCard class="pa-sm-8 pa-4">
+          <VCardTitle>Delete catalogue item</VCardTitle>
+          <VCardText>
+            <p>
+              Are you sure you want to permanently delete
+              <strong>{{ deleteCandidate?.name || "this catalogue item" }}</strong
+              >?
+            </p>
+          </VCardText>
+          <VCardActions>
+            <VSpacer />
+            <VBtn variant="text" color="secondary" @click="cancelDelete">
+              Cancel
+            </VBtn>
+            <VBtn variant="tonal" color="error" @click="performDeleteConfirmed">
+              Delete
+            </VBtn>
+          </VCardActions>
+        </VCard>
+      </VDialog>
     </VCard>
   </div>
 </template>
+
+<style lang="scss" scoped>
+.status-trigger {
+  justify-content: flex-start;
+  min-inline-size: 0;
+}
+</style>

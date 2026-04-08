@@ -95,6 +95,60 @@ const contactsOptions = computed(() =>
 // legacy alias used in the template/components
 const collaboratorsOptions = contactsOptions;
 
+function normalizeCalendarFilters() {
+  const colorByLabel = new Map([
+    ["Task", "primary"],
+    ["Meeting", "success"],
+    ["Leave", "warning"],
+    ["Sick Leave", "error"],
+    ["Sales Booking", "info"],
+  ]);
+
+  const legacyLabelMap = new Map([
+    ["Tasks", "Task"],
+    ["Meetings", "Meeting"],
+    ["Leaves", "Leave"],
+  ]);
+
+  const normalizedAvailable = (
+    Array.isArray(store.availableCalendars) ? store.availableCalendars : []
+  )
+    .map((item: any) => {
+      const rawLabel = String(item?.label || "").trim();
+      const label = legacyLabelMap.get(rawLabel) ?? rawLabel;
+      if (!colorByLabel.has(label)) return null;
+
+      return {
+        label,
+        color: colorByLabel.get(label),
+      };
+    })
+    .filter(Boolean) as { label: string; color: string }[];
+
+  const requiredLabels = [...colorByLabel.entries()].map(([label, color]) => ({
+    label,
+    color,
+  }));
+
+  const availableByLabel = new Map<string, { label: string; color: string }>();
+  [...normalizedAvailable, ...requiredLabels].forEach((item) => {
+    availableByLabel.set(item.label, item);
+  });
+
+  store.availableCalendars = [...availableByLabel.values()];
+
+  const selected = (
+    Array.isArray(store.selectedCalendars) ? store.selectedCalendars : []
+  )
+    .map((label) => legacyLabelMap.get(String(label).trim()) ?? String(label).trim())
+    .filter((label) => availableByLabel.has(label));
+
+  store.selectedCalendars =
+    selected.length > 0
+      ? [...new Set(selected)]
+      : [...availableByLabel.keys()];
+}
+
 /* ========================= UI State ============================== */
 const refCalendar = ref<any>(null);
 const isLeftSidebarOpen = ref(true);
@@ -107,9 +161,70 @@ const isAddOpen = ref(false);
 // 👉 New state for AddMeetingDrawer
 const isAddMeetingOpen = ref(false);
 const drawerInitialStart = ref<Date | string | undefined>(undefined);
+const taskMorePopover = ref<{
+  open: boolean;
+  x: number;
+  y: number;
+  date: string;
+  tasks: Array<{
+    id: number | string;
+    title: string;
+    dueAt?: string | Date;
+    important?: boolean;
+    status?: string;
+  }>;
+}>({
+  open: false,
+  x: 0,
+  y: 0,
+  date: "",
+  tasks: [],
+});
 
 const handleSidebarOpenRequest = () => {
   isLeftSidebarOpen.value = true;
+};
+
+const closeTaskMorePopover = () => {
+  taskMorePopover.value.open = false;
+};
+
+const handleTaskMorePopoverRequest = (
+  e: CustomEvent<{
+    date?: string;
+    x?: number;
+    y?: number;
+    tasks?: Array<{
+      id: number | string;
+      title: string;
+      dueAt?: string | Date;
+      important?: boolean;
+      status?: string;
+    }>;
+  }>
+) => {
+  const width = 320;
+  const height = 280;
+
+  taskMorePopover.value = {
+    open: true,
+    x: Math.min(
+      Math.max(16, Number(e.detail?.x ?? 0) + 12),
+      window.innerWidth - width - 16
+    ),
+    y: Math.min(
+      Math.max(16, Number(e.detail?.y ?? 0) + 12),
+      window.innerHeight - height - 16
+    ),
+    date: String(e.detail?.date ?? ""),
+    tasks: Array.isArray(e.detail?.tasks) ? e.detail.tasks : [],
+  };
+};
+
+const handleGlobalPointerDown = (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest?.(".calendar-task-more-popover")) return;
+  closeTaskMorePopover();
 };
 
 let sidebarMediaQuery: MediaQueryList | undefined;
@@ -166,9 +281,9 @@ async function handleCreate(payload: NewTodoPayload) {
 
   isAddOpen.value = false;
 
-  if (!store.selectedCalendars.includes("Tasks")) {
+  if (!store.selectedCalendars.includes("Task")) {
     store.selectedCalendars = [
-      ...new Set([...store.selectedCalendars, "Tasks"]),
+      ...new Set([...store.selectedCalendars, "Task"]),
     ];
   }
 
@@ -253,7 +368,11 @@ const meetingsVisible = computed(() => {
   const selected = Array.isArray(store.selectedCalendars)
     ? store.selectedCalendars
     : [];
-  return !hasCalendars || selected.includes("Meetings");
+  return (
+    !hasCalendars ||
+    selected.includes("Meeting") ||
+    selected.includes("Sales Booking")
+  );
 });
 
 const DEFAULT_MEETING_MINUTES = 60;
@@ -288,7 +407,7 @@ const meetingEvents = computed(() => {
         linkedTo: m.linkedTo,
         note: m.note,
         duration: m.duration,
-        calendar: "Meetings",
+        calendar: m.type === "Sales" ? "Sales Booking" : "Meeting",
       },
     };
   });
@@ -503,16 +622,31 @@ calendarOptions.eventResize = (info: any) => {
 
 /* ========================= Mounted: add meeting source =========== */
 onMounted(() => {
+  normalizeCalendarFilters();
+
   // ensure "Meetings" exists in filters
   try {
-    if (!store.availableCalendars?.some((c: any) => c.label === "Meetings")) {
+    if (!store.availableCalendars?.some((c: any) => c.label === "Meeting")) {
       store.availableCalendars.push({
-        label: "Meetings",
+        label: "Meeting",
+        color: "success",
+      } as any);
+    }
+    if (
+      !store.availableCalendars?.some(
+        (c: any) => c.label === "Sales Booking"
+      )
+    ) {
+      store.availableCalendars.push({
+        label: "Sales Booking",
         color: "info",
       } as any);
     }
-    if (!store.selectedCalendars?.includes("Meetings")) {
-      store.selectedCalendars.push("Meetings");
+    if (!store.selectedCalendars?.includes("Meeting")) {
+      store.selectedCalendars.push("Meeting");
+    }
+    if (!store.selectedCalendars?.includes("Sales Booking")) {
+      store.selectedCalendars.push("Sales Booking");
     }
   } catch {
     /* ignore */
@@ -589,6 +723,13 @@ function onOpenEdit(e: CustomEvent<{ id: number | string }>) {
   selectedId.value = e.detail.id;
   isEditOpen.value = true;
 }
+
+function openTaskFromPopover(id: number | string) {
+  selectedId.value = id;
+  isEditOpen.value = true;
+  closeTaskMorePopover();
+}
+
 onMounted(() => {
   if (typeof window !== "undefined") {
     sidebarMediaQuery = window.matchMedia("(max-width: 1279px)");
@@ -604,6 +745,11 @@ onMounted(() => {
       handleSidebarOpenRequest as EventListener
     );
     window.addEventListener("todo:open-edit", onOpenEdit as EventListener);
+    window.addEventListener(
+      "calendar:open-task-more",
+      handleTaskMorePopoverRequest as EventListener
+    );
+    window.addEventListener("mousedown", handleGlobalPointerDown);
   }
 });
 onUnmounted(() => {
@@ -616,6 +762,11 @@ onUnmounted(() => {
       handleSidebarOpenRequest as EventListener
     );
     window.removeEventListener("todo:open-edit", onOpenEdit as EventListener);
+    window.removeEventListener(
+      "calendar:open-task-more",
+      handleTaskMorePopoverRequest as EventListener
+    );
+    window.removeEventListener("mousedown", handleGlobalPointerDown);
   }
 });
 
@@ -724,8 +875,8 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                 <!-- Subfilter only for To-Dos and only when To-Dos is selected -->
                 <VSwitch
                   v-if="
-                    calendar.label === 'Tasks' &&
-                    store.selectedCalendars?.includes('Tasks')
+                    calendar.label === 'Task' &&
+                    store.selectedCalendars?.includes('Task')
                   "
                   v-model="store.todoImportantOnly"
                   density="compact"
@@ -743,7 +894,15 @@ function handleAddActivity(v: { id: number | string; body: string }) {
           <VCard flat>
             <FullCalendar ref="refCalendar" :options="calendarOptions">
               <template #eventContent="{ event, timeText }">
+                <span
+                  v-if="event.extendedProps?.type === 'todo-more'"
+                  class="calendar-event-activator calendar-task-more-link fc-event-title fc-styled"
+                >
+                  <span class="calendar-event-title">{{ event.title }}</span>
+                </span>
+
                 <VMenu
+                  v-else
                   open-on-hover
                   location="top"
                   offset="8"
@@ -1024,6 +1183,53 @@ function handleAddActivity(v: { id: number | string; body: string }) {
       @user-data="handleCreate"
     />
 
+      <div
+        v-if="taskMorePopover.open"
+        class="calendar-task-more-popover fc-popover fc-more-popover"
+        :style="{
+          left: `${taskMorePopover.x}px`,
+          top: `${taskMorePopover.y}px`,
+        }"
+      >
+        <div
+          class="calendar-task-more-popover__header fc-popover-header"
+        >
+          <div class="fc-popover-title">
+              {{ taskMorePopover.date ? formatSystemDate(taskMorePopover.date) : "Tasks" }}
+          </div>
+          <button
+            type="button"
+            class="calendar-task-more-popover__close"
+            @click="closeTaskMorePopover"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="calendar-task-more-popover__list fc-popover-body">
+          <button
+            v-for="task in taskMorePopover.tasks"
+            :key="task.id"
+            type="button"
+            class="calendar-task-more-popover__item fc-daygrid-event fc-daygrid-dot-event"
+            @click="openTaskFromPopover(task.id)"
+          >
+            <span
+              class="calendar-task-more-popover__dot fc-daygrid-event-dot"
+            />
+            <span class="calendar-task-more-popover__text">
+              {{ task.title || "Untitled task" }}
+            </span>
+            <VIcon
+              v-if="task.important"
+              icon="tabler-star-filled"
+              size="14"
+              color="warning"
+            />
+          </button>
+        </div>
+      </div>
+
     <AddMeetingDrawer
       v-model="isAddMeetingOpen"
       :initial-start="drawerInitialStart"
@@ -1056,6 +1262,117 @@ function handleAddActivity(v: { id: number | string; body: string }) {
   display: block;
   overflow: hidden;
   line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-task-more-popover {
+  position: fixed;
+  z-index: 2400;
+  inline-size: 260px;
+  max-inline-size: calc(100vw - 24px);
+  border: 1px solid rgb(var(--v-border-color) / 0.9);
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  overflow: hidden;
+}
+
+.calendar-task-more-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-block-size: 34px;
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+  background: rgb(var(--v-theme-surface-variant));
+  border-block-end: 1px solid rgb(var(--v-theme-on-surface) / 0.12);
+}
+
+.calendar-task-more-popover .fc-popover-title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.calendar-task-more-popover__close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface-variant));
+  cursor: pointer;
+  font-size: 0;
+  line-height: 1;
+  padding: 0.125rem 0.25rem;
+}
+
+.calendar-task-more-popover__close::before {
+  content: "\00d7";
+  font-size: 1rem;
+}
+
+.calendar-task-more-popover__list {
+  max-block-size: 220px;
+  overflow: auto;
+  padding: 0;
+}
+
+.calendar-task-more-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  inline-size: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.3rem 0.75rem;
+  text-align: start;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.calendar-task-more-popover__item:hover {
+  background: rgb(var(--v-theme-on-surface) / 0.06);
+}
+
+:deep(.fc-daygrid-event.calendar-task-more) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+:deep(.fc-daygrid-event.calendar-task-more .calendar-event-activator) {
+  color: rgb(var(--v-theme-primary)) !important;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+:deep(.fc-daygrid-event.calendar-task-more:hover .calendar-event-activator) {
+  text-decoration: underline;
+}
+
+.calendar-task-more-link {
+  color: rgb(var(--v-theme-primary)) !important;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.calendar-task-more-popover__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  border-radius: 999px;
+  border-width: 0;
+  background: rgb(var(--v-theme-primary));
+}
+
+.calendar-task-more-popover__text {
+  flex: 1 1 auto;
+  overflow: hidden;
+  font-size: 0.875rem;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

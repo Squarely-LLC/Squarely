@@ -32,14 +32,14 @@ export const blankEvent = {
   allDay: true,
   url: "",
   extendedProps: {
-    calendar: "Tasks",
+    calendar: "Task",
     guests: [] as any[],
     location: "",
     description: "",
   },
 };
 
-const TODO_CALENDAR_LABEL = "Tasks";
+const TODO_CALENDAR_LABEL = "Task";
 
 // Local date string (YYYY-MM-DD)
 function toLocalDateStr(d: Date) {
@@ -57,6 +57,11 @@ function toLocalISO(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours()
   )}:${pad(d.getMinutes())}`;
+}
+
+function toDateFromEventStart(start: string | Date) {
+  if (start instanceof Date) return start;
+  return new Date(start);
 }
 
 function computeEndAt(startAt: string | Date, durationMin: number) {
@@ -157,6 +162,7 @@ export const useCalendar = (
               calendar: TODO_CALENDAR_LABEL,
               todoId: t.id,
               type: "todo",
+              sortRank: t.important ? 2 : 1,
               status: t.status,
               priority: t.priority,
               notes: t.notes,
@@ -223,9 +229,10 @@ export const useCalendar = (
             backgroundColor: color,
             borderColor: color,
             extendedProps: {
-              calendar: "Meetings",
+              calendar: m.type === "Sales" ? "Sales Booking" : "Meeting",
               meetingId: m.id,
               type: "meeting",
+              sortRank: 3,
               meetingType: m.type,
               location: m.location,
               requestedBy: m.requestedBy,
@@ -237,13 +244,79 @@ export const useCalendar = (
 
   const visibleMeetingEvents = computed(() => {
     const selected: string[] | undefined = calStore?.selectedCalendars;
-    const show = Array.isArray(selected) ? selected.includes("Meetings") : true;
-    return show ? meetingEvents.value : [];
+    if (!Array.isArray(selected)) return meetingEvents.value;
+
+    return meetingEvents.value.filter((event) =>
+      selected.includes(String(event.extendedProps?.calendar || "Meeting"))
+    );
+  });
+
+  const monthCollapsedTodoEvents = computed(() => {
+    const grouped = new Map<string, any[]>();
+
+    visibleTodoEvents.value.forEach((event) => {
+      const start = toDateFromEventStart(event.start);
+      if (Number.isNaN(start.getTime())) return;
+
+      const dayKey = toLocalDateStr(start);
+      const list = grouped.get(dayKey) ?? [];
+      list.push(event);
+      grouped.set(dayKey, list);
+    });
+
+    const collapsed: any[] = [];
+
+    grouped.forEach((events, dayKey) => {
+      const sorted = [...events].sort((a, b) => {
+        const ai = a.extendedProps?.important ? 1 : 0;
+        const bi = b.extendedProps?.important ? 1 : 0;
+        if (ai !== bi) return bi - ai;
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      });
+
+      const [firstTask, ...rest] = sorted;
+      if (firstTask) collapsed.push(firstTask);
+
+      if (rest.length > 0) {
+        collapsed.push({
+          id: `todo-more-${dayKey}`,
+          title: `+${rest.length} more`,
+          start: dayKey,
+          end: dayKey,
+          allDay: true,
+          classNames: ["calendar-task-more"],
+          editable: false,
+          durationEditable: false,
+          extendedProps: {
+            calendar: TODO_CALENDAR_LABEL,
+            type: "todo-more",
+            date: dayKey,
+            hiddenCount: rest.length,
+            hiddenTodos: rest.map((event) => ({
+              id: event.extendedProps?.todoId,
+              title: event.title,
+              dueAt: event.start,
+              important: Boolean(event.extendedProps?.important),
+              status: event.extendedProps?.status,
+            })),
+            sortRank: 0,
+          },
+        });
+      }
+    });
+
+    return collapsed;
   });
 
   // ===================== Event Source =====================
   const fetchEvents: EventSourceFunc = (_info, success) => {
-    success([...visibleTodoEvents.value, ...visibleMeetingEvents.value]);
+    const currentView = calendarApi.value?.view?.type;
+    const todoList =
+      currentView === "dayGridMonth"
+        ? monthCollapsedTodoEvents.value
+        : visibleTodoEvents.value;
+
+    success([...todoList, ...visibleMeetingEvents.value]);
   };
 
   // ===================== Calendar Options =====================
@@ -285,13 +358,28 @@ export const useCalendar = (
     eventDurationEditable: true,
     eventResizableFromStart: true,
     dragScroll: true,
-    dayMaxEvents: 2,
+    dayMaxEvents: 4,
+    moreLinkClick: "popover",
 
-    // Important items first (then by title as a stable tiebreaker)
+    // Meetings always render first, no matter which source they come from.
     eventOrder: (a, b) => {
+      const rank = (eventLike: any) => {
+        if (eventLike.extendedProps?.type === "meeting") return 3;
+        if (eventLike.extendedProps?.type === "todo") {
+          return eventLike.extendedProps?.important ? 2 : 1;
+        }
+        if (eventLike.extendedProps?.type === "todo-more") return 0;
+        return Number(eventLike.extendedProps?.sortRank ?? 0);
+      };
+
+      const ar = rank(a);
+      const br = rank(b);
+      if (ar !== br) return br - ar;
+
       const ai = a.extendedProps?.important ? 1 : 0;
       const bi = b.extendedProps?.important ? 1 : 0;
       if (ai !== bi) return bi - ai;
+
       const at = (a.title || "").toString();
       const bt = (b.title || "").toString();
       return at.localeCompare(bt);
@@ -304,6 +392,9 @@ export const useCalendar = (
     eventClassNames({ event }) {
       // @ts-ignore
       const cal = event.extendedProps?.calendar;
+      if (event.extendedProps?.type === "todo-more") {
+        return ["calendar-task-more"];
+      }
       const isImportant = event.extendedProps?.important === true;
       const baseColor = calendarsColor.value[cal] ?? "primary";
       const colorName = isImportant ? "warning" : baseColor;
@@ -311,7 +402,21 @@ export const useCalendar = (
     },
 
     // Clicking calendar items opens the EditToDoDrawer (via global event)
-    eventClick: ({ event }) => {
+    eventClick: ({ event, jsEvent }) => {
+      if (event.extendedProps?.type === "todo-more") {
+        window.dispatchEvent(
+          new CustomEvent("calendar:open-task-more", {
+            detail: {
+              date: event.extendedProps?.date,
+              tasks: event.extendedProps?.hiddenTodos ?? [],
+              x: jsEvent?.clientX ?? 0,
+              y: jsEvent?.clientY ?? 0,
+            },
+          })
+        );
+        return;
+      }
+
       // For meetings you may later open a meeting drawer; for now keep To-Do open
       const id =
         // @ts-ignore
