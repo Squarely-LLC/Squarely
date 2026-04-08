@@ -80,6 +80,8 @@ export const db: DB = {
         sku: "CAT-WAL-031",
         image: product17,
         createdAt: "2026-02-18T14:30:00Z",
+        bestPrice: 1850,
+        chargeTax: true,
         description:
           "One-off decorative wall finish scope for a specified area and agreed handover date.",
         relatedItems: [

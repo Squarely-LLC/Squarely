@@ -72,6 +72,7 @@ const configStore = useConfigStore();
 configStore.init();
 
 const activeTab = ref("Restock");
+const itemBestPrice = ref<number | null>(null);
 const isTaxChargeToItem = ref(true);
 
 const shippingList = [
@@ -142,6 +143,10 @@ const publishButtonLabel = computed(() =>
 const itemName = ref("");
 const selectedCategory = ref("");
 const selectedStatus = ref<CatalogueActiveState>("Active");
+const itemImage = ref<string | null>(null);
+const itemImageInputRef = ref<HTMLInputElement | null>(null);
+const isImageUrlDialogOpen = ref(false);
+const imageUrlDraft = ref("");
 const relatedItemId = ref(1);
 const relatedItems = ref<RelatedItemDraft[]>([]);
 const isRelatedItemDialogOpen = ref(false);
@@ -645,10 +650,64 @@ const saveTask = async () => {
 
 const stripRichText = (value: string) => value.replace(/<[^>]+>/g, " ").trim();
 
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+const openImageFilePicker = () => {
+  itemImageInputRef.value?.click();
+};
+
+const handleImageFileSelection = async (event: Event) => {
+  const target = event.target as HTMLInputElement | null;
+  const file = target?.files?.[0];
+
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    target.value = "";
+    return;
+  }
+
+  try {
+    itemImage.value = await fileToDataUrl(file);
+  } finally {
+    target.value = "";
+  }
+};
+
+const openImageUrlDialog = () => {
+  imageUrlDraft.value = itemImage.value && !itemImage.value.startsWith("data:")
+    ? itemImage.value
+    : "";
+  isImageUrlDialogOpen.value = true;
+};
+
+const saveImageFromUrl = () => {
+  const trimmedUrl = imageUrlDraft.value.trim();
+  if (!trimmedUrl) return;
+
+  itemImage.value = trimmedUrl;
+  isImageUrlDialogOpen.value = false;
+};
+
+const removeItemImage = () => {
+  itemImage.value = null;
+  imageUrlDraft.value = "";
+};
+
 const applySharedRecord = (record: CatalogueRecord) => {
   itemName.value = record.name;
   selectedCategory.value = record.category;
   selectedStatus.value = record.activeState;
+  itemBestPrice.value = null;
+  isTaxChargeToItem.value = true;
+  itemImage.value = record.image ?? null;
   content.value = "<p></p>";
   relatedItems.value = [];
   relatedItemId.value = 1;
@@ -674,6 +733,8 @@ const applySharedRecord = (record: CatalogueRecord) => {
 
 const applyOnetimeServiceRecord = (record: CatalogueOnetimeServiceRecord) => {
   applySharedRecord(record);
+  itemBestPrice.value = record.bestPrice ?? null;
+  isTaxChargeToItem.value = record.chargeTax ?? true;
   content.value = record.description
     ? `<p>${record.description}</p>`
     : "<p></p>";
@@ -747,6 +808,10 @@ const resetOnetimeServiceForm = () => {
   itemName.value = "";
   selectedCategory.value = "";
   selectedStatus.value = "Active";
+  itemBestPrice.value = null;
+  isTaxChargeToItem.value = true;
+  itemImage.value = null;
+  imageUrlDraft.value = "";
   content.value = "<p></p>";
   relatedItems.value = [];
   relatedItemId.value = 1;
@@ -776,6 +841,14 @@ const saveOnetimeService = () => {
     name: itemName.value.trim() || "Untitled Item",
     category: selectedCategory.value.trim() || "Uncategorized",
     activeState: selectedStatus.value,
+    image: itemImage.value?.trim() || null,
+    bestPrice:
+      itemBestPrice.value === null || itemBestPrice.value === undefined
+        ? null
+        : Number.isFinite(Number(itemBestPrice.value))
+          ? Number(itemBestPrice.value)
+          : null,
+    chargeTax: isTaxChargeToItem.value,
     description: stripRichText(content.value),
     relatedItems: relatedItems.value.map((item) => ({
       id: item.id,
@@ -1479,7 +1552,15 @@ watch(
         <!-- 👉 Pricing -->
         <VCard title="Pricing" class="mb-6">
           <VCardText>
-            <AppTextField label="Best Price" placeholder="Price" class="mb-6" />
+            <AppTextField
+              v-model.number="itemBestPrice"
+              label="Best Price"
+              placeholder="Price"
+              type="number"
+              min="0"
+              step="0.01"
+              class="mb-6"
+            />
 
             <VCheckbox
               v-model="isTaxChargeToItem"
@@ -1494,19 +1575,129 @@ watch(
           <VCardItem>
             <template #title> Item Image </template>
             <template #append>
-              <span
-                class="text-primary font-weight-medium text-sm cursor-pointer"
-                >Add Media from URL</span
+              <VBtn
+                variant="text"
+                color="primary"
+                size="small"
+                class="px-0"
+                @click="openImageUrlDialog"
               >
+                Add Media from URL
+              </VBtn>
             </template>
           </VCardItem>
 
           <VCardText>
-            <DropZone />
+            <input
+              ref="itemImageInputRef"
+              type="file"
+              accept="image/*"
+              class="d-none"
+              @change="handleImageFileSelection"
+            />
+
+            <div
+              v-if="itemImage"
+              class="d-flex flex-column gap-y-4"
+            >
+              <VImg
+                :src="itemImage"
+                height="240"
+                cover
+                class="rounded border"
+              />
+
+              <div class="d-flex gap-3 flex-wrap">
+                <VBtn
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="tabler-upload"
+                  @click="openImageFilePicker"
+                >
+                  Replace Image
+                </VBtn>
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  prepend-icon="tabler-link"
+                  @click="openImageUrlDialog"
+                >
+                  Update URL
+                </VBtn>
+                <VBtn
+                  color="error"
+                  variant="tonal"
+                  prepend-icon="tabler-trash"
+                  @click="removeItemImage"
+                >
+                  Remove Image
+                </VBtn>
+              </div>
+            </div>
+
+            <div
+              v-else
+              class="d-flex flex-column justify-center align-center gap-y-3 pa-12 drop-zone rounded cursor-pointer"
+              @click="openImageFilePicker"
+            >
+              <IconBtn
+                variant="tonal"
+                class="rounded-sm"
+              >
+                <VIcon icon="tabler-upload" />
+              </IconBtn>
+              <h5 class="text-h5 text-center">
+                Upload an item image
+              </h5>
+              <span class="text-disabled text-center">
+                Click to browse for an image file or use the URL option above.
+              </span>
+
+              <VBtn
+                color="primary"
+                variant="tonal"
+                size="small"
+                @click.stop="openImageFilePicker"
+              >
+                Browse Images
+              </VBtn>
+            </div>
           </VCardText>
         </VCard>
       </VCol>
     </VRow>
+
+    <VDialog v-model="isImageUrlDialogOpen" max-width="560">
+      <VCard>
+        <VCardItem title="Add Image From URL" />
+
+        <VCardText>
+          <AppTextField
+            v-model="imageUrlDraft"
+            label="Image URL"
+            placeholder="https://example.com/image.jpg"
+          />
+        </VCardText>
+
+        <VCardActions class="px-6 pb-6 justify-space-between">
+          <VBtn
+            color="primary"
+            variant="tonal"
+            :disabled="!imageUrlDraft.trim()"
+            @click="saveImageFromUrl"
+          >
+            Save Image
+          </VBtn>
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isImageUrlDialogOpen = false"
+          >
+            Cancel
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <VDialog v-model="isRelatedItemDialogOpen" max-width="760">
       <VCard>

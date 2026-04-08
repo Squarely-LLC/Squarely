@@ -95,6 +95,8 @@ export interface CatalogueRentalRecord extends CatalogueInventoryRecord {
 
 export interface CatalogueOnetimeServiceRecord extends CatalogueServiceRecord {
   type: "Onetime Service";
+  bestPrice: number | null;
+  chargeTax: boolean;
   description: string;
   relatedItems: CatalogueRelatedItem[];
   salesTasks: CatalogueSalesTask[];

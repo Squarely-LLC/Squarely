@@ -224,6 +224,13 @@ function normalizeRecord(
 
     return {
       ...base,
+      bestPrice:
+        payload.bestPrice === null || payload.bestPrice === undefined
+          ? null
+          : Number.isFinite(Number(payload.bestPrice))
+            ? Number(payload.bestPrice)
+            : null,
+      chargeTax: Boolean(payload.chargeTax),
       description: String(payload.description ?? "").trim(),
       relatedItems: relatedItems.map((item, index) => ({
         id: Number.isFinite(Number(item.id)) ? Number(item.id) : index + 1,
