@@ -6,8 +6,9 @@ import type {
   CatalogueActiveState,
   CatalogueContractualServiceRecord,
   CatalogueItemType,
-  CatalogueRecord,
   CatalogueOnetimeServiceRecord,
+  CatalogueRecord,
+  CatalogueRetainerServiceRecord,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type { CatalogueCategory } from "@/plugins/fake-api/handlers/config/types";
 import { useCataloguesStore } from "@/stores/catalogues";
@@ -26,12 +27,15 @@ type RelatedItemDraft = {
   id: number;
   name: string;
   category: string;
+  price?: number | null;
   description: string;
 };
 
 type PhaseDraft = {
   id: number;
   name: string;
+  price: number | null;
+  chargeTax: boolean;
   description: string;
 };
 
@@ -55,6 +59,8 @@ type JobConfigTask = {
 type JobConfigGoal = {
   id: number;
   milestoneId: number;
+  phaseId?: number | null;
+  retainerServiceId?: number | null;
   name: string;
   dueDate: string | null;
   priority: JobConfigPriority;
@@ -113,12 +119,16 @@ const pageSubtitle = computed(
   () => typeDescriptions[selectedType.value] || "Create a new catalogue item.",
 );
 const publishButtonLabel = computed(() =>
-  isEditing.value ? `Save ${selectedType.value}` : `Publish ${selectedType.value}`,
+  isEditing.value
+    ? `Save ${selectedType.value}`
+    : `Publish ${selectedType.value}`,
 );
 
 const itemName = ref("");
 const selectedCategory = ref("");
 const selectedStatus = ref<CatalogueActiveState>("Active");
+const periodStartDate = ref<string | null>(null);
+const periodEndDate = ref<string | null>(null);
 const itemImage = ref<string | null>(null);
 const itemImageInputRef = ref<HTMLInputElement | null>(null);
 const isImageUrlDialogOpen = ref(false);
@@ -128,6 +138,7 @@ const relatedItems = ref<RelatedItemDraft[]>([]);
 const isRelatedItemDialogOpen = ref(false);
 const relatedItemName = ref("");
 const relatedItemCategory = ref("");
+const relatedItemPrice = ref<number | null>(null);
 const relatedItemDescription = ref("<p></p>");
 const relatedItemErrors = ref({
   name: "",
@@ -137,6 +148,8 @@ const phaseId = ref(1);
 const phases = ref<PhaseDraft[]>([]);
 const isPhaseDialogOpen = ref(false);
 const phaseName = ref("");
+const phasePrice = ref<number | null>(null);
+const isPhaseChargeTax = ref(true);
 const phaseDescription = ref("<p></p>");
 const phaseErrors = ref({
   name: "",
@@ -244,6 +257,34 @@ const activeStateOptions = computed(() => {
 const isContractualService = computed(
   () => selectedType.value === "Contractual Service",
 );
+const isRetainerService = computed(
+  () => selectedType.value === "Retainer Service",
+);
+const relatedSectionTitle = computed(() =>
+  isRetainerService.value ? "Retainer services" : "Related items",
+);
+const relatedButtonLabel = computed(() =>
+  isRetainerService.value ? "Retainer Service" : "Related Item",
+);
+const relatedDialogTitle = computed(() =>
+  isRetainerService.value ? "Add Retainer Service" : "Add Related Item",
+);
+const retainerLinkedServicesTotalPrice = computed(() =>
+  relatedItems.value.reduce((sum, item) => sum + (Number(item.price) || 0), 0),
+);
+
+const contractualPhaseTotalPrice = computed(() =>
+  phases.value.reduce((sum, phase) => sum + (Number(phase.price) || 0), 0),
+);
+
+const syncRetainerMilestoneDueDate = () => {
+  if (!isRetainerService.value) return;
+
+  const milestone = jobConfigMilestones.value[0];
+  if (!milestone) return;
+
+  milestone.dueDate = periodEndDate.value ?? null;
+};
 
 watch(
   defaultMilestoneName,
@@ -252,6 +293,14 @@ watch(
     if (!milestone || hasCustomMilestoneName.value) return;
 
     milestone.name = nextName;
+  },
+  { immediate: true },
+);
+
+watch(
+  [isRetainerService, periodEndDate],
+  () => {
+    syncRetainerMilestoneDueDate();
   },
   { immediate: true },
 );
@@ -290,6 +339,7 @@ const pruneSalesTask = (taskId: number) => {
 const resetRelatedItemDraft = () => {
   relatedItemName.value = "";
   relatedItemCategory.value = "";
+  relatedItemPrice.value = null;
   relatedItemDescription.value = "<p></p>";
   relatedItemErrors.value = {
     name: "",
@@ -317,8 +367,17 @@ const saveRelatedItem = () => {
     id: relatedItemId.value++,
     name: trimmedName,
     category: trimmedCategory,
+    price: isRetainerService.value
+      ? relatedItemPrice.value === null || relatedItemPrice.value === undefined
+        ? null
+        : Number.isFinite(Number(relatedItemPrice.value))
+          ? Number(relatedItemPrice.value)
+          : null
+      : undefined,
     description: relatedItemDescription.value.replace(/<[^>]+>/g, " ").trim(),
   });
+
+  if (isRetainerService.value) syncRetainerServiceGoals();
 
   isRelatedItemDialogOpen.value = false;
   resetRelatedItemDraft();
@@ -326,10 +385,13 @@ const saveRelatedItem = () => {
 
 const removeRelatedItem = (itemId: number) => {
   relatedItems.value = relatedItems.value.filter((item) => item.id !== itemId);
+  if (isRetainerService.value) syncRetainerServiceGoals();
 };
 
 const resetPhaseDraft = () => {
   phaseName.value = "";
+  phasePrice.value = null;
+  isPhaseChargeTax.value = true;
   phaseDescription.value = "<p></p>";
   phaseErrors.value = {
     name: "",
@@ -353,15 +415,24 @@ const savePhase = () => {
   phases.value.push({
     id: phaseId.value++,
     name: trimmedName,
+    price:
+      phasePrice.value === null || phasePrice.value === undefined
+        ? null
+        : Number.isFinite(Number(phasePrice.value))
+          ? Number(phasePrice.value)
+          : null,
+    chargeTax: isPhaseChargeTax.value,
     description: phaseDescription.value.replace(/<[^>]+>/g, " ").trim(),
   });
 
   isPhaseDialogOpen.value = false;
   resetPhaseDraft();
+  syncContractualPhaseGoals();
 };
 
 const removePhase = (itemId: number) => {
   phases.value = phases.value.filter((item) => item.id !== itemId);
+  syncContractualPhaseGoals();
 };
 
 const priorityColor = (priority: JobConfigPriority) => {
@@ -430,6 +501,73 @@ const resetTaskDraft = () => {
     status: "pending",
     important: false,
   };
+};
+
+const syncContractualPhaseGoals = () => {
+  if (!isContractualService.value) return;
+
+  const milestone = jobConfigMilestones.value[0];
+  if (!milestone) return;
+
+  const manualGoals = milestone.goals.filter((goal) => !goal.phaseId);
+  const phaseGoals = phases.value.map((phase) => {
+    const existingGoal = milestone.goals.find(
+      (goal) => goal.phaseId === phase.id,
+    );
+
+    return {
+      id: existingGoal?.id ?? jobConfigGoalId.value++,
+      milestoneId: milestone.id,
+      phaseId: phase.id,
+      name: phase.name,
+      dueDate: existingGoal?.dueDate ?? null,
+      priority: existingGoal?.priority ?? "Normal",
+      note: phase.description,
+      tasks: existingGoal?.tasks ? [...existingGoal.tasks] : [],
+    } satisfies JobConfigGoal;
+  });
+
+  milestone.goals = [...manualGoals, ...phaseGoals];
+  syncExpandedGoals();
+};
+
+const syncRetainerServiceGoals = () => {
+  if (!isRetainerService.value) return;
+
+  const milestone = jobConfigMilestones.value[0];
+  if (!milestone) return;
+
+  const manualGoals = milestone.goals.filter((goal) => !goal.retainerServiceId);
+  const retainerGoals = relatedItems.value.map((service) => {
+    const existingGoal = milestone.goals.find(
+      (goal) =>
+        goal.retainerServiceId === service.id ||
+        (goal.retainerServiceId === null || goal.retainerServiceId === undefined) &&
+          goal.name === service.name,
+    );
+
+    return {
+      id: existingGoal?.id ?? jobConfigGoalId.value++,
+      milestoneId: milestone.id,
+      retainerServiceId: service.id,
+      name: service.name,
+      dueDate: existingGoal?.dueDate ?? null,
+      priority: existingGoal?.priority ?? "Normal",
+      note: service.description,
+      tasks: existingGoal?.tasks ? [...existingGoal.tasks] : [],
+    } satisfies JobConfigGoal;
+  });
+
+  milestone.goals = [...manualGoals, ...retainerGoals];
+  syncExpandedGoals();
+};
+
+const syncExpandedGoals = () => {
+  expandedGoals.value = jobConfigMilestones.value.flatMap((milestone) =>
+    milestone.goals
+      .filter((goal) => goal.tasks.length > 0)
+      .map((goal) => goal.id),
+  );
 };
 
 const openEditMilestone = (milestone: JobConfigMilestone) => {
@@ -516,21 +654,21 @@ const saveGoal = async () => {
       goal.note = draft.note.trim();
     }
   } else {
-    const id = jobConfigGoalId.value++;
     milestone.goals.push({
-      id,
+      id: jobConfigGoalId.value++,
       milestoneId: milestone.id,
       name: draft.name.trim(),
       dueDate: draft.dueDate,
       priority: draft.priority,
       note: draft.note.trim(),
       tasks: [],
+      retainerServiceId: null,
     });
-    expandedGoals.value = [...new Set([...expandedGoals.value, id])];
   }
 
   goalDialog.value.visible = false;
   resetGoalDraft();
+  syncExpandedGoals();
 };
 
 const deleteGoal = (milestoneId: number, goalId: number) => {
@@ -540,7 +678,7 @@ const deleteGoal = (milestoneId: number, goalId: number) => {
   if (!milestone) return;
 
   milestone.goals = milestone.goals.filter((entry) => entry.id !== goalId);
-  expandedGoals.value = expandedGoals.value.filter((entry) => entry !== goalId);
+  syncExpandedGoals();
 };
 
 const openCreateTaskForMilestone = (milestoneId: number) => {
@@ -616,6 +754,7 @@ const deleteTaskFromGoal = (goalId: number, taskId: number) => {
   if (!goal) return;
 
   goal.tasks = goal.tasks.filter((entry) => entry.id !== taskId);
+  syncExpandedGoals();
 };
 
 const saveTask = async () => {
@@ -667,6 +806,7 @@ const saveTask = async () => {
     } else {
       goal.tasks.push(draftTask);
     }
+    syncExpandedGoals();
   }
 
   taskDialog.value.visible = false;
@@ -707,9 +847,10 @@ const handleImageFileSelection = async (event: Event) => {
 };
 
 const openImageUrlDialog = () => {
-  imageUrlDraft.value = itemImage.value && !itemImage.value.startsWith("data:")
-    ? itemImage.value
-    : "";
+  imageUrlDraft.value =
+    itemImage.value && !itemImage.value.startsWith("data:")
+      ? itemImage.value
+      : "";
   isImageUrlDialogOpen.value = true;
 };
 
@@ -730,10 +871,14 @@ const applySharedRecord = (record: CatalogueRecord) => {
   itemName.value = record.name;
   selectedCategory.value = record.category;
   selectedStatus.value = record.activeState;
+  periodStartDate.value = null;
+  periodEndDate.value = null;
   itemBestPrice.value = record.bestPrice ?? null;
   isTaxChargeToItem.value = record.chargeTax ?? true;
   itemImage.value = record.image ?? null;
-  content.value = record.description ? `<p>${record.description}</p>` : "<p></p>";
+  content.value = record.description
+    ? `<p>${record.description}</p>`
+    : "<p></p>";
   relatedItems.value = [];
   relatedItemId.value = 1;
   salesTasks.value = [];
@@ -757,7 +902,10 @@ const applySharedRecord = (record: CatalogueRecord) => {
 };
 
 const applyServiceTemplateRecord = (
-  record: CatalogueOnetimeServiceRecord | CatalogueContractualServiceRecord,
+  record:
+    | CatalogueOnetimeServiceRecord
+    | CatalogueContractualServiceRecord
+    | CatalogueRetainerServiceRecord,
 ) => {
   applySharedRecord(record);
   if (record.type === "Onetime Service") {
@@ -771,16 +919,33 @@ const applyServiceTemplateRecord = (
       relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     phases.value = [];
     phaseId.value = 1;
+  } else if (record.type === "Retainer Service") {
+    relatedItems.value = (record.retainerServices || []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      price: item.price ?? null,
+      description: item.description,
+    }));
+    relatedItemId.value =
+      relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+    phases.value = [];
+    phaseId.value = 1;
+    periodStartDate.value = record.startDate ?? null;
+    periodEndDate.value = record.endDate ?? null;
   } else {
     phases.value = (record.phases || []).map((phase) => ({
       id: phase.id,
       name: phase.name,
+      price: phase.price ?? null,
+      chargeTax: phase.chargeTax ?? true,
       description: phase.description,
     }));
     phaseId.value =
       phases.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     relatedItems.value = [];
     relatedItemId.value = 1;
+    syncContractualPhaseGoals();
   }
 
   salesTasks.value = (record.salesTasks || []).map((task) => ({
@@ -800,6 +965,7 @@ const applyServiceTemplateRecord = (
         tasks: (milestone.tasks || []).map((task) => ({ ...task })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
+          retainerServiceId: goal.retainerServiceId ?? null,
           tasks: (goal.tasks || []).map((task) => ({ ...task })),
         })),
       }))
@@ -817,9 +983,10 @@ const applyServiceTemplateRecord = (
 
   jobConfigMilestones.value = milestones;
   expandedMilestones.value = milestones.map((milestone) => milestone.id);
-  expandedGoals.value = milestones.flatMap((milestone) =>
-    milestone.goals.map((goal) => goal.id),
-  );
+  if (record.type === "Retainer Service") syncRetainerMilestoneDueDate();
+  if (record.type === "Retainer Service") syncRetainerServiceGoals();
+  if (record.type === "Contractual Service") syncContractualPhaseGoals();
+  syncExpandedGoals();
   hasCustomMilestoneName.value =
     milestones[0]?.name !== defaultMilestoneName.value;
   jobConfigGoalId.value =
@@ -830,7 +997,10 @@ const applyServiceTemplateRecord = (
     ) + 1;
   jobConfigTaskId.value =
     milestones.reduce((max, milestone) => {
-      const directTaskMax = Math.max(0, ...milestone.tasks.map((task) => task.id));
+      const directTaskMax = Math.max(
+        0,
+        ...milestone.tasks.map((task) => task.id),
+      );
       const goalTaskMax = Math.max(
         0,
         ...milestone.goals.flatMap((goal) => goal.tasks.map((task) => task.id)),
@@ -844,6 +1014,8 @@ const resetOnetimeServiceForm = () => {
   itemName.value = "";
   selectedCategory.value = "";
   selectedStatus.value = "Active";
+  periodStartDate.value = null;
+  periodEndDate.value = null;
   itemBestPrice.value = null;
   isTaxChargeToItem.value = true;
   itemImage.value = null;
@@ -882,16 +1054,21 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
     name: itemName.value.trim(),
     category: selectedCategory.value.trim() || "Uncategorized",
     activeState: mode === "draft" ? "Non-Active" : selectedStatus.value,
+    startDate: isRetainerService.value ? periodStartDate.value : undefined,
+    endDate: isRetainerService.value ? periodEndDate.value : undefined,
     image: itemImage.value?.trim() || null,
-    bestPrice:
-      itemBestPrice.value === null || itemBestPrice.value === undefined
+    bestPrice: isContractualService.value
+      ? contractualPhaseTotalPrice.value
+      : isRetainerService.value
+        ? retainerLinkedServicesTotalPrice.value
+        : itemBestPrice.value === null || itemBestPrice.value === undefined
         ? null
         : Number.isFinite(Number(itemBestPrice.value))
           ? Number(itemBestPrice.value)
           : null,
     chargeTax: isTaxChargeToItem.value,
     description: stripRichText(content.value),
-    relatedItems: isContractualService.value
+    relatedItems: isContractualService.value || isRetainerService.value
       ? undefined
       : relatedItems.value.map((item) => ({
           id: item.id,
@@ -899,10 +1076,31 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
           category: item.category.trim(),
           description: item.description.trim(),
         })),
+    retainerServices: isRetainerService.value
+      ? relatedItems.value.map((item) => ({
+          id: item.id,
+          name: item.name.trim(),
+          category: item.category.trim(),
+          price:
+            item.price === null || item.price === undefined
+              ? null
+              : Number.isFinite(Number(item.price))
+                ? Number(item.price)
+                : null,
+          description: item.description.trim(),
+        }))
+      : undefined,
     phases: isContractualService.value
       ? phases.value.map((phase) => ({
           id: phase.id,
           name: phase.name.trim(),
+          price:
+            phase.price === null || phase.price === undefined
+              ? null
+              : Number.isFinite(Number(phase.price))
+                ? Number(phase.price)
+                : null,
+          chargeTax: phase.chargeTax,
           description: phase.description.trim(),
         }))
       : undefined,
@@ -913,10 +1111,13 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
       }))
       .filter((task) => task.title),
     jobConfiguration: {
-      milestones: jobConfigMilestones.value.map((milestone) => ({
+      milestones: jobConfigMilestones.value.map((milestone, index) => ({
         id: milestone.id,
         name: milestone.name.trim(),
-        dueDate: milestone.dueDate,
+        dueDate:
+          isRetainerService.value && index === 0
+            ? periodEndDate.value
+            : milestone.dueDate,
         priority: milestone.priority,
         note: milestone.note.trim(),
         tasks: milestone.tasks.map((task) => ({
@@ -933,6 +1134,8 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
           milestoneId: goal.milestoneId,
           name: goal.name.trim(),
           dueDate: goal.dueDate,
+          phaseId: goal.phaseId ?? null,
+          retainerServiceId: goal.retainerServiceId ?? null,
           priority: goal.priority,
           note: goal.note.trim(),
           tasks: goal.tasks.map((task) => ({
@@ -974,7 +1177,8 @@ watch(
 
     if (
       record.type === "Onetime Service" ||
-      record.type === "Contractual Service"
+      record.type === "Contractual Service" ||
+      record.type === "Retainer Service"
     ) {
       applyServiceTemplateRecord(record);
       return;
@@ -1001,7 +1205,11 @@ watch(
       </div>
 
       <div class="d-flex gap-4 align-center flex-wrap">
-        <VBtn variant="tonal" color="secondary" @click="router.push('/catalogues/list')">
+        <VBtn
+          variant="tonal"
+          color="secondary"
+          @click="router.push('/catalogues/list')"
+        >
           Discard
         </VBtn>
         <VBtn variant="tonal" color="primary" @click="saveItem('draft')">
@@ -1021,45 +1229,61 @@ watch(
 
           <VCardText>
             <VForm ref="itemFormRef" @submit.prevent="saveItem('publish')">
-            <VRow>
-              <VCol cols="12">
-                <AppTextField
-                  v-model="itemName"
-                  label="Name"
-                  placeholder="iPhone 14"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-              <VCol cols="12" md="6">
-                <CatalogueCategoryTreeSelect
-                  v-model="selectedCategory"
-                  label="Category"
-                  placeholder="Select Category"
-                  :items="categoryTree"
-                />
-              </VCol>
-              <VCol cols="12" md="6">
-                <AppSelect
-                  v-model="selectedStatus"
-                  label="Status"
-                  placeholder="Select Status"
-                  :items="activeStateOptions"
-                />
-              </VCol>
-              <VCol>
-                <span class="mb-1">Description (optional)</span>
-                <ProductDescriptionEditor
-                  v-model="content"
-                  placeholder="Item Description"
-                  class="border rounded"
-                />
-              </VCol>
-            </VRow>
+              <VRow>
+                <VCol cols="12">
+                  <AppTextField
+                    v-model="itemName"
+                    label="Name"
+                    placeholder="iPhone 14"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+                <VCol cols="12" md="6">
+                  <CatalogueCategoryTreeSelect
+                    v-model="selectedCategory"
+                    label="Category"
+                    placeholder="Select Category"
+                    :items="categoryTree"
+                  />
+                </VCol>
+                <VCol cols="12" md="6">
+                  <AppSelect
+                    v-model="selectedStatus"
+                    label="Status"
+                    placeholder="Select Status"
+                    :items="activeStateOptions"
+                  />
+                </VCol>
+                <template v-if="isRetainerService">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="periodStartDate"
+                      label="Start Date"
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </VCol>
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="periodEndDate"
+                      label="End Date"
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </VCol>
+                </template>
+                <VCol>
+                  <span class="mb-1">Description (optional)</span>
+                  <ProductDescriptionEditor
+                    v-model="content"
+                    placeholder="Item Description"
+                    class="border rounded"
+                  />
+                </VCol>
+              </VRow>
             </VForm>
 
             <div v-if="!isContractualService && relatedItems.length" class="mt-6">
               <div class="text-body-2 text-medium-emphasis mb-4">
-                Related items
+                {{ relatedSectionTitle }}
               </div>
 
               <div class="d-flex flex-column gap-4">
@@ -1078,6 +1302,14 @@ watch(
                         <div class="text-h6 font-weight-medium">
                           {{ relatedItem.name }}
                         </div>
+                        <VChip
+                          v-if="isRetainerService && relatedItem.price !== null"
+                          color="primary"
+                          size="small"
+                          variant="text"
+                        >
+                          ${{ relatedItem.price }}
+                        </VChip>
                       </div>
 
                       <div class="text-body-2 text-medium-emphasis">
@@ -1099,9 +1331,7 @@ watch(
             </div>
 
             <div v-if="isContractualService && phases.length" class="mt-6">
-              <div class="text-body-2 text-medium-emphasis mb-4">
-                Phases
-              </div>
+              <div class="text-body-2 text-medium-emphasis mb-4">Phases</div>
 
               <div class="d-flex flex-column gap-4">
                 <div
@@ -1113,10 +1343,27 @@ watch(
                     <div class="related-item-card__dot" />
 
                     <div class="related-item-card__content">
-                      <div class="d-flex flex-wrap align-center gap-x-3 gap-y-1">
+                      <div
+                        class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                      >
                         <div class="text-h6 font-weight-medium">
                           {{ phase.name }}
                         </div>
+                        <VChip
+                          v-if="phase.price !== null"
+                          color="primary"
+                          size="small"
+                          variant="text"
+                        >
+                          ${{ phase.price }}
+                        </VChip>
+                        <VChip
+                          size="small"
+                          :color="phase.chargeTax ? 'success' : 'secondary'"
+                          variant="text"
+                        >
+                          {{ phase.chargeTax ? "Taxable" : "No Tax" }}
+                        </VChip>
                       </div>
 
                       <div
@@ -1146,10 +1393,18 @@ watch(
               size="small"
               color="primary"
               variant="elevated"
-              :prepend-icon="isContractualService ? 'tabler-layers-linked' : 'tabler-link-plus'"
-              @click="isContractualService ? openPhaseDialog() : openRelatedItemDialog()"
+              :prepend-icon="
+                isContractualService
+                  ? 'tabler-layers-linked'
+                  : 'tabler-link-plus'
+              "
+              @click="
+                isContractualService
+                  ? openPhaseDialog()
+                  : openRelatedItemDialog()
+              "
             >
-              {{ isContractualService ? "Phase" : "Related Item" }}
+              {{ isContractualService ? "Phase" : relatedButtonLabel }}
             </VBtn>
           </VCardActions>
         </VCard>
@@ -1652,6 +1907,29 @@ watch(
         <VCard title="Pricing" class="mb-6">
           <VCardText>
             <AppTextField
+              v-if="isContractualService"
+              :model-value="contractualPhaseTotalPrice"
+              label="Best Price"
+              placeholder="Calculated from phases"
+              type="number"
+              min="0"
+              step="0.01"
+              class="mb-6"
+              disabled
+            />
+            <AppTextField
+              v-else-if="isRetainerService"
+              :model-value="retainerLinkedServicesTotalPrice"
+              label="Best Price"
+              placeholder="Calculated from retainer services"
+              type="number"
+              min="0"
+              step="0.01"
+              class="mb-6"
+              disabled
+            />
+            <AppTextField
+              v-else
               v-model.number="itemBestPrice"
               label="Best Price"
               placeholder="Price"
@@ -1695,10 +1973,7 @@ watch(
               @change="handleImageFileSelection"
             />
 
-            <div
-              v-if="itemImage"
-              class="d-flex flex-column gap-y-4"
-            >
+            <div v-if="itemImage" class="d-flex flex-column gap-y-4">
               <VImg
                 :src="itemImage"
                 height="240"
@@ -1739,15 +2014,10 @@ watch(
               class="d-flex flex-column justify-center align-center gap-y-3 pa-12 drop-zone rounded cursor-pointer"
               @click="openImageFilePicker"
             >
-              <IconBtn
-                variant="tonal"
-                class="rounded-sm"
-              >
+              <IconBtn variant="tonal" class="rounded-sm">
                 <VIcon icon="tabler-upload" />
               </IconBtn>
-              <h5 class="text-h5 text-center">
-                Upload an item image
-              </h5>
+              <h5 class="text-h5 text-center">Upload an item image</h5>
               <span class="text-disabled text-center">
                 Click to browse for an image file or use the URL option above.
               </span>
@@ -1800,7 +2070,7 @@ watch(
 
     <VDialog v-model="isRelatedItemDialogOpen" max-width="760">
       <VCard>
-        <VCardItem title="Add Related Item" />
+        <VCardItem :title="relatedDialogTitle" />
 
         <VCardText>
           <VRow>
@@ -1826,6 +2096,16 @@ watch(
               >
                 {{ relatedItemErrors.category }}
               </div>
+            </VCol>
+            <VCol v-if="isRetainerService" cols="12">
+              <AppTextField
+                v-model.number="relatedItemPrice"
+                label="Service Price"
+                placeholder="1500"
+                type="number"
+                min="0"
+                step="0.01"
+              />
             </VCol>
             <VCol cols="12">
               <span class="mb-1">Description (optional)</span>
@@ -1859,13 +2139,29 @@ watch(
 
         <VCardText>
           <VRow>
-            <VCol cols="12">
+            <VCol cols="6">
               <AppTextField
                 v-model="phaseName"
                 label="Name"
                 placeholder="Mobilization"
                 :error="Boolean(phaseErrors.name)"
                 :error-messages="phaseErrors.name"
+              />
+            </VCol>
+            <VCol cols="6">
+              <AppTextField
+                v-model.number="phasePrice"
+                label="Phase Price"
+                placeholder="900"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </VCol>
+            <VCol cols="12">
+              <VCheckbox
+                v-model="isPhaseChargeTax"
+                label="Charge Tax on this phase"
               />
             </VCol>
             <VCol cols="12">

@@ -104,11 +104,32 @@ function getTableKeyForType(type?: string | null): CatalogueTableKey {
 }
 
 function normalizeQty(type: CatalogueItemType, qty?: number | null) {
-  if (type === "Product" || type === "Produced Product" || type === "Rental") {
+  if (
+    type === "Product" ||
+    type === "Produced Product" ||
+    type === "Rental" ||
+    type === "Retainer Service"
+  ) {
     return Number.isFinite(Number(qty)) ? Number(qty) : 0;
   }
 
   return null;
+}
+
+function calculatePeriodQty(
+  startDate?: string | null,
+  endDate?: string | null,
+) {
+  if (!startDate || !endDate) return null;
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diff = Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
+
+  return diff > 0 ? diff : null;
 }
 
 function normalizeJobTask(task: Partial<CatalogueJobConfigTask>, fallbackId: number) {
@@ -141,6 +162,18 @@ function normalizeJobGoal(goal: Partial<CatalogueJobConfigGoal>, fallbackId: num
     milestoneId: Number.isFinite(Number(goal.milestoneId))
       ? Number(goal.milestoneId)
       : 0,
+    phaseId:
+      goal.phaseId === null || goal.phaseId === undefined
+        ? null
+        : Number.isFinite(Number(goal.phaseId))
+          ? Number(goal.phaseId)
+          : null,
+    retainerServiceId:
+      goal.retainerServiceId === null || goal.retainerServiceId === undefined
+        ? null
+        : Number.isFinite(Number(goal.retainerServiceId))
+          ? Number(goal.retainerServiceId)
+          : null,
     name: String(goal.name ?? "").trim(),
     dueDate: goal.dueDate ?? null,
     priority:
@@ -264,7 +297,55 @@ function normalizeRecord(
       phases: phases.map((phase, index) => ({
         id: Number.isFinite(Number(phase.id)) ? Number(phase.id) : index + 1,
         name: String(phase.name ?? "").trim(),
+        price:
+          phase.price === null || phase.price === undefined
+            ? null
+            : Number.isFinite(Number(phase.price))
+              ? Number(phase.price)
+              : null,
+        chargeTax:
+          phase.chargeTax === undefined ? true : Boolean(phase.chargeTax),
         description: String(phase.description ?? "").trim(),
+      })),
+      salesTasks: salesTasks.map((task, index) => ({
+        id: Number.isFinite(Number(task.id)) ? Number(task.id) : index + 1,
+        title: String(task.title ?? "").trim(),
+      })),
+      jobConfiguration: {
+        milestones: milestones.map((milestone, index) =>
+          normalizeJobMilestone(milestone, index + 1),
+        ),
+      },
+    } as CatalogueRecord;
+  }
+
+  if (mappedType === "Retainer Service") {
+    const retainerServices = Array.isArray(payload.retainerServices)
+      ? payload.retainerServices
+      : [];
+    const salesTasks = Array.isArray(payload.salesTasks) ? payload.salesTasks : [];
+    const milestones = Array.isArray(payload.jobConfiguration?.milestones)
+      ? payload.jobConfiguration.milestones
+      : [];
+    const startDate = payload.startDate ?? null;
+    const endDate = payload.endDate ?? null;
+
+    return {
+      ...base,
+      startDate,
+      endDate,
+      qty: calculatePeriodQty(startDate, endDate),
+      retainerServices: retainerServices.map((service, index) => ({
+        id: Number.isFinite(Number(service.id)) ? Number(service.id) : index + 1,
+        name: String(service.name ?? "").trim(),
+        category: String(service.category ?? "").trim(),
+        price:
+          service.price === null || service.price === undefined
+            ? null
+            : Number.isFinite(Number(service.price))
+              ? Number(service.price)
+              : null,
+        description: String(service.description ?? "").trim(),
       })),
       salesTasks: salesTasks.map((task, index) => ({
         id: Number.isFinite(Number(task.id)) ? Number(task.id) : index + 1,

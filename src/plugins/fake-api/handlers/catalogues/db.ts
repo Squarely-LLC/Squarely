@@ -161,11 +161,15 @@ export const db: DB = {
           {
             id: 1,
             name: "Mobilization",
+            price: 900,
+            chargeTax: false,
             description: "Kickoff, asset verification, and site-access coordination before recurring service begins.",
           },
           {
             id: 2,
             name: "Preventive Maintenance",
+            price: 2300,
+            chargeTax: true,
             description: "Scheduled inspections, cleaning, testing, and minor corrective works during the contract term.",
           },
         ],
@@ -192,14 +196,15 @@ export const db: DB = {
                 {
                   id: 1,
                   milestoneId: 1,
-                  name: "Service kickoff",
+                  phaseId: 1,
+                  name: "Mobilization",
                   dueDate: null,
                   priority: "Normal",
-                  note: "Confirm asset list, site access, and maintenance windows.",
+                  note: "Kickoff, asset verification, and site-access coordination before recurring service begins.",
                   tasks: [
                     {
                       id: 1,
-                      title: "Validate lighting inventory",
+                      title: "Confirm site access and asset register",
                       dueAt: null,
                       manhours: 3,
                       notes: "",
@@ -207,6 +212,16 @@ export const db: DB = {
                       important: false,
                     },
                   ],
+                },
+                {
+                  id: 2,
+                  milestoneId: 1,
+                  phaseId: 2,
+                  name: "Preventive Maintenance",
+                  dueDate: null,
+                  priority: "Normal",
+                  note: "Scheduled inspections, cleaning, testing, and minor corrective works during the contract term.",
+                  tasks: [],
                 },
               ],
             },
@@ -227,6 +242,48 @@ export const db: DB = {
         chargeTax: true,
         description: "Monthly acoustic consulting retainer for ongoing workplace planning and review.",
         createdAt: "2026-02-05T10:10:00Z",
+        startDate: "2026-02-05",
+        endDate: "2026-03-06",
+        qty: 30,
+        retainerServices: [
+          {
+            id: 1,
+            name: "Monthly Acoustic Review",
+            category: "Acoustic Panels",
+            price: 1500,
+            description: "Scheduled workplace acoustic review and recommendations for active projects.",
+          },
+        ],
+        salesTasks: [
+          {
+            id: 1,
+            title: "Confirm retainer scope",
+          },
+        ],
+        jobConfiguration: {
+          milestones: [
+            {
+              id: 1,
+              name: "Workplace Acoustic Consulting Retainer",
+              dueDate: null,
+              priority: "Normal",
+              note: "",
+              tasks: [],
+              goals: [
+                {
+                  id: 1,
+                  milestoneId: 1,
+                  retainerServiceId: 1,
+                  name: "Monthly Acoustic Review",
+                  dueDate: null,
+                  priority: "Normal",
+                  note: "Scheduled workplace acoustic review and recommendations for active projects.",
+                  tasks: [],
+                },
+              ],
+            },
+          ],
+        },
       },
     ],
     reccurentServices: [

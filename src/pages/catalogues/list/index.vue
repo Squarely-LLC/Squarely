@@ -222,7 +222,8 @@ const itemAvatarIcon = (type: CatalogueItemType) => {
 const hasInventoryQuantity = (product: CatalogueItem) =>
   product.type === "Product" ||
   product.type === "Produced Product" ||
-  product.type === "Rental";
+  product.type === "Rental" ||
+  product.type === "Retainer Service";
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 

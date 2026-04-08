@@ -44,3 +44,9 @@ public/mockServiceWorker.js
 
 # Local Netlify folder
 .netlify
+
+# Accidental emitted source artifacts
+src/**/*.js
+src/**/*.js.map
+src/**/*.jsx
+src/**/*.jsx.map
