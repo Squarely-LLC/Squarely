@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import CatalogueCategoryNode from "@/views/apps/configuration/CatalogueCategoryNode.vue";
-import EditableChipList from "@/components/EditableChipList.vue";
 import type {
   CatalogueCategory,
   CatalogueConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
+import CatalogueCategoryNode from "@/views/apps/configuration/CatalogueCategoryNode.vue";
 import { onMounted, ref } from "vue";
 
 const store = useConfigStore();
@@ -29,9 +28,9 @@ const MAX_CATEGORY_DEPTH = 5;
 const cleanEntries = (values?: (string | null | undefined)[]) => {
   if (!Array.isArray(values)) return [];
   return values
-    .map(value => String(value ?? "").trim())
+    .map((value) => String(value ?? "").trim())
     .filter(Boolean)
-    .map(value => value.charAt(0).toUpperCase() + value.slice(1));
+    .map((value) => value.charAt(0).toUpperCase() + value.slice(1));
 };
 
 const loadData = () => {
@@ -94,7 +93,11 @@ const saveVisibility = async () => {
   if (res) {
     notifications.push("Catalogue visibility settings saved", "success", 2000);
   } else {
-    notifications.push("Failed to save catalogue visibility settings", "error", 3000);
+    notifications.push(
+      "Failed to save catalogue visibility settings",
+      "error",
+      3000,
+    );
     loadData();
   }
 };
@@ -107,7 +110,7 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, "");
 
 const cloneCategories = (items: CatalogueCategory[]): CatalogueCategory[] =>
-  items.map(item => ({
+  items.map((item) => ({
     id: item.id,
     name: item.name,
     children: cloneCategories(item.children || []),
@@ -127,7 +130,11 @@ const saveCategories = async (next: CatalogueCategory[]) => {
   }
 };
 
-const categoryDepth = (items: CatalogueCategory[], id: string, level = 1): number | null => {
+const categoryDepth = (
+  items: CatalogueCategory[],
+  id: string,
+  level = 1,
+): number | null => {
   for (const item of items) {
     if (item.id === id) return level;
     const nested = categoryDepth(item.children || [], id, level + 1);
@@ -141,7 +148,7 @@ const appendChild = (
   parentId: string,
   child: CatalogueCategory,
 ): CatalogueCategory[] =>
-  items.map(item => {
+  items.map((item) => {
     if (item.id === parentId) {
       return {
         ...item,
@@ -160,16 +167,19 @@ const renameCategory = (
   id: string,
   name: string,
 ): CatalogueCategory[] =>
-  items.map(item => ({
+  items.map((item) => ({
     ...item,
     name: item.id === id ? name : item.name,
     children: renameCategory(item.children || [], id, name),
   }));
 
-const removeCategory = (items: CatalogueCategory[], id: string): CatalogueCategory[] =>
+const removeCategory = (
+  items: CatalogueCategory[],
+  id: string,
+): CatalogueCategory[] =>
   items
-    .filter(item => item.id !== id)
-    .map(item => ({
+    .filter((item) => item.id !== id)
+    .map((item) => ({
       ...item,
       children: removeCategory(item.children || [], id),
     }));
@@ -189,11 +199,18 @@ const addRootCategory = async () => {
   await saveCategories(next);
 };
 
-const addChildCategory = async (payload: { parentId: string; name: string }) => {
+const addChildCategory = async (payload: {
+  parentId: string;
+  name: string;
+}) => {
   const depth = categoryDepth(categories.value, payload.parentId);
   if (depth === null) return;
   if (depth >= MAX_CATEGORY_DEPTH) {
-    notifications.push("You can only create up to 5 category levels", "warning", 2500);
+    notifications.push(
+      "You can only create up to 5 category levels",
+      "warning",
+      2500,
+    );
     return;
   }
 
@@ -206,7 +223,11 @@ const addChildCategory = async (payload: { parentId: string; name: string }) => 
 };
 
 const updateCategoryName = async (payload: { id: string; name: string }) => {
-  const next = renameCategory(categories.value, payload.id, payload.name.trim());
+  const next = renameCategory(
+    categories.value,
+    payload.id,
+    payload.name.trim(),
+  );
   await saveCategories(next);
 };
 
@@ -219,49 +240,6 @@ const deleteCategory = async (id: string) => {
 <template>
   <VRow>
     <VCol cols="12">
-      <VCard title="Catalogue Setup">
-        <VCardText class="d-flex flex-column gap-6">
-          <EditableChipList
-            label="Item Type"
-            :items="itemTypes"
-            :loading="isSavingItemTypes"
-            placeholder="Add item types"
-            @save="saveItemTypes"
-            @warn="notifications.push($event, 'warning', 2000)"
-            @error="notifications.push($event, 'error', 2500)"
-          />
-
-          <EditableChipList
-            label="Active State"
-            :items="activeStates"
-            :loading="isSavingActiveStates"
-            placeholder="Add active states"
-            @save="saveActiveStates"
-            @warn="notifications.push($event, 'warning', 2000)"
-            @error="notifications.push($event, 'error', 2500)"
-          />
-
-          <div class="d-flex align-center justify-space-between flex-wrap gap-4">
-            <div>
-              <div class="text-body-1 font-weight-medium">
-                Hide archived items by default
-              </div>
-              <div class="text-body-2 text-medium-emphasis">
-                Keeps archived catalogue items out of list pages until explicitly filtered.
-              </div>
-            </div>
-
-            <VSwitch
-              v-model="hideArchivedByDefault"
-              :loading="isSavingVisibility"
-              @update:model-value="saveVisibility"
-            />
-          </div>
-        </VCardText>
-      </VCard>
-    </VCol>
-
-    <VCol cols="12">
       <VCard title="Categories">
         <VCardText class="d-flex flex-column gap-4">
           <div class="d-flex align-center gap-2 flex-wrap">
@@ -269,7 +247,7 @@ const deleteCategory = async (id: string) => {
               v-model="rootCategoryName"
               hide-details
               placeholder="Add root category"
-              style="min-inline-size: 280px; max-inline-size: 420px"
+              style="max-inline-size: 420px; min-inline-size: 280px"
               @keydown.enter.prevent="addRootCategory"
             />
             <VBtn
@@ -281,30 +259,56 @@ const deleteCategory = async (id: string) => {
             </VBtn>
           </div>
 
-          <VAlert type="info" variant="tonal">
-            You can create up to 5 levels of sub-categories.
-          </VAlert>
-
           <VCard variant="outlined">
             <VList class="pa-2">
               <template v-if="categories.length">
-                <CatalogueCategoryNode
-                  v-for="category in categories"
+                <template
+                  v-for="(category, index) in categories"
                   :key="category.id"
-                  :node="category"
-                  :level="1"
-                  :max-depth="MAX_CATEGORY_DEPTH"
-                  :disabled="isSavingCategories"
-                  @add-child="addChildCategory"
-                  @remove="deleteCategory"
-                  @rename="updateCategoryName"
-                />
+                >
+                  <VDivider v-if="index > 0" class="my-2" />
+                  <CatalogueCategoryNode
+                    :node="category"
+                    :level="1"
+                    :max-depth="MAX_CATEGORY_DEPTH"
+                    :disabled="isSavingCategories"
+                    @add-child="addChildCategory"
+                    @remove="deleteCategory"
+                    @rename="updateCategoryName"
+                  />
+                </template>
               </template>
               <div v-else class="text-body-2 text-medium-emphasis pa-3">
                 No categories yet. Add your first root category above.
               </div>
             </VList>
           </VCard>
+        </VCardText>
+      </VCard>
+    </VCol>
+
+    <VCol cols="12">
+      <VCard title="Catalogue Setup">
+        <VCardText class="d-flex flex-column gap-6">
+          <div
+            class="d-flex align-center justify-space-between flex-wrap gap-4"
+          >
+            <div>
+              <div class="text-body-1 font-weight-medium">
+                Hide archived items by default
+              </div>
+              <div class="text-body-2 text-medium-emphasis">
+                Keeps archived catalogue items out of list pages until
+                explicitly filtered.
+              </div>
+            </div>
+
+            <VSwitch
+              v-model="hideArchivedByDefault"
+              :loading="isSavingVisibility"
+              @update:model-value="saveVisibility"
+            />
+          </div>
         </VCardText>
       </VCard>
     </VCol>

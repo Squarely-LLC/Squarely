@@ -15,7 +15,7 @@ const emit = defineEmits<{
   (e: "rename", payload: { id: string; name: string }): void;
 }>();
 
-const isOpen = ref(props.level < 2);
+const isOpen = ref((props.node.children?.length ?? 0) > 0);
 const isAddingChild = ref(false);
 const childName = ref("");
 const childInputRef = ref<{ $el?: Element } | HTMLElement | null>(null);
@@ -31,10 +31,19 @@ watch(
 
 const canAddChild = computed(() => props.level < props.maxDepth);
 const hasChildren = computed(() => (props.node.children?.length ?? 0) > 0);
+const levelIcon = computed(() => {
+  if (props.level === 1) return "tabler-category";
+  if (hasChildren.value) return "tabler-folder";
+  return "tabler-tag";
+});
+const openedGroups = computed({
+  get: () => (isOpen.value ? [props.node.id] : []),
+  set: value => {
+    isOpen.value = value.includes(props.node.id);
+  },
+});
 
-watch(isAddingChild, async value => {
-  if (!value) return;
-  isOpen.value = true;
+const focusChildInput = async () => {
   await nextTick();
   const inputHost =
     childInputRef.value instanceof HTMLElement
@@ -42,12 +51,19 @@ watch(isAddingChild, async value => {
       : childInputRef.value?.$el;
 
   inputHost?.querySelector("input")?.focus();
+};
+
+watch(isAddingChild, value => {
+  if (!value) return;
+  void focusChildInput();
 });
 
-const startAddChild = () => {
+const startAddChild = async () => {
   if (!canAddChild.value || props.disabled) return;
-  isAddingChild.value = true;
+  isOpen.value = true;
   childName.value = "";
+  isAddingChild.value = true;
+  await focusChildInput();
 };
 
 const submitAddChild = () => {
@@ -84,116 +100,120 @@ const cancelEdit = () => {
 </script>
 
 <template>
-  <VListGroup v-model="isOpen" fluid>
-    <template #activator="{ props: activatorProps }">
-      <VListItem v-bind="activatorProps">
-        <template #title>
-          <div class="d-flex align-center justify-space-between gap-3 w-100">
-            <div class="d-flex align-center gap-2 flex-wrap min-w-0">
-              <span class="text-body-2 text-medium-emphasis">
-                L{{ level }}
-              </span>
-
-              <template v-if="isEditing">
-                <AppTextField
-                  v-model="editingName"
-                  density="compact"
-                  hide-details
-                  autofocus
-                  style="min-inline-size: 220px; max-inline-size: 320px"
-                  @keydown.enter.prevent="submitEdit"
-                  @keydown.esc.prevent="cancelEdit"
+  <VList v-model:opened="openedGroups" class="pa-0">
+    <VListGroup :value="node.id" fluid>
+      <template #activator="{ props: activatorProps }">
+        <VListItem v-bind="activatorProps">
+          <template #title>
+            <div class="d-flex align-center justify-space-between gap-3 w-100">
+              <div class="d-flex align-center gap-2 flex-wrap min-w-0">
+                <VIcon
+                  :icon="levelIcon"
+                  size="18"
+                  class="text-medium-emphasis"
                 />
-              </template>
-              <template v-else>
-                <span class="text-body-1 text-high-emphasis text-truncate">
-                  {{ node.name }}
-                </span>
-              </template>
-            </div>
 
-            <div class="d-flex align-center gap-1">
-              <IconBtn
-                v-if="isEditing"
-                :disabled="disabled"
-                @click.stop="submitEdit"
-              >
-                <VIcon icon="tabler-check" />
-              </IconBtn>
+                <template v-if="isEditing">
+                  <AppTextField
+                    v-model="editingName"
+                    density="compact"
+                    hide-details
+                    autofocus
+                    style="min-inline-size: 220px; max-inline-size: 320px"
+                    @keydown.enter.prevent="submitEdit"
+                    @keydown.esc.prevent="cancelEdit"
+                  />
+                </template>
+                <template v-else>
+                  <span class="text-body-1 text-high-emphasis text-truncate">
+                    {{ node.name }}
+                  </span>
+                </template>
+              </div>
 
-              <IconBtn
-                v-if="isEditing"
-                :disabled="disabled"
-                @click.stop="cancelEdit"
-              >
-                <VIcon icon="tabler-x" />
-              </IconBtn>
-
-              <template v-else>
-                <IconBtn :disabled="disabled" @click.stop="startEdit">
-                  <VIcon icon="tabler-pencil" />
+              <div class="d-flex align-center gap-1">
+                <IconBtn
+                  v-if="isEditing"
+                  :disabled="disabled"
+                  @click.stop="submitEdit"
+                >
+                  <VIcon icon="tabler-check" />
                 </IconBtn>
 
                 <IconBtn
-                  :disabled="disabled || !canAddChild"
-                  @click.stop="startAddChild"
+                  v-if="isEditing"
+                  :disabled="disabled"
+                  @click.stop="cancelEdit"
                 >
-                  <VIcon icon="tabler-plus" />
+                  <VIcon icon="tabler-x" />
                 </IconBtn>
 
-                <IconBtn :disabled="disabled" @click.stop="emit('remove', node.id)">
-                  <VIcon icon="tabler-trash" />
-                </IconBtn>
-              </template>
+                <template v-else>
+                  <IconBtn :disabled="disabled" @click.stop="startEdit">
+                    <VIcon icon="tabler-pencil" />
+                  </IconBtn>
+
+                  <IconBtn
+                    :disabled="disabled || !canAddChild"
+                    @click.stop.prevent="startAddChild"
+                  >
+                    <VIcon icon="tabler-plus" />
+                  </IconBtn>
+
+                  <IconBtn :disabled="disabled" @click.stop="emit('remove', node.id)">
+                    <VIcon icon="tabler-trash" />
+                  </IconBtn>
+                </template>
+              </div>
             </div>
-          </div>
-        </template>
-      </VListItem>
-    </template>
+          </template>
+        </VListItem>
+      </template>
 
-    <div class="ps-4 pb-2">
-      <div
-        v-if="isAddingChild"
-        class="d-flex align-center gap-2 flex-wrap mb-2 mt-1"
-      >
-        <AppTextField
-          ref="childInputRef"
-          v-model="childName"
-          density="compact"
-          hide-details
-          :placeholder="`Add level ${level + 1} sub-category`"
-          style="min-inline-size: 240px; max-inline-size: 340px"
-          @keydown.enter.prevent="submitAddChild"
-          @keydown.esc.prevent="cancelAddChild"
-        />
-        <VBtn size="small" :disabled="disabled || !childName.trim()" @click="submitAddChild">
-          Add
-        </VBtn>
-        <VBtn size="small" variant="text" color="secondary" @click="cancelAddChild">
-          Cancel
-        </VBtn>
+      <div class="ps-4 pb-2">
+        <div
+          v-if="isAddingChild"
+          class="d-flex align-center gap-2 flex-wrap mb-2 mt-1"
+        >
+          <AppTextField
+            ref="childInputRef"
+            v-model="childName"
+            density="compact"
+            hide-details
+            :placeholder="`Add level ${level + 1} sub-category`"
+            style="min-inline-size: 240px; max-inline-size: 340px"
+            @keydown.enter.prevent="submitAddChild"
+            @keydown.esc.prevent="cancelAddChild"
+          />
+          <VBtn size="small" :disabled="disabled || !childName.trim()" @click="submitAddChild">
+            Add
+          </VBtn>
+          <VBtn size="small" variant="text" color="secondary" @click="cancelAddChild">
+            Cancel
+          </VBtn>
+        </div>
+
+        <div
+          v-if="!hasChildren && !isAddingChild"
+          class="text-body-2 text-medium-emphasis py-1"
+        >
+          No sub-categories yet.
+        </div>
+
+        <VList v-if="hasChildren" class="pa-0">
+          <CatalogueCategoryNode
+            v-for="child in node.children"
+            :key="child.id"
+            :node="child"
+            :level="level + 1"
+            :max-depth="maxDepth"
+            :disabled="disabled"
+            @add-child="emit('add-child', $event)"
+            @remove="emit('remove', $event)"
+            @rename="emit('rename', $event)"
+          />
+        </VList>
       </div>
-
-      <div
-        v-if="!hasChildren && !isAddingChild"
-        class="text-body-2 text-medium-emphasis py-1"
-      >
-        No sub-categories yet.
-      </div>
-
-      <VList v-if="hasChildren" class="pa-0">
-        <CatalogueCategoryNode
-          v-for="child in node.children"
-          :key="child.id"
-          :node="child"
-          :level="level + 1"
-          :max-depth="maxDepth"
-          :disabled="disabled"
-          @add-child="emit('add-child', $event)"
-          @remove="emit('remove', $event)"
-          @rename="emit('rename', $event)"
-        />
-      </VList>
-    </div>
-  </VListGroup>
+    </VListGroup>
+  </VList>
 </template>

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 const optionCounter = ref(1)
+const route = useRoute()
 
 const activeTab = ref('Restock')
 const isTaxChargeToProduct = ref(true)
@@ -27,6 +29,29 @@ const content = ref(
   `<p>
     Keep your account secure with authentication step.
     </p>`)
+
+const selectedType = computed(() => {
+  const rawType = route.query.type
+  return typeof rawType === 'string' && rawType.trim()
+    ? rawType
+    : 'Product'
+})
+
+const typeDescriptions: Record<string, string> = {
+  'Onetime Service': 'Create a one-off service item for a single defined scope of work.',
+  Product: 'Create a stocked sellable inventory item.',
+  'Contractual Service': 'Create a service delivered under a contract or maintenance agreement.',
+  'Retainer Service': 'Create an ongoing retainer-based service offering.',
+  'Reccurent Service': 'Create a recurring service delivered on a repeating schedule.',
+  'Produced Product': 'Create an internally manufactured or custom-built catalogue item.',
+  Rental: 'Create a rentable asset tracked for availability and return.',
+}
+
+const pageTitle = computed(() => `Add ${selectedType.value}`)
+const pageSubtitle = computed(
+  () => typeDescriptions[selectedType.value] || 'Create a new catalogue item.',
+)
+const publishButtonLabel = computed(() => `Publish ${selectedType.value}`)
 </script>
 
 <template>
@@ -34,10 +59,10 @@ const content = ref(
     <div class="d-flex flex-wrap justify-start justify-sm-space-between gap-y-4 gap-x-6 mb-6">
       <div class="d-flex flex-column justify-center">
         <h4 class="text-h4 font-weight-medium">
-          Add a new product
+          {{ pageTitle }}
         </h4>
         <div class="text-body-1">
-          Orders placed across your store
+          {{ pageSubtitle }}
         </div>
       </div>
 
@@ -54,7 +79,7 @@ const content = ref(
         >
           Save Draft
         </VBtn>
-        <VBtn>Publish Product</VBtn>
+        <VBtn>{{ publishButtonLabel }}</VBtn>
       </div>
     </div>
 

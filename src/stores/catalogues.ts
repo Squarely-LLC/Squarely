@@ -7,7 +7,7 @@ import type {
   CatalogueProduct,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 
-const STORAGE_KEY = "app.catalogue-products.v1";
+const STORAGE_KEY = "app.catalogue-products.v2";
 const DEFAULT_TYPE: CatalogueItemType = "Product";
 
 function cloneProduct(product: CatalogueProduct): CatalogueProduct {

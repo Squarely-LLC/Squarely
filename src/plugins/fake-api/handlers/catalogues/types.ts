@@ -1,12 +1,5 @@
-export type CatalogueActiveState = "Active" | "Non-Active" | "Archived";
-export type CatalogueItemType =
-  | "Onetime Service"
-  | "Product"
-  | "Contractual Service"
-  | "Retainer Service"
-  | "Reccurent Service"
-  | "Produced Product"
-  | "Rental";
+export type CatalogueActiveState = string;
+export type CatalogueItemType = string;
 
 export interface CatalogueProduct {
   id: number;

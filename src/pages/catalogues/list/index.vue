@@ -6,7 +6,9 @@ import type {
   CatalogueItemType,
   CatalogueProduct,
 } from "@/plugins/fake-api/handlers/catalogues/types";
+import type { CatalogueCategory } from "@/plugins/fake-api/handlers/config/types";
 import { useCataloguesStore } from "@/stores/catalogues";
+import { useConfigStore } from "@/stores/config";
 
 type SortKey =
   | "name"
@@ -17,9 +19,17 @@ type SortKey =
   | "type"
   | "createdAt";
 type SortOrder = "asc" | "desc";
+type ItemTypeChoice = {
+  title: string;
+  value: string;
+  description: string;
+  icon: string;
+};
 
 const cataloguesStore = useCataloguesStore();
 cataloguesStore.init();
+const configStore = useConfigStore();
+configStore.init();
 
 const headers = [
   { title: "Item", key: "product" },
@@ -31,34 +41,76 @@ const headers = [
   { title: "Actions", key: "actions", sortable: false },
 ];
 
-const selectedType = ref<CatalogueItemType | undefined>();
+const selectedType = ref<string | undefined>();
 const selectedCategory = ref<string | undefined>();
-const selectedActive = ref<CatalogueActiveState | undefined>();
+const selectedActive = ref<string | undefined>();
 const searchQuery = ref("");
 
-const types = ref<{ title: string; value: CatalogueItemType }[]>([
-  { title: "Onetime Service", value: "Onetime Service" },
-  { title: "Product", value: "Product" },
-  { title: "Contractual Service", value: "Contractual Service" },
-  { title: "Retainer Service", value: "Retainer Service" },
-  { title: "Reccurent Service", value: "Reccurent Service" },
-  { title: "Produced Product", value: "Produced Product" },
-  { title: "Rental", value: "Rental" },
-]);
+const DEFAULT_TYPE_OPTIONS: CatalogueItemType[] = [
+  "Onetime Service",
+  "Product",
+  "Contractual Service",
+  "Retainer Service",
+  "Reccurent Service",
+  "Produced Product",
+  "Rental",
+];
+
+const DEFAULT_ACTIVE_OPTIONS: CatalogueActiveState[] = [
+  "Active",
+  "Non-Active",
+  "Archived",
+];
+
+const cleanEntries = (values?: (string | null | undefined)[]) =>
+  Array.from(
+    new Set(
+      (values || [])
+        .map(value => String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+const flattenCategoryNames = (items?: CatalogueCategory[]) => {
+  const names: string[] = [];
+
+  for (const item of items || []) {
+    const name = item.name?.trim();
+    if (name) names.push(name);
+
+    if (item.children?.length) names.push(...flattenCategoryNames(item.children));
+  }
+
+  return names;
+};
+
+const configuredTypes = computed<{ title: string; value: CatalogueItemType }[]>(() => {
+  const values = cleanEntries(configStore.configurations.catalogue?.itemTypes);
+  const source = values.length ? values : DEFAULT_TYPE_OPTIONS;
+
+  return source.map(value => ({ title: value, value }));
+});
 
 const categories = computed(() => {
   const unique = Array.from(
-    new Set(cataloguesStore.all.map(product => product.category).filter(Boolean)),
+    new Set(flattenCategoryNames(configStore.configurations.catalogue?.categories)),
   ).sort((a, b) => a.localeCompare(b));
 
   return unique.map(category => ({ title: category, value: category }));
 });
 
-const activeOptions = ref<{ title: string; value: CatalogueActiveState }[]>([
-  { title: "Active", value: "Active" },
-  { title: "Non-Active", value: "Non-Active" },
-  { title: "Archived", value: "Archived" },
-]);
+const configuredActiveOptions = computed<
+  { title: string; value: CatalogueActiveState }[]
+>(() => {
+  const values = cleanEntries(configStore.configurations.catalogue?.activeStates);
+  const source = values.length ? values : DEFAULT_ACTIVE_OPTIONS;
+
+  return source.map(value => ({ title: value, value }));
+});
+
+const hideArchivedByDefault = computed(
+  () => configStore.configurations.catalogue?.hideArchivedByDefault ?? true,
+);
 
 const itemsPerPage = ref(10);
 const page = ref(1);
@@ -66,7 +118,52 @@ const sortBy = ref<SortKey | undefined>("createdAt");
 const orderBy = ref<SortOrder | undefined>("desc");
 const openActiveMenuId = ref<number | string | null>(null);
 const isDeleteConfirmVisible = ref(false);
+const isAddItemTypeDialogVisible = ref(false);
 const deleteCandidate = ref<CatalogueProduct | null>(null);
+const itemTypeChoices: ItemTypeChoice[] = [
+  {
+    title: "Onetime Service",
+    value: "Onetime Service",
+    description: "Single-scope service delivered once, such as an installation or one-off site visit.",
+    icon: "tabler-bolt",
+  },
+  {
+    title: "Product",
+    value: "Product",
+    description: "Standard stocked item purchased, stored, and sold as inventory.",
+    icon: "tabler-package",
+  },
+  {
+    title: "Contractual Service",
+    value: "Contractual Service",
+    description: "Service sold under a fixed contract period, scope, or maintenance agreement.",
+    icon: "tabler-file-description",
+  },
+  {
+    title: "Retainer Service",
+    value: "Retainer Service",
+    description: "Ongoing advisory or support service billed to reserve team availability over time.",
+    icon: "tabler-briefcase",
+  },
+  {
+    title: "Reccurent Service",
+    value: "Reccurent Service",
+    description: "Scheduled repeat service delivered on a recurring basis such as monthly cleaning or upkeep.",
+    icon: "tabler-repeat",
+  },
+  {
+    title: "Produced Product",
+    value: "Produced Product",
+    description: "Item manufactured, assembled, or custom-built internally before delivery.",
+    icon: "tabler-building-factory-2",
+  },
+  {
+    title: "Rental",
+    value: "Rental",
+    description: "Reusable asset hired out for a defined time window and then returned to stock.",
+    icon: "tabler-calendar-time",
+  },
+];
 
 const updateOptions = (options: {
   sortBy?: Array<{ key: SortKey; order: SortOrder }>;
@@ -87,7 +184,8 @@ const resolveActive = (activeState: CatalogueActiveState) => {
   if (activeState === "Active") return { text: "Active", color: "success" };
   if (activeState === "Non-Active")
     return { text: "Non-Active", color: "warning" };
-  return { text: "Archived", color: "secondary" };
+  if (activeState === "Archived") return { text: "Archived", color: "secondary" };
+  return { text: activeState, color: "primary" };
 };
 
 const activeTextClass = (activeState: CatalogueActiveState) =>
@@ -95,7 +193,17 @@ const activeTextClass = (activeState: CatalogueActiveState) =>
     ? "text-success"
     : activeState === "Non-Active"
       ? "text-warning"
-      : "text-secondary";
+      : activeState === "Archived"
+        ? "text-secondary"
+        : "text-primary";
+
+const isArchivedState = (value?: string | null) =>
+  String(value ?? "").trim().toLowerCase() === "archived";
+
+const hasInventoryQuantity = (product: CatalogueProduct) =>
+  product.type === "Product" ||
+  product.type === "Produced Product" ||
+  product.type === "Rental";
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
@@ -126,7 +234,7 @@ const matchesFilters = (product: CatalogueProduct) => {
 
   if (selectedActive.value) {
     if (product.activeState !== selectedActive.value) return false;
-  } else if (product.activeState === "Archived") {
+  } else if (hideArchivedByDefault.value && isArchivedState(product.activeState)) {
     return false;
   }
 
@@ -197,10 +305,7 @@ const displayedProducts = computed<CatalogueProduct[]>(() => {
 
 const totalProducts = computed(() => sortedProducts.value.length);
 
-const updateActiveState = (
-  product: CatalogueProduct,
-  activeState: CatalogueActiveState,
-) => {
+const updateActiveState = (product: CatalogueProduct, activeState: string) => {
   cataloguesStore.updateProduct(product.id, { activeState });
 };
 
@@ -222,6 +327,20 @@ const cancelDelete = () => {
   isDeleteConfirmVisible.value = false;
   deleteCandidate.value = null;
 };
+
+const openAddItemTypeDialog = () => {
+  isAddItemTypeDialogVisible.value = true;
+};
+
+const goToAddItemPage = (type: string) => {
+  isAddItemTypeDialogVisible.value = false;
+  $router.push({
+    path: "/catalogues/add",
+    query: {
+      type,
+    },
+  });
+};
 </script>
 
 <template>
@@ -233,7 +352,7 @@ const cancelDelete = () => {
             <AppSelect
               v-model="selectedType"
               placeholder="Type"
-              :items="types"
+              :items="configuredTypes"
               clearable
               clear-icon="tabler-x"
             />
@@ -253,7 +372,7 @@ const cancelDelete = () => {
             <AppSelect
               v-model="selectedActive"
               placeholder="Active"
-              :items="activeOptions"
+              :items="configuredActiveOptions"
               clearable
               clear-icon="tabler-x"
             />
@@ -284,7 +403,7 @@ const cancelDelete = () => {
           <VBtn
             color="primary"
             prepend-icon="tabler-plus"
-            @click="$router.push('/catalogues/add')"
+            @click="openAddItemTypeDialog"
           >
             Add Item
           </VBtn>
@@ -328,6 +447,12 @@ const cancelDelete = () => {
           <span class="text-body-1 text-high-emphasis">{{ item.type }}</span>
         </template>
 
+        <template #item.qty="{ item }">
+          <span class="text-body-1 text-high-emphasis">
+            {{ hasInventoryQuantity(item) ? item.qty : "-" }}
+          </span>
+        </template>
+
         <template #item.activeState="{ item }">
           <VMenu
             location="bottom start"
@@ -343,14 +468,14 @@ const cancelDelete = () => {
                 :class="activeTextClass(item.activeState)"
                 @click.stop
               >
-                <span class="text-body-1">{{ item.activeState }}</span>
+                <span class="text-body-1">{{ resolveActive(item.activeState).text }}</span>
                 <VIcon icon="tabler-chevron-down" size="16" class="ms-1" />
               </VBtn>
             </template>
 
             <VList density="compact" min-width="180">
               <VListItem
-                v-for="option in activeOptions"
+                v-for="option in configuredActiveOptions"
                 :key="option.value"
                 :active="item.activeState === option.value"
                 @click="
@@ -441,6 +566,63 @@ const cancelDelete = () => {
           </VCardActions>
         </VCard>
       </VDialog>
+
+      <VDialog v-model="isAddItemTypeDialogVisible" max-width="920">
+        <VCard class="pa-sm-6 pa-4">
+          <VCardTitle class="text-h4 pb-2">
+            Choose Item Type
+          </VCardTitle>
+          <VCardText class="text-body-1 text-medium-emphasis pb-6">
+            Select the kind of catalogue item you want to create. Each option opens the matching add flow.
+          </VCardText>
+
+          <VRow>
+            <VCol
+              v-for="choice in itemTypeChoices"
+              :key="choice.value"
+              cols="12"
+              md="6"
+            >
+              <VCard
+                variant="outlined"
+                class="item-type-card h-100"
+                @click="goToAddItemPage(choice.value)"
+              >
+                <VCardText class="d-flex align-start gap-4">
+                  <VAvatar
+                    size="44"
+                    rounded
+                    variant="tonal"
+                    color="primary"
+                  >
+                    <VIcon :icon="choice.icon" size="22" />
+                  </VAvatar>
+
+                  <div class="flex-grow-1">
+                    <div class="text-h6 text-high-emphasis mb-1">
+                      {{ choice.title }}
+                    </div>
+                    <div class="text-body-2 text-medium-emphasis">
+                      {{ choice.description }}
+                    </div>
+                  </div>
+                </VCardText>
+              </VCard>
+            </VCol>
+          </VRow>
+
+          <VCardActions class="pt-6">
+            <VSpacer />
+            <VBtn
+              variant="text"
+              color="secondary"
+              @click="isAddItemTypeDialogVisible = false"
+            >
+              Cancel
+            </VBtn>
+          </VCardActions>
+        </VCard>
+      </VDialog>
     </VCard>
   </div>
 </template>
@@ -449,5 +631,16 @@ const cancelDelete = () => {
 .status-trigger {
   justify-content: flex-start;
   min-inline-size: 0;
+}
+
+.item-type-card {
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+
+  &:hover {
+    border-color: rgb(var(--v-theme-primary));
+    background-color: rgba(var(--v-theme-primary), 0.04);
+    transform: translateY(-2px);
+  }
 }
 </style>
