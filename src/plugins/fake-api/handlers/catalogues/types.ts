@@ -11,11 +11,13 @@ export type CatalogueItemType =
 export interface CatalogueBaseRecord {
   id: string;
   name: string;
-  brand?: string | null;
   category: string;
   activeState: CatalogueActiveState;
   sku: string;
   image?: string | null;
+  bestPrice: number | null;
+  chargeTax: boolean;
+  description: string;
   createdAt: string;
 }
 
@@ -95,9 +97,6 @@ export interface CatalogueRentalRecord extends CatalogueInventoryRecord {
 
 export interface CatalogueOnetimeServiceRecord extends CatalogueServiceRecord {
   type: "Onetime Service";
-  bestPrice: number | null;
-  chargeTax: boolean;
-  description: string;
   relatedItems: CatalogueRelatedItem[];
   salesTasks: CatalogueSalesTask[];
   jobConfiguration: CatalogueJobConfiguration;
@@ -129,18 +128,23 @@ export interface CatalogueItem {
   sourceId: string;
   sourceTable: CatalogueTableKey;
   name: string;
-  brand?: string | null;
   category: string;
   type: CatalogueItemType;
   activeState: CatalogueActiveState;
   sku: string;
   qty: number | null;
   image?: string | null;
+  bestPrice: number | null;
+  chargeTax: boolean;
+  description: string;
   createdAt: string;
 }
 
-export type CatalogueRecordInput = Partial<CatalogueItem> &
-  Partial<CatalogueOnetimeServiceRecord>;
+export interface CatalogueRecordInput extends Partial<CatalogueItem> {
+  relatedItems?: CatalogueRelatedItem[];
+  salesTasks?: CatalogueSalesTask[];
+  jobConfiguration?: CatalogueJobConfiguration;
+}
 
 export interface CatalogueTables {
   products: CatalogueProductRecord[];

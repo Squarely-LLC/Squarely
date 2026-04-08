@@ -202,6 +202,13 @@ const activeTextClass = (activeState: CatalogueActiveState) =>
 const isArchivedState = (value?: string | null) =>
   String(value ?? "").trim().toLowerCase() === "archived";
 
+const truncateDescription = (value?: string | null, limit = 45) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+
+  return text.length > limit ? `${text.slice(0, limit).trimEnd()}...` : text;
+};
+
 const hasInventoryQuantity = (product: CatalogueItem) =>
   product.type === "Product" ||
   product.type === "Produced Product" ||
@@ -214,7 +221,7 @@ const matchesFilters = (product: CatalogueItem) => {
   if (query) {
     const haystacks = [
       product.name,
-      product.brand,
+      product.description,
       product.category,
       product.type,
       product.sku,
@@ -453,7 +460,9 @@ const goToEditItemPage = (item: CatalogueItem) => {
               <span class="text-body-1 font-weight-medium text-high-emphasis">
                 {{ item.name }}
               </span>
-              <span class="text-body-2">{{ item.brand }}</span>
+              <span v-if="item.description" class="text-body-2">
+                {{ truncateDescription(item.description) }}
+              </span>
             </div>
           </div>
         </template>

@@ -15,7 +15,7 @@ import type {
   CatalogueTables,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 
-const STORAGE_KEY = "app.catalogue-tables.v2";
+const STORAGE_KEY = "app.catalogue-tables.v3";
 const DEFAULT_TYPE: CatalogueItemType = "Product";
 
 const tableKeyByType: Record<CatalogueItemType, CatalogueTableKey> = {
@@ -32,8 +32,10 @@ function cloneRecord<T extends CatalogueRecord>(record: T): T {
   const raw = toRaw(record) as T;
   return {
     ...raw,
-    brand: raw.brand ?? null,
     image: raw.image ?? null,
+    bestPrice: raw.bestPrice ?? null,
+    chargeTax: raw.chargeTax ?? true,
+    description: raw.description ?? "",
   };
 }
 
@@ -202,12 +204,20 @@ function normalizeRecord(
   const base = {
     id: assignedId,
     name: payload.name?.trim() || "Untitled Catalogue Item",
-    brand: payload.brand?.trim() || null,
     category: payload.category?.trim() || "Uncategorized",
     type: mappedType,
     activeState: (payload.activeState?.trim() as CatalogueActiveState) || "Active",
     sku: payload.sku?.trim() || `CAT-${assignedId.toUpperCase()}`,
     image: payload.image?.trim() || null,
+    bestPrice:
+      payload.bestPrice === null || payload.bestPrice === undefined
+        ? null
+        : Number.isFinite(Number(payload.bestPrice))
+          ? Number(payload.bestPrice)
+          : null,
+    chargeTax:
+      payload.chargeTax === undefined ? true : Boolean(payload.chargeTax),
+    description: String(payload.description ?? "").trim(),
     createdAt: payload.createdAt || now,
   };
 
@@ -224,14 +234,6 @@ function normalizeRecord(
 
     return {
       ...base,
-      bestPrice:
-        payload.bestPrice === null || payload.bestPrice === undefined
-          ? null
-          : Number.isFinite(Number(payload.bestPrice))
-            ? Number(payload.bestPrice)
-            : null,
-      chargeTax: Boolean(payload.chargeTax),
-      description: String(payload.description ?? "").trim(),
       relatedItems: relatedItems.map((item, index) => ({
         id: Number.isFinite(Number(item.id)) ? Number(item.id) : index + 1,
         name: String(item.name ?? "").trim(),
@@ -329,13 +331,15 @@ function toCatalogueItem(
     sourceId: record.id,
     sourceTable: tableKey,
     name: record.name,
-    brand: record.brand ?? null,
     category: record.category,
     type: record.type,
     activeState: record.activeState,
     sku: record.sku,
     qty: "qty" in record ? (record.qty ?? null) : null,
     image: record.image ?? null,
+    bestPrice: record.bestPrice ?? null,
+    chargeTax: record.chargeTax ?? true,
+    description: record.description ?? "",
     createdAt: record.createdAt,
   };
 }

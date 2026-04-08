@@ -4,6 +4,7 @@ import DialogActionBar from "@/components/DialogActionBar.vue";
 import CatalogueCategoryTreeSelect from "@/components/catalogues/CatalogueCategoryTreeSelect.vue";
 import type {
   CatalogueActiveState,
+  CatalogueItemType,
   CatalogueRecord,
   CatalogueOnetimeServiceRecord,
 } from "@/plugins/fake-api/handlers/catalogues/types";
@@ -705,10 +706,10 @@ const applySharedRecord = (record: CatalogueRecord) => {
   itemName.value = record.name;
   selectedCategory.value = record.category;
   selectedStatus.value = record.activeState;
-  itemBestPrice.value = null;
-  isTaxChargeToItem.value = true;
+  itemBestPrice.value = record.bestPrice ?? null;
+  isTaxChargeToItem.value = record.chargeTax ?? true;
   itemImage.value = record.image ?? null;
-  content.value = "<p></p>";
+  content.value = record.description ? `<p>${record.description}</p>` : "<p></p>";
   relatedItems.value = [];
   relatedItemId.value = 1;
   salesTasks.value = [];
@@ -733,11 +734,6 @@ const applySharedRecord = (record: CatalogueRecord) => {
 
 const applyOnetimeServiceRecord = (record: CatalogueOnetimeServiceRecord) => {
   applySharedRecord(record);
-  itemBestPrice.value = record.bestPrice ?? null;
-  isTaxChargeToItem.value = record.chargeTax ?? true;
-  content.value = record.description
-    ? `<p>${record.description}</p>`
-    : "<p></p>";
   relatedItems.value = (record.relatedItems || []).map((item) => ({
     id: item.id,
     name: item.name,
@@ -837,7 +833,7 @@ const resetOnetimeServiceForm = () => {
 
 const saveOnetimeService = () => {
   const payload = {
-    type: "Onetime Service" as const,
+    type: selectedType.value as CatalogueItemType,
     name: itemName.value.trim() || "Untitled Item",
     category: selectedCategory.value.trim() || "Uncategorized",
     activeState: selectedStatus.value,
