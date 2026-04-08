@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
-import DialogActionBar from "@/components/DialogActionBar.vue";
-import CatalogueCategoryTreeSelect from "@/components/catalogues/CatalogueCategoryTreeSelect.vue";
 import type {
   CatalogueActiveState,
   CatalogueContractualServiceRecord,
@@ -14,7 +12,14 @@ import type { CatalogueCategory } from "@/plugins/fake-api/handlers/config/types
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { formatSystemDate } from "@core/utils/formatters";
-import { computed, nextTick, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -80,10 +85,20 @@ type JobConfigMilestone = {
 
 const route = useRoute();
 const router = useRouter();
+const AsyncDialogActionBar = defineAsyncComponent(
+  () => import("@/components/DialogActionBar.vue"),
+);
+const AsyncCatalogueCategoryTreeSelect = defineAsyncComponent(
+  () => import("@/components/catalogues/CatalogueCategoryTreeSelect.vue"),
+);
+const AsyncProductDescriptionEditor = defineAsyncComponent(
+  () => import("@/@core/components/ProductDescriptionEditor.vue"),
+);
 const cataloguesStore = useCataloguesStore();
 cataloguesStore.init();
 const configStore = useConfigStore();
 configStore.init();
+const renderDeferredSections = ref(false);
 
 const itemBestPrice = ref<number | null>(null);
 const isTaxChargeToItem = ref(true);
@@ -276,6 +291,28 @@ const retainerLinkedServicesTotalPrice = computed(() =>
 const contractualPhaseTotalPrice = computed(() =>
   phases.value.reduce((sum, phase) => sum + (Number(phase.price) || 0), 0),
 );
+
+onMounted(() => {
+  const activateDeferredSections = () => {
+    renderDeferredSections.value = true;
+  };
+
+  const idleCallback = (
+    window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout: number },
+      ) => number;
+    }
+  ).requestIdleCallback;
+
+  if (idleCallback) {
+    idleCallback(activateDeferredSections, { timeout: 200 });
+    return;
+  }
+
+  requestAnimationFrame(activateDeferredSections);
+});
 
 const syncRetainerMilestoneDueDate = () => {
   if (!isRetainerService.value) return;
@@ -1222,7 +1259,7 @@ watch(
     <VRow>
       <VCol md="8">
         <!-- 👉 Item Information -->
-        <VCard class="mb-6">
+        <VCard v-if="renderDeferredSections" class="mb-6">
           <VCardItem>
             <template #title> Item Information </template>
           </VCardItem>
@@ -1239,7 +1276,7 @@ watch(
                   />
                 </VCol>
                 <VCol cols="12" md="6">
-                  <CatalogueCategoryTreeSelect
+                  <AsyncCatalogueCategoryTreeSelect
                     v-model="selectedCategory"
                     label="Category"
                     placeholder="Select Category"
@@ -1272,7 +1309,7 @@ watch(
                 </template>
                 <VCol>
                   <span class="mb-1">Description (optional)</span>
-                  <ProductDescriptionEditor
+                  <AsyncProductDescriptionEditor
                     v-model="content"
                     placeholder="Item Description"
                     class="border rounded"
@@ -1900,6 +1937,21 @@ watch(
             </VExpansionPanels>
           </VCardText>
         </VCard>
+        <VCard v-if="!renderDeferredSections" class="mb-6">
+          <VCardText class="py-8">
+            <div
+              class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
+            >
+              <div>
+                <h5 class="text-h5 mb-1">Job Configuration</h5>
+                <p class="text-body-2 text-medium-emphasis mb-0">
+                  Loading job template configuration...
+                </p>
+              </div>
+            </div>
+            <VSkeletonLoader type="list-item-two-line, list-item-two-line" />
+          </VCardText>
+        </VCard>
       </VCol>
 
       <VCol md="4" cols="12">
@@ -2036,7 +2088,11 @@ watch(
       </VCol>
     </VRow>
 
-    <VDialog v-model="isImageUrlDialogOpen" max-width="560">
+    <VDialog
+      v-if="isImageUrlDialogOpen"
+      v-model="isImageUrlDialogOpen"
+      max-width="560"
+    >
       <VCard>
         <VCardItem title="Add Image From URL" />
 
@@ -2068,7 +2124,11 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog v-model="isRelatedItemDialogOpen" max-width="760">
+    <VDialog
+      v-if="isRelatedItemDialogOpen"
+      v-model="isRelatedItemDialogOpen"
+      max-width="760"
+    >
       <VCard>
         <VCardItem :title="relatedDialogTitle" />
 
@@ -2084,7 +2144,7 @@ watch(
               />
             </VCol>
             <VCol cols="12" md="6">
-              <CatalogueCategoryTreeSelect
+              <AsyncCatalogueCategoryTreeSelect
                 v-model="relatedItemCategory"
                 label="Category"
                 placeholder="Select Category"
@@ -2109,7 +2169,7 @@ watch(
             </VCol>
             <VCol cols="12">
               <span class="mb-1">Description (optional)</span>
-              <ProductDescriptionEditor
+              <AsyncProductDescriptionEditor
                 v-model="relatedItemDescription"
                 placeholder="Item Description"
                 class="border rounded"
@@ -2133,7 +2193,7 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog v-model="isPhaseDialogOpen" max-width="760">
+    <VDialog v-if="isPhaseDialogOpen" v-model="isPhaseDialogOpen" max-width="760">
       <VCard>
         <VCardItem title="Add Phase" />
 
@@ -2166,7 +2226,7 @@ watch(
             </VCol>
             <VCol cols="12">
               <span class="mb-1">Description (optional)</span>
-              <ProductDescriptionEditor
+              <AsyncProductDescriptionEditor
                 v-model="phaseDescription"
                 placeholder="Phase Description"
                 class="border rounded"
@@ -2190,7 +2250,11 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog v-model="milestoneDialog.visible" max-width="560">
+    <VDialog
+      v-if="milestoneDialog.visible"
+      v-model="milestoneDialog.visible"
+      max-width="560"
+    >
       <VCard>
         <VCardText>
           <h5 class="text-h5 mb-4">Edit Milestone</h5>
@@ -2229,7 +2293,7 @@ watch(
                 />
               </VCol>
               <VCol cols="12">
-                <DialogActionBar
+                <AsyncDialogActionBar
                   save-type="submit"
                   @save="() => undefined"
                   @cancel="milestoneDialog.visible = false"
@@ -2241,7 +2305,11 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog v-model="goalDialog.visible" max-width="560">
+    <VDialog
+      v-if="goalDialog.visible"
+      v-model="goalDialog.visible"
+      max-width="560"
+    >
       <VCard>
         <VCardText>
           <h5 class="text-h5 mb-4">
@@ -2282,7 +2350,7 @@ watch(
                 />
               </VCol>
               <VCol cols="12">
-                <DialogActionBar
+                <AsyncDialogActionBar
                   save-type="submit"
                   @save="() => undefined"
                   @cancel="goalDialog.visible = false"
@@ -2294,7 +2362,11 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog v-model="taskDialog.visible" max-width="560">
+    <VDialog
+      v-if="taskDialog.visible"
+      v-model="taskDialog.visible"
+      max-width="560"
+    >
       <VCard>
         <VCardText>
           <h5 class="text-h5 mb-4">
@@ -2351,7 +2423,7 @@ watch(
                 />
               </VCol>
               <VCol cols="12">
-                <DialogActionBar
+                <AsyncDialogActionBar
                   save-type="submit"
                   @save="() => undefined"
                   @cancel="taskDialog.visible = false"

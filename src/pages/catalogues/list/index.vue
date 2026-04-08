@@ -67,9 +67,7 @@ const DEFAULT_ACTIVE_OPTIONS: CatalogueActiveState[] = [
 const cleanEntries = (values?: (string | null | undefined)[]) =>
   Array.from(
     new Set(
-      (values || [])
-        .map(value => String(value ?? "").trim())
-        .filter(Boolean),
+      (values || []).map((value) => String(value ?? "").trim()).filter(Boolean),
     ),
   );
 
@@ -80,34 +78,45 @@ const flattenCategoryNames = (items?: CatalogueCategory[]) => {
     const name = item.name?.trim();
     if (name) names.push(name);
 
-    if (item.children?.length) names.push(...flattenCategoryNames(item.children));
+    if (item.children?.length)
+      names.push(...flattenCategoryNames(item.children));
   }
 
   return names;
 };
 
-const configuredTypes = computed<{ title: string; value: CatalogueItemType }[]>(() => {
-  const values = cleanEntries(configStore.configurations.catalogue?.itemTypes);
-  const source = (values.length ? values : DEFAULT_TYPE_OPTIONS) as CatalogueItemType[];
+const configuredTypes = computed<{ title: string; value: CatalogueItemType }[]>(
+  () => {
+    const values = cleanEntries(
+      configStore.configurations.catalogue?.itemTypes,
+    );
+    const source = (
+      values.length ? values : DEFAULT_TYPE_OPTIONS
+    ) as CatalogueItemType[];
 
-  return source.map(value => ({ title: value, value }));
-});
+    return source.map((value) => ({ title: value, value }));
+  },
+);
 
 const categories = computed(() => {
   const unique = Array.from(
-    new Set(flattenCategoryNames(configStore.configurations.catalogue?.categories)),
+    new Set(
+      flattenCategoryNames(configStore.configurations.catalogue?.categories),
+    ),
   ).sort((a, b) => a.localeCompare(b));
 
-  return unique.map(category => ({ title: category, value: category }));
+  return unique.map((category) => ({ title: category, value: category }));
 });
 
 const configuredActiveOptions = computed<
   { title: string; value: CatalogueActiveState }[]
 >(() => {
-  const values = cleanEntries(configStore.configurations.catalogue?.activeStates);
+  const values = cleanEntries(
+    configStore.configurations.catalogue?.activeStates,
+  );
   const source = values.length ? values : DEFAULT_ACTIVE_OPTIONS;
 
-  return source.map(value => ({ title: value, value }));
+  return source.map((value) => ({ title: value, value }));
 });
 
 const hideArchivedByDefault = computed(
@@ -126,43 +135,50 @@ const itemTypeChoices: ItemTypeChoice[] = [
   {
     title: "Onetime Service",
     value: "Onetime Service",
-    description: "Single-scope service delivered once, such as an installation or one-off site visit.",
+    description:
+      "Single-scope service delivered once, such as an installation or one-off site visit.",
     icon: "tabler-bolt",
   },
   {
     title: "Product",
     value: "Product",
-    description: "Standard stocked item purchased, stored, and sold as inventory.",
+    description:
+      "Standard stocked item purchased, stored, and sold as inventory.",
     icon: "tabler-package",
   },
   {
     title: "Contractual Service",
     value: "Contractual Service",
-    description: "Service sold under a fixed contract period, scope, or maintenance agreement.",
+    description:
+      "Service sold under a fixed contract period, scope, or maintenance agreement.",
     icon: "tabler-file-description",
   },
   {
     title: "Retainer Service",
     value: "Retainer Service",
-    description: "Ongoing advisory or support service billed to reserve team availability over time.",
+    description:
+      "Ongoing advisory or support service billed to reserve team availability over time.",
     icon: "tabler-briefcase",
   },
   {
     title: "Reccurent Service",
     value: "Reccurent Service",
-    description: "Scheduled repeat service delivered on a recurring basis such as monthly cleaning or upkeep.",
+    description:
+      "Scheduled repeat service delivered on a recurring basis such as monthly cleaning or upkeep.",
     icon: "tabler-repeat",
   },
   {
     title: "Produced Product",
     value: "Produced Product",
-    description: "Item manufactured, assembled, or custom-built internally before delivery.",
+    description:
+      "Item manufactured, assembled, or custom-built internally before delivery.",
     icon: "tabler-building-factory-2",
   },
   {
     title: "Rental",
     value: "Rental",
-    description: "Reusable asset hired out for a defined time window and then returned to stock.",
+    description:
+      "Reusable asset hired out for a defined time window and then returned to stock.",
     icon: "tabler-calendar-time",
   },
 ];
@@ -186,7 +202,8 @@ const resolveActive = (activeState: CatalogueActiveState) => {
   if (activeState === "Active") return { text: "Active", color: "success" };
   if (activeState === "Non-Active")
     return { text: "Non-Active", color: "warning" };
-  if (activeState === "Archived") return { text: "Archived", color: "secondary" };
+  if (activeState === "Archived")
+    return { text: "Archived", color: "secondary" };
   return { text: activeState, color: "primary" };
 };
 
@@ -200,7 +217,9 @@ const activeTextClass = (activeState: CatalogueActiveState) =>
         : "text-primary";
 
 const isArchivedState = (value?: string | null) =>
-  String(value ?? "").trim().toLowerCase() === "archived";
+  String(value ?? "")
+    .trim()
+    .toLowerCase() === "archived";
 
 const truncateDescription = (value?: string | null, limit = 45) => {
   const text = String(value ?? "").trim();
@@ -239,9 +258,9 @@ const matchesFilters = (product: CatalogueItem) => {
       product.activeState,
     ]
       .filter(Boolean)
-      .map(value => String(value).toLowerCase());
+      .map((value) => String(value).toLowerCase());
 
-    if (!haystacks.some(value => value.includes(query))) return false;
+    if (!haystacks.some((value) => value.includes(query))) return false;
   }
 
   if (selectedType.value && product.type !== selectedType.value) {
@@ -254,7 +273,10 @@ const matchesFilters = (product: CatalogueItem) => {
 
   if (selectedActive.value) {
     if (product.activeState !== selectedActive.value) return false;
-  } else if (hideArchivedByDefault.value && isArchivedState(product.activeState)) {
+  } else if (
+    hideArchivedByDefault.value &&
+    isArchivedState(product.activeState)
+  ) {
     return false;
   }
 
@@ -467,16 +489,8 @@ const goToEditItemPage = (item: CatalogueItem) => {
               rounded
               :image="item.image"
             />
-            <VAvatar
-              v-else
-              size="38"
-              variant="tonal"
-              rounded
-            >
-              <VIcon
-                :icon="itemAvatarIcon(item.type)"
-                size="20"
-              />
+            <VAvatar v-else size="38" variant="tonal" rounded>
+              <VIcon :icon="itemAvatarIcon(item.type)" size="20" />
             </VAvatar>
             <div class="d-flex flex-column">
               <span class="text-body-1 font-weight-medium text-high-emphasis">
@@ -543,7 +557,9 @@ const goToEditItemPage = (item: CatalogueItem) => {
                 :class="activeTextClass(item.activeState)"
                 @click.stop
               >
-                <span class="text-body-1">{{ resolveActive(item.activeState).text }}</span>
+                <span class="text-body-1">{{
+                  resolveActive(item.activeState).text
+                }}</span>
                 <VIcon icon="tabler-chevron-down" size="16" class="ms-1" />
               </VBtn>
             </template>
@@ -587,10 +603,6 @@ const goToEditItemPage = (item: CatalogueItem) => {
             <VIcon icon="tabler-dots-vertical" />
             <VMenu activator="parent">
               <VList>
-                <VListItem value="download" prepend-icon="tabler-download">
-                  Download
-                </VListItem>
-
                 <VListItem
                   value="delete"
                   prepend-icon="tabler-trash"
@@ -626,7 +638,9 @@ const goToEditItemPage = (item: CatalogueItem) => {
           <VCardText>
             <p>
               Are you sure you want to permanently delete
-              <strong>{{ deleteCandidate?.name || "this catalogue item" }}</strong
+              <strong>{{
+                deleteCandidate?.name || "this catalogue item"
+              }}</strong
               >?
             </p>
           </VCardText>
@@ -644,11 +658,10 @@ const goToEditItemPage = (item: CatalogueItem) => {
 
       <VDialog v-model="isAddItemTypeDialogVisible" max-width="920">
         <VCard class="pa-sm-6 pa-4">
-          <VCardTitle class="text-h4 pb-2">
-            Choose Item Type
-          </VCardTitle>
+          <VCardTitle class="text-h4 pb-2"> Choose Item Type </VCardTitle>
           <VCardText class="text-body-1 text-medium-emphasis pb-6">
-            Select the kind of catalogue item you want to create. Each option opens the matching add flow.
+            Select the kind of catalogue item you want to create. Each option
+            opens the matching add flow.
           </VCardText>
 
           <VRow>
@@ -664,12 +677,7 @@ const goToEditItemPage = (item: CatalogueItem) => {
                 @click="goToAddItemPage(choice.value)"
               >
                 <VCardText class="d-flex align-start gap-4">
-                  <VAvatar
-                    size="44"
-                    rounded
-                    variant="tonal"
-                    color="primary"
-                  >
+                  <VAvatar size="44" rounded variant="tonal" color="primary">
                     <VIcon :icon="choice.icon" size="22" />
                   </VAvatar>
 
@@ -719,7 +727,10 @@ const goToEditItemPage = (item: CatalogueItem) => {
 
 .item-type-card {
   cursor: pointer;
-  transition: border-color 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    background-color 0.2s ease;
 
   &:hover {
     border-color: rgb(var(--v-theme-primary));
