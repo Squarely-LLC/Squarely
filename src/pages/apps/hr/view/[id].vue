@@ -31,7 +31,7 @@ const cloneContact = (contact: EmployeeProperties | null | undefined) => {
     } catch (error) {
       console.warn(
         "structuredClone failed for contact, falling back to JSON:",
-        error
+        error,
       );
     }
   }
@@ -78,14 +78,14 @@ const tabs = [
 ] as const;
 
 const userTabDocumentsRef = ref<InstanceType<typeof UserTabDocuments> | null>(
-  null
+  null,
 );
 const userTabRecordsRef = ref<InstanceType<typeof UserTabRecords> | null>(null);
 const userTabRequestsRef = ref<InstanceType<typeof UserTabRequests> | null>(
-  null
+  null,
 );
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
-  null
+  null,
 );
 const isAddTodoDrawerOpen = ref(false);
 const addTodoInitial = ref<any | null>(null);
@@ -223,7 +223,7 @@ watch(
     }
     contact.value = cloneContact(value);
     error.value = null;
-  }
+  },
 );
 
 // keep userTab in sync with the route query param
@@ -231,7 +231,7 @@ watch(
   () => route.query.tab,
   () => {
     setTabFromQuery();
-  }
+  },
 );
 
 watch(
@@ -239,7 +239,7 @@ watch(
   () => {
     openLeaveFromQuery();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // update the route when the user changes tabs
@@ -258,7 +258,7 @@ watch(
     } catch (e) {
       // ignore router replace errors
     }
-  }
+  },
 );
 </script>
 
@@ -288,10 +288,7 @@ watch(
           <UserTabContract :user-data="contact" />
         </VWindowItem>
         <VWindowItem>
-          <UserTabRequests
-            ref="userTabRequestsRef"
-            :user-data="contact"
-          />
+          <UserTabRequests ref="userTabRequestsRef" :user-data="contact" />
         </VWindowItem>
 
         <VWindowItem>

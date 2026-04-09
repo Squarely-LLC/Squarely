@@ -8,8 +8,8 @@ import type {
   ToDoStep,
 } from "@/data/schema";
 import { useJobsStore } from "@/stores/jobs";
-import { formatSystemDate } from "@core/utils/formatters";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
+import { formatSystemDate } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -217,7 +217,9 @@ function loadFromToDo(t: ToDo) {
   attachment.value = t.attachment ?? null;
   attachmentFile.value = null;
   attachmentInput.value =
-    t.attachment?.type === "link" ? t.attachment?.url || "" : t.attachment?.name || "";
+    t.attachment?.type === "link"
+      ? t.attachment?.url || ""
+      : t.attachment?.name || "";
   selectedRelatedKey.value =
     t.relatedTo?.type === "job" ? `job-${t.relatedTo.id}` : null;
   selectedStatus.value = (t.status ?? "pending") as Status;
@@ -573,7 +575,10 @@ async function onSaveAll() {
                     >
                       <template #append-inner>
                         <div class="d-flex align-center">
-                          <IconBtn size="small" @click.stop="openAttachmentPicker">
+                          <IconBtn
+                            size="small"
+                            @click.stop="openAttachmentPicker"
+                          >
                             <VIcon icon="tabler-paperclip" />
                           </IconBtn>
                           <IconBtn
@@ -835,23 +840,23 @@ async function onSaveAll() {
 }
 
 :deep(.todo-drawer-tabs .v-tab) {
-  block-size: 56px;
-  min-block-size: 56px;
-  padding-block: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  block-size: 56px;
+  min-block-size: 56px;
+  padding-block: 0;
 }
 
 :deep(.todo-drawer-tabs .v-btn__content) {
   display: flex;
-  block-size: 56px;
   align-items: center;
   justify-content: center;
-  padding-block: 0;
-  margin-block: 0;
-  transform: translateY(0);
+  block-size: 56px;
   line-height: 56px;
+  margin-block: 0;
+  padding-block: 0;
+  transform: translateY(0);
   vertical-align: middle;
 }
 
@@ -861,9 +866,9 @@ async function onSaveAll() {
 
 :deep(.todo-drawer-tabs .v-tab__content) {
   display: flex;
-  block-size: 56px;
   align-items: center;
   justify-content: center;
+  block-size: 56px;
   line-height: 56px;
 }
 

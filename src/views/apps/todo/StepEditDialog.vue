@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { ContactRef, ToDoStep } from "@/data/schema";
 import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import type { ContactRef, ToDoStep } from "@/data/schema";
 import { computed, reactive, ref, toRaw, watch } from "vue";
 
 const toDateOnlyISOString = (value?: string | null) => {
@@ -48,7 +48,7 @@ watch(
     Object.assign(draft, structuredClone(toRaw(s)));
     collabSearch.value = "";
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
 const open = computed({
@@ -65,7 +65,11 @@ function onSubmit() {
   const title = (draft.title || "").trim();
   if (!title) return;
   const payload: ToDoStep = JSON.parse(
-    JSON.stringify({ ...draft, title, dueAt: toDateOnlyISOString(draft.dueAt) }),
+    JSON.stringify({
+      ...draft,
+      title,
+      dueAt: toDateOnlyISOString(draft.dueAt),
+    }),
   );
   emit("save", payload);
   open.value = false;

@@ -583,7 +583,6 @@ async function onSubmit() {
 <style scoped>
 /* stylelint-disable selector-pseudo-class-no-unknown, selector-pseudo-element-no-unknown, no-duplicate-selectors, selector-descendant-combinator-no-non-space, order/properties-order */
 
-
 ::v-deep(.status-compact .custom-radios-with-icon .v-icon) {
   block-size: 24px;
   font-size: 24px !important;

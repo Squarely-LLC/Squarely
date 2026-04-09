@@ -55,7 +55,7 @@ function toLocalDateStr(d: Date) {
 function toLocalISO(d: Date) {
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
+    d.getHours(),
   )}:${pad(d.getMinutes())}`;
 }
 
@@ -93,7 +93,7 @@ async function fetchOneTodoFromServer(todoId: string | number) {
 export const useCalendar = (
   _event: Ref<any>,
   _isEventHandlerSidebarActive: Ref<boolean>,
-  _isLeftSidebarOpen: Ref<boolean>
+  _isLeftSidebarOpen: Ref<boolean>,
 ) => {
   const configStore = useConfigStore();
   const todos = useTodos();
@@ -182,7 +182,7 @@ export const useCalendar = (
             return { ...base, start: dayStr, end: dayStr, allDay: true };
           }
         })
-        .filter(Boolean) as any[]
+        .filter(Boolean) as any[],
   );
 
   // Apply calendar selection + "Only important" subfilter
@@ -215,7 +215,7 @@ export const useCalendar = (
             (m as any).endAt ||
             computeEndAt(
               m.startAt,
-              typeof m.duration === "number" ? m.duration : 30
+              typeof m.duration === "number" ? m.duration : 30,
             );
 
           if (!endISO) return null;
@@ -239,7 +239,7 @@ export const useCalendar = (
             },
           };
         })
-        .filter(Boolean) as any[]
+        .filter(Boolean) as any[],
   );
 
   const visibleMeetingEvents = computed(() => {
@@ -247,7 +247,7 @@ export const useCalendar = (
     if (!Array.isArray(selected)) return meetingEvents.value;
 
     return meetingEvents.value.filter((event) =>
-      selected.includes(String(event.extendedProps?.calendar || "Meeting"))
+      selected.includes(String(event.extendedProps?.calendar || "Meeting")),
     );
   });
 
@@ -340,7 +340,7 @@ export const useCalendar = (
             window.dispatchEvent(
               new CustomEvent("calendar:open-left-sidebar", {
                 bubbles: false,
-              })
+              }),
             );
           }
         },
@@ -411,7 +411,7 @@ export const useCalendar = (
               x: jsEvent?.clientX ?? 0,
               y: jsEvent?.clientY ?? 0,
             },
-          })
+          }),
         );
         return;
       }
@@ -422,7 +422,7 @@ export const useCalendar = (
         String(event.id || "").replace(/^todo-/, "");
       if (id != null && id !== "") {
         window.dispatchEvent(
-          new CustomEvent("todo:open-edit", { detail: { id } })
+          new CustomEvent("todo:open-edit", { detail: { id } }),
         );
       }
     },
@@ -447,7 +447,7 @@ export const useCalendar = (
         const startISO = event.start.toISOString();
         const durationMin = Math.max(
           5,
-          Math.round((event.end.getTime() - event.start.getTime()) / 60000)
+          Math.round((event.end.getTime() - event.start.getTime()) / 60000),
         );
 
         // Pinia (optimistic)
@@ -536,7 +536,7 @@ export const useCalendar = (
       const startISO = event.start.toISOString();
       const durationMin = Math.max(
         5,
-        Math.round((event.end.getTime() - event.start.getTime()) / 60000)
+        Math.round((event.end.getTime() - event.start.getTime()) / 60000),
       );
 
       todos.updateMeeting(meetingId, {
@@ -565,10 +565,10 @@ export const useCalendar = (
     calendarApi.value = detail ?? null;
   };
   onMounted(() =>
-    window.addEventListener("calendar:provide-api", onProvideApi)
+    window.addEventListener("calendar:provide-api", onProvideApi),
   );
   onUnmounted(() =>
-    window.removeEventListener("calendar:provide-api", onProvideApi)
+    window.removeEventListener("calendar:provide-api", onProvideApi),
   );
 
   // RTL/LTR
@@ -577,7 +577,7 @@ export const useCalendar = (
     (val) => {
       calendarApi.value?.setOption("direction", val ? "rtl" : "ltr");
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   // Live-refetch when data or filters change
@@ -588,7 +588,7 @@ export const useCalendar = (
         calendarApi.value?.refetchEvents();
       } catch {}
     },
-    { deep: true }
+    { deep: true },
   );
   watch(
     () => todos.meetings,
@@ -597,7 +597,7 @@ export const useCalendar = (
         calendarApi.value?.refetchEvents();
       } catch {}
     },
-    { deep: true }
+    { deep: true },
   );
   watch(
     () => calStore.selectedCalendars,
@@ -606,7 +606,7 @@ export const useCalendar = (
         calendarApi.value?.refetchEvents();
       } catch {}
     },
-    { deep: true }
+    { deep: true },
   );
   watch(
     () => calStore.todoImportantOnly,
@@ -614,7 +614,7 @@ export const useCalendar = (
       try {
         calendarApi.value?.refetchEvents();
       } catch {}
-    }
+    },
   );
 
   // Public API expected by your page

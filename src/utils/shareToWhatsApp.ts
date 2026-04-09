@@ -24,7 +24,7 @@ async function shareToWhatsApp({
       notifications.push(
         "Shared to WhatsApp (via OS share sheet)",
         "success",
-        3000
+        3000,
       );
       return { success: true };
     }
@@ -41,7 +41,7 @@ async function shareToWhatsApp({
 
     // If on mobile, use wa.me; otherwise open web.whatsapp.com
     const isMobile = /Android|iPhone|iPad|iPod/i.test(
-      navigator.userAgent || ""
+      navigator.userAgent || "",
     );
     const base = isMobile
       ? "https://wa.me/?text="
@@ -54,7 +54,7 @@ async function shareToWhatsApp({
     notifications.push(
       "Failed to open WhatsApp: " + String(err ?? "unknown"),
       "error",
-      4500
+      4500,
     );
     return { success: false, reason: String(err ?? "unknown") };
   }

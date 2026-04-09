@@ -1,122 +1,145 @@
 <script setup lang="ts">
-import { Placeholder } from '@tiptap/extension-placeholder'
-import { TextAlign } from '@tiptap/extension-text-align'
-import { Underline } from '@tiptap/extension-underline'
-import { StarterKit } from '@tiptap/starter-kit'
-import { EditorContent, useEditor } from '@tiptap/vue-3'
-import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
-import { VForm } from 'vuetify/components/VForm'
-import type { EditKanbanItem, KanbanItem } from '@db/apps/kanban/types'
-import avatar1 from '@images/avatars/avatar-1.png'
-import avatar2 from '@images/avatars/avatar-2.png'
-import avatar3 from '@images/avatars/avatar-3.png'
-import avatar4 from '@images/avatars/avatar-4.png'
-import avatar5 from '@images/avatars/avatar-5.png'
-import avatar6 from '@images/avatars/avatar-6.png'
+import type { EditKanbanItem, KanbanItem } from "@db/apps/kanban/types";
+import avatar1 from "@images/avatars/avatar-1.png";
+import avatar2 from "@images/avatars/avatar-2.png";
+import avatar3 from "@images/avatars/avatar-3.png";
+import avatar4 from "@images/avatars/avatar-4.png";
+import avatar5 from "@images/avatars/avatar-5.png";
+import avatar6 from "@images/avatars/avatar-6.png";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { TextAlign } from "@tiptap/extension-text-align";
+import { Underline } from "@tiptap/extension-underline";
+import { StarterKit } from "@tiptap/starter-kit";
+import { EditorContent, useEditor } from "@tiptap/vue-3";
+import { PerfectScrollbar } from "vue3-perfect-scrollbar";
+import { VForm } from "vuetify/components/VForm";
 
 interface Emit {
-  (e: 'update:isDrawerOpen', value: boolean): void
-  (e: 'update:kanbanItem', value: EditKanbanItem): void
-  (e: 'deleteKanbanItem', value: EditKanbanItem): void
+  (e: "update:isDrawerOpen", value: boolean): void;
+  (e: "update:kanbanItem", value: EditKanbanItem): void;
+  (e: "deleteKanbanItem", value: EditKanbanItem): void;
 }
 
-const props = withDefaults(defineProps<{
-  kanbanItem?: EditKanbanItem | undefined
-  isDrawerOpen: boolean
-}>(), {
-  kanbanItem: () => ({
-    item: {
-      title: '',
-      dueDate: '2022-01-01T00:00:00Z',
-      labels: [],
-      members: [],
-      id: 0,
-      attachments: 0,
-      commentsCount: 0,
-      image: '',
-      comments: '',
-    },
-    boardId: 0,
-    boardName: '',
-  }),
-})
+const props = withDefaults(
+  defineProps<{
+    kanbanItem?: EditKanbanItem | undefined;
+    isDrawerOpen: boolean;
+  }>(),
+  {
+    kanbanItem: () => ({
+      item: {
+        title: "",
+        dueDate: "2022-01-01T00:00:00Z",
+        labels: [],
+        members: [],
+        id: 0,
+        attachments: 0,
+        commentsCount: 0,
+        image: "",
+        comments: "",
+      },
+      boardId: 0,
+      boardName: "",
+    }),
+  },
+);
 
-const emit = defineEmits<Emit>()
+const emit = defineEmits<Emit>();
 
-const refEditTaskForm = ref<VForm>()
-const labelOptions = ['UX', 'Image', 'Code Review', 'Dashboard', 'App', 'Charts & Maps']
+const refEditTaskForm = ref<VForm>();
+const labelOptions = [
+  "UX",
+  "Image",
+  "Code Review",
+  "Dashboard",
+  "App",
+  "Charts & Maps",
+];
 
-const localKanbanItem = ref<KanbanItem>(structuredClone(toRaw(props.kanbanItem.item)))
+const localKanbanItem = ref<KanbanItem>(
+  structuredClone(toRaw(props.kanbanItem.item)),
+);
 
 const handleDrawerModelValueUpdate = (val: boolean) => {
-  emit('update:isDrawerOpen', val)
+  emit("update:isDrawerOpen", val);
 
-  if (!val)
-    refEditTaskForm.value?.reset()
-}
+  if (!val) refEditTaskForm.value?.reset();
+};
 
 // kanban item watcher
-watch(() => props.kanbanItem, () => {
-  localKanbanItem.value = structuredClone(toRaw(props.kanbanItem.item))
-}, { deep: true })
+watch(
+  () => props.kanbanItem,
+  () => {
+    localKanbanItem.value = structuredClone(toRaw(props.kanbanItem.item));
+  },
+  { deep: true },
+);
 
 const updateKanbanItem = () => {
-  refEditTaskForm.value?.validate().then(async valid => {
+  refEditTaskForm.value?.validate().then(async (valid) => {
     if (valid.valid) {
-      emit('update:kanbanItem', { item: localKanbanItem.value, boardId: props.kanbanItem.boardId, boardName: props.kanbanItem.boardName })
-      emit('update:isDrawerOpen', false)
-      await nextTick()
-      refEditTaskForm.value?.reset()
+      emit("update:kanbanItem", {
+        item: localKanbanItem.value,
+        boardId: props.kanbanItem.boardId,
+        boardName: props.kanbanItem.boardName,
+      });
+      emit("update:isDrawerOpen", false);
+      await nextTick();
+      refEditTaskForm.value?.reset();
     }
-  })
-}
+  });
+};
 
 // delete kanban item
 const deleteKanbanItem = () => {
-  emit('deleteKanbanItem', { item: localKanbanItem.value, boardId: props.kanbanItem.boardId, boardName: props.kanbanItem.boardName })
-  emit('update:isDrawerOpen', false)
-}
+  emit("deleteKanbanItem", {
+    item: localKanbanItem.value,
+    boardId: props.kanbanItem.boardId,
+    boardName: props.kanbanItem.boardName,
+  });
+  emit("update:isDrawerOpen", false);
+};
 
 // 👉 label/chip color
 const resolveLabelColor: any = {
-  'UX': 'success',
-  'Image': 'warning',
-  'Code Review': 'error',
-  'Dashboard': 'info',
-  'App': 'secondary',
-  'Charts & Maps': 'primary',
-}
+  UX: "success",
+  Image: "warning",
+  "Code Review": "error",
+  Dashboard: "info",
+  App: "secondary",
+  "Charts & Maps": "primary",
+};
 
 const users = [
-  { img: avatar1, name: 'John Doe' },
-  { img: avatar2, name: 'Jane Smith' },
-  { img: avatar3, name: 'Robert Johnson' },
-  { img: avatar4, name: 'Lucy Brown' },
-  { img: avatar5, name: 'Mike White' },
-  { img: avatar6, name: 'Anna Black' },
-]
+  { img: avatar1, name: "John Doe" },
+  { img: avatar2, name: "Jane Smith" },
+  { img: avatar3, name: "Robert Johnson" },
+  { img: avatar4, name: "Lucy Brown" },
+  { img: avatar5, name: "Mike White" },
+  { img: avatar6, name: "Anna Black" },
+];
 
-const fileAttached = ref()
+const fileAttached = ref();
 
 const editor = useEditor({
-  content: '',
+  content: "",
   extensions: [
     StarterKit,
     TextAlign.configure({
-      types: ['heading', 'paragraph'],
+      types: ["heading", "paragraph"],
     }),
     Placeholder.configure({
-      placeholder: 'Write a Comment...',
+      placeholder: "Write a Comment...",
     }),
     Underline,
   ],
-})
+});
 
 const config = ref({
-  altFormat: 'j M, Y',
+  altFormat: "j M, Y",
   altInput: true,
-  dateFormat: 'Y-m-d',
-})
+  dateFormat: "Y-m-d",
+});
 </script>
 
 <template>
@@ -139,7 +162,7 @@ const config = ref({
 
     <PerfectScrollbar
       :options="{ wheelPropagation: false }"
-      style="block-size: calc(100vh - 4rem);"
+      style="block-size: calc(100vh - 4rem)"
     >
       <VForm
         v-if="localKanbanItem"
@@ -183,7 +206,7 @@ const config = ref({
             <VCol cols="12">
               <p
                 class="mb-1 text-body-2 text-high-emphasis"
-                style="line-height: 15px;"
+                style="line-height: 15px"
               >
                 Assigned
               </p>
@@ -213,15 +236,8 @@ const config = ref({
                   </template>
 
                   <template #prepend-inner>
-                    <IconBtn
-                      size="26"
-                      variant="tonal"
-                      color="secondary"
-                    >
-                      <VIcon
-                        size="20"
-                        icon="tabler-plus"
-                      />
+                    <IconBtn size="26" variant="tonal" color="secondary">
+                      <VIcon size="20" icon="tabler-plus" />
                     </IconBtn>
                   </template>
                 </VSelect>
@@ -238,9 +254,7 @@ const config = ref({
                 clearable
               >
                 <template #append>
-                  <VBtn variant="tonal">
-                    Choose
-                  </VBtn>
+                  <VBtn variant="tonal"> Choose </VBtn>
                 </template>
               </VFileInput>
             </VCol>
@@ -248,16 +262,13 @@ const config = ref({
             <VCol cols="12">
               <p
                 class="text-body-2 text-high-emphasis mb-1"
-                style="line-height: 15px;"
+                style="line-height: 15px"
               >
                 COMMENT
               </p>
               <div class="border rounded px-3 py-2">
                 <EditorContent :editor="editor" />
-                <div
-                  v-if="editor"
-                  class="d-flex justify-end flex-wrap gap-x-2"
-                >
+                <div v-if="editor" class="d-flex justify-end flex-wrap gap-x-2">
                   <VIcon
                     icon="tabler-bold"
                     :color="editor.isActive('bold') ? 'primary' : 'secondary'"
@@ -266,7 +277,9 @@ const config = ref({
                   />
 
                   <VIcon
-                    :color="editor.isActive('underline') ? 'primary' : 'secondary'"
+                    :color="
+                      editor.isActive('underline') ? 'primary' : 'secondary'
+                    "
                     icon="tabler-underline"
                     size="20"
                     @click="editor.commands.toggleUnderline()"
@@ -280,21 +293,33 @@ const config = ref({
                   />
 
                   <VIcon
-                    :color="editor.isActive({ textAlign: 'left' }) ? 'primary' : 'secondary'"
+                    :color="
+                      editor.isActive({ textAlign: 'left' })
+                        ? 'primary'
+                        : 'secondary'
+                    "
                     icon="tabler-align-left"
                     size="20"
                     @click="editor.chain().focus().setTextAlign('left').run()"
                   />
 
                   <VIcon
-                    :color="editor.isActive({ textAlign: 'center' }) ? 'primary' : 'secondary'"
+                    :color="
+                      editor.isActive({ textAlign: 'center' })
+                        ? 'primary'
+                        : 'secondary'
+                    "
                     icon="tabler-align-center"
                     size="20"
                     @click="editor.chain().focus().setTextAlign('center').run()"
                   />
 
                   <VIcon
-                    :color="editor.isActive({ textAlign: 'right' }) ? 'primary' : 'secondary'"
+                    :color="
+                      editor.isActive({ textAlign: 'right' })
+                        ? 'primary'
+                        : 'secondary'
+                    "
                     icon="tabler-align-right"
                     size="20"
                     @click="editor.chain().focus().setTextAlign('right').run()"
@@ -304,17 +329,8 @@ const config = ref({
             </VCol>
 
             <VCol cols="12">
-              <VBtn
-                type="submit"
-                class="me-4"
-              >
-                Update
-              </VBtn>
-              <VBtn
-                color="error"
-                variant="tonal"
-                @click="deleteKanbanItem"
-              >
+              <VBtn type="submit" class="me-4"> Update </VBtn>
+              <VBtn color="error" variant="tonal" @click="deleteKanbanItem">
                 Delete
               </VBtn>
             </VCol>

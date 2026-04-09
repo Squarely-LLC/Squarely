@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type {
   ContactConnection,
   ContactProperties,
 } from "@/plugins/fake-api/handlers/apps/contact/types";
-import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
@@ -105,10 +105,10 @@ const resolvedConnectionList = computed(() => {
 });
 
 const primaryConnections = computed(() =>
-  resolvedConnectionList.value.filter((connection) => connection.isPrimary)
+  resolvedConnectionList.value.filter((connection) => connection.isPrimary),
 );
 const secondaryConnections = computed(() =>
-  resolvedConnectionList.value.filter((connection) => !connection.isPrimary)
+  resolvedConnectionList.value.filter((connection) => !connection.isPrimary),
 );
 
 const contactsStore = useContactsStore();
@@ -118,7 +118,7 @@ const contactsOptions = computed(() =>
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
+  })),
 );
 
 // Menu actions for connections (kept minimal — expand as needed)
@@ -132,13 +132,13 @@ const isAddConnectionDialogVisible = ref(false);
 // tooltip label for accessibility / localization fallback
 const addConnectionTooltip = (() => {
   try {
-    if (typeof useI18n === 'function') {
+    if (typeof useI18n === "function") {
       const { t } = useI18n();
-      return t('Add Connection') || 'Add connection';
+      return t("Add Connection") || "Add connection";
     }
-    return 'Add connection';
+    return "Add connection";
   } catch {
-    return 'Add connection';
+    return "Add connection";
   }
 })();
 
@@ -241,11 +241,11 @@ const findDeleteBlockingReasonsForContact = (id: number): string[] => {
     const referencingTodos = (todosStore.items || []).filter(
       (t: any) =>
         Array.isArray(t.collaborators) &&
-        t.collaborators.some((c: any) => Number(c.id) === Number(id))
+        t.collaborators.some((c: any) => Number(c.id) === Number(id)),
     );
     if (referencingTodos.length) {
       reasons.push(
-        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`
+        `Referenced as a collaborator in ${referencingTodos.length} todo(s)`,
       );
     }
 
@@ -254,11 +254,11 @@ const findDeleteBlockingReasonsForContact = (id: number): string[] => {
       .filter(
         (s: any) =>
           Array.isArray(s.collaborators) &&
-          s.collaborators.some((c: any) => Number(c.id) === Number(id))
+          s.collaborators.some((c: any) => Number(c.id) === Number(id)),
       );
     if (stepRefs.length) {
       reasons.push(
-        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`
+        `Referenced as a collaborator in ${stepRefs.length} todo step(s)`,
       );
     }
 
@@ -272,7 +272,8 @@ const findDeleteBlockingReasonsForContact = (id: number): string[] => {
     const messageRefs = (todosStore.items || [])
       .flatMap((t: any) => t.messages || [])
       .filter(
-        (m: any) => m && m.author && Number((m.author as any).id) === Number(id)
+        (m: any) =>
+          m && m.author && Number((m.author as any).id) === Number(id),
       );
     if (messageRefs.length) {
       reasons.push(`Author on ${messageRefs.length} message(s)`);
@@ -288,7 +289,7 @@ const findDeleteBlockingReasonsForContact = (id: number): string[] => {
       if (
         Array.isArray(m.notes) &&
         m.notes.some(
-          (n: any) => n && n.author && Number(n.author.id) === Number(id)
+          (n: any) => n && n.author && Number(n.author.id) === Number(id),
         )
       )
         return true;
@@ -302,16 +303,18 @@ const findDeleteBlockingReasonsForContact = (id: number): string[] => {
     const referencedInConnections = contactsStore.all.filter(
       (c: any) =>
         Array.isArray(c.connections) &&
-        c.connections.some((conn: any) => Number(conn.contactId) === Number(id))
+        c.connections.some(
+          (conn: any) => Number(conn.contactId) === Number(id),
+        ),
     );
     if (referencedInConnections.length) {
       reasons.push(
-        `Connected to ${referencedInConnections.length} other contact(s)`
+        `Connected to ${referencedInConnections.length} other contact(s)`,
       );
     }
   } catch (e) {
     reasons.push(
-      "Unable to guarantee safe deletion due to internal check failure"
+      "Unable to guarantee safe deletion due to internal check failure",
     );
   }
 
@@ -368,16 +371,16 @@ const cleanupAndDeleteContact = () => {
     // Remove from top-level collaborators
     todosStore.items = (todosStore.items || []).map((t: any) => {
       const collaborators = (t.collaborators || []).filter(
-        (c: any) => Number(c.id) !== Number(id)
+        (c: any) => Number(c.id) !== Number(id),
       );
       const steps = (t.steps || []).map((s: any) => ({
         ...s,
         collaborators: (s.collaborators || []).filter(
-          (c: any) => Number(c.id) !== Number(id)
+          (c: any) => Number(c.id) !== Number(id),
         ),
       }));
       const activities = (t.activities || []).filter(
-        (a: any) => !(a && a.author && Number(a.author.id) === Number(id))
+        (a: any) => !(a && a.author && Number(a.author.id) === Number(id)),
       );
       const messages = (t.messages || []).filter(
         (m: any) =>
@@ -385,7 +388,7 @@ const cleanupAndDeleteContact = () => {
             m &&
             (m.author as any) &&
             Number((m.author as any).id) === Number(id)
-          )
+          ),
       );
       return { ...t, collaborators, steps, activities, messages };
     });
@@ -397,10 +400,10 @@ const cleanupAndDeleteContact = () => {
           ? null
           : m.requestedBy;
       const linkedTo = (m.linkedTo || []).filter(
-        (l: any) => Number(l.id) !== Number(id)
+        (l: any) => Number(l.id) !== Number(id),
       );
       const notes = (m.notes || []).filter(
-        (n: any) => !(n && n.author && Number(n.author.id) === Number(id))
+        (n: any) => !(n && n.author && Number(n.author.id) === Number(id)),
       );
       return { ...m, requestedBy, linkedTo, notes };
     });
@@ -408,7 +411,7 @@ const cleanupAndDeleteContact = () => {
     // Remove connections pointing to this contact
     contactsStore.items = contactsStore.items.map((c: any) => {
       const connections = (c.connections || []).filter(
-        (conn: any) => Number(conn.contactId) !== Number(id)
+        (conn: any) => Number(conn.contactId) !== Number(id),
       );
       return { ...c, connections };
     });
@@ -418,7 +421,7 @@ const cleanupAndDeleteContact = () => {
     notifications.push(
       "References removed and contact deleted",
       "success",
-      3500
+      3500,
     );
     // redirect back to contact list after cleanup+delete
     try {
@@ -495,7 +498,7 @@ const saveEditRelation = () => {
 
   const source = localConnections.value ?? connectionList.value ?? [];
   const updated = source.map((c) =>
-    c.contactId === id ? { ...c, relation: editRelation.value } : c
+    c.contactId === id ? { ...c, relation: editRelation.value } : c,
   );
 
   localConnections.value = [...updated];
@@ -520,7 +523,7 @@ const saveEditRelation = () => {
 const editCandidate = computed(() =>
   editCandidateId.value == null
     ? null
-    : contactsStore.byId(editCandidateId.value)
+    : contactsStore.byId(editCandidateId.value),
 );
 
 // Drawer for creating a todo prefilled from a connection
@@ -680,8 +683,8 @@ function onEmailSend(payload: any) {
     const recipients = Array.isArray(payload?.to)
       ? payload.to.filter(Boolean)
       : payload?.to
-      ? [String(payload.to)]
-      : [];
+        ? [String(payload.to)]
+        : [];
     const subject = String(payload?.subject || "(no subject)");
     const count = recipients.length;
     notifications.push(
@@ -689,7 +692,7 @@ function onEmailSend(payload: any) {
         count ? ` to ${count} recipient${count > 1 ? "s" : ""}` : ""
       }: ${subject}`,
       "success",
-      3500
+      3500,
     );
   } catch (e) {
     try {

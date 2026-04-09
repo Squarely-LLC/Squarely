@@ -30,7 +30,7 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
     } catch (error) {
       console.warn(
         "structuredClone failed for contact, falling back to JSON:",
-        error
+        error,
       );
     }
   }
@@ -75,11 +75,13 @@ const tabs = [
   { icon: "tabler-bell", title: "Notifications" },
 ] as const;
 
-const userTabDocumentsRef =
-  ref<InstanceType<typeof UserTabDocuments> | null>(null);
+const userTabDocumentsRef = ref<InstanceType<typeof UserTabDocuments> | null>(
+  null,
+);
 const userTabRecordsRef = ref<InstanceType<typeof UserTabRecords> | null>(null);
-const addTodoDrawerRef =
-  ref<InstanceType<typeof AddNewToDoDrawer> | null>(null);
+const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
+  null,
+);
 const isAddTodoDrawerOpen = ref(false);
 const addTodoInitial = ref<any | null>(null);
 const addTodoCollaborators = ref<
@@ -190,7 +192,7 @@ watch(
     }
     contact.value = cloneContact(value);
     error.value = null;
-  }
+  },
 );
 
 // keep userTab in sync with the route query param
@@ -198,7 +200,7 @@ watch(
   () => route.query.tab,
   () => {
     setTabFromQuery();
-  }
+  },
 );
 
 // update the route when the user changes tabs
@@ -217,7 +219,7 @@ watch(
     } catch (e) {
       // ignore router replace errors
     }
-  }
+  },
 );
 </script>
 
