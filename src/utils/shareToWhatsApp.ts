@@ -15,7 +15,6 @@ async function shareToWhatsApp({
 
   // Try Web Share API with files when available (mobile / modern browsers)
   try {
-    // @ts-ignore navigator.canShare typing may not include files in older TS libs
     if (
       navigator.share &&
       file &&

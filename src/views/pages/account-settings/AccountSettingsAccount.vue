@@ -20,13 +20,13 @@ const accountData = {
 const refInputEl = ref<HTMLElement>()
 
 const isConfirmDialogOpen = ref(false)
-const accountDataLocal = ref(structuredClone(accountData))
+const accountDataLocal = ref(structuredClone(toRaw(accountData))
 const isAccountDeactivated = ref(false)
 
 const validateAccountDeactivation = [(v: string) => !!v || 'Please confirm account deactivation']
 
 const resetForm = () => {
-  accountDataLocal.value = structuredClone(accountData)
+  accountDataLocal.value = structuredClone(toRaw(accountData)
 }
 
 // changeAvatar function

@@ -13,11 +13,11 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<Emit>()
 
-const checkoutAddressDataLocal = ref<CheckoutData>(JSON.parse(JSON.stringify(props.checkoutData)))
+const checkoutAddressDataLocal = ref<CheckoutData>(structuredClone(props.checkoutData))
 const isEditAddressDialogVisible = ref(false)
 
 watch(() => props.checkoutData, value => {
-  checkoutAddressDataLocal.value = JSON.parse(JSON.stringify(value))
+  checkoutAddressDataLocal.value = structuredClone(value)
 })
 
 const deliveryOptions = [

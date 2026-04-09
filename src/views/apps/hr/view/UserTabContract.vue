@@ -34,7 +34,7 @@ const notifications = useNotificationsStore();
 
 // Helper to convert reactive arrays to plain objects
 const toPlain = <T,>(value: T): T => {
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 };
 
 // ==================== STATE ====================

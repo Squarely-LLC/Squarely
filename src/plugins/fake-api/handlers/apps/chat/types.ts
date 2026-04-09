@@ -32,9 +32,7 @@ export interface ChatOut {
   id: Chat['id']
   unseenMsgs: Chat['unseenMsgs']
   messages: ChatMessage[]
-
-  // @ts-expect-error Indexed Access Types
-  lastMessage: ChatMessage[number]
+  lastMessage: ChatMessage
 }
 
 export interface ChatContactWithChat extends ChatContact {

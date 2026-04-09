@@ -12,7 +12,7 @@ export const handlerAppsChat = [
 
     const chatsContacts: ChatContactWithChat[] = db.chats
       .map(chat => {
-        const contact = JSON.parse(JSON.stringify((db.contacts.find(c => c.id === chat.userId) as ChatContact)))
+        const contact = structuredClone((db.contacts.find(c => c.id === chat.userId) as ChatContact))
 
         contact.chat = { id: chat.id, unseenMsgs: chat.unseenMsgs, lastMessage: chat.messages.at(-1) }
 

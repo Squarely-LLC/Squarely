@@ -305,10 +305,13 @@ watch(
 // Allow parent to open this drawer programmatically with initial data
 function openWith(initial?: any) {
   pendingInitial.value = initial ?? null;
-  emit("update:isDrawerOpen", true);
-  nextTick(() => {
+  if (props.isDrawerOpen) {
+    // Drawer already open – watcher won't fire, so load directly
     loadInitialAndMaybeFocus();
-  });
+  } else {
+    // Opening the drawer – the isDrawerOpen watcher will call loadInitialAndMaybeFocus()
+    emit("update:isDrawerOpen", true);
+  }
 }
 
 defineExpose({ openWith });

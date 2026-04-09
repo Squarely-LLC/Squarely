@@ -96,7 +96,7 @@ const editStepDialogTitle = ref("Edit Subtask");
 function openEditStep(todoId: number | string, step: ToDoStep) {
   editStepDialogTodoId.value = todoId;
   // deep clone so we don't mutate the row until Save
-  editStepDialogModel.value = JSON.parse(JSON.stringify(step));
+  editStepDialogModel.value = structuredClone(toRaw(step));
   editStepDialogTitle.value = "Edit Subtask";
   isEditStepDialogOpen.value = true;
 }

@@ -37,7 +37,7 @@ const cloneContact = (contact: EmployeeProperties | null | undefined) => {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as EmployeeProperties;
+    return structuredClone(raw) as EmployeeProperties;
   } catch (error) {
     console.warn("Failed to clone contact payload:", error);
     return { ...raw };

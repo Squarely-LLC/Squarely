@@ -342,7 +342,7 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
+    return structuredClone(raw) as ContactProperties;
   } catch (error) {
     console.warn("Failed to clone contact payload:", error);
     return { ...raw };
@@ -361,7 +361,7 @@ const notifications = useNotificationsStore();
 
 const addNewContact = (contact: Partial<ContactProperties>) => {
   // eslint-disable-next-line no-console
-  console.log("addNewContact received:", JSON.parse(JSON.stringify(contact)));
+  console.log("addNewContact received:", structuredClone(contact));
 
   // The store expects a Partial<ContactProperties> for addContact.
   // Ensure we pass the payload through directly so the store assigns an id and defaults.

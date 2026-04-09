@@ -46,7 +46,7 @@ const emit = defineEmits<Emit>()
 const refEditTaskForm = ref<VForm>()
 const labelOptions = ['UX', 'Image', 'Code Review', 'Dashboard', 'App', 'Charts & Maps']
 
-const localKanbanItem = ref<KanbanItem>(JSON.parse(JSON.stringify(props.kanbanItem.item)))
+const localKanbanItem = ref<KanbanItem>(structuredClone(toRaw(props.kanbanItem.item)))
 
 const handleDrawerModelValueUpdate = (val: boolean) => {
   emit('update:isDrawerOpen', val)
@@ -57,7 +57,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
 
 // kanban item watcher
 watch(() => props.kanbanItem, () => {
-  localKanbanItem.value = JSON.parse(JSON.stringify(props.kanbanItem.item))
+  localKanbanItem.value = structuredClone(toRaw(props.kanbanItem.item))
 }, { deep: true })
 
 const updateKanbanItem = () => {

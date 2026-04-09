@@ -132,14 +132,13 @@ const isAddConnectionDialogVisible = ref(false);
 // tooltip label for accessibility / localization fallback
 const addConnectionTooltip = (() => {
   try {
-    // try to use the global i18n if present
-    // @ts-ignore
-    const { t } = useI18n ? useI18n() : { t: undefined };
-    // if t exists use it; otherwise fallback
-    // @ts-ignore
-    return (t && t("Add Connection")) || "Add connection";
-  } catch (e) {
-    return "Add connection";
+    if (typeof useI18n === 'function') {
+      const { t } = useI18n();
+      return t('Add Connection') || 'Add connection';
+    }
+    return 'Add connection';
+  } catch {
+    return 'Add connection';
   }
 })();
 

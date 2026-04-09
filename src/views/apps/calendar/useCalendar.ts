@@ -390,8 +390,7 @@ export const useCalendar = (
     forceEventDuration: true,
 
     eventClassNames({ event }) {
-      // @ts-ignore
-      const cal = event.extendedProps?.calendar;
+      const cal = (event.extendedProps as Record<string, any>)?.calendar;
       if (event.extendedProps?.type === "todo-more") {
         return ["calendar-task-more"];
       }
@@ -419,8 +418,7 @@ export const useCalendar = (
 
       // For meetings you may later open a meeting drawer; for now keep To-Do open
       const id =
-        // @ts-ignore
-        event.extendedProps?.todoId ??
+        (event.extendedProps as Record<string, any>)?.todoId ??
         String(event.id || "").replace(/^todo-/, "");
       if (id != null && id !== "") {
         window.dispatchEvent(

@@ -24,7 +24,7 @@ function cloneConnection(connection: ContactConnection): ContactConnection {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactConnection;
+    return structuredClone(raw) as ContactConnection;
   } catch (error) {
     console.warn("JSON clone failed while cloning connection:", error);
     return { ...raw };
@@ -43,7 +43,7 @@ function cloneAccounting(accounting: ContactAccounting): ContactAccounting {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactAccounting;
+    return structuredClone(raw) as ContactAccounting;
   } catch (error) {
     console.warn("JSON clone failed while cloning accounting:", error);
     return { ...raw };
@@ -62,7 +62,7 @@ function cloneContact(contact: ContactProperties): ContactProperties {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
+    return structuredClone(raw) as ContactProperties;
   } catch (error) {
     console.warn("JSON clone failed while cloning contact:", error);
 

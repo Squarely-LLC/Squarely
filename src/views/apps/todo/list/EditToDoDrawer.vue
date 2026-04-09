@@ -162,7 +162,7 @@ function addStep() {
 }
 function saveNewDraft() {
   if (!newDraft.title.trim()) return;
-  steps.value.push(JSON.parse(JSON.stringify(newDraft)));
+  steps.value.push(structuredClone(toRaw(newDraft)));
   showNewDraft.value = false;
   scheduleSaveSteps();
 }
@@ -191,13 +191,13 @@ const StepEditDialogModel = ref<DialogStep | null>(null);
 
 function openStepEditDialog(idx: number) {
   StepEditDialogIdx.value = idx;
-  StepEditDialogModel.value = JSON.parse(JSON.stringify(steps.value[idx]));
+  StepEditDialogModel.value = structuredClone(toRaw(steps.value[idx]));
   StepEditDialogOpen.value = true;
 }
 
 function onStepEditDialogSave(edited: DialogStep) {
   if (StepEditDialogIdx.value == null) return;
-  steps.value[StepEditDialogIdx.value] = JSON.parse(JSON.stringify(edited));
+  steps.value[StepEditDialogIdx.value] = structuredClone(toRaw(edited));
   scheduleSaveSteps();
 }
 function onStepEditDialogClose() {
@@ -222,7 +222,7 @@ function loadFromToDo(t: ToDo) {
     t.relatedTo?.type === "job" ? `job-${t.relatedTo.id}` : null;
   selectedStatus.value = (t.status ?? "pending") as Status;
 
-  steps.value = JSON.parse(JSON.stringify(t.steps ?? [])) as ToDoStep[];
+  steps.value = structuredClone(toRaw(t.steps ?? [])) as ToDoStep[];
 
   // ✅ Initialize local completed toggle from any possible flags/shape
   nextTick(() => {

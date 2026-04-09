@@ -2,7 +2,7 @@
 import type { ContactRef, ToDoStep } from "@/data/schema";
 import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, toRaw, watch } from "vue";
 
 const toDateOnlyISOString = (value?: string | null) => {
   const date = value ? new Date(value) : new Date();
@@ -45,7 +45,7 @@ watch(
   () => props.step,
   (s) => {
     if (!s) return;
-    Object.assign(draft, JSON.parse(JSON.stringify(s)));
+    Object.assign(draft, structuredClone(toRaw(s)));
     collabSearch.value = "";
   },
   { immediate: true, deep: true }

@@ -72,31 +72,31 @@ const openAddTimeAuLieuDrawer = () => {
 
 const openEditLeave = (request: any) => {
   if (!request || request.type !== "Leave") return;
-  selectedLeaveData.value = JSON.parse(JSON.stringify(request));
+  selectedLeaveData.value = structuredClone(request);
   isAddLeaveOpen.value = true;
 };
 
 const openEditAddition = (request: any) => {
   if (!request || request.type !== "Addition") return;
-  selectedAdditionData.value = JSON.parse(JSON.stringify(request));
+  selectedAdditionData.value = structuredClone(request);
   isAddAdditionsOpen.value = true;
 };
 
 const openEditDeduction = (request: any) => {
   if (!request || request.type !== "Deduction") return;
-  selectedDeductionData.value = JSON.parse(JSON.stringify(request));
+  selectedDeductionData.value = structuredClone(request);
   isAddDeductionOpen.value = true;
 };
 
 const openEditAdvance = (request: any) => {
   if (!request || request.type !== "Advance") return;
-  selectedAdvanceData.value = JSON.parse(JSON.stringify(request));
+  selectedAdvanceData.value = structuredClone(request);
   isAddAdvancesOpen.value = true;
 };
 
 const openEditTimeAuLieu = (request: any) => {
   if (!request || request.type !== "Time au Lieu") return;
-  selectedTimeAuLieuData.value = JSON.parse(JSON.stringify(request));
+  selectedTimeAuLieuData.value = structuredClone(request);
   isAddTimeAuLieuOpen.value = true;
 };
 
@@ -113,7 +113,7 @@ const handleAddLeave = (payload: any) => {
       r.id === selectedLeaveData.value.id ? { ...r, ...payload } : r
     );
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify(updated)),
+      requests: structuredClone(updated),
     });
     notifications.push("Leave request updated", "success", 3500);
   } else {
@@ -125,7 +125,7 @@ const handleAddLeave = (payload: any) => {
       status: "pending",
     };
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+      requests: structuredClone([...currentRequests, newRequest]),
     });
     notifications.push("Leave request added", "success", 3500);
   }
@@ -147,7 +147,7 @@ const handleAddAddition = (payload: any) => {
       r.id === selectedAdditionData.value.id ? { ...r, ...payload } : r
     );
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify(updated)),
+      requests: structuredClone(updated),
     });
     notifications.push("Addition request updated", "success", 3500);
   } else {
@@ -159,7 +159,7 @@ const handleAddAddition = (payload: any) => {
       status: "pending",
     };
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+      requests: structuredClone([...currentRequests, newRequest]),
     });
     notifications.push("Addition request added", "success", 3500);
   }
@@ -181,7 +181,7 @@ const handleAddDeduction = (payload: any) => {
       r.id === selectedDeductionData.value.id ? { ...r, ...payload } : r
     );
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify(updated)),
+      requests: structuredClone(updated),
     });
     notifications.push("Deduction request updated", "success", 3500);
   } else {
@@ -193,7 +193,7 @@ const handleAddDeduction = (payload: any) => {
       status: "pending",
     };
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+      requests: structuredClone([...currentRequests, newRequest]),
     });
     notifications.push("Deduction request added", "success", 3500);
   }
@@ -215,7 +215,7 @@ const handleAddAdvance = (payload: any) => {
       r.id === selectedAdvanceData.value.id ? { ...r, ...payload } : r
     );
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify(updated)),
+      requests: structuredClone(updated),
     });
     notifications.push("Advance request updated", "success", 3500);
   } else {
@@ -227,7 +227,7 @@ const handleAddAdvance = (payload: any) => {
       status: "pending",
     };
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+      requests: structuredClone([...currentRequests, newRequest]),
     });
     notifications.push("Advance request added", "success", 3500);
   }
@@ -249,7 +249,7 @@ const handleAddTimeAuLieu = (payload: any) => {
       r.id === selectedTimeAuLieuData.value.id ? { ...r, ...payload } : r
     );
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify(updated)),
+      requests: structuredClone(updated),
     });
     notifications.push("Time au Lieu request updated", "success", 3500);
   } else {
@@ -261,7 +261,7 @@ const handleAddTimeAuLieu = (payload: any) => {
       status: "pending",
     };
     employeesStore.updateEmployee(props.userData.id, {
-      requests: JSON.parse(JSON.stringify([...currentRequests, newRequest])),
+      requests: structuredClone([...currentRequests, newRequest]),
     });
     notifications.push("Time au Lieu request added", "success", 3500);
   }

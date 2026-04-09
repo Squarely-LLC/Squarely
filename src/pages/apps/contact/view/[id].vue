@@ -36,7 +36,7 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
   }
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
+    return structuredClone(raw) as ContactProperties;
   } catch (error) {
     console.warn("Failed to clone contact payload:", error);
     return { ...raw };
