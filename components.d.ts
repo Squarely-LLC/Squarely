@@ -38,6 +38,7 @@ declare module 'vue' {
     CardStatisticsVerticalSimple: typeof import('./src/@core/components/CardStatisticsVerticalSimple.vue')['default']
     CatalogueCategoryTreeSelect: typeof import('./src/components/catalogues/CatalogueCategoryTreeSelect.vue')['default']
     CatalogueCategoryTreeSelectNode: typeof import('./src/components/catalogues/CatalogueCategoryTreeSelectNode.vue')['default']
+    CatalogueTaskTemplateDrawer: typeof import('./src/components/catalogues/CatalogueTaskTemplateDrawer.vue')['default']
     ConfigEditorDrawer: typeof import('./src/components/ConfigEditorDrawer.vue')['default']
     ConfirmDialog: typeof import('./src/components/dialogs/ConfirmDialog.vue')['default']
     CreateAppDialog: typeof import('./src/components/dialogs/CreateAppDialog.vue')['default']

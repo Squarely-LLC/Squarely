@@ -1,6 +1,7 @@
 import { AppContentLayoutNav, NavbarType } from '@layouts/enums'
 import { injectionKeyIsVerticalNavHovered } from '@layouts/symbols'
 import { _setDirAttr } from '@layouts/utils'
+import { hasInjectionContext } from 'vue'
 
 // ℹ️ We should not import themeConfig here but in urgency we are doing it for now
 import { layoutConfig } from '@themeConfig'
@@ -109,7 +110,8 @@ export const useLayoutConfigStore = defineStore('layoutConfig', () => {
         same component is providing & injecting we are getting undefined error
   */
   const isVerticalNavMini = (isVerticalNavHovered: Ref<boolean> | null = null) => {
-    const isVerticalNavHoveredLocal = isVerticalNavHovered || inject(injectionKeyIsVerticalNavHovered) || ref(false)
+    const injectedHoveredRef = hasInjectionContext() ? inject(injectionKeyIsVerticalNavHovered, null) : null
+    const isVerticalNavHoveredLocal = isVerticalNavHovered || injectedHoveredRef || ref(false)
 
     return computed(() => isVerticalNavCollapsed.value && !isVerticalNavHoveredLocal.value && !isLessThanOverlayNavBreakpoint.value)
   }

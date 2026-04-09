@@ -60,6 +60,7 @@ const DEFAULT_TYPE_OPTIONS: CatalogueItemType[] = [
 
 const DEFAULT_ACTIVE_OPTIONS: CatalogueActiveState[] = [
   "Active",
+  "Draft",
   "Non-Active",
   "Archived",
 ];
@@ -200,6 +201,7 @@ const setActiveMenu = (id: number | string, value: boolean) => {
 
 const resolveActive = (activeState: CatalogueActiveState) => {
   if (activeState === "Active") return { text: "Active", color: "success" };
+  if (activeState === "Draft") return { text: "Draft", color: "info" };
   if (activeState === "Non-Active")
     return { text: "Non-Active", color: "warning" };
   if (activeState === "Archived")
@@ -210,6 +212,8 @@ const resolveActive = (activeState: CatalogueActiveState) => {
 const activeTextClass = (activeState: CatalogueActiveState) =>
   activeState === "Active"
     ? "text-success"
+    : activeState === "Draft"
+      ? "text-info"
     : activeState === "Non-Active"
       ? "text-warning"
       : activeState === "Archived"

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import CatalogueTaskTemplateDrawer from "@/components/catalogues/CatalogueTaskTemplateDrawer.vue";
+import type { ToDo, ToDoStep } from "@/data/schema";
 import type {
   CatalogueActiveState,
   CatalogueContractualServiceRecord,
@@ -23,16 +25,12 @@ import {
 import { useRoute, useRouter } from "vue-router";
 import type { VForm } from "vuetify/components/VForm";
 
-type SalesTaskDraft = {
-  id: number;
-  title: string;
-};
-
 type RelatedItemDraft = {
   id: number;
   name: string;
   category: string;
-  price?: number | null;
+  price: number | null;
+  chargeTax: boolean;
   description: string;
 };
 
@@ -54,12 +52,18 @@ type JobConfigTaskStatus =
 type JobConfigTask = {
   id: number;
   title: string;
-  dueAt: string | null;
+  collaborators: ToDo["collaborators"];
+  afterWhen: string | null;
   manhours: number | null;
   notes: string;
   status: JobConfigTaskStatus;
   important: boolean;
+  attachment?: ToDo["attachment"];
+  relatedTo?: ToDo["relatedTo"];
+  steps: ToDoStep[];
 };
+
+type SalesTaskDraft = JobConfigTask;
 
 type JobConfigGoal = {
   id: number;
@@ -112,16 +116,18 @@ const selectedType = computed(() => {
 
 const typeDescriptions: Record<string, string> = {
   "Onetime Service":
-    "Create a one-off service item for a single defined scope of work.",
-  Product: "Create a stocked sellable inventory item.",
+    "Single-scope service delivered once, such as an installation or one-off site visit.",
+  Product: "Standard stocked item purchased, stored, and sold as inventory.",
   "Contractual Service":
-    "Create a service delivered under a contract or maintenance agreement.",
-  "Retainer Service": "Create an ongoing retainer-based service offering.",
+    "Service sold under a fixed contract period, scope, or maintenance agreement.",
+  "Retainer Service":
+    "Ongoing advisory or support service billed to reserve team availability over time.",
   "Reccurent Service":
-    "Create a recurring service delivered on a repeating schedule.",
+    "Scheduled repeat service delivered on a recurring basis such as monthly cleaning or upkeep.",
   "Produced Product":
-    "Create an internally manufactured or custom-built catalogue item.",
-  Rental: "Create a rentable asset tracked for availability and return.",
+    "Item manufactured, assembled, or custom-built internally before delivery.",
+  Rental:
+    "Reusable asset hired out for a defined time window and then returned to stock.",
 };
 
 const pageTitle = computed(() => `Add ${selectedType.value}`);
@@ -154,6 +160,7 @@ const isRelatedItemDialogOpen = ref(false);
 const relatedItemName = ref("");
 const relatedItemCategory = ref("");
 const relatedItemPrice = ref<number | null>(null);
+const isRelatedItemChargeTax = ref(true);
 const relatedItemDescription = ref("<p></p>");
 const relatedItemErrors = ref({
   name: "",
@@ -171,10 +178,8 @@ const phaseErrors = ref({
 });
 const salesTaskId = ref(1);
 const salesTasks = ref<SalesTaskDraft[]>([]);
-const salesTaskFieldRefs = ref<Record<number, HTMLElement | null>>({});
 const milestoneFormRef = ref<VForm>();
 const goalFormRef = ref<VForm>();
-const taskFormRef = ref<VForm>();
 const itemFormRef = ref<VForm>();
 const hasCustomMilestoneName = ref(false);
 const jobConfigGoalId = ref(1);
@@ -185,12 +190,6 @@ const priorityOptions = [
   { title: "Low", value: "Low" },
   { title: "Normal", value: "Normal" },
   { title: "High", value: "High" },
-];
-const taskStatusOptions = [
-  { title: "Pending", value: "pending" },
-  { title: "In Progress", value: "in_progress" },
-  { title: "For Review", value: "for_review" },
-  { title: "Completed", value: "completed" },
 ];
 const defaultMilestoneName = computed(() => {
   const trimmedName = itemName.value.trim();
@@ -219,6 +218,7 @@ const milestoneDialog = ref({
     note: "",
   },
 });
+const milestoneAfterWhenValue = ref<number | null>(null);
 const goalDialog = ref({
   visible: false,
   mode: "create" as "create" | "edit",
@@ -231,20 +231,21 @@ const goalDialog = ref({
     note: "",
   },
 });
-const taskDialog = ref({
-  visible: false,
-  mode: "create" as "create" | "edit",
-  parentType: "milestone" as "milestone" | "goal",
-  parentId: null as number | null,
-  targetId: null as number | null,
-  draft: {
-    title: "",
-    dueAt: null as string | null,
-    manhours: null as number | null,
-    notes: "",
-    status: "pending" as JobConfigTaskStatus,
-    important: false,
-  },
+const goalAfterWhenValue = ref<number | null>(null);
+const isTaskTemplateDrawerOpen = ref(false);
+const taskTemplateDrawerRef = ref<InstanceType<
+  typeof CatalogueTaskTemplateDrawer
+> | null>(null);
+const taskTemplateContext = ref<{
+  target: "sales" | "milestone" | "goal";
+  parentId: number | null;
+  mode: "create" | "edit";
+  targetId: number | null;
+}>({
+  target: "sales",
+  parentId: null,
+  mode: "create",
+  targetId: null,
 });
 
 const cleanEntries = (values?: (string | null | undefined)[]) =>
@@ -264,7 +265,7 @@ const activeStateOptions = computed(() => {
   );
   const source = configured.length
     ? configured
-    : ["Active", "Non-Active", "Archived"];
+    : ["Active", "Draft", "Non-Active", "Archived"];
 
   return source.map((state) => ({ title: state, value: state }));
 });
@@ -342,41 +343,55 @@ watch(
   { immediate: true },
 );
 
-const addSalesTask = () => {
-  const taskId = salesTaskId.value++;
-
-  salesTasks.value.push({
-    id: taskId,
+const openSalesTaskTemplateDrawer = () => {
+  taskTemplateContext.value = {
+    target: "sales",
+    parentId: null,
+    mode: "create",
+    targetId: null,
+  };
+  taskTemplateDrawerRef.value?.openWith({
     title: "",
+    collaborators: [],
+    afterWhen: "+1 day",
+    notes: "",
+    important: false,
+    status: "pending",
+    attachment: null,
+    relatedTo: null,
+    steps: [],
   });
+};
 
-  nextTick(() => {
-    const fieldRoot = salesTaskFieldRefs.value[taskId];
-    const input = fieldRoot?.querySelector("input");
-
-    if (input instanceof HTMLInputElement) input.focus();
+const openEditSalesTask = (task: SalesTaskDraft) => {
+  taskTemplateContext.value = {
+    target: "sales",
+    parentId: null,
+    mode: "edit",
+    targetId: task.id,
+  };
+  taskTemplateDrawerRef.value?.openWith({
+    title: task.title,
+    collaborators: task.collaborators,
+    afterWhen: task.afterWhen,
+    notes: task.notes,
+    important: task.important,
+    status: task.status,
+    attachment: task.attachment ?? null,
+    relatedTo: task.relatedTo ?? null,
+    steps: cloneTaskSteps(task.steps),
   });
 };
 
 const removeSalesTask = (taskId: number) => {
   salesTasks.value = salesTasks.value.filter((task) => task.id !== taskId);
-  delete salesTaskFieldRefs.value[taskId];
-};
-
-const pruneSalesTask = (taskId: number) => {
-  const task = salesTasks.value.find((entry) => entry.id === taskId);
-
-  if (!task) return;
-
-  task.title = task.title.trim();
-
-  if (!task.title) removeSalesTask(taskId);
 };
 
 const resetRelatedItemDraft = () => {
   relatedItemName.value = "";
   relatedItemCategory.value = "";
   relatedItemPrice.value = null;
+  isRelatedItemChargeTax.value = true;
   relatedItemDescription.value = "<p></p>";
   relatedItemErrors.value = {
     name: "",
@@ -404,13 +419,13 @@ const saveRelatedItem = () => {
     id: relatedItemId.value++,
     name: trimmedName,
     category: trimmedCategory,
-    price: isRetainerService.value
-      ? relatedItemPrice.value === null || relatedItemPrice.value === undefined
+    price:
+      relatedItemPrice.value === null || relatedItemPrice.value === undefined
         ? null
         : Number.isFinite(Number(relatedItemPrice.value))
           ? Number(relatedItemPrice.value)
-          : null
-      : undefined,
+          : null,
+    chargeTax: isRelatedItemChargeTax.value,
     description: relatedItemDescription.value.replace(/<[^>]+>/g, " ").trim(),
   });
 
@@ -504,6 +519,153 @@ const formatDate = (value?: string | null) => {
   }
 };
 
+const formatTaskAfterWhen = (value?: string | null) => value || "--";
+
+const parseAfterWhenValue = (value?: string | null) => {
+  const trimmedValue = String(value ?? "").trim();
+  if (!trimmedValue) return null;
+
+  const relativeMatch = trimmedValue.match(
+    /^\+?\s*(\d+)\s+(day|days|week|weeks|month|months)$/i,
+  );
+  if (relativeMatch) {
+    const amount = Number(relativeMatch[1]);
+    const unit = relativeMatch[2].toLowerCase();
+
+    if (unit.startsWith("week")) return amount * 7;
+    if (unit.startsWith("month")) return amount * 30;
+    return amount;
+  }
+
+  const parsedDate = new Date(trimmedValue);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  const today = new Date();
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const startOfTarget = new Date(
+    parsedDate.getFullYear(),
+    parsedDate.getMonth(),
+    parsedDate.getDate(),
+  );
+  const diffInDays = Math.round(
+    (startOfTarget.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  return diffInDays > 0 ? diffInDays : null;
+};
+
+const buildAfterWhenValue = (value?: number | null) => {
+  const numericValue =
+    value === null || value === undefined ? NaN : Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return null;
+
+  const roundedValue = Math.floor(numericValue);
+
+  return `+${roundedValue} ${roundedValue === 1 ? "day" : "days"}`;
+};
+
+const addAfterWhenDays = (
+  target: typeof milestoneAfterWhenValue | typeof goalAfterWhenValue,
+  days: number,
+) => {
+  const currentValue =
+    target.value === null || target.value === undefined
+      ? 0
+      : Number(target.value);
+  const safeCurrentValue = Number.isFinite(currentValue)
+    ? Math.max(0, Math.floor(currentValue))
+    : 0;
+
+  target.value = safeCurrentValue + days;
+};
+
+const addMilestoneAfterWhenDays = (days: number) => {
+  addAfterWhenDays(milestoneAfterWhenValue, days);
+};
+
+const addGoalAfterWhenDays = (days: number) => {
+  addAfterWhenDays(goalAfterWhenValue, days);
+};
+
+const normalizeJobTaskStatus = (
+  status?: string | null,
+): JobConfigTaskStatus => {
+  if (
+    status === "in_progress" ||
+    status === "for_review" ||
+    status === "completed"
+  ) {
+    return status;
+  }
+
+  return "pending";
+};
+
+const cloneTaskSteps = (taskSteps?: ToDoStep[] | null): ToDoStep[] => {
+  if (!Array.isArray(taskSteps)) return [];
+
+  return taskSteps.map((step, index) => ({
+    id: step.id ?? index + 1,
+    title: String(step.title ?? "").trim(),
+    collaborators: Array.isArray(step.collaborators)
+      ? step.collaborators.map((collaborator) => ({
+          id: collaborator.id,
+          name: String(collaborator.name ?? "").trim(),
+          avatarUrl: collaborator.avatarUrl ?? null,
+        }))
+      : [],
+    dueAt: step.dueAt,
+    priority:
+      step.priority === "low" ||
+      step.priority === "normal" ||
+      step.priority === "high"
+        ? step.priority
+        : undefined,
+    status: normalizeJobTaskStatus(step.status),
+    notes: String(step.notes ?? "").trim(),
+    createdAt: step.createdAt ?? new Date().toISOString(),
+    updatedAt: step.updatedAt ?? new Date().toISOString(),
+  }));
+};
+
+const serializeTaskTemplate = (
+  task: Partial<JobConfigTask>,
+): JobConfigTask => ({
+  id: task.id ?? 0,
+  title: String(task.title ?? "").trim(),
+  collaborators: Array.isArray(task.collaborators)
+    ? task.collaborators.map((collaborator) => ({
+        id: collaborator.id,
+        name: collaborator.name,
+        avatarUrl: collaborator.avatarUrl ?? null,
+      }))
+    : [],
+  afterWhen:
+    (
+      task as Partial<JobConfigTask> & {
+        dueAt?: string | null;
+      }
+    ).afterWhen ??
+    (
+      task as Partial<JobConfigTask> & {
+        dueAt?: string | null;
+      }
+    ).dueAt ??
+    null,
+  manhours: task.manhours ?? null,
+  notes: String(task.notes ?? "").trim(),
+  status: normalizeJobTaskStatus(task.status),
+  important: Boolean(task.important),
+  attachment: task.attachment ?? null,
+  relatedTo: task.relatedTo ?? null,
+  steps: cloneTaskSteps(task.steps),
+});
+
 const resetMilestoneDraft = () => {
   milestoneDialog.value.targetId = null;
   milestoneDialog.value.draft = {
@@ -512,6 +674,7 @@ const resetMilestoneDraft = () => {
     priority: "Normal",
     note: "",
   };
+  milestoneAfterWhenValue.value = null;
 };
 
 const resetGoalDraft = () => {
@@ -523,21 +686,7 @@ const resetGoalDraft = () => {
     priority: "Normal",
     note: "",
   };
-};
-
-const resetTaskDraft = () => {
-  taskDialog.value.mode = "create";
-  taskDialog.value.parentType = "milestone";
-  taskDialog.value.parentId = null;
-  taskDialog.value.targetId = null;
-  taskDialog.value.draft = {
-    title: "",
-    dueAt: null,
-    manhours: null,
-    notes: "",
-    status: "pending",
-    important: false,
-  };
+  goalAfterWhenValue.value = null;
 };
 
 const syncContractualPhaseGoals = () => {
@@ -579,8 +728,9 @@ const syncRetainerServiceGoals = () => {
     const existingGoal = milestone.goals.find(
       (goal) =>
         goal.retainerServiceId === service.id ||
-        (goal.retainerServiceId === null || goal.retainerServiceId === undefined) &&
-          goal.name === service.name,
+        ((goal.retainerServiceId === null ||
+          goal.retainerServiceId === undefined) &&
+          goal.name === service.name),
     );
 
     return {
@@ -617,6 +767,7 @@ const openEditMilestone = (milestone: JobConfigMilestone) => {
     priority: milestone.priority,
     note: milestone.note,
   };
+  milestoneAfterWhenValue.value = parseAfterWhenValue(milestone.dueDate);
   nextTick(() => milestoneFormRef.value?.resetValidation());
 };
 
@@ -632,7 +783,7 @@ const saveMilestone = async () => {
 
   if (milestone) {
     milestone.name = draft.name.trim();
-    milestone.dueDate = draft.dueDate;
+    milestone.dueDate = buildAfterWhenValue(milestoneAfterWhenValue.value);
     milestone.priority = draft.priority;
     milestone.note = draft.note.trim();
     hasCustomMilestoneName.value =
@@ -648,6 +799,7 @@ const openCreateGoal = (milestoneId: number) => {
   goalDialog.value.mode = "create";
   goalDialog.value.visible = true;
   goalDialog.value.milestoneId = milestoneId;
+  goalAfterWhenValue.value = null;
   expandedMilestones.value = [
     ...new Set([...expandedMilestones.value, milestoneId]),
   ];
@@ -665,6 +817,7 @@ const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
     priority: goal.priority,
     note: goal.note,
   };
+  goalAfterWhenValue.value = parseAfterWhenValue(goal.dueDate);
   nextTick(() => goalFormRef.value?.resetValidation());
 };
 
@@ -686,7 +839,7 @@ const saveGoal = async () => {
 
     if (goal) {
       goal.name = draft.name.trim();
-      goal.dueDate = draft.dueDate;
+      goal.dueDate = buildAfterWhenValue(goalAfterWhenValue.value);
       goal.priority = draft.priority;
       goal.note = draft.note.trim();
     }
@@ -695,7 +848,7 @@ const saveGoal = async () => {
       id: jobConfigGoalId.value++,
       milestoneId: milestone.id,
       name: draft.name.trim(),
-      dueDate: draft.dueDate,
+      dueDate: buildAfterWhenValue(goalAfterWhenValue.value),
       priority: draft.priority,
       note: draft.note.trim(),
       tasks: [],
@@ -719,59 +872,89 @@ const deleteGoal = (milestoneId: number, goalId: number) => {
 };
 
 const openCreateTaskForMilestone = (milestoneId: number) => {
-  resetTaskDraft();
-  taskDialog.value.visible = true;
-  taskDialog.value.mode = "create";
-  taskDialog.value.parentType = "milestone";
-  taskDialog.value.parentId = milestoneId;
+  taskTemplateContext.value = {
+    target: "milestone",
+    parentId: milestoneId,
+    mode: "create",
+    targetId: null,
+  };
   expandedMilestones.value = [
     ...new Set([...expandedMilestones.value, milestoneId]),
   ];
-  nextTick(() => taskFormRef.value?.resetValidation());
+  taskTemplateDrawerRef.value?.openWith({
+    title: "",
+    collaborators: [],
+    notes: "",
+    important: false,
+    status: "pending",
+    afterWhen: "+1 day",
+    attachment: null,
+    relatedTo: null,
+    milestoneId,
+    steps: [],
+  });
 };
 
 const openCreateTaskForGoal = (goalId: number) => {
-  resetTaskDraft();
-  taskDialog.value.visible = true;
-  taskDialog.value.mode = "create";
-  taskDialog.value.parentType = "goal";
-  taskDialog.value.parentId = goalId;
+  taskTemplateContext.value = {
+    target: "goal",
+    parentId: goalId,
+    mode: "create",
+    targetId: null,
+  };
   expandedGoals.value = [...new Set([...expandedGoals.value, goalId])];
-  nextTick(() => taskFormRef.value?.resetValidation());
+  taskTemplateDrawerRef.value?.openWith({
+    title: "",
+    collaborators: [],
+    notes: "",
+    important: false,
+    status: "pending",
+    afterWhen: "+1 day",
+    attachment: null,
+    relatedTo: null,
+    goalId,
+    steps: [],
+  });
 };
 
 const openEditTaskForMilestone = (milestoneId: number, task: JobConfigTask) => {
-  taskDialog.value.visible = true;
-  taskDialog.value.mode = "edit";
-  taskDialog.value.parentType = "milestone";
-  taskDialog.value.parentId = milestoneId;
-  taskDialog.value.targetId = task.id;
-  taskDialog.value.draft = {
+  taskTemplateContext.value = {
+    target: "milestone",
+    parentId: milestoneId,
+    mode: "edit",
+    targetId: task.id,
+  };
+  taskTemplateDrawerRef.value?.openWith({
     title: task.title,
-    dueAt: task.dueAt,
-    manhours: task.manhours,
+    collaborators: task.collaborators,
+    afterWhen: task.afterWhen,
     notes: task.notes,
     status: task.status,
     important: task.important,
-  };
-  nextTick(() => taskFormRef.value?.resetValidation());
+    attachment: task.attachment ?? null,
+    relatedTo: task.relatedTo ?? null,
+    steps: cloneTaskSteps(task.steps),
+  });
 };
 
 const openEditTaskForGoal = (goalId: number, task: JobConfigTask) => {
-  taskDialog.value.visible = true;
-  taskDialog.value.mode = "edit";
-  taskDialog.value.parentType = "goal";
-  taskDialog.value.parentId = goalId;
-  taskDialog.value.targetId = task.id;
-  taskDialog.value.draft = {
+  taskTemplateContext.value = {
+    target: "goal",
+    parentId: goalId,
+    mode: "edit",
+    targetId: task.id,
+  };
+  taskTemplateDrawerRef.value?.openWith({
     title: task.title,
-    dueAt: task.dueAt,
-    manhours: task.manhours,
+    collaborators: task.collaborators,
+    afterWhen: task.afterWhen,
     notes: task.notes,
     status: task.status,
     important: task.important,
-  };
-  nextTick(() => taskFormRef.value?.resetValidation());
+    attachment: task.attachment ?? null,
+    relatedTo: task.relatedTo ?? null,
+    steps: cloneTaskSteps(task.steps),
+  });
 };
 
 const deleteTaskFromMilestone = (milestoneId: number, taskId: number) => {
@@ -794,60 +977,143 @@ const deleteTaskFromGoal = (goalId: number, taskId: number) => {
   syncExpandedGoals();
 };
 
-const saveTask = async () => {
-  const result = await taskFormRef.value?.validate();
-  if (!result?.valid || taskDialog.value.parentId === null) return;
+const handleTaskTemplateCreated = (
+  task: Partial<ToDo> & { afterWhen?: string | null },
+) => {
+  const title = String(task.title ?? "").trim();
+
+  if (!title) return;
 
   const draftTask: JobConfigTask = {
-    id: taskDialog.value.targetId ?? jobConfigTaskId.value++,
-    title: taskDialog.value.draft.title.trim(),
-    dueAt: taskDialog.value.draft.dueAt,
-    manhours: taskDialog.value.draft.manhours,
-    notes: taskDialog.value.draft.notes.trim(),
-    status: taskDialog.value.draft.status,
-    important: taskDialog.value.draft.important,
+    id: taskTemplateContext.value.targetId ?? jobConfigTaskId.value++,
+    title,
+    collaborators: Array.isArray(task.collaborators)
+      ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+      : [],
+    afterWhen:
+      (
+        task as Partial<ToDo> & {
+          afterWhen?: string | null;
+          dueAt?: string | null;
+        }
+      ).afterWhen ??
+      (
+        task as Partial<ToDo> & {
+          dueAt?: string | null;
+        }
+      ).dueAt ??
+      null,
+    manhours: null,
+    notes: String(task.notes ?? "").trim(),
+    status:
+      task.status === "in_progress" ||
+      task.status === "for_review" ||
+      task.status === "completed"
+        ? task.status
+        : "pending",
+    important: Boolean(task.important),
+    attachment: task.attachment
+      ? {
+          type: task.attachment.type,
+          name: task.attachment.name,
+          url: task.attachment.url ?? null,
+          fileKey: task.attachment.fileKey ?? null,
+        }
+      : null,
+    relatedTo: task.relatedTo
+      ? {
+          id: task.relatedTo.id,
+          name: task.relatedTo.name,
+          type: task.relatedTo.type,
+        }
+      : null,
+    steps: Array.isArray(task.steps)
+      ? task.steps.map((step, index) => ({
+          id: Number(step.id ?? index + 1),
+          title: String(step.title ?? "").trim(),
+          collaborators: Array.isArray(step.collaborators)
+            ? step.collaborators.map((collaborator) => ({ ...collaborator }))
+            : [],
+          dueAt: String(step.dueAt ?? "").trim(),
+          priority: step.priority,
+          status:
+            step.status === "in_progress" ||
+            step.status === "for_review" ||
+            step.status === "completed"
+              ? step.status
+              : "pending",
+          notes: String(step.notes ?? "").trim(),
+          createdAt: step.createdAt ?? new Date().toISOString(),
+          updatedAt: step.updatedAt ?? new Date().toISOString(),
+        }))
+      : [],
   };
 
-  if (taskDialog.value.parentType === "milestone") {
+  if (taskTemplateContext.value.target === "sales") {
+    if (
+      taskTemplateContext.value.mode === "edit" &&
+      taskTemplateContext.value.targetId !== null
+    ) {
+      const existingTask = salesTasks.value.find(
+        (entry) => entry.id === taskTemplateContext.value.targetId,
+      );
+      if (!existingTask) return;
+
+      Object.assign(existingTask, draftTask);
+    } else {
+      salesTasks.value.push({
+        ...draftTask,
+        id: salesTaskId.value++,
+      });
+    }
+
+    return;
+  }
+
+  if (taskTemplateContext.value.target === "milestone") {
     const milestone = jobConfigMilestones.value.find(
-      (entry) => entry.id === taskDialog.value.parentId,
+      (entry) => entry.id === taskTemplateContext.value.parentId,
     );
     if (!milestone) return;
+
     if (
-      taskDialog.value.mode === "edit" &&
-      taskDialog.value.targetId !== null
+      taskTemplateContext.value.mode === "edit" &&
+      taskTemplateContext.value.targetId !== null
     ) {
-      const task = milestone.tasks.find(
-        (entry) => entry.id === taskDialog.value.targetId,
+      const existingTask = milestone.tasks.find(
+        (entry) => entry.id === taskTemplateContext.value.targetId,
       );
-      if (task) Object.assign(task, draftTask);
+      if (!existingTask) return;
+
+      Object.assign(existingTask, draftTask);
     } else {
       milestone.tasks.push(draftTask);
     }
-  } else {
-    const milestone = jobConfigMilestones.value.find((entry) =>
-      entry.goals.some((goal) => goal.id === taskDialog.value.parentId),
-    );
-    const goal = milestone?.goals.find(
-      (entry) => entry.id === taskDialog.value.parentId,
-    );
-    if (!goal) return;
-    if (
-      taskDialog.value.mode === "edit" &&
-      taskDialog.value.targetId !== null
-    ) {
-      const task = goal.tasks.find(
-        (entry) => entry.id === taskDialog.value.targetId,
-      );
-      if (task) Object.assign(task, draftTask);
-    } else {
-      goal.tasks.push(draftTask);
-    }
-    syncExpandedGoals();
+    return;
   }
 
-  taskDialog.value.visible = false;
-  resetTaskDraft();
+  const milestone = jobConfigMilestones.value.find((entry) =>
+    entry.goals.some((goal) => goal.id === taskTemplateContext.value.parentId),
+  );
+  const goal = milestone?.goals.find(
+    (entry) => entry.id === taskTemplateContext.value.parentId,
+  );
+  if (!goal) return;
+
+  if (
+    taskTemplateContext.value.mode === "edit" &&
+    taskTemplateContext.value.targetId !== null
+  ) {
+    const existingTask = goal.tasks.find(
+      (entry) => entry.id === taskTemplateContext.value.targetId,
+    );
+    if (!existingTask) return;
+
+    Object.assign(existingTask, draftTask);
+  } else {
+    goal.tasks.push(draftTask);
+  }
+  syncExpandedGoals();
 };
 
 const stripRichText = (value: string) => value.replace(/<[^>]+>/g, " ").trim();
@@ -950,6 +1216,8 @@ const applyServiceTemplateRecord = (
       id: item.id,
       name: item.name,
       category: item.category,
+      price: item.price ?? null,
+      chargeTax: item.chargeTax ?? true,
       description: item.description,
     }));
     relatedItemId.value =
@@ -962,6 +1230,7 @@ const applyServiceTemplateRecord = (
       name: item.name,
       category: item.category,
       price: item.price ?? null,
+      chargeTax: item.chargeTax ?? true,
       description: item.description,
     }));
     relatedItemId.value =
@@ -988,6 +1257,23 @@ const applyServiceTemplateRecord = (
   salesTasks.value = (record.salesTasks || []).map((task) => ({
     id: task.id,
     title: task.title,
+    collaborators: task.collaborators ? [...task.collaborators] : [],
+    afterWhen:
+      (
+        task as {
+          afterWhen?: string | null;
+          dueAt?: string | null;
+        }
+      ).afterWhen ??
+      (task as { dueAt?: string | null }).dueAt ??
+      null,
+    manhours: task.manhours ?? null,
+    notes: task.notes ?? "",
+    status: task.status ?? "pending",
+    important: task.important ?? false,
+    attachment: task.attachment ?? null,
+    relatedTo: task.relatedTo ?? null,
+    steps: cloneTaskSteps(task.steps),
   }));
   salesTaskId.value =
     salesTasks.value.reduce((max, task) => Math.max(max, task.id), 0) + 1;
@@ -999,11 +1285,35 @@ const applyServiceTemplateRecord = (
         dueDate: milestone.dueDate,
         priority: milestone.priority,
         note: milestone.note,
-        tasks: (milestone.tasks || []).map((task) => ({ ...task })),
+        tasks: (milestone.tasks || []).map((task) => ({
+          ...task,
+          afterWhen:
+            (
+              task as {
+                afterWhen?: string | null;
+                dueAt?: string | null;
+              }
+            ).afterWhen ??
+            (task as { dueAt?: string | null }).dueAt ??
+            null,
+          steps: cloneTaskSteps(task.steps),
+        })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
           retainerServiceId: goal.retainerServiceId ?? null,
-          tasks: (goal.tasks || []).map((task) => ({ ...task })),
+          tasks: (goal.tasks || []).map((task) => ({
+            ...task,
+            afterWhen:
+              (
+                task as {
+                  afterWhen?: string | null;
+                  dueAt?: string | null;
+                }
+              ).afterWhen ??
+              (task as { dueAt?: string | null }).dueAt ??
+              null,
+            steps: cloneTaskSteps(task.steps),
+          })),
         })),
       }))
     : [
@@ -1082,7 +1392,7 @@ const resetOnetimeServiceForm = () => {
   expandedGoals.value = [];
 };
 
-const saveItem = async (mode: "draft" | "publish" = "publish") => {
+const saveItem = async () => {
   const validation = await itemFormRef.value?.validate();
   if (validation && !validation.valid) return;
 
@@ -1090,7 +1400,7 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
     type: selectedType.value as CatalogueItemType,
     name: itemName.value.trim(),
     category: selectedCategory.value.trim() || "Uncategorized",
-    activeState: mode === "draft" ? "Non-Active" : selectedStatus.value,
+    activeState: selectedStatus.value,
     startDate: isRetainerService.value ? periodStartDate.value : undefined,
     endDate: isRetainerService.value ? periodEndDate.value : undefined,
     image: itemImage.value?.trim() || null,
@@ -1099,20 +1409,28 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
       : isRetainerService.value
         ? retainerLinkedServicesTotalPrice.value
         : itemBestPrice.value === null || itemBestPrice.value === undefined
-        ? null
-        : Number.isFinite(Number(itemBestPrice.value))
-          ? Number(itemBestPrice.value)
-          : null,
+          ? null
+          : Number.isFinite(Number(itemBestPrice.value))
+            ? Number(itemBestPrice.value)
+            : null,
     chargeTax: isTaxChargeToItem.value,
     description: stripRichText(content.value),
-    relatedItems: isContractualService.value || isRetainerService.value
-      ? undefined
-      : relatedItems.value.map((item) => ({
-          id: item.id,
-          name: item.name.trim(),
-          category: item.category.trim(),
-          description: item.description.trim(),
-        })),
+    relatedItems:
+      isContractualService.value || isRetainerService.value
+        ? undefined
+        : relatedItems.value.map((item) => ({
+            id: item.id,
+            name: item.name.trim(),
+            category: item.category.trim(),
+            price:
+              item.price === null || item.price === undefined
+                ? null
+                : Number.isFinite(Number(item.price))
+                  ? Number(item.price)
+                  : null,
+            chargeTax: item.chargeTax,
+            description: item.description.trim(),
+          })),
     retainerServices: isRetainerService.value
       ? relatedItems.value.map((item) => ({
           id: item.id,
@@ -1124,6 +1442,7 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
               : Number.isFinite(Number(item.price))
                 ? Number(item.price)
                 : null,
+          chargeTax: item.chargeTax,
           description: item.description.trim(),
         }))
       : undefined,
@@ -1142,10 +1461,7 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
         }))
       : undefined,
     salesTasks: salesTasks.value
-      .map((task) => ({
-        id: task.id,
-        title: task.title.trim(),
-      }))
+      .map((task) => serializeTaskTemplate(task))
       .filter((task) => task.title),
     jobConfiguration: {
       milestones: jobConfigMilestones.value.map((milestone, index) => ({
@@ -1157,15 +1473,7 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
             : milestone.dueDate,
         priority: milestone.priority,
         note: milestone.note.trim(),
-        tasks: milestone.tasks.map((task) => ({
-          id: task.id,
-          title: task.title.trim(),
-          dueAt: task.dueAt,
-          manhours: task.manhours,
-          notes: task.notes.trim(),
-          status: task.status,
-          important: task.important,
-        })),
+        tasks: milestone.tasks.map((task) => serializeTaskTemplate(task)),
         goals: milestone.goals.map((goal) => ({
           id: goal.id,
           milestoneId: goal.milestoneId,
@@ -1175,15 +1483,7 @@ const saveItem = async (mode: "draft" | "publish" = "publish") => {
           retainerServiceId: goal.retainerServiceId ?? null,
           priority: goal.priority,
           note: goal.note.trim(),
-          tasks: goal.tasks.map((task) => ({
-            id: task.id,
-            title: task.title.trim(),
-            dueAt: task.dueAt,
-            manhours: task.manhours,
-            notes: task.notes.trim(),
-            status: task.status,
-            important: task.important,
-          })),
+          tasks: goal.tasks.map((task) => serializeTaskTemplate(task)),
         })),
       })),
     },
@@ -1249,10 +1549,7 @@ watch(
         >
           Discard
         </VBtn>
-        <VBtn variant="tonal" color="primary" @click="saveItem('draft')">
-          Save Draft
-        </VBtn>
-        <VBtn @click="saveItem('publish')">{{ publishButtonLabel }}</VBtn>
+        <VBtn @click="saveItem">{{ publishButtonLabel }}</VBtn>
       </div>
     </div>
 
@@ -1265,7 +1562,7 @@ watch(
           </VCardItem>
 
           <VCardText>
-            <VForm ref="itemFormRef" @submit.prevent="saveItem('publish')">
+            <VForm ref="itemFormRef" @submit.prevent="saveItem">
               <VRow>
                 <VCol cols="12">
                   <AppTextField
@@ -1318,7 +1615,10 @@ watch(
               </VRow>
             </VForm>
 
-            <div v-if="!isContractualService && relatedItems.length" class="mt-6">
+            <div
+              v-if="!isContractualService && relatedItems.length"
+              class="mt-6"
+            >
               <div class="text-body-2 text-medium-emphasis mb-4">
                 {{ relatedSectionTitle }}
               </div>
@@ -1340,12 +1640,21 @@ watch(
                           {{ relatedItem.name }}
                         </div>
                         <VChip
-                          v-if="isRetainerService && relatedItem.price !== null"
+                          v-if="relatedItem.price !== null"
                           color="primary"
                           size="small"
                           variant="text"
                         >
                           ${{ relatedItem.price }}
+                        </VChip>
+                        <VChip
+                          size="small"
+                          :color="
+                            relatedItem.chargeTax ? 'success' : 'secondary'
+                          "
+                          variant="text"
+                        >
+                          {{ relatedItem.chargeTax ? "Taxable" : "No Tax" }}
                         </VChip>
                       </div>
 
@@ -1454,7 +1763,7 @@ watch(
               <VBtn
                 size="small"
                 prepend-icon="tabler-plus"
-                @click="addSalesTask"
+                @click="openSalesTaskTemplateDrawer"
               >
                 Add Task
               </VBtn>
@@ -1463,40 +1772,82 @@ watch(
 
           <VCardText>
             <div class="d-flex flex-column gap-4">
-              <div
+              <VCard
                 v-for="task in salesTasks"
                 :key="task.id"
-                class="sales-task-row"
+                class="task-row"
+                variant="tonal"
               >
-                <div class="sales-task-row__icon">
-                  <VIcon icon="tabler-checklist" size="20" />
-                </div>
+                <div class="task-row-main">
+                  <div class="task-row-left">
+                    <VIcon
+                      icon="tabler-checklist"
+                      size="18"
+                      class="task-template-icon"
+                    />
 
-                <div
-                  class="sales-task-row__field"
-                  :ref="
-                    (el) =>
-                      (salesTaskFieldRefs[task.id] = el as HTMLElement | null)
-                  "
-                >
-                  <AppTextField
-                    v-model="task.title"
-                    label="Task"
-                    placeholder="Site inspection"
-                    @blur="pruneSalesTask(task.id)"
-                  />
-                </div>
+                    <div class="task-copy">
+                      <strong class="text-body-1 truncate-title">
+                        {{ task.title }}
+                      </strong>
+                      <span class="text-sm">
+                        After {{ formatTaskAfterWhen(task.afterWhen) }}
+                        <span v-if="task.manhours !== null">
+                          | {{ task.manhours }} Manhour<span
+                            v-if="task.manhours !== 1"
+                            >s</span
+                          >
+                        </span>
+                      </span>
+                      <span
+                        v-if="task.notes"
+                        class="text-sm text-medium-emphasis"
+                      >
+                        {{ task.notes }}
+                      </span>
+                    </div>
+                  </div>
 
-                <VBtn
-                  icon
-                  variant="text"
-                  color="error"
-                  class="sales-task-row__delete"
-                  @click="removeSalesTask(task.id)"
-                >
-                  <VIcon icon="tabler-trash" />
-                </VBtn>
-              </div>
+                  <div class="task-row-side">
+                    <VIcon
+                      v-if="task.important"
+                      icon="tabler-star-filled"
+                      color="warning"
+                      size="18"
+                    />
+                    <VBtn icon variant="text" size="x-small">
+                      <VIcon icon="tabler-dots-vertical" size="18" />
+                      <VMenu activator="parent">
+                        <VList>
+                          <VListItem @click="openEditSalesTask(task)">
+                            <template #prepend>
+                              <VIcon icon="tabler-edit" />
+                            </template>
+                            <VListItemTitle>Edit</VListItemTitle>
+                          </VListItem>
+                          <VListItem @click="removeSalesTask(task.id)">
+                            <template #prepend>
+                              <VIcon icon="tabler-trash" color="error" />
+                            </template>
+                            <VListItemTitle>Delete</VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
+                    </VBtn>
+                    <span
+                      class="text-sm"
+                      :class="{
+                        'text-primary': task.status === 'in_progress',
+                        'text-warning': task.status === 'for_review',
+                        'text-medium-emphasis': task.status === 'pending',
+                        'text-success': task.status === 'completed',
+                      }"
+                    >
+                      {{ taskStatusLabel(task.status) }}
+                    </span>
+                  </div>
+                </div>
+              </VCard>
             </div>
           </VCardText>
         </VCard>
@@ -1556,7 +1907,7 @@ watch(
                             >s</span
                           >
                         </span>
-                        | Due {{ formatDate(milestone.dueDate) }}
+                        | After {{ formatTaskAfterWhen(milestone.dueDate) }}
                       </div>
                       <div class="text-body-2 text-medium-emphasis mt-1">
                         {{ milestone.note || "No milestone notes." }}
@@ -1631,7 +1982,7 @@ watch(
                                 {{ task.title }}
                               </strong>
                               <span class="text-sm">
-                                Due {{ formatDate(task.dueAt) }}
+                                After {{ formatTaskAfterWhen(task.afterWhen) }}
                                 <span v-if="task.manhours !== null">
                                   | {{ task.manhours }} Manhour<span
                                     v-if="task.manhours !== 1"
@@ -1749,7 +2100,7 @@ watch(
                                   v-if="goal.tasks.length !== 1"
                                   >s</span
                                 >
-                                | Due {{ formatDate(goal.dueDate) }}
+                                | After {{ formatTaskAfterWhen(goal.dueDate) }}
                               </div>
                               <div
                                 class="text-body-2 text-medium-emphasis mt-1"
@@ -1830,7 +2181,10 @@ watch(
                                         {{ task.title }}
                                       </strong>
                                       <span class="text-sm">
-                                        Due {{ formatDate(task.dueAt) }}
+                                        After
+                                        {{
+                                          formatTaskAfterWhen(task.afterWhen)
+                                        }}
                                         <span v-if="task.manhours !== null">
                                           | {{ task.manhours }} Manhour<span
                                             v-if="task.manhours !== 1"
@@ -2002,18 +2356,7 @@ watch(
         <!-- 👉 Media -->
         <VCard class="mb-6">
           <VCardItem>
-            <template #title> Item Image </template>
-            <template #append>
-              <VBtn
-                variant="text"
-                color="primary"
-                size="small"
-                class="px-0"
-                @click="openImageUrlDialog"
-              >
-                Add Media from URL
-              </VBtn>
-            </template>
+            <template #title> Image </template>
           </VCardItem>
 
           <VCardText>
@@ -2042,14 +2385,7 @@ watch(
                 >
                   Replace Image
                 </VBtn>
-                <VBtn
-                  color="secondary"
-                  variant="tonal"
-                  prepend-icon="tabler-link"
-                  @click="openImageUrlDialog"
-                >
-                  Update URL
-                </VBtn>
+
                 <VBtn
                   color="error"
                   variant="tonal"
@@ -2080,7 +2416,7 @@ watch(
                 size="small"
                 @click.stop="openImageFilePicker"
               >
-                Browse Images
+                Browse Image
               </VBtn>
             </div>
           </VCardText>
@@ -2134,7 +2470,7 @@ watch(
 
         <VCardText>
           <VRow>
-            <VCol cols="6">
+            <VCol cols="12">
               <AppTextField
                 v-model="relatedItemName"
                 label="Name"
@@ -2143,7 +2479,7 @@ watch(
                 :error-messages="relatedItemErrors.name"
               />
             </VCol>
-            <VCol cols="12" md="6">
+            <VCol cols="6" md="6">
               <AsyncCatalogueCategoryTreeSelect
                 v-model="relatedItemCategory"
                 label="Category"
@@ -2157,14 +2493,20 @@ watch(
                 {{ relatedItemErrors.category }}
               </div>
             </VCol>
-            <VCol v-if="isRetainerService" cols="12">
+            <VCol cols="6" md="6">
               <AppTextField
                 v-model.number="relatedItemPrice"
-                label="Service Price"
+                label="Price"
                 placeholder="1500"
                 type="number"
                 min="0"
                 step="0.01"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <VCheckbox
+                v-model="isRelatedItemChargeTax"
+                label="Charge Tax on this  item"
               />
             </VCol>
             <VCol cols="12">
@@ -2193,7 +2535,11 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog v-if="isPhaseDialogOpen" v-model="isPhaseDialogOpen" max-width="760">
+    <VDialog
+      v-if="isPhaseDialogOpen"
+      v-model="isPhaseDialogOpen"
+      max-width="760"
+    >
       <VCard>
         <VCardItem title="Add Phase" />
 
@@ -2278,11 +2624,42 @@ watch(
                 />
               </VCol>
               <VCol cols="12">
-                <AppDateTimePicker
-                  v-model="milestoneDialog.draft.dueDate"
-                  label="Due Date"
-                  placeholder="YYYY-MM-DD"
-                />
+                <div class="text-body-2 mb-2">After when</div>
+                <div class="after-when-control">
+                  <AppTextField
+                    v-model.number="milestoneAfterWhenValue"
+                    type="number"
+                    min="1"
+                    step="1"
+                    hide-details="auto"
+                    class="after-when-input"
+                    suffix="days"
+                  />
+
+                  <div class="after-when-actions">
+                    <VBtn
+                      size="small"
+                      variant="tonal"
+                      @click="addMilestoneAfterWhenDays(1)"
+                    >
+                      +1 day
+                    </VBtn>
+                    <VBtn
+                      size="small"
+                      variant="tonal"
+                      @click="addMilestoneAfterWhenDays(7)"
+                    >
+                      +1 week
+                    </VBtn>
+                    <VBtn
+                      size="small"
+                      variant="tonal"
+                      @click="addMilestoneAfterWhenDays(30)"
+                    >
+                      +1 month
+                    </VBtn>
+                  </div>
+                </div>
               </VCol>
               <VCol cols="12">
                 <AppTextarea
@@ -2335,11 +2712,42 @@ watch(
                 />
               </VCol>
               <VCol cols="12">
-                <AppDateTimePicker
-                  v-model="goalDialog.draft.dueDate"
-                  label="Due Date"
-                  placeholder="YYYY-MM-DD"
-                />
+                <div class="text-body-2 mb-2">After when</div>
+                <div class="after-when-control">
+                  <AppTextField
+                    v-model.number="goalAfterWhenValue"
+                    type="number"
+                    min="1"
+                    step="1"
+                    hide-details="auto"
+                    class="after-when-input"
+                    suffix="days"
+                  />
+
+                  <div class="after-when-actions">
+                    <VBtn
+                      size="small"
+                      variant="tonal"
+                      @click="addGoalAfterWhenDays(1)"
+                    >
+                      +1 day
+                    </VBtn>
+                    <VBtn
+                      size="small"
+                      variant="tonal"
+                      @click="addGoalAfterWhenDays(7)"
+                    >
+                      +1 week
+                    </VBtn>
+                    <VBtn
+                      size="small"
+                      variant="tonal"
+                      @click="addGoalAfterWhenDays(30)"
+                    >
+                      +1 month
+                    </VBtn>
+                  </div>
+                </div>
               </VCol>
               <VCol cols="12">
                 <AppTextarea
@@ -2362,78 +2770,11 @@ watch(
       </VCard>
     </VDialog>
 
-    <VDialog
-      v-if="taskDialog.visible"
-      v-model="taskDialog.visible"
-      max-width="560"
-    >
-      <VCard>
-        <VCardText>
-          <h5 class="text-h5 mb-4">
-            {{ taskDialog.mode === "create" ? "Add Task" : "Edit Task" }}
-          </h5>
-          <VForm ref="taskFormRef" @submit.prevent="saveTask">
-            <VRow>
-              <VCol cols="12" md="8">
-                <AppTextField
-                  v-model="taskDialog.draft.title"
-                  label="Task Title"
-                  placeholder="Task Title"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-              <VCol cols="12" md="4">
-                <AppSelect
-                  v-model="taskDialog.draft.status"
-                  label="Status"
-                  placeholder="Select Status"
-                  :items="taskStatusOptions"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-              <VCol cols="6">
-                <AppDateTimePicker
-                  v-model="taskDialog.draft.dueAt"
-                  label="Due Date"
-                  placeholder="YYYY-MM-DD"
-                />
-              </VCol>
-              <VCol cols="12" md="6">
-                <AppTextField
-                  v-model.number="taskDialog.draft.manhours"
-                  label="Manhours"
-                  placeholder="8"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                />
-              </VCol>
-              <VCol cols="12">
-                <AppTextarea
-                  v-model="taskDialog.draft.notes"
-                  label="Notes"
-                  placeholder="Task notes"
-                  auto-grow
-                />
-              </VCol>
-              <VCol cols="12">
-                <VCheckbox
-                  v-model="taskDialog.draft.important"
-                  label="Mark as important"
-                />
-              </VCol>
-              <VCol cols="12">
-                <AsyncDialogActionBar
-                  save-type="submit"
-                  @save="() => undefined"
-                  @cancel="taskDialog.visible = false"
-                />
-              </VCol>
-            </VRow>
-          </VForm>
-        </VCardText>
-      </VCard>
-    </VDialog>
+    <CatalogueTaskTemplateDrawer
+      ref="taskTemplateDrawerRef"
+      v-model:is-drawer-open="isTaskTemplateDrawerOpen"
+      @save="handleTaskTemplateCreated"
+    />
   </div>
 </template>
 
@@ -2443,36 +2784,21 @@ watch(
   border-radius: 6px;
 }
 
-.sales-task-row {
+.after-when-control {
   display: flex;
-  align-items: flex-end;
-  padding: 1rem;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 14px;
-  background: rgba(var(--v-theme-on-surface), 0.02);
-  gap: 1rem;
-}
-
-.sales-task-row__icon {
-  display: inline-flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  background: rgba(var(--v-theme-primary), 0.14);
-  block-size: 2.5rem;
-  color: rgb(var(--v-theme-primary));
-  inline-size: 2.5rem;
-  margin-block-end: 0.25rem;
+  gap: 12px;
 }
 
-.sales-task-row__field {
-  flex: 1 1 auto;
+.after-when-input {
+  flex: 0 0 110px;
 }
 
-.sales-task-row__delete {
-  flex: 0 0 auto;
-  margin-block-end: 0.25rem;
+.after-when-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .related-item-card {

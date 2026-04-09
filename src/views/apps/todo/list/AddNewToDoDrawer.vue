@@ -180,12 +180,13 @@ function loadInitialAndMaybeFocus() {
     | undefined;
   if (init) {
     syncingAttachmentInput.value = true;
-    title.value = init.title || title.value;
+    title.value = init.title ?? title.value;
     selectedCollaboratorIds.value = (init.collaborators || []).map(
       (c: any) => c.id,
     );
-    dueAt.value = init.dueAt || getTodayISOString();
-    notes.value = init.notes || notes.value;
+    dueAt.value =
+      init.dueAt === undefined ? dueAt.value : (init.dueAt ?? null);
+    notes.value = init.notes ?? notes.value;
     important.value = !!init.important;
     relatedTo.value = init.relatedTo ?? relatedTo.value;
     selectedRelatedKey.value =
@@ -193,7 +194,7 @@ function loadInitialAndMaybeFocus() {
     relatedToLocked.value = init.relatedTo?.type === "job";
     goalId.value = init.goalId ?? goalId.value;
     milestoneId.value = init.milestoneId ?? milestoneId.value;
-    selectedStatus.value = (init.status as any) || selectedStatus.value;
+    selectedStatus.value = (init.status as any) ?? selectedStatus.value;
     attachment.value = init.attachment ?? null;
     attachmentInput.value =
       init.attachment?.type === "link"

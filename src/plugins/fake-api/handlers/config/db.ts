@@ -227,7 +227,7 @@ export const db: ConfigDB = {
         "Produced Product",
         "Rental",
       ],
-      activeStates: ["Active", "Non-Active", "Archived"],
+      activeStates: ["Active", "Draft", "Non-Active", "Archived"],
       hideArchivedByDefault: true,
         categories: [
           {

@@ -1,4 +1,6 @@
 export type CatalogueActiveState = string;
+import type { ContactRef, ToDoAttachment, ToDoStep } from "@/data/schema";
+
 export type CatalogueItemType =
   | "Onetime Service"
   | "Product"
@@ -33,6 +35,8 @@ export interface CatalogueRelatedItem {
   id: number;
   name: string;
   category: string;
+  price: number | null;
+  chargeTax: boolean;
   description: string;
 }
 
@@ -41,6 +45,7 @@ export interface CatalogueRetainerLinkedService {
   name: string;
   category: string;
   price: number | null;
+  chargeTax: boolean;
   description: string;
 }
 
@@ -55,6 +60,15 @@ export interface CataloguePhase {
 export interface CatalogueSalesTask {
   id: number;
   title: string;
+  collaborators: ContactRef[];
+  afterWhen: string | null;
+  manhours: number | null;
+  notes: string;
+  status: CatalogueJobConfigTaskStatus;
+  important: boolean;
+  attachment?: ToDoAttachment | null;
+  relatedTo?: { id: string | number; name: string; type: string } | null;
+  steps: ToDoStep[];
 }
 
 export type CatalogueJobConfigPriority = "Low" | "Normal" | "High";
@@ -68,11 +82,15 @@ export type CatalogueJobConfigTaskStatus =
 export interface CatalogueJobConfigTask {
   id: number;
   title: string;
-  dueAt: string | null;
+  collaborators: ContactRef[];
+  afterWhen: string | null;
   manhours: number | null;
   notes: string;
   status: CatalogueJobConfigTaskStatus;
   important: boolean;
+  attachment?: ToDoAttachment | null;
+  relatedTo?: { id: string | number; name: string; type: string } | null;
+  steps: ToDoStep[];
 }
 
 export interface CatalogueJobConfigGoal {
@@ -81,6 +99,7 @@ export interface CatalogueJobConfigGoal {
   phaseId?: number | null;
   retainerServiceId?: number | null;
   name: string;
+  afterWhen?: string | null;
   dueDate: string | null;
   priority: CatalogueJobConfigPriority;
   note: string;
@@ -90,6 +109,7 @@ export interface CatalogueJobConfigGoal {
 export interface CatalogueJobConfigMilestone {
   id: number;
   name: string;
+  afterWhen?: string | null;
   dueDate: string | null;
   priority: CatalogueJobConfigPriority;
   note: string;
