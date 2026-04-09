@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import AppSnackbar from "@/components/AppSnackbar.vue";
-import { useTodos } from "@/stores/todos";
 import ScrollToTop from "@core/components/ScrollToTop.vue";
 import initCore from "@core/initCore";
 import { initConfigStore, useConfigStore } from "@core/stores/config";
 import { hexToRgb } from "@core/utils/colorConverter";
 import { useTheme } from "vuetify";
-const todos = useTodos();
-todos.init();
 
 const { global } = useTheme();
 

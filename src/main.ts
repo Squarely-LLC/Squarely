@@ -67,5 +67,10 @@ try {
   // console.warn('employees initialization failed', error);
 }
 
-// Mount vue app
-app.mount("#app");
+// Mount vue app only after the first route is resolved so the
+// HTML loading spinner stays visible until Vue can actually render content.
+import { router } from "@/plugins/1.router/index";
+
+router.isReady().then(() => {
+  app.mount("#app");
+});

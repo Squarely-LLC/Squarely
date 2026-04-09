@@ -1,5 +1,6 @@
 ignoredBuiltDependencies:
   - '@scarf/scarf'
+  - core-js
   - esbuild
   - msw
   - unrs-resolver

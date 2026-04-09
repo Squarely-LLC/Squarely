@@ -2,6 +2,7 @@ import VueI18nPlugin from "@intlify/unplugin-vue-i18n/vite";
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
 import { fileURLToPath } from "node:url";
+import { visualizer } from "rollup-plugin-visualizer";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import {
@@ -10,6 +11,7 @@ import {
 } from "unplugin-vue-router";
 import VueRouter from "unplugin-vue-router/vite";
 import { defineConfig } from "vite";
+import { compression } from "vite-plugin-compression2";
 import MetaLayouts from "vite-plugin-vue-meta-layouts";
 import vuetify from "vite-plugin-vuetify";
 import svgLoader from "vite-svg-loader";
@@ -56,7 +58,7 @@ export default defineConfig({
 
     // Docs: https://github.com/antfu/unplugin-vue-components#unplugin-vue-components
     Components({
-      dirs: ["src/@core/components", "src/views/demos", "src/components"],
+      dirs: ["src/@core/components", "src/components"],
       dts: true,
       resolvers: [
         (componentName) => {
@@ -105,7 +107,21 @@ export default defineConfig({
       ],
     }),
     svgLoader(),
-  ],
+
+    // Pre-compress assets for Netlify/Vercel (gzip + brotli)
+    compression({ algorithm: "gzip", exclude: [/\.(br)$/i] }),
+    compression({ algorithm: "brotliCompress", exclude: [/\.(gz)$/i] }),
+
+    // Bundle analyzer (run with ANALYZE=true pnpm build)
+    process.env.ANALYZE
+      ? visualizer({
+          open: true,
+          filename: "dist/stats.html",
+          gzipSize: true,
+          brotliSize: true,
+        })
+      : undefined,
+  ].filter(Boolean),
   define: {
     "process.env": {},
     __VUE_PROD_DEVTOOLS__: false,
@@ -139,10 +155,121 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 5000,
+    chunkSizeWarningLimit: 500,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Core Vue ecosystem — cached long-term, rarely changes
+          if (
+            id.includes("node_modules/vue/") ||
+            id.includes("node_modules/@vue/") ||
+            id.includes("node_modules/vue-router/") ||
+            id.includes("node_modules/pinia/") ||
+            id.includes("node_modules/@vueuse/")
+          ) {
+            return "vendor-vue";
+          }
+
+          // Vuetify — largest single dependency
+          if (id.includes("node_modules/vuetify/")) {
+            return "vendor-vuetify";
+          }
+
+          // Charting libraries — only needed on chart/dashboard pages
+          if (
+            id.includes("node_modules/apexcharts/") ||
+            id.includes("node_modules/vue3-apexcharts/") ||
+            id.includes("node_modules/chart.js/") ||
+            id.includes("node_modules/vue-chartjs/")
+          ) {
+            return "vendor-charts";
+          }
+
+          // Rich text editor — only needed on editor pages
+          if (id.includes("node_modules/@tiptap/")) {
+            return "vendor-editor";
+          }
+
+          // Maps — only needed on logistics/map pages
+          if (id.includes("node_modules/mapbox-gl/")) {
+            return "vendor-maps";
+          }
+
+          // Video player — only needed on video pages
+          if (
+            id.includes("node_modules/video.js/") ||
+            id.includes("node_modules/@videojs-player/")
+          ) {
+            return "vendor-media";
+          }
+
+          // Calendar — only needed on calendar pages
+          if (id.includes("node_modules/@fullcalendar/")) {
+            return "vendor-calendar";
+          }
+
+          // Phone input libraries (excluding heavy city data)
+          if (
+            id.includes("node_modules/intl-tel-input/") ||
+            id.includes("node_modules/libphonenumber-js/") ||
+            id.includes("node_modules/vue3-tel-input/") ||
+            id.includes("node_modules/flag-icons/")
+          ) {
+            return "vendor-phone";
+          }
+
+          // country-state-city is ~8MB (city databases) — isolate it
+          if (id.includes("node_modules/country-state-city/")) {
+            return "vendor-geodata";
+          }
+
+          // Icon system
+          if (id.includes("node_modules/@iconify/")) {
+            return "vendor-icons";
+          }
+
+          // i18n
+          if (
+            id.includes("node_modules/vue-i18n/") ||
+            id.includes("node_modules/@intlify/")
+          ) {
+            return "vendor-i18n";
+          }
+        },
+      },
+    },
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
   },
   optimizeDeps: {
     exclude: ["vuetify"],
     entries: ["./src/**/*.vue"],
+    include: [
+      "msw/browser",
+      "msw",
+      "webfontloader",
+      "@antfu/utils",
+      "@casl/ability",
+      "unplugin-vue-router/data-loaders/basic",
+      "@sindresorhus/is",
+      "destr",
+      "cookie-es",
+      "vue3-apexcharts",
+      "ofetch",
+      "apexcharts",
+      "pinia",
+      "vue-i18n",
+      "@vueuse/core",
+      "@vueuse/math",
+      "vue-router",
+      "vue3-perfect-scrollbar",
+      "vue-flatpickr-component",
+      "prismjs",
+      "jwt-decode",
+      "shepherd.js",
+    ],
   },
 });

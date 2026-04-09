@@ -2,9 +2,8 @@
 import { useConfigStore } from '@core/stores/config'
 import { AppContentLayoutNav } from '@layouts/enums'
 import { switchToVerticalNavOnLtOverlayNavBreakpoint } from '@layouts/utils'
-
-const DefaultLayoutWithHorizontalNav = defineAsyncComponent(() => import('./components/DefaultLayoutWithHorizontalNav.vue'))
-const DefaultLayoutWithVerticalNav = defineAsyncComponent(() => import('./components/DefaultLayoutWithVerticalNav.vue'))
+import DefaultLayoutWithHorizontalNav from './components/DefaultLayoutWithHorizontalNav.vue'
+import DefaultLayoutWithVerticalNav from './components/DefaultLayoutWithVerticalNav.vue'
 
 const configStore = useConfigStore()
 
@@ -17,17 +16,47 @@ const { layoutAttrs, injectSkinClasses } = useSkins()
 injectSkinClasses()
 
 // SECTION: Loading Indicator
-const isFallbackStateActive = ref(false)
 const refLoadingIndicator = ref<any>(null)
+const isSuspensePending = ref(false)
 
-// watching if the fallback state is active and the refLoadingIndicator component is available
-watch([isFallbackStateActive, refLoadingIndicator], () => {
-  if (isFallbackStateActive.value && refLoadingIndicator.value)
-    refLoadingIndicator.value.fallbackHandle()
+const router = useRouter()
 
-  if (!isFallbackStateActive.value && refLoadingIndicator.value)
-    refLoadingIndicator.value.resolveHandle()
-}, { immediate: true })
+// Start the loading bar immediately when any navigation begins
+const removeBeforeEach = router.beforeEach(() => {
+  isSuspensePending.value = false
+  refLoadingIndicator.value?.fallbackHandle()
+})
+
+// For fast / cached routes where Suspense resolves instantly,
+// stop the bar once the render cycle completes
+const removeAfterEach = router.afterEach(() => {
+  nextTick(() => {
+    if (!isSuspensePending.value)
+      refLoadingIndicator.value?.resolveHandle()
+  })
+})
+
+// Stop the bar if navigation fails (e.g. chunk load error)
+const removeOnError = router.onError(() => {
+  isSuspensePending.value = false
+  refLoadingIndicator.value?.resolveHandle()
+})
+
+onBeforeUnmount(() => {
+  removeBeforeEach()
+  removeAfterEach()
+  removeOnError()
+})
+
+// Suspense events handle the async-chunk loading window
+const onSuspenseFallback = () => {
+  isSuspensePending.value = true
+}
+
+const onSuspenseResolve = () => {
+  isSuspensePending.value = false
+  refLoadingIndicator.value?.resolveHandle()
+}
 // !SECTION
 </script>
 
@@ -41,8 +70,8 @@ watch([isFallbackStateActive, refLoadingIndicator], () => {
     <RouterView v-slot="{ Component }">
       <Suspense
         :timeout="0"
-        @fallback="isFallbackStateActive = true"
-        @resolve="isFallbackStateActive = false"
+        @fallback="onSuspenseFallback"
+        @resolve="onSuspenseResolve"
       >
         <Component :is="Component" />
       </Suspense>

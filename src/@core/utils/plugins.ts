@@ -46,6 +46,11 @@ export const registerPlugins = (app: App) => {
     { eager: true },
   );
 
+  // NOTE: When migrating to a real backend (Laravel), remove the fake-api plugin
+  // folder entirely and delete the MSW service worker from public/.
+  // At that point, re-add this filter to exclude it from production:
+  //   .filter(path => !(import.meta.env.PROD && path.includes('/plugins/fake-api/')))
+
   const importPaths = Object.keys(imports).sort((a, b) => {
     const rank = (path: string) => {
       if (path.includes("/plugins/casl/")) return 0;
