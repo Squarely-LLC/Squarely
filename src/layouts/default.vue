@@ -1,69 +1,72 @@
 <script lang="ts" setup>
-import { useConfigStore } from '@core/stores/config'
-import { AppContentLayoutNav } from '@layouts/enums'
-import { switchToVerticalNavOnLtOverlayNavBreakpoint } from '@layouts/utils'
-import DefaultLayoutWithHorizontalNav from './components/DefaultLayoutWithHorizontalNav.vue'
-import DefaultLayoutWithVerticalNav from './components/DefaultLayoutWithVerticalNav.vue'
+import { useConfigStore } from "@core/stores/config";
+import { AppContentLayoutNav } from "@layouts/enums";
+import { switchToVerticalNavOnLtOverlayNavBreakpoint } from "@layouts/utils";
+import DefaultLayoutWithHorizontalNav from "./components/DefaultLayoutWithHorizontalNav.vue";
+import DefaultLayoutWithVerticalNav from "./components/DefaultLayoutWithVerticalNav.vue";
 
-const configStore = useConfigStore()
+const configStore = useConfigStore();
 
 // ℹ️ This will switch to vertical nav when define breakpoint is reached when in horizontal nav layout
 // Remove below composable usage if you are not using horizontal nav layout in your app
-switchToVerticalNavOnLtOverlayNavBreakpoint()
+switchToVerticalNavOnLtOverlayNavBreakpoint();
 
-const { layoutAttrs, injectSkinClasses } = useSkins()
+const { layoutAttrs, injectSkinClasses } = useSkins();
 
-injectSkinClasses()
+injectSkinClasses();
 
 // SECTION: Loading Indicator
-const refLoadingIndicator = ref<any>(null)
-const isSuspensePending = ref(false)
+const refLoadingIndicator = ref<any>(null);
+const isSuspensePending = ref(false);
 
-const router = useRouter()
+const router = useRouter();
 
 // Start the loading bar immediately when any navigation begins
 const removeBeforeEach = router.beforeEach(() => {
-  isSuspensePending.value = false
-  refLoadingIndicator.value?.fallbackHandle()
-})
+  isSuspensePending.value = false;
+  refLoadingIndicator.value?.fallbackHandle();
+});
 
 // For fast / cached routes where Suspense resolves instantly,
 // stop the bar once the render cycle completes
 const removeAfterEach = router.afterEach(() => {
   nextTick(() => {
-    if (!isSuspensePending.value)
-      refLoadingIndicator.value?.resolveHandle()
-  })
-})
+    if (!isSuspensePending.value) refLoadingIndicator.value?.resolveHandle();
+  });
+});
 
 // Stop the bar if navigation fails (e.g. chunk load error)
 const removeOnError = router.onError(() => {
-  isSuspensePending.value = false
-  refLoadingIndicator.value?.resolveHandle()
-})
+  isSuspensePending.value = false;
+  refLoadingIndicator.value?.resolveHandle();
+});
 
 onBeforeUnmount(() => {
-  removeBeforeEach()
-  removeAfterEach()
-  removeOnError()
-})
+  removeBeforeEach();
+  removeAfterEach();
+  removeOnError();
+});
 
 // Suspense events handle the async-chunk loading window
 const onSuspenseFallback = () => {
-  isSuspensePending.value = true
-}
+  isSuspensePending.value = true;
+};
 
 const onSuspenseResolve = () => {
-  isSuspensePending.value = false
-  refLoadingIndicator.value?.resolveHandle()
-}
+  isSuspensePending.value = false;
+  refLoadingIndicator.value?.resolveHandle();
+};
 // !SECTION
 </script>
 
 <template>
   <Component
     v-bind="layoutAttrs"
-    :is="configStore.appContentLayoutNav === AppContentLayoutNav.Vertical ? DefaultLayoutWithVerticalNav : DefaultLayoutWithHorizontalNav"
+    :is="
+      configStore.appContentLayoutNav === AppContentLayoutNav.Vertical
+        ? DefaultLayoutWithVerticalNav
+        : DefaultLayoutWithHorizontalNav
+    "
   >
     <AppLoadingIndicator ref="refLoadingIndicator" />
 
