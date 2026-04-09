@@ -1406,13 +1406,11 @@ const saveItem = async () => {
     image: itemImage.value?.trim() || null,
     bestPrice: isContractualService.value
       ? contractualPhaseTotalPrice.value
-      : isRetainerService.value
-        ? retainerLinkedServicesTotalPrice.value
-        : itemBestPrice.value === null || itemBestPrice.value === undefined
-          ? null
-          : Number.isFinite(Number(itemBestPrice.value))
-            ? Number(itemBestPrice.value)
-            : null,
+      : itemBestPrice.value === null || itemBestPrice.value === undefined
+        ? null
+        : Number.isFinite(Number(itemBestPrice.value))
+          ? Number(itemBestPrice.value)
+          : null,
     chargeTax: isTaxChargeToItem.value,
     description: stripRichText(content.value),
     relatedItems:
@@ -2325,15 +2323,20 @@ watch(
             />
             <AppTextField
               v-else-if="isRetainerService"
-              :model-value="retainerLinkedServicesTotalPrice"
+              v-model.number="itemBestPrice"
               label="Best Price"
-              placeholder="Calculated from retainer services"
+              placeholder="Price"
               type="number"
               min="0"
               step="0.01"
               class="mb-6"
-              disabled
             />
+            <div
+              v-if="isRetainerService"
+              class="text-body-2 text-medium-emphasis mb-6"
+            >
+              Linked services total: ${{ retainerLinkedServicesTotalPrice }}
+            </div>
             <AppTextField
               v-else
               v-model.number="itemBestPrice"
