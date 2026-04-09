@@ -109,8 +109,7 @@ export default defineConfig({
     svgLoader(),
 
     // Pre-compress assets for Netlify/Vercel (gzip + brotli)
-    compression({ algorithm: "gzip", exclude: [/\.(br)$/i] }),
-    compression({ algorithm: "brotliCompress", exclude: [/\.(gz)$/i] }),
+    compression({ algorithms: ["gzip", "brotliCompress"] }),
 
     // Bundle analyzer (run with ANALYZE=true pnpm build)
     process.env.ANALYZE
