@@ -168,7 +168,8 @@ const relatedItemErrors = ref({
 });
 const phaseId = ref(1);
 const phases = ref<PhaseDraft[]>([]);
-const isPhaseDialogOpen = ref(false);
+const isPhaseComposerVisible = ref(false);
+const phaseTitleFieldRef = ref<any>(null);
 const phaseName = ref("");
 const phasePrice = ref<number | null>(null);
 const isPhaseChargeTax = ref(true);
@@ -450,9 +451,22 @@ const resetPhaseDraft = () => {
   };
 };
 
-const openPhaseDialog = () => {
+const showPhaseComposer = () => {
   resetPhaseDraft();
-  isPhaseDialogOpen.value = true;
+  isPhaseComposerVisible.value = true;
+
+  nextTick(() => {
+    const input =
+      phaseTitleFieldRef.value?.$el?.querySelector?.("input") ||
+      phaseTitleFieldRef.value?.querySelector?.("input");
+
+    input?.focus();
+  });
+};
+
+const hidePhaseComposer = () => {
+  resetPhaseDraft();
+  isPhaseComposerVisible.value = false;
 };
 
 const savePhase = () => {
@@ -477,8 +491,7 @@ const savePhase = () => {
     description: phaseDescription.value.replace(/<[^>]+>/g, " ").trim(),
   });
 
-  isPhaseDialogOpen.value = false;
-  resetPhaseDraft();
+  hidePhaseComposer();
   syncContractualPhaseGoals();
 };
 
@@ -1224,6 +1237,7 @@ const applyServiceTemplateRecord = (
       relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     phases.value = [];
     phaseId.value = 1;
+    isPhaseComposerVisible.value = false;
   } else if (record.type === "Retainer Service") {
     relatedItems.value = (record.retainerServices || []).map((item) => ({
       id: item.id,
@@ -1237,6 +1251,7 @@ const applyServiceTemplateRecord = (
       relatedItems.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     phases.value = [];
     phaseId.value = 1;
+    isPhaseComposerVisible.value = false;
     periodStartDate.value = record.startDate ?? null;
     periodEndDate.value = record.endDate ?? null;
   } else {
@@ -1249,6 +1264,7 @@ const applyServiceTemplateRecord = (
     }));
     phaseId.value =
       phases.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+    isPhaseComposerVisible.value = false;
     relatedItems.value = [];
     relatedItemId.value = 1;
     syncContractualPhaseGoals();
@@ -1372,6 +1388,7 @@ const resetOnetimeServiceForm = () => {
   relatedItemId.value = 1;
   phases.value = [];
   phaseId.value = 1;
+  isPhaseComposerVisible.value = false;
   salesTasks.value = [];
   salesTaskId.value = 1;
   hasCustomMilestoneName.value = false;
@@ -1610,6 +1627,66 @@ watch(
                     class="border rounded"
                   />
                 </VCol>
+                <template v-if="isContractualService">
+                  <VCol cols="12">
+                    <VDivider class="my-2" />
+                    <div class="text-body-2 text-medium-emphasis">Phases</div>
+                  </VCol>
+                  <VCol v-if="isPhaseComposerVisible" cols="12" md="6">
+                    <AppTextField
+                      ref="phaseTitleFieldRef"
+                      v-model="phaseName"
+                      label="Name"
+                      placeholder="Mobilization"
+                      :error="Boolean(phaseErrors.name)"
+                      :error-messages="phaseErrors.name"
+                    />
+                  </VCol>
+                  <VCol v-if="isPhaseComposerVisible" cols="12" md="6">
+                    <AppTextField
+                      v-model.number="phasePrice"
+                      label="Phase Price"
+                      placeholder="900"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                    />
+                  </VCol>
+                  <VCol v-if="isPhaseComposerVisible" cols="12">
+                    <VCheckbox
+                      v-model="isPhaseChargeTax"
+                      label="Charge Tax on this phase"
+                    />
+                  </VCol>
+                  <VCol v-if="isPhaseComposerVisible" cols="12">
+                    <span class="mb-1">Phase Description (optional)</span>
+                    <AsyncProductDescriptionEditor
+                      v-model="phaseDescription"
+                      placeholder="Phase Description"
+                      class="border rounded"
+                    />
+                  </VCol>
+                  <VCol
+                    v-if="isPhaseComposerVisible"
+                    cols="12"
+                    class="d-flex justify-end gap-3 flex-wrap"
+                  >
+                    <VBtn
+                      variant="tonal"
+                      color="secondary"
+                      @click="hidePhaseComposer"
+                    >
+                      Cancel
+                    </VBtn>
+                    <VBtn
+                      color="primary"
+                      prepend-icon="tabler-layers-linked"
+                      @click="savePhase"
+                    >
+                      Add Phase
+                    </VBtn>
+                  </VCol>
+                </template>
               </VRow>
             </VForm>
 
@@ -1729,26 +1806,49 @@ watch(
                   </div>
                 </div>
               </div>
+
+              <div
+                v-if="!isPhaseComposerVisible"
+                class="d-flex justify-end mt-4"
+              >
+                <VBtn
+                  size="small"
+                  color="primary"
+                  variant="elevated"
+                  prepend-icon="tabler-layers-linked"
+                  @click="showPhaseComposer"
+                >
+                  Add Phase
+                </VBtn>
+              </div>
+            </div>
+
+            <div
+              v-else-if="isContractualService && !isPhaseComposerVisible"
+              class="d-flex justify-end mt-6"
+            >
+              <VBtn
+                size="small"
+                color="primary"
+                variant="elevated"
+                prepend-icon="tabler-layers-linked"
+                @click="showPhaseComposer"
+              >
+                Add Phase
+              </VBtn>
             </div>
           </VCardText>
 
           <VCardActions class="px-6 pb-6 pt-0 justify-end">
             <VBtn
+              v-if="!isContractualService"
               size="small"
               color="primary"
               variant="elevated"
-              :prepend-icon="
-                isContractualService
-                  ? 'tabler-layers-linked'
-                  : 'tabler-link-plus'
-              "
-              @click="
-                isContractualService
-                  ? openPhaseDialog()
-                  : openRelatedItemDialog()
-              "
+              prepend-icon="tabler-link-plus"
+              @click="openRelatedItemDialog"
             >
-              {{ isContractualService ? "Phase" : relatedButtonLabel }}
+              {{ relatedButtonLabel }}
             </VBtn>
           </VCardActions>
         </VCard>
@@ -2331,22 +2431,20 @@ watch(
               step="0.01"
               class="mb-6"
             />
-            <div
-              v-if="isRetainerService"
-              class="text-body-2 text-medium-emphasis mb-6"
-            >
+            <div v-if="isRetainerService" class="text-body-2 text-medium-emphasis mb-6">
               Linked services total: ${{ retainerLinkedServicesTotalPrice }}
             </div>
-            <AppTextField
-              v-else
-              v-model.number="itemBestPrice"
-              label="Best Price"
-              placeholder="Price"
-              type="number"
-              min="0"
-              step="0.01"
-              class="mb-6"
-            />
+            <template v-else-if="!isContractualService">
+              <AppTextField
+                v-model.number="itemBestPrice"
+                label="Best Price"
+                placeholder="Price"
+                type="number"
+                min="0"
+                step="0.01"
+                class="mb-6"
+              />
+            </template>
 
             <VCheckbox
               v-model="isTaxChargeToItem"
@@ -2531,67 +2629,6 @@ watch(
             variant="tonal"
             color="secondary"
             @click="isRelatedItemDialogOpen = false"
-          >
-            Cancel
-          </VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
-
-    <VDialog
-      v-if="isPhaseDialogOpen"
-      v-model="isPhaseDialogOpen"
-      max-width="760"
-    >
-      <VCard>
-        <VCardItem title="Add Phase" />
-
-        <VCardText>
-          <VRow>
-            <VCol cols="6">
-              <AppTextField
-                v-model="phaseName"
-                label="Name"
-                placeholder="Mobilization"
-                :error="Boolean(phaseErrors.name)"
-                :error-messages="phaseErrors.name"
-              />
-            </VCol>
-            <VCol cols="6">
-              <AppTextField
-                v-model.number="phasePrice"
-                label="Phase Price"
-                placeholder="900"
-                type="number"
-                min="0"
-                step="0.01"
-              />
-            </VCol>
-            <VCol cols="12">
-              <VCheckbox
-                v-model="isPhaseChargeTax"
-                label="Charge Tax on this phase"
-              />
-            </VCol>
-            <VCol cols="12">
-              <span class="mb-1">Description (optional)</span>
-              <AsyncProductDescriptionEditor
-                v-model="phaseDescription"
-                placeholder="Phase Description"
-                class="border rounded"
-              />
-            </VCol>
-          </VRow>
-        </VCardText>
-
-        <VCardActions class="px-6 pb-6 justify-space-between">
-          <VBtn color="primary" variant="tonal" @click="savePhase">
-            Save Phase
-          </VBtn>
-          <VBtn
-            variant="tonal"
-            color="secondary"
-            @click="isPhaseDialogOpen = false"
           >
             Cancel
           </VBtn>
