@@ -55,13 +55,118 @@ export const db: DB = {
         type: "Produced Product",
         activeState: "Active",
         sku: "PRP006",
-        qty: 12,
         image: product1,
         bestPrice: 2450,
         chargeTax: true,
         description:
           "Custom-built executive workstation manufactured in-house for client fit-outs.",
         createdAt: "2026-01-12T09:00:00Z",
+        options: [
+          {
+            id: 1,
+            name: "Finish",
+            type: "Dropdown",
+            description:
+              "Single-select dropdown for a predefined list of values.",
+            values: ["Walnut Veneer", "Oak Veneer", "Matte Black"],
+          },
+          {
+            id: 2,
+            name: "Cable Access",
+            type: "Select Buttons",
+            description:
+              "Quick-pick button choices for a fixed set of production options.",
+            values: [],
+          },
+        ],
+        rawMaterials: [
+          {
+            id: 1,
+            name: "MDF Core Board",
+            qty: 3,
+          },
+          {
+            id: 2,
+            name: "Walnut Veneer Sheet",
+            qty: 2,
+          },
+          {
+            id: 3,
+            name: "Powder-Coated Steel Leg Frame",
+            qty: 1,
+          },
+        ],
+        measurements: [
+          {
+            id: 1,
+            name: "Width",
+            type: "Number",
+            description:
+              "Numeric input for values like count, depth, or weight.",
+            values: [],
+          },
+          {
+            id: 2,
+            name: "Cable Grommet Position",
+            type: "Dropdown",
+            description:
+              "Single-select dropdown for a predefined list of values.",
+            values: ["Centered", "Offset Left", "Offset Right"],
+          },
+        ],
+        salesTasks: [
+          {
+            id: 1,
+            title: "Review production drawing",
+            collaborators: [],
+            afterWhen: "+1 day",
+            manhours: null,
+            notes:
+              "Validate finish and cable-access selections before fabrication.",
+            status: "pending",
+            important: false,
+            attachment: null,
+            relatedTo: null,
+            steps: [],
+          },
+        ],
+        jobConfiguration: {
+          milestones: [
+            {
+              id: 1,
+              name: "Atlas Executive Workstation",
+              dueDate: null,
+              priority: "Normal",
+              note: "",
+              tasks: [],
+              goals: [
+                {
+                  id: 1,
+                  milestoneId: 1,
+                  name: "Approve production details",
+                  dueDate: null,
+                  priority: "Normal",
+                  note: "Confirm dropdown selections, dimensions, and raw material availability.",
+                  tasks: [
+                    {
+                      id: 1,
+                      title: "Confirm hardware and veneer availability",
+                      collaborators: [],
+                      afterWhen: "+2 days",
+                      manhours: 2,
+                      notes: "",
+                      status: "pending",
+                      important: false,
+                      attachment: null,
+                      relatedTo: null,
+                      steps: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       },
     ],
     rentals: [
@@ -117,6 +222,7 @@ export const db: DB = {
             important: false,
             attachment: null,
             relatedTo: null,
+            steps: [],
           },
           {
             id: 2,
@@ -129,6 +235,7 @@ export const db: DB = {
             important: false,
             attachment: null,
             relatedTo: null,
+            steps: [],
           },
         ],
         jobConfiguration: {
@@ -160,6 +267,7 @@ export const db: DB = {
                       important: false,
                       attachment: null,
                       relatedTo: null,
+                      steps: [],
                     },
                   ],
                 },
@@ -188,17 +296,11 @@ export const db: DB = {
             id: 1,
             name: "Mobilization",
             price: 900,
-            chargeTax: false,
-            description:
-              "Kickoff, asset verification, and site-access coordination before recurring service begins.",
           },
           {
             id: 2,
             name: "Preventive Maintenance",
             price: 2300,
-            chargeTax: true,
-            description:
-              "Scheduled inspections, cleaning, testing, and minor corrective works during the contract term.",
           },
         ],
         salesTasks: [
@@ -213,6 +315,7 @@ export const db: DB = {
             important: false,
             attachment: null,
             relatedTo: null,
+            steps: [],
           },
           {
             id: 2,
@@ -225,6 +328,7 @@ export const db: DB = {
             important: false,
             attachment: null,
             relatedTo: null,
+            steps: [],
           },
         ],
         jobConfiguration: {
@@ -257,6 +361,7 @@ export const db: DB = {
                       important: false,
                       attachment: null,
                       relatedTo: null,
+                      steps: [],
                     },
                   ],
                 },
@@ -314,6 +419,7 @@ export const db: DB = {
             important: false,
             attachment: null,
             relatedTo: null,
+            steps: [],
           },
         ],
         jobConfiguration: {

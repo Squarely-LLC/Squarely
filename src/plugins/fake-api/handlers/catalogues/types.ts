@@ -58,6 +58,28 @@ export interface CatalogueReccurentLinkedService {
   description: string;
 }
 
+export type CatalogueProducedProductFieldType =
+  | "Text"
+  | "Number"
+  | "Pictures"
+  | "Select Buttons"
+  | "Note"
+  | "Dropdown";
+
+export interface CatalogueProducedProductField {
+  id: number;
+  name: string;
+  type: CatalogueProducedProductFieldType;
+  description: string;
+  values: string[];
+}
+
+export interface CatalogueProducedProductMaterial {
+  id: number;
+  name: string;
+  qty: number | null;
+}
+
 export interface CataloguePhase {
   id: number;
   name: string;
@@ -142,8 +164,13 @@ export interface CatalogueProductRecord extends CatalogueInventoryRecord {
   type: "Product";
 }
 
-export interface CatalogueProducedProductRecord extends CatalogueInventoryRecord {
+export interface CatalogueProducedProductRecord extends CatalogueBaseRecord {
   type: "Produced Product";
+  options: CatalogueProducedProductField[];
+  rawMaterials: CatalogueProducedProductMaterial[];
+  measurements: CatalogueProducedProductField[];
+  salesTasks: CatalogueSalesTask[];
+  jobConfiguration: CatalogueJobConfiguration;
 }
 
 export interface CatalogueRentalRecord extends CatalogueInventoryRecord {
@@ -211,6 +238,9 @@ export interface CatalogueRecordInput extends Partial<CatalogueItem> {
   phases?: CataloguePhase[];
   retainerServices?: CatalogueRetainerLinkedService[];
   reccurentServices?: CatalogueReccurentLinkedService[];
+  options?: CatalogueProducedProductField[];
+  rawMaterials?: CatalogueProducedProductMaterial[];
+  measurements?: CatalogueProducedProductField[];
   salesTasks?: CatalogueSalesTask[];
   jobConfiguration?: CatalogueJobConfiguration;
 }

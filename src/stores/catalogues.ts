@@ -529,6 +529,84 @@ function normalizeRecord(
     } as CatalogueRecord;
   }
 
+  if (mappedType === "Produced Product") {
+    const options = Array.isArray(payload.options) ? payload.options : [];
+    const rawMaterials = Array.isArray(payload.rawMaterials)
+      ? payload.rawMaterials
+      : [];
+    const measurements = Array.isArray(payload.measurements)
+      ? payload.measurements
+      : [];
+    const salesTasks = Array.isArray(payload.salesTasks)
+      ? payload.salesTasks
+      : [];
+    const milestones = Array.isArray(payload.jobConfiguration?.milestones)
+      ? payload.jobConfiguration.milestones
+      : [];
+
+    return {
+      ...base,
+      options: options.map((field, index) => ({
+        id: Number.isFinite(Number(field.id)) ? Number(field.id) : index + 1,
+        name: String(field.name ?? "").trim(),
+        type:
+          field.type === "Number" ||
+          field.type === "Pictures" ||
+          field.type === "Select Buttons" ||
+          field.type === "Note" ||
+          field.type === "Dropdown"
+            ? field.type
+            : "Text",
+        description: String(field.description ?? "").trim(),
+        values:
+          field.type === "Dropdown" && Array.isArray(field.values)
+            ? field.values
+                .map((value) => String(value ?? "").trim())
+                .filter(Boolean)
+            : [],
+      })),
+      rawMaterials: rawMaterials.map((material, index) => ({
+        id: Number.isFinite(Number(material.id))
+          ? Number(material.id)
+          : index + 1,
+        name: String(material.name ?? "").trim(),
+        qty:
+          material.qty === null || material.qty === undefined
+            ? null
+            : Number.isFinite(Number(material.qty))
+              ? Number(material.qty)
+              : null,
+      })),
+      measurements: measurements.map((field, index) => ({
+        id: Number.isFinite(Number(field.id)) ? Number(field.id) : index + 1,
+        name: String(field.name ?? "").trim(),
+        type:
+          field.type === "Number" ||
+          field.type === "Pictures" ||
+          field.type === "Select Buttons" ||
+          field.type === "Note" ||
+          field.type === "Dropdown"
+            ? field.type
+            : "Text",
+        description: String(field.description ?? "").trim(),
+        values:
+          field.type === "Dropdown" && Array.isArray(field.values)
+            ? field.values
+                .map((value) => String(value ?? "").trim())
+                .filter(Boolean)
+            : [],
+      })),
+      salesTasks: salesTasks.map((task, index) => ({
+        ...normalizeSalesTask(task, index + 1),
+      })),
+      jobConfiguration: {
+        milestones: milestones.map((milestone, index) =>
+          normalizeJobMilestone(milestone, index + 1),
+        ),
+      },
+    } as CatalogueRecord;
+  }
+
   if (qty === null) {
     return base as CatalogueRecord;
   }
