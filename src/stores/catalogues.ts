@@ -150,6 +150,17 @@ function normalizeJobTask(
         }))
       : [],
     afterWhen: task.afterWhen ?? legacyTask.dueAt ?? null,
+    startTrigger: task.startTrigger
+      ? {
+          type:
+            task.startTrigger.type === "goal" ||
+            task.startTrigger.type === "task"
+              ? task.startTrigger.type
+              : "time",
+          goalId: task.startTrigger.goalId ?? null,
+          taskId: task.startTrigger.taskId ?? null,
+        }
+      : null,
     manhours:
       task.manhours === null || task.manhours === undefined
         ? null
@@ -263,6 +274,13 @@ function normalizeJobGoal(
           : null,
     name: String(goal.name ?? "").trim(),
     afterWhen: normalizedAfterWhen,
+    startTrigger: goal.startTrigger
+      ? {
+          type: goal.startTrigger.type === "goal" ? "goal" : "time",
+          goalId: goal.startTrigger.goalId ?? null,
+          taskId: null,
+        }
+      : null,
     dueDate: normalizedAfterWhen,
     priority:
       goal.priority === "Low" || goal.priority === "High"

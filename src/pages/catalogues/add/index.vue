@@ -9,6 +9,7 @@ import type {
   CatalogueOnetimeServiceRecord,
   CatalogueRecord,
   CatalogueRetainerServiceRecord,
+  CatalogueTaskStartTrigger,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type { CatalogueCategory } from "@/plugins/fake-api/handlers/config/types";
 import { useCataloguesStore } from "@/stores/catalogues";
@@ -54,6 +55,7 @@ type JobConfigTask = {
   title: string;
   collaborators: ToDo["collaborators"];
   afterWhen: string | null;
+  startTrigger?: CatalogueTaskStartTrigger | null;
   manhours: number | null;
   notes: string;
   status: JobConfigTaskStatus;
@@ -71,6 +73,7 @@ type JobConfigGoal = {
   phaseId?: number | null;
   retainerServiceId?: number | null;
   name: string;
+  startTrigger?: CatalogueTaskStartTrigger | null;
   dueDate: string | null;
   priority: JobConfigPriority;
   note: string;
@@ -85,6 +88,11 @@ type JobConfigMilestone = {
   note: string;
   tasks: JobConfigTask[];
   goals: JobConfigGoal[];
+};
+
+type TaskTriggerOption = {
+  title: string;
+  value: string;
 };
 
 const route = useRoute();
@@ -159,7 +167,7 @@ const relatedItemName = ref("");
 const relatedItemCategory = ref("");
 const relatedItemPrice = ref<number | null>(null);
 const isRelatedItemChargeTax = ref(true);
-const relatedItemDescription = ref("<p></p>");
+const relatedItemDescription = ref("");
 const relatedItemErrors = ref({
   name: "",
   category: "",
@@ -226,11 +234,14 @@ const goalDialog = ref({
   draft: {
     name: "",
     dueDate: null as string | null,
+    startTrigger: null as CatalogueTaskStartTrigger | null,
     priority: "Normal" as JobConfigPriority,
     note: "",
   },
 });
 const goalAfterWhenValue = ref<number | null>(null);
+const goalStartMode = ref<"time" | "goal">("time");
+const selectedGoalDependencyId = ref<string | null>(null);
 const isTaskTemplateDrawerOpen = ref(false);
 const taskTemplateDrawerRef = ref<InstanceType<
   typeof CatalogueTaskTemplateDrawer
@@ -292,6 +303,71 @@ const contractualPhaseTotalPrice = computed(() =>
   phases.value.reduce((sum, phase) => sum + (Number(phase.price) || 0), 0),
 );
 
+const goalTriggerOptions = computed<TaskTriggerOption[]>(() =>
+  jobConfigMilestones.value.flatMap((milestone) =>
+    milestone.goals.map((goal) => ({
+      title: `${milestone.name} / ${goal.name}`,
+      value: `goal:${goal.id}`,
+    })),
+  ),
+);
+
+const currentEditingGoalRef = computed(() =>
+  goalDialog.value.mode === "edit" && goalDialog.value.targetId !== null
+    ? `goal:${goalDialog.value.targetId}`
+    : null,
+);
+
+const availableGoalDependencyOptions = computed(() =>
+  goalTriggerOptions.value.filter(
+    (option) => option.value !== currentEditingGoalRef.value,
+  ),
+);
+
+const goalStartModeOptions = [
+  { title: "After time", value: "time" },
+  { title: "After goal completion", value: "goal" },
+] as const;
+
+const buildGoalStartTrigger = (): CatalogueTaskStartTrigger | null => {
+  if (goalStartMode.value === "goal") {
+    return selectedGoalDependencyId.value
+      ? {
+          type: "goal",
+          goalId: selectedGoalDependencyId.value,
+          taskId: null,
+        }
+      : null;
+  }
+
+  return {
+    type: "time",
+    goalId: null,
+    taskId: null,
+  };
+};
+
+const formatGoalStart = (
+  dueDate?: string | null,
+  startTrigger?: CatalogueTaskStartTrigger | null,
+) => formatTaskStart(dueDate, startTrigger);
+
+const formatTaskStart = (
+  afterWhen?: string | null,
+  startTrigger?: CatalogueTaskStartTrigger | null,
+) => {
+  if (startTrigger?.type === "goal" && startTrigger.goalId) {
+    const goalId = String(startTrigger.goalId).replace(/^goal:/, "");
+    const goal = jobConfigMilestones.value
+      .flatMap((milestone) => milestone.goals)
+      .find((entry) => String(entry.id) === goalId);
+
+    return goal ? `Goal complete: ${goal.name}` : "After goal completion";
+  }
+
+  return `After ${formatTaskAfterWhen(afterWhen)}`;
+};
+
 onMounted(() => {
   const activateDeferredSections = () => {
     renderDeferredSections.value = true;
@@ -336,6 +412,7 @@ const openSalesTaskTemplateDrawer = () => {
     title: "",
     collaborators: [],
     afterWhen: "+1 day",
+    startTrigger: { type: "time", goalId: null, taskId: null },
     notes: "",
     important: false,
     status: "pending",
@@ -356,6 +433,8 @@ const openEditSalesTask = (task: SalesTaskDraft) => {
     title: task.title,
     collaborators: task.collaborators,
     afterWhen: task.afterWhen,
+    startTrigger:
+      task.startTrigger ?? { type: "time", goalId: null, taskId: null },
     notes: task.notes,
     important: task.important,
     status: task.status,
@@ -374,7 +453,7 @@ const resetRelatedItemDraft = () => {
   relatedItemCategory.value = "";
   relatedItemPrice.value = null;
   isRelatedItemChargeTax.value = true;
-  relatedItemDescription.value = "<p></p>";
+  relatedItemDescription.value = "";
   relatedItemErrors.value = {
     name: "",
     category: "",
@@ -408,7 +487,7 @@ const saveRelatedItem = () => {
           ? Number(relatedItemPrice.value)
           : null,
     chargeTax: isRelatedItemChargeTax.value,
-    description: relatedItemDescription.value.replace(/<[^>]+>/g, " ").trim(),
+    description: relatedItemDescription.value.trim(),
   });
 
   if (isRetainerService.value) syncRetainerServiceGoals();
@@ -651,6 +730,14 @@ const serializeTaskTemplate = (
       }
     ).dueAt ??
     null,
+  startTrigger:
+    task.startTrigger?.type === "goal" || task.startTrigger?.type === "task"
+      ? {
+          type: task.startTrigger.type,
+          goalId: task.startTrigger.goalId ?? null,
+          taskId: task.startTrigger.taskId ?? null,
+        }
+      : { type: "time", goalId: null, taskId: null },
   manhours: task.manhours ?? null,
   notes: String(task.notes ?? "").trim(),
   status: normalizeJobTaskStatus(task.status),
@@ -677,9 +764,12 @@ const resetGoalDraft = () => {
   goalDialog.value.draft = {
     name: "",
     dueDate: null,
+    startTrigger: null,
     priority: "Normal",
     note: "",
   };
+  goalStartMode.value = "time";
+  selectedGoalDependencyId.value = null;
   goalAfterWhenValue.value = null;
 };
 
@@ -700,6 +790,7 @@ const syncContractualPhaseGoals = () => {
       milestoneId: milestone.id,
       phaseId: phase.id,
       name: phase.name,
+      startTrigger: existingGoal?.startTrigger ?? { type: "time", goalId: null, taskId: null },
       dueDate: existingGoal?.dueDate ?? null,
       priority: existingGoal?.priority ?? "Normal",
       note: phase.description,
@@ -732,6 +823,7 @@ const syncRetainerServiceGoals = () => {
       milestoneId: milestone.id,
       retainerServiceId: service.id,
       name: service.name,
+      startTrigger: existingGoal?.startTrigger ?? { type: "time", goalId: null, taskId: null },
       dueDate: existingGoal?.dueDate ?? null,
       priority: existingGoal?.priority ?? "Normal",
       note: service.description,
@@ -793,6 +885,8 @@ const openCreateGoal = (milestoneId: number) => {
   goalDialog.value.mode = "create";
   goalDialog.value.visible = true;
   goalDialog.value.milestoneId = milestoneId;
+  goalStartMode.value = "time";
+  selectedGoalDependencyId.value = null;
   goalAfterWhenValue.value = null;
   expandedMilestones.value = [
     ...new Set([...expandedMilestones.value, milestoneId]),
@@ -808,9 +902,15 @@ const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
   goalDialog.value.draft = {
     name: goal.name,
     dueDate: goal.dueDate,
+    startTrigger: goal.startTrigger ?? { type: "time", goalId: null, taskId: null },
     priority: goal.priority,
     note: goal.note,
   };
+  goalStartMode.value =
+    goal.startTrigger?.type === "goal" ? "goal" : "time";
+  selectedGoalDependencyId.value = goal.startTrigger?.goalId
+    ? String(goal.startTrigger.goalId)
+    : null;
   goalAfterWhenValue.value = parseAfterWhenValue(goal.dueDate);
   nextTick(() => goalFormRef.value?.resetValidation());
 };
@@ -818,6 +918,7 @@ const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
 const saveGoal = async () => {
   const result = await goalFormRef.value?.validate();
   if (!result?.valid || goalDialog.value.milestoneId === null) return;
+  if (goalStartMode.value === "goal" && !selectedGoalDependencyId.value) return;
 
   const milestone = jobConfigMilestones.value.find(
     (entry) => entry.id === goalDialog.value.milestoneId,
@@ -833,7 +934,11 @@ const saveGoal = async () => {
 
     if (goal) {
       goal.name = draft.name.trim();
-      goal.dueDate = buildAfterWhenValue(goalAfterWhenValue.value);
+      goal.dueDate =
+        goalStartMode.value === "time"
+          ? buildAfterWhenValue(goalAfterWhenValue.value)
+          : null;
+      goal.startTrigger = buildGoalStartTrigger();
       goal.priority = draft.priority;
       goal.note = draft.note.trim();
     }
@@ -842,7 +947,11 @@ const saveGoal = async () => {
       id: jobConfigGoalId.value++,
       milestoneId: milestone.id,
       name: draft.name.trim(),
-      dueDate: buildAfterWhenValue(goalAfterWhenValue.value),
+      dueDate:
+        goalStartMode.value === "time"
+          ? buildAfterWhenValue(goalAfterWhenValue.value)
+          : null,
+      startTrigger: buildGoalStartTrigger(),
       priority: draft.priority,
       note: draft.note.trim(),
       tasks: [],
@@ -882,6 +991,7 @@ const openCreateTaskForMilestone = (milestoneId: number) => {
     important: false,
     status: "pending",
     afterWhen: "+1 day",
+    startTrigger: { type: "time", goalId: null, taskId: null },
     attachment: null,
     relatedTo: null,
     milestoneId,
@@ -904,6 +1014,7 @@ const openCreateTaskForGoal = (goalId: number) => {
     important: false,
     status: "pending",
     afterWhen: "+1 day",
+    startTrigger: { type: "time", goalId: null, taskId: null },
     attachment: null,
     relatedTo: null,
     goalId,
@@ -922,6 +1033,8 @@ const openEditTaskForMilestone = (milestoneId: number, task: JobConfigTask) => {
     title: task.title,
     collaborators: task.collaborators,
     afterWhen: task.afterWhen,
+    startTrigger:
+      task.startTrigger ?? { type: "time", goalId: null, taskId: null },
     notes: task.notes,
     status: task.status,
     important: task.important,
@@ -942,6 +1055,8 @@ const openEditTaskForGoal = (goalId: number, task: JobConfigTask) => {
     title: task.title,
     collaborators: task.collaborators,
     afterWhen: task.afterWhen,
+    startTrigger:
+      task.startTrigger ?? { type: "time", goalId: null, taskId: null },
     notes: task.notes,
     status: task.status,
     important: task.important,
@@ -972,7 +1087,10 @@ const deleteTaskFromGoal = (goalId: number, taskId: number) => {
 };
 
 const handleTaskTemplateCreated = (
-  task: Partial<ToDo> & { afterWhen?: string | null },
+  task: Partial<ToDo> & {
+    afterWhen?: string | null;
+    startTrigger?: CatalogueTaskStartTrigger | null;
+  },
 ) => {
   const title = String(task.title ?? "").trim();
 
@@ -997,6 +1115,14 @@ const handleTaskTemplateCreated = (
         }
       ).dueAt ??
       null,
+    startTrigger:
+      task.startTrigger?.type === "goal" || task.startTrigger?.type === "task"
+        ? {
+            type: task.startTrigger.type,
+            goalId: task.startTrigger.goalId ?? null,
+            taskId: task.startTrigger.taskId ?? null,
+          }
+        : { type: "time", goalId: null, taskId: null },
     manhours: null,
     notes: String(task.notes ?? "").trim(),
     status:
@@ -1260,6 +1386,14 @@ const applyServiceTemplateRecord = (
       ).afterWhen ??
       (task as { dueAt?: string | null }).dueAt ??
       null,
+    startTrigger:
+      task.startTrigger?.type === "goal" || task.startTrigger?.type === "task"
+        ? {
+            type: task.startTrigger.type,
+            goalId: task.startTrigger.goalId ?? null,
+            taskId: task.startTrigger.taskId ?? null,
+          }
+        : { type: "time", goalId: null, taskId: null },
     manhours: task.manhours ?? null,
     notes: task.notes ?? "",
     status: task.status ?? "pending",
@@ -1289,11 +1423,28 @@ const applyServiceTemplateRecord = (
             ).afterWhen ??
             (task as { dueAt?: string | null }).dueAt ??
             null,
+          startTrigger:
+            task.startTrigger?.type === "goal" ||
+            task.startTrigger?.type === "task"
+              ? {
+                  type: task.startTrigger.type,
+                  goalId: task.startTrigger.goalId ?? null,
+                  taskId: task.startTrigger.taskId ?? null,
+                }
+              : { type: "time", goalId: null, taskId: null },
           steps: cloneTaskSteps(task.steps),
         })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
           retainerServiceId: goal.retainerServiceId ?? null,
+          startTrigger:
+            goal.startTrigger?.type === "goal"
+              ? {
+                  type: "goal",
+                  goalId: goal.startTrigger.goalId ?? null,
+                  taskId: null,
+                }
+              : { type: "time", goalId: null, taskId: null },
           tasks: (goal.tasks || []).map((task) => ({
             ...task,
             afterWhen:
@@ -1305,6 +1456,15 @@ const applyServiceTemplateRecord = (
               ).afterWhen ??
               (task as { dueAt?: string | null }).dueAt ??
               null,
+            startTrigger:
+              task.startTrigger?.type === "goal" ||
+              task.startTrigger?.type === "task"
+                ? {
+                    type: task.startTrigger.type,
+                    goalId: task.startTrigger.goalId ?? null,
+                    taskId: task.startTrigger.taskId ?? null,
+                  }
+                : { type: "time", goalId: null, taskId: null },
             steps: cloneTaskSteps(task.steps),
           })),
         })),
@@ -1463,6 +1623,14 @@ const saveItem = async () => {
           milestoneId: goal.milestoneId,
           name: goal.name.trim(),
           dueDate: goal.dueDate,
+          startTrigger:
+            goal.startTrigger?.type === "goal"
+              ? {
+                  type: "goal",
+                  goalId: goal.startTrigger.goalId ?? null,
+                  taskId: null,
+                }
+              : { type: "time", goalId: null, taskId: null },
           phaseId: goal.phaseId ?? null,
           retainerServiceId: goal.retainerServiceId ?? null,
           priority: goal.priority,
@@ -1844,7 +2012,7 @@ watch(
                         {{ task.title }}
                       </strong>
                       <span class="text-sm">
-                        After {{ formatTaskAfterWhen(task.afterWhen) }}
+                        {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
                         <span v-if="task.manhours !== null">
                           | {{ task.manhours }} Manhour<span
                             v-if="task.manhours !== 1"
@@ -2035,7 +2203,12 @@ watch(
                                 {{ task.title }}
                               </strong>
                               <span class="text-sm">
-                                After {{ formatTaskAfterWhen(task.afterWhen) }}
+                                {{
+                                  formatTaskStart(
+                                    task.afterWhen,
+                                    task.startTrigger,
+                                  )
+                                }}
                                 <span v-if="task.manhours !== null">
                                   | {{ task.manhours }} Manhour<span
                                     v-if="task.manhours !== 1"
@@ -2153,7 +2326,13 @@ watch(
                                   v-if="goal.tasks.length !== 1"
                                   >s</span
                                 >
-                                | After {{ formatTaskAfterWhen(goal.dueDate) }}
+                                |
+                                {{
+                                  formatGoalStart(
+                                    goal.dueDate,
+                                    goal.startTrigger,
+                                  )
+                                }}
                               </div>
                               <div
                                 class="text-body-2 text-medium-emphasis mt-1"
@@ -2234,9 +2413,11 @@ watch(
                                         {{ task.title }}
                                       </strong>
                                       <span class="text-sm">
-                                        After
                                         {{
-                                          formatTaskAfterWhen(task.afterWhen)
+                                          formatTaskStart(
+                                            task.afterWhen,
+                                            task.startTrigger,
+                                          )
                                         }}
                                         <span v-if="task.manhours !== null">
                                           | {{ task.manhours }} Manhour<span
@@ -2571,11 +2752,12 @@ watch(
               />
             </VCol>
             <VCol cols="12">
-              <span class="mb-1">Description (optional)</span>
-              <AsyncProductDescriptionEditor
+              <AppTextarea
                 v-model="relatedItemDescription"
+                label="Description (optional)"
                 placeholder="Item Description"
-                class="border rounded"
+                auto-grow
+                rows="2"
               />
             </VCol>
           </VRow>
@@ -2712,6 +2894,15 @@ watch(
                 />
               </VCol>
               <VCol cols="12">
+                <AppSelect
+                  v-model="goalStartMode"
+                  label="Start when"
+                  :items="goalStartModeOptions"
+                  item-title="title"
+                  item-value="value"
+                />
+              </VCol>
+              <VCol v-if="goalStartMode === 'time'" cols="12">
                 <div class="text-body-2 mb-2">After when</div>
                 <div class="after-when-control">
                   <AppTextField
@@ -2749,6 +2940,16 @@ watch(
                   </div>
                 </div>
               </VCol>
+              <VCol v-else cols="12">
+                <AppSelect
+                  v-model="selectedGoalDependencyId"
+                  label="Start after goal completion"
+                  :items="availableGoalDependencyOptions"
+                  item-title="title"
+                  item-value="value"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
               <VCol cols="12">
                 <AppTextarea
                   v-model="goalDialog.draft.note"
@@ -2773,6 +2974,7 @@ watch(
     <CatalogueTaskTemplateDrawer
       ref="taskTemplateDrawerRef"
       v-model:is-drawer-open="isTaskTemplateDrawerOpen"
+      :goal-trigger-options="goalTriggerOptions"
       @save="handleTaskTemplateCreated"
     />
   </div>

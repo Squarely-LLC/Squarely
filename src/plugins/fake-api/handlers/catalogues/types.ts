@@ -57,11 +57,18 @@ export interface CataloguePhase {
   description: string;
 }
 
+export interface CatalogueTaskStartTrigger {
+  type: "time" | "goal" | "task";
+  goalId?: string | number | null;
+  taskId?: string | number | null;
+}
+
 export interface CatalogueSalesTask {
   id: number;
   title: string;
   collaborators: ContactRef[];
   afterWhen: string | null;
+  startTrigger?: CatalogueTaskStartTrigger | null;
   manhours: number | null;
   notes: string;
   status: CatalogueJobConfigTaskStatus;
@@ -84,6 +91,7 @@ export interface CatalogueJobConfigTask {
   title: string;
   collaborators: ContactRef[];
   afterWhen: string | null;
+  startTrigger?: CatalogueTaskStartTrigger | null;
   manhours: number | null;
   notes: string;
   status: CatalogueJobConfigTaskStatus;
@@ -100,6 +108,7 @@ export interface CatalogueJobConfigGoal {
   retainerServiceId?: number | null;
   name: string;
   afterWhen?: string | null;
+  startTrigger?: CatalogueTaskStartTrigger | null;
   dueDate: string | null;
   priority: CatalogueJobConfigPriority;
   note: string;

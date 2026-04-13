@@ -8,16 +8,20 @@ import type {
   ToDoAttachment,
   ToDoStep,
 } from "@/data/schema";
+import type { CatalogueTaskStartTrigger } from "@/plugins/fake-api/handlers/catalogues/types";
 import { useEmployeesStore } from "@/stores/employees";
-import { useJobsStore } from "@/stores/jobs";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
-import StepEditDialog from "@/views/apps/todo/StepEditDialog.vue";
-import { formatSystemDate } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
 type CatalogueTaskTemplatePayload = Partial<ToDo> & {
   afterWhen?: string | null;
+  startTrigger?: CatalogueTaskStartTrigger | null;
+};
+
+type TriggerOption = {
+  title: string;
+  value: string;
 };
 
 interface Emit {
@@ -27,6 +31,7 @@ interface Emit {
 
 interface Props {
   isDrawerOpen: boolean;
+  goalTriggerOptions?: TriggerOption[];
 }
 
 const props = defineProps<Props>();
@@ -35,9 +40,6 @@ const emit = defineEmits<Emit>();
 const activeTab = ref<"details" | "steps">("details");
 const employeesStore = useEmployeesStore();
 employeesStore.init();
-
-const jobsStore = useJobsStore();
-jobsStore.init();
 
 const isFormValid = ref(false);
 const refForm = ref<VForm>();
@@ -49,29 +51,38 @@ const pendingInitial = ref<CatalogueTaskTemplatePayload | null>(null);
 
 const title = ref("");
 const selectedCollaboratorIds = ref<string[]>([]);
+const startMode = ref<"time" | "goal">("time");
+const afterWhenPreset = ref<"1_day" | "2_days" | "1_week" | "custom">("1_day");
 const afterWhenValue = ref<number | null>(1);
+const selectedGoalTriggerId = ref<string | null>(null);
 const notes = ref("");
 const important = ref(false);
 const selectedStatus = ref<Status>("pending");
-const selectedRelatedKey = ref<string | null>(null);
 const attachmentInput = ref("");
 const attachmentFile = ref<File | null>(null);
 const attachment = ref<ToDoAttachment | null>(null);
 const goalId = ref<number | string | null>(null);
 const milestoneId = ref<number | string | null>(null);
 const initialCollaborators = ref<ContactRef[]>([]);
-const initialRelatedTo = ref<ToDo["relatedTo"]>(null);
 const steps = ref<ToDoStep[]>([]);
 const stepDialogOpen = ref(false);
 const stepDialogIndex = ref<number | null>(null);
 const stepDialogModel = ref<ToDoStep | null>(null);
+const stepAfterWhenPreset = ref<"1_day" | "2_days" | "1_week" | "custom">(
+  "1_day",
+);
+const stepAfterWhenValue = ref<number | null>(1);
 const showNewDraft = ref(false);
 const newSearch = ref("");
+const newDraftAfterWhenPreset = ref<"1_day" | "2_days" | "1_week" | "custom">(
+  "1_day",
+);
+const newDraftAfterWhenValue = ref<number | null>(1);
 const newDraft = reactive<ToDoStep>({
   id: 0,
   title: "",
   collaborators: [],
-  dueAt: new Date().toISOString(),
+  dueAt: "+1 day",
   status: "pending",
   notes: "",
   createdAt: new Date().toISOString(),
@@ -166,36 +177,68 @@ const cloneStep = (step: Partial<ToDoStep>, index: number): ToDoStep => {
   };
 };
 
-const relatedOptions = computed(() => {
-  const merged = new Map<
-    string,
-    { title: string; value: string; rawId: number | string; type: "job" }
-  >();
+const parseAfterWhenValue = (value?: string | null) => {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^\+?\s*(\d+)\s+(day|days|week|weeks|month|months)$/i);
 
-  jobsStore.all.forEach((job) => {
-    merged.set(`job-${job.id}`, {
-      title: job.name,
-      value: `job-${job.id}`,
-      rawId: job.id,
-      type: "job",
-    });
-  });
+  if (match) {
+    const rawValue = Number(match[1]);
+    const rawUnit = match[2].toLowerCase();
+    const normalizedDays = rawUnit.startsWith("week")
+      ? rawValue * 7
+      : rawUnit.startsWith("month")
+        ? rawValue * 30
+        : rawValue;
 
-  if (
-    initialRelatedTo.value &&
-    initialRelatedTo.value.type === "job" &&
-    !merged.has(`job-${initialRelatedTo.value.id}`)
-  ) {
-    merged.set(`job-${initialRelatedTo.value.id}`, {
-      title: initialRelatedTo.value.name,
-      value: `job-${initialRelatedTo.value.id}`,
-      rawId: initialRelatedTo.value.id,
-      type: "job",
-    });
+    return {
+      days: normalizedDays,
+      preset:
+        normalizedDays === 1
+          ? ("1_day" as const)
+          : normalizedDays === 2
+            ? ("2_days" as const)
+            : normalizedDays === 7
+              ? ("1_week" as const)
+              : ("custom" as const),
+    };
   }
 
-  return Array.from(merged.values());
-});
+  const parsedDate = value ? new Date(value) : null;
+  if (parsedDate && !Number.isNaN(parsedDate.getTime())) {
+    const today = new Date();
+    const startOfToday = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const startOfTarget = new Date(
+      parsedDate.getFullYear(),
+      parsedDate.getMonth(),
+      parsedDate.getDate(),
+    );
+    const diffDays = Math.max(
+      1,
+      Math.round(
+        (startOfTarget.getTime() - startOfToday.getTime()) / 86400000,
+      ),
+    );
+
+    return {
+      days: diffDays,
+      preset:
+        diffDays === 1
+          ? ("1_day" as const)
+          : diffDays === 2
+            ? ("2_days" as const)
+            : diffDays === 7
+              ? ("1_week" as const)
+              : ("custom" as const),
+    };
+  }
+
+  return { days: 1, preset: "1_day" as const };
+};
 
 const focusTitleInput = () => {
   nextTick(() => {
@@ -216,13 +259,14 @@ const resetForm = () => {
   title.value = "";
   collabSearch.value = "";
   selectedCollaboratorIds.value = [];
+  startMode.value = "time";
+  afterWhenPreset.value = "1_day";
   afterWhenValue.value = 1;
+  selectedGoalTriggerId.value = null;
   notes.value = "";
   important.value = false;
   selectedStatus.value = "pending";
-  selectedRelatedKey.value = null;
   initialCollaborators.value = [];
-  initialRelatedTo.value = null;
   attachmentInput.value = "";
   attachmentFile.value = null;
   attachment.value = null;
@@ -234,6 +278,8 @@ const resetForm = () => {
   stepDialogModel.value = null;
   showNewDraft.value = false;
   newSearch.value = "";
+  newDraftAfterWhenPreset.value = "1_day";
+  newDraftAfterWhenValue.value = 1;
   nextTick(() => {
     syncingAttachmentInput.value = false;
   });
@@ -252,27 +298,20 @@ const loadInitial = () => {
     initialCollaborators.value = Array.isArray(init.collaborators)
       ? init.collaborators.map((collaborator) => ({ ...collaborator }))
       : [];
+    startMode.value =
+      init.startTrigger?.type === "goal"
+        ? "goal"
+        : "time";
+    selectedGoalTriggerId.value = init.startTrigger?.goalId
+      ? String(init.startTrigger.goalId)
+      : null;
     const initialAfterWhen = init.afterWhen ?? init.dueAt ?? null;
-    const match = String(initialAfterWhen ?? "")
-      .trim()
-      .match(/^\+?\s*(\d+)\s+(day|days|week|weeks|month|months)$/i);
-
-    if (match) {
-      const rawValue = Number(match[1]);
-      const rawUnit = match[2].toLowerCase();
-
-      afterWhenValue.value = rawUnit.startsWith("week")
-        ? rawValue * 7
-        : rawUnit.startsWith("month")
-          ? rawValue * 30
-          : rawValue;
-    }
+    const initialAfterWhenState = parseAfterWhenValue(initialAfterWhen);
+    afterWhenValue.value = initialAfterWhenState.days;
+    afterWhenPreset.value = initialAfterWhenState.preset;
     notes.value = init.notes ?? "";
     important.value = Boolean(init.important);
     selectedStatus.value = (init.status as Status | undefined) ?? "pending";
-    initialRelatedTo.value = init.relatedTo ?? null;
-    selectedRelatedKey.value =
-      init.relatedTo?.type === "job" ? `job-${init.relatedTo.id}` : null;
     attachment.value = init.attachment ?? null;
     attachmentInput.value =
       init.attachment?.type === "link"
@@ -369,6 +408,10 @@ watch(
   },
 );
 
+watch(startMode, (mode) => {
+  if (mode !== "goal") selectedGoalTriggerId.value = null;
+});
+
 const openWith = (initial?: CatalogueTaskTemplatePayload) => {
   pendingInitial.value = initial ?? null;
   if (props.isDrawerOpen) loadInitial();
@@ -378,10 +421,17 @@ const openWith = (initial?: CatalogueTaskTemplatePayload) => {
 defineExpose({ openWith });
 
 const buildAfterWhen = () => {
-  const value =
-    afterWhenValue.value === null || afterWhenValue.value === undefined
-      ? NaN
-      : Number(afterWhenValue.value);
+  const presetValueMap = {
+    "1_day": 1,
+    "2_days": 2,
+    "1_week": 7,
+  } as const;
+
+  const value = Number(
+    afterWhenPreset.value === "custom"
+      ? afterWhenValue.value
+      : presetValueMap[afterWhenPreset.value],
+  );
 
   if (!Number.isFinite(value) || value <= 0) return null;
 
@@ -389,17 +439,44 @@ const buildAfterWhen = () => {
   return `+${rounded} ${rounded === 1 ? "day" : "days"}`;
 };
 
-const addAfterWhenDays = (days: number) => {
-  const currentValue =
-    afterWhenValue.value === null || afterWhenValue.value === undefined
-      ? 0
-      : Number(afterWhenValue.value);
-  const safeCurrent = Number.isFinite(currentValue)
-    ? Math.max(0, Math.floor(currentValue))
-    : 0;
+const afterWhenPresetOptions = [
+  { title: "After 1 day", value: "1_day" },
+  { title: "After 2 days", value: "2_days" },
+  { title: "After 1 week", value: "1_week" },
+  { title: "Custom", value: "custom" },
+] as const;
 
-  afterWhenValue.value = safeCurrent + days;
+const startModeOptions = [
+  { title: "After time", value: "time" },
+  { title: "After goal completion", value: "goal" },
+] as const;
+
+const buildStartTrigger = (): CatalogueTaskStartTrigger | null => {
+  if (startMode.value === "goal") {
+    return selectedGoalTriggerId.value
+      ? {
+          type: "goal",
+          goalId: selectedGoalTriggerId.value,
+          taskId: null,
+        }
+      : null;
+  }
+
+  return {
+    type: "time",
+    goalId: null,
+    taskId: null,
+  };
 };
+
+const canSaveTask = computed(() => {
+  if (!title.value.trim()) return false;
+  if (startMode.value === "goal") return Boolean(selectedGoalTriggerId.value);
+  if (afterWhenPreset.value === "custom") {
+    return Number.isFinite(Number(afterWhenValue.value)) && Number(afterWhenValue.value) > 0;
+  }
+  return true;
+});
 
 const createBlankStep = (): ToDoStep => {
   const now = new Date().toISOString();
@@ -408,7 +485,7 @@ const createBlankStep = (): ToDoStep => {
     id: Date.now(),
     title: "",
     collaborators: [],
-    dueAt: now,
+    dueAt: "+1 day",
     status: "pending",
     notes: "",
     createdAt: now,
@@ -419,12 +496,39 @@ const createBlankStep = (): ToDoStep => {
 const addStep = () => {
   showNewDraft.value = true;
   newSearch.value = "";
+  newDraftAfterWhenPreset.value = "1_day";
+  newDraftAfterWhenValue.value = 1;
   Object.assign(newDraft, createBlankStep());
+};
+
+const buildStepAfterWhen = (
+  preset: "1_day" | "2_days" | "1_week" | "custom",
+  customValue: number | null,
+) => {
+  const presetValueMap = {
+    "1_day": 1,
+    "2_days": 2,
+    "1_week": 7,
+  } as const;
+
+  const value = Number(
+    preset === "custom" ? customValue : presetValueMap[preset],
+  );
+
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const rounded = Math.floor(value);
+  return `+${rounded} ${rounded === 1 ? "day" : "days"}`;
 };
 
 const saveNewDraft = () => {
   if (!newDraft.title.trim()) return;
 
+  newDraft.dueAt =
+    buildStepAfterWhen(
+      newDraftAfterWhenPreset.value,
+      newDraftAfterWhenValue.value,
+    ) ?? "+1 day";
   steps.value.push(cloneStep(newDraft, steps.value.length));
   showNewDraft.value = false;
   newSearch.value = "";
@@ -438,11 +542,23 @@ const cancelNewDraft = () => {
 const openEditStepDialog = (index: number) => {
   stepDialogIndex.value = index;
   stepDialogModel.value = cloneStep(steps.value[index], index);
+  const nextAfterWhenState = parseAfterWhenValue(stepDialogModel.value.dueAt);
+  stepAfterWhenPreset.value = nextAfterWhenState.preset;
+  stepAfterWhenValue.value = nextAfterWhenState.days;
   stepDialogOpen.value = true;
 };
 
-const onStepDialogSave = (step: ToDoStep) => {
-  const nextStep = cloneStep(step, stepDialogIndex.value ?? steps.value.length);
+const onStepDialogSave = () => {
+  if (!stepDialogModel.value) return;
+
+  stepDialogModel.value.dueAt =
+    buildStepAfterWhen(stepAfterWhenPreset.value, stepAfterWhenValue.value) ??
+    "+1 day";
+
+  const nextStep = cloneStep(
+    stepDialogModel.value,
+    stepDialogIndex.value ?? steps.value.length,
+  );
   nextStep.updatedAt = new Date().toISOString();
 
   if (!nextStep.createdAt) nextStep.createdAt = nextStep.updatedAt;
@@ -462,6 +578,8 @@ const closeStepDialog = () => {
   stepDialogOpen.value = false;
   stepDialogIndex.value = null;
   stepDialogModel.value = null;
+  stepAfterWhenPreset.value = "1_day";
+  stepAfterWhenValue.value = 1;
 };
 
 const removeStep = (index: number) => {
@@ -479,11 +597,12 @@ const toggleStepCompleted = (index: number) => {
 const formatStepDate = (value?: string | null) => {
   if (!value) return "--";
 
-  try {
-    return formatSystemDate(value);
-  } catch {
-    return value;
+  const parsed = parseAfterWhenValue(value);
+  if (String(value).trim().startsWith("+")) {
+    return `After ${parsed.days} ${parsed.days === 1 ? "day" : "days"}`;
   }
+
+  return value;
 };
 
 const onSubmit = async () => {
@@ -493,9 +612,6 @@ const onSubmit = async () => {
 
   const trimmedTitle = title.value.trim();
   const trimmedNotes = notes.value.trim();
-  const relatedOption = relatedOptions.value.find(
-    (option) => option.value === selectedRelatedKey.value,
-  );
 
   let nextAttachment: ToDoAttachment | null = attachment.value;
   if (attachmentFile.value) {
@@ -511,18 +627,13 @@ const onSubmit = async () => {
   emit("save", {
     title: trimmedTitle,
     collaborators: selectedCollaborators.value,
-    afterWhen: buildAfterWhen(),
+    afterWhen: startMode.value === "time" ? buildAfterWhen() : null,
+    startTrigger: buildStartTrigger(),
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
     attachment: nextAttachment,
-    relatedTo: relatedOption
-      ? {
-          id: relatedOption.rawId,
-          name: relatedOption.title,
-          type: relatedOption.type,
-        }
-      : null,
+    relatedTo: null,
     goalId: goalId.value,
     milestoneId: milestoneId.value,
     steps: steps.value.map((step, index) => ({
@@ -654,9 +765,29 @@ const drawerTitle = computed(() =>
                   </VCol>
 
                   <VCol cols="12">
+                    <AppSelect
+                      v-model="startMode"
+                      label="Start when"
+                      :items="startModeOptions"
+                      item-title="title"
+                      item-value="value"
+                    />
+                  </VCol>
+
+                  <VCol v-if="startMode === 'time'" cols="12">
                     <div class="text-body-2 mb-2">After when</div>
                     <div class="after-when-control">
+                      <AppSelect
+                        v-model="afterWhenPreset"
+                        :items="afterWhenPresetOptions"
+                        item-title="title"
+                        item-value="value"
+                        hide-details="auto"
+                        class="after-when-select"
+                      />
+
                       <AppTextField
+                        v-if="afterWhenPreset === 'custom'"
                         v-model.number="afterWhenValue"
                         type="number"
                         min="1"
@@ -666,47 +797,18 @@ const drawerTitle = computed(() =>
                         class="after-when-input"
                         suffix="days"
                       />
-
-                      <div class="after-when-actions">
-                        <VBtn
-                          size="small"
-                          variant="tonal"
-                          @click="addAfterWhenDays(1)"
-                        >
-                          +1 day
-                        </VBtn>
-                        <VBtn
-                          size="small"
-                          variant="tonal"
-                          @click="addAfterWhenDays(7)"
-                        >
-                          +1 week
-                        </VBtn>
-                        <VBtn
-                          size="small"
-                          variant="tonal"
-                          @click="addAfterWhenDays(30)"
-                        >
-                          +1 month
-                        </VBtn>
-                      </div>
                     </div>
                   </VCol>
 
-                  <VCol cols="12">
+                  <VCol v-else-if="startMode === 'goal'" cols="12">
                     <AppSelect
-                      v-model="selectedRelatedKey"
-                      label="Related to"
-                      placeholder="Select a job"
+                      v-model="selectedGoalTriggerId"
+                      label="Start after goal completion"
+                      :items="props.goalTriggerOptions || []"
                       item-title="title"
                       item-value="value"
-                      :items="relatedOptions"
-                      clearable
-                    >
-                      <template #prepend-inner>
-                        <VIcon icon="tabler-briefcase" size="20" class="me-2" />
-                      </template>
-                    </AppSelect>
+                      :rules="[requiredValidator]"
+                    />
                   </VCol>
 
                   <VDivider />
@@ -906,12 +1008,31 @@ const drawerTitle = computed(() =>
                   <h6 class="text-subtitle-2 mb-2">New Sub Task</h6>
                   <div class="d-flex flex-column gap-3">
                     <AppTextField v-model="newDraft.title" label="Title" />
-                    <AppDateTimePicker
-                      v-model="newDraft.dueAt"
-                      label="Due Date"
-                      placeholder="Select date"
-                      :config="{ dateFormat: 'Y-m-d' }"
-                    />
+                    <div>
+                      <div class="text-body-2 mb-2">After when</div>
+                      <div class="after-when-control">
+                        <AppSelect
+                          v-model="newDraftAfterWhenPreset"
+                          :items="afterWhenPresetOptions"
+                          item-title="title"
+                          item-value="value"
+                          hide-details="auto"
+                          class="after-when-select"
+                        />
+
+                        <AppTextField
+                          v-if="newDraftAfterWhenPreset === 'custom'"
+                          v-model.number="newDraftAfterWhenValue"
+                          type="number"
+                          min="1"
+                          step="1"
+                          hide-details="auto"
+                          :rules="[requiredValidator]"
+                          class="after-when-input"
+                          suffix="days"
+                        />
+                      </div>
+                    </div>
                     <VAutocomplete
                       v-model="newDraft.collaborators"
                       v-model:search="newSearch"
@@ -956,18 +1077,92 @@ const drawerTitle = computed(() =>
       </PerfectScrollbar>
 
       <VCardActions class="px-6 pb-6 pt-0" v-if="activeTab === 'details'">
-        <DialogActionBar @save="onSubmit" @cancel="closeDrawer" />
+        <DialogActionBar
+          :save-disabled="!canSaveTask"
+          @save="onSubmit"
+          @cancel="closeDrawer"
+        />
       </VCardActions>
     </VCard>
 
-    <StepEditDialog
-      v-model="stepDialogOpen"
-      :step="stepDialogModel"
-      :collaborators-options="collaboratorOptions"
-      title="Edit Subtask"
-      @save="onStepDialogSave"
-      @close="closeStepDialog"
-    />
+    <VDialog v-model="stepDialogOpen" max-width="720">
+      <DialogCloseBtn variant="tonal" @click="closeStepDialog" />
+      <VCard v-if="stepDialogModel">
+        <VCardTitle class="px-6 pt-4 pb-2">Edit Sub Task</VCardTitle>
+
+        <VCardText class="px-6">
+          <div class="d-flex flex-column gap-4">
+            <AppTextField
+              v-model="stepDialogModel.title"
+              label="Title *"
+              :rules="[requiredValidator]"
+            />
+
+            <VAutocomplete
+              v-model="stepDialogModel.collaborators"
+              class="todo-collaborators"
+              :items="collaboratorOptions"
+              item-title="name"
+              return-object
+              label="Assigned to"
+              multiple
+              chips
+              closable-chips
+              clearable
+            />
+
+            <div>
+              <div class="text-body-2 mb-2">After when</div>
+              <div class="after-when-control">
+                <AppSelect
+                  v-model="stepAfterWhenPreset"
+                  :items="afterWhenPresetOptions"
+                  item-title="title"
+                  item-value="value"
+                  hide-details="auto"
+                  class="after-when-select"
+                />
+
+                <AppTextField
+                  v-if="stepAfterWhenPreset === 'custom'"
+                  v-model.number="stepAfterWhenValue"
+                  type="number"
+                  min="1"
+                  step="1"
+                  hide-details="auto"
+                  :rules="[requiredValidator]"
+                  class="after-when-input"
+                  suffix="days"
+                />
+              </div>
+            </div>
+
+            <div class="d-flex gap-6 align-center">
+              <VRadioGroup v-model="stepDialogModel.status" inline>
+                <VRadio label="Pending" value="pending" />
+                <VRadio label="In Review" value="for_review" />
+                <VRadio label="In Progress" value="in_progress" />
+                <VRadio label="Completed" value="completed" />
+              </VRadioGroup>
+            </div>
+
+            <AppTextarea
+              v-model="stepDialogModel.notes"
+              label="Notes"
+              auto-grow
+            />
+          </div>
+        </VCardText>
+
+        <VCardActions class="px-6 pb-4">
+          <DialogActionBar
+            :save-disabled="!(stepDialogModel.title || '').trim()"
+            @save="onStepDialogSave"
+            @cancel="closeStepDialog"
+          />
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VNavigationDrawer>
 </template>
 
@@ -1019,19 +1214,18 @@ const drawerTitle = computed(() =>
 
 .after-when-control {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 12px;
 }
 
-.after-when-input {
-  flex: 0 0 110px;
+.after-when-select {
+  flex: 1 1 auto;
+  min-inline-size: 0;
 }
 
-.after-when-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.after-when-input {
+  flex: 0 0 128px;
 }
 
 .todo-drawer :deep(.v-navigation-drawer__content) {
