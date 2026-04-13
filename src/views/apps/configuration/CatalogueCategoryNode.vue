@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "add-child", payload: { parentId: string; name: string }): void;
+  (e: "move-request", payload: { id: string; name: string }): void;
   (e: "remove", id: string): void;
   (e: "rename", payload: { id: string; name: string }): void;
 }>();
@@ -24,7 +25,7 @@ const editingName = ref(props.node.name);
 
 watch(
   () => props.node.name,
-  value => {
+  (value) => {
     editingName.value = value;
   },
 );
@@ -38,7 +39,7 @@ const levelIcon = computed(() => {
 });
 const openedGroups = computed({
   get: () => (isOpen.value ? [props.node.id] : []),
-  set: value => {
+  set: (value) => {
     isOpen.value = value.includes(props.node.id);
   },
 });
@@ -53,7 +54,7 @@ const focusChildInput = async () => {
   inputHost?.querySelector("input")?.focus();
 };
 
-watch(isAddingChild, value => {
+watch(isAddingChild, (value) => {
   if (!value) return;
   void focusChildInput();
 });
@@ -119,7 +120,7 @@ const cancelEdit = () => {
                     density="compact"
                     hide-details
                     autofocus
-                    style="min-inline-size: 220px; max-inline-size: 320px"
+                    style="max-inline-size: 320px; min-inline-size: 220px"
                     @keydown.enter.prevent="submitEdit"
                     @keydown.esc.prevent="cancelEdit"
                   />
@@ -149,20 +150,53 @@ const cancelEdit = () => {
                 </IconBtn>
 
                 <template v-else>
-                  <IconBtn :disabled="disabled" @click.stop="startEdit">
-                    <VIcon icon="tabler-pencil" />
-                  </IconBtn>
-
                   <IconBtn
-                    :disabled="disabled || !canAddChild"
+                    v-if="canAddChild"
+                    :disabled="disabled"
                     @click.stop.prevent="startAddChild"
                   >
                     <VIcon icon="tabler-plus" />
                   </IconBtn>
 
-                  <IconBtn :disabled="disabled" @click.stop="emit('remove', node.id)">
-                    <VIcon icon="tabler-trash" />
-                  </IconBtn>
+                  <VMenu location="bottom end">
+                    <template #activator="{ props: menuProps }">
+                      <IconBtn
+                        v-bind="menuProps"
+                        :disabled="disabled"
+                        @click.stop
+                      >
+                        <VIcon icon="tabler-dots-vertical" />
+                      </IconBtn>
+                    </template>
+
+                    <VList density="compact" min-width="180">
+                      <VListItem @click="startEdit">
+                        <template #prepend>
+                          <VIcon icon="tabler-pencil" size="18" />
+                        </template>
+                        <VListItemTitle>Edit category</VListItemTitle>
+                      </VListItem>
+
+                      <VListItem
+                        v-if="level > 1"
+                        @click="
+                          emit('move-request', { id: node.id, name: node.name })
+                        "
+                      >
+                        <template #prepend>
+                          <VIcon icon="tabler-arrows-random" size="18" />
+                        </template>
+                        <VListItemTitle>Move category</VListItemTitle>
+                      </VListItem>
+
+                      <VListItem @click="emit('remove', node.id)">
+                        <template #prepend>
+                          <VIcon icon="tabler-trash" size="18" />
+                        </template>
+                        <VListItemTitle>Delete category</VListItemTitle>
+                      </VListItem>
+                    </VList>
+                  </VMenu>
                 </template>
               </div>
             </div>
@@ -181,14 +215,23 @@ const cancelEdit = () => {
             density="compact"
             hide-details
             :placeholder="`Add level ${level + 1} sub-category`"
-            style="min-inline-size: 240px; max-inline-size: 340px"
+            style="max-inline-size: 340px; min-inline-size: 240px"
             @keydown.enter.prevent="submitAddChild"
             @keydown.esc.prevent="cancelAddChild"
           />
-          <VBtn size="small" :disabled="disabled || !childName.trim()" @click="submitAddChild">
+          <VBtn
+            size="small"
+            :disabled="disabled || !childName.trim()"
+            @click="submitAddChild"
+          >
             Add
           </VBtn>
-          <VBtn size="small" variant="text" color="secondary" @click="cancelAddChild">
+          <VBtn
+            size="small"
+            variant="text"
+            color="secondary"
+            @click="cancelAddChild"
+          >
             Cancel
           </VBtn>
         </div>
@@ -209,6 +252,7 @@ const cancelEdit = () => {
             :max-depth="maxDepth"
             :disabled="disabled"
             @add-child="emit('add-child', $event)"
+            @move-request="emit('move-request', $event)"
             @remove="emit('remove', $event)"
             @rename="emit('rename', $event)"
           />

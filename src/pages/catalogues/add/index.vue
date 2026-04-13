@@ -4149,13 +4149,13 @@ watch(
   position: fixed;
   z-index: 20;
   backdrop-filter: blur(10px);
-  background:
-    linear-gradient(
-      to top,
-      rgba(var(--v-theme-surface), 0.98),
-      rgba(var(--v-theme-surface), 0.88)
-    );
-  border-block-start: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: linear-gradient(
+    to top,
+    rgba(var(--v-theme-surface), 0.98),
+    rgba(var(--v-theme-surface), 0.88)
+  );
+  border-block-start: 1px solid
+    rgba(var(--v-border-color), var(--v-border-opacity));
   inset-block-end: 0;
   inset-inline: 0;
   padding-block: 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0));

@@ -8,6 +8,11 @@ import { useNotificationsStore } from "@/stores/notifications";
 import CatalogueCategoryNode from "@/views/apps/configuration/CatalogueCategoryNode.vue";
 import { onMounted, ref } from "vue";
 
+type MoveCategoryOption = {
+  title: string;
+  value: string;
+};
+
 const store = useConfigStore();
 store.init();
 
@@ -18,6 +23,10 @@ const activeStates = ref<string[]>([]);
 const hideArchivedByDefault = ref(true);
 const categories = ref<CatalogueCategory[]>([]);
 const rootCategoryName = ref("");
+const isMoveDialogVisible = ref(false);
+const moveCategoryId = ref("");
+const moveCategoryName = ref("");
+const moveTargetParentId = ref<string | null>(null);
 
 const isSavingItemTypes = ref(false);
 const isSavingActiveStates = ref(false);
@@ -143,6 +152,101 @@ const categoryDepth = (
   return null;
 };
 
+const findCategoryById = (
+  items: CatalogueCategory[],
+  id: string,
+): CatalogueCategory | null => {
+  for (const item of items) {
+    if (item.id === id) return item;
+    const nested = findCategoryById(item.children || [], id);
+    if (nested) return nested;
+  }
+  return null;
+};
+
+const findParentId = (
+  items: CatalogueCategory[],
+  id: string,
+  parentId: string | null = null,
+): string | null => {
+  for (const item of items) {
+    if (item.id === id) return parentId;
+    const nested = findParentId(item.children || [], id, item.id);
+    if (nested !== null) return nested;
+  }
+  return null;
+};
+
+const collectDescendantIds = (node: CatalogueCategory): string[] => [
+  node.id,
+  ...(node.children || []).flatMap(collectDescendantIds),
+];
+
+const categoryTreeHeight = (node: CatalogueCategory): number => {
+  const childHeights = (node.children || []).map(categoryTreeHeight);
+  return 1 + (childHeights.length ? Math.max(...childHeights) : 0);
+};
+
+const collectMoveTargetOptions = (
+  items: CatalogueCategory[],
+  blockedIds: Set<string>,
+  currentParentId: string | null,
+  path: string[] = [],
+): MoveCategoryOption[] => {
+  const options: MoveCategoryOption[] = [];
+
+  for (const item of items) {
+    const nextPath = [...path, item.name];
+
+    if (!blockedIds.has(item.id) && item.id !== currentParentId) {
+      options.push({
+        title: nextPath.join(" / "),
+        value: item.id,
+      });
+    }
+
+    options.push(
+      ...collectMoveTargetOptions(
+        item.children || [],
+        blockedIds,
+        currentParentId,
+        nextPath,
+      ),
+    );
+  }
+
+  return options;
+};
+
+const extractCategory = (
+  items: CatalogueCategory[],
+  id: string,
+): {
+  next: CatalogueCategory[];
+  extracted: CatalogueCategory | null;
+} => {
+  let extracted: CatalogueCategory | null = null;
+
+  const next = items.flatMap((item) => {
+    if (item.id === id) {
+      extracted = cloneCategories([item])[0];
+      return [];
+    }
+
+    const nested = extractCategory(item.children || [], id);
+    if (nested.extracted) extracted = nested.extracted;
+
+    return [
+      {
+        ...item,
+        children: nested.next,
+      },
+    ];
+  });
+
+  return { next, extracted };
+};
+
 const appendChild = (
   items: CatalogueCategory[],
   parentId: string,
@@ -152,7 +256,7 @@ const appendChild = (
     if (item.id === parentId) {
       return {
         ...item,
-        children: [...(item.children || []), child],
+        children: [child, ...(item.children || [])],
       };
     }
 
@@ -194,7 +298,7 @@ const addRootCategory = async () => {
   const name = rootCategoryName.value.trim();
   if (!name) return;
 
-  const next = [...categories.value, makeCategoryNode(name)];
+  const next = [makeCategoryNode(name), ...categories.value];
   rootCategoryName.value = "";
   await saveCategories(next);
 };
@@ -220,6 +324,82 @@ const addChildCategory = async (payload: {
     makeCategoryNode(payload.name),
   );
   await saveCategories(next);
+};
+
+const closeMoveDialog = () => {
+  isMoveDialogVisible.value = false;
+  moveCategoryId.value = "";
+  moveCategoryName.value = "";
+  moveTargetParentId.value = null;
+};
+
+const getMoveTargetOptions = (categoryId: string): MoveCategoryOption[] => {
+  const category = findCategoryById(categories.value, categoryId);
+  if (!category) return [];
+
+  return collectMoveTargetOptions(
+    categories.value,
+    new Set(collectDescendantIds(category)),
+    findParentId(categories.value, categoryId),
+  );
+};
+
+const moveTargetOptions = computed(() => {
+  if (!moveCategoryId.value) return [];
+  return getMoveTargetOptions(moveCategoryId.value);
+});
+
+const openMoveDialog = (payload: { id: string; name: string }) => {
+  const options = getMoveTargetOptions(payload.id);
+  if (!options.length) {
+    notifications.push(
+      "No valid destination categories are available for this move",
+      "warning",
+      2500,
+    );
+    return;
+  }
+
+  moveCategoryId.value = payload.id;
+  moveCategoryName.value = payload.name;
+  moveTargetParentId.value = null;
+  isMoveDialogVisible.value = true;
+};
+
+const moveCategory = async () => {
+  if (!moveCategoryId.value || !moveTargetParentId.value) return;
+
+  const category = findCategoryById(categories.value, moveCategoryId.value);
+  const targetDepth = categoryDepth(categories.value, moveTargetParentId.value);
+
+  if (!category || targetDepth === null) {
+    closeMoveDialog();
+    return;
+  }
+
+  if (targetDepth + categoryTreeHeight(category) > MAX_CATEGORY_DEPTH) {
+    notifications.push(
+      "This category tree is too deep for the selected destination",
+      "warning",
+      2500,
+    );
+    return;
+  }
+
+  const extracted = extractCategory(categories.value, moveCategoryId.value);
+  if (!extracted.extracted) {
+    closeMoveDialog();
+    return;
+  }
+
+  const next = appendChild(
+    extracted.next,
+    moveTargetParentId.value,
+    extracted.extracted,
+  );
+
+  await saveCategories(next);
+  closeMoveDialog();
 };
 
 const updateCategoryName = async (payload: { id: string; name: string }) => {
@@ -273,6 +453,7 @@ const deleteCategory = async (id: string) => {
                     :max-depth="MAX_CATEGORY_DEPTH"
                     :disabled="isSavingCategories"
                     @add-child="addChildCategory"
+                    @move-request="openMoveDialog"
                     @remove="deleteCategory"
                     @rename="updateCategoryName"
                   />
@@ -313,4 +494,39 @@ const deleteCategory = async (id: string) => {
       </VCard>
     </VCol>
   </VRow>
+
+  <VDialog v-model="isMoveDialogVisible" max-width="480">
+    <VCard class="pa-sm-8 pa-4">
+      <VCardTitle>Move Category</VCardTitle>
+      <VCardText class="d-flex flex-column gap-4">
+        <p class="mb-0">
+          Move <strong>{{ moveCategoryName }}</strong> to another category.
+        </p>
+
+        <AppSelect
+          v-model="moveTargetParentId"
+          :items="moveTargetOptions"
+          item-title="title"
+          item-value="value"
+          label="Destination category"
+          placeholder="Select category"
+        />
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn variant="text" color="secondary" @click="closeMoveDialog">
+          Cancel
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          :disabled="!moveTargetParentId"
+          :loading="isSavingCategories"
+          @click="moveCategory"
+        >
+          Move
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
 </template>
