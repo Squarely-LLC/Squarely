@@ -1679,6 +1679,7 @@ watch(
                       Cancel
                     </VBtn>
                     <VBtn
+                      variant="tonal"
                       color="primary"
                       prepend-icon="tabler-layers-linked"
                       @click="savePhase"
@@ -1814,7 +1815,7 @@ watch(
                 <VBtn
                   size="small"
                   color="primary"
-                  variant="elevated"
+                  variant="tonal"
                   prepend-icon="tabler-layers-linked"
                   @click="showPhaseComposer"
                 >
@@ -1830,7 +1831,7 @@ watch(
               <VBtn
                 size="small"
                 color="primary"
-                variant="elevated"
+                variant="tonal"
                 prepend-icon="tabler-layers-linked"
                 @click="showPhaseComposer"
               >
@@ -1844,7 +1845,7 @@ watch(
               v-if="!isContractualService"
               size="small"
               color="primary"
-              variant="elevated"
+              variant="tonal"
               prepend-icon="tabler-link-plus"
               @click="openRelatedItemDialog"
             >
@@ -1860,6 +1861,7 @@ watch(
             <template #append>
               <VBtn
                 size="small"
+                variant="tonal"
                 prepend-icon="tabler-plus"
                 @click="openSalesTaskTemplateDrawer"
               >
@@ -2431,7 +2433,10 @@ watch(
               step="0.01"
               class="mb-6"
             />
-            <div v-if="isRetainerService" class="text-body-2 text-medium-emphasis mb-6">
+            <div
+              v-if="isRetainerService"
+              class="text-body-2 text-medium-emphasis mb-6"
+            >
               Linked services total: ${{ retainerLinkedServicesTotalPrice }}
             </div>
             <template v-else-if="!isContractualService">
@@ -2477,23 +2482,25 @@ watch(
                 class="rounded border"
               />
 
-              <div class="d-flex gap-3 flex-wrap">
+              <div class="image-action-row d-flex gap-3">
                 <VBtn
                   color="primary"
                   variant="tonal"
                   prepend-icon="tabler-upload"
+                  class="image-action-btn"
                   @click="openImageFilePicker"
                 >
-                  Replace Image
+                  Replace
                 </VBtn>
 
                 <VBtn
                   color="error"
                   variant="tonal"
                   prepend-icon="tabler-trash"
+                  class="image-action-btn"
                   @click="removeItemImage"
                 >
-                  Remove Image
+                  Remove
                 </VBtn>
               </div>
             </div>
@@ -2839,6 +2846,26 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.image-action-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  inline-size: 100%;
+}
+
+.image-action-btn {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+.image-action-btn :deep(.v-btn__content) {
+  overflow: hidden;
+  justify-content: center;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .related-item-card {

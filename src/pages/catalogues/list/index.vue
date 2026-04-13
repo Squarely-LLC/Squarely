@@ -25,6 +25,7 @@ type ItemTypeChoice = {
   value: string;
   description: string;
   icon: string;
+  comingSoon?: boolean;
 };
 
 const cataloguesStore = useCataloguesStore();
@@ -154,12 +155,13 @@ const itemTypeChoices: ItemTypeChoice[] = [
       "Service sold under a fixed contract period, scope, or maintenance agreement.",
     icon: "tabler-file-description",
   },
+
   {
-    title: "Retainer Service",
-    value: "Retainer Service",
+    title: "Produced Product",
+    value: "Produced Product",
     description:
-      "Ongoing advisory or support service billed to reserve team availability over time.",
-    icon: "tabler-briefcase",
+      "Item manufactured, assembled, or custom-built internally before delivery.",
+    icon: "tabler-building-factory-2",
   },
   {
     title: "Reccurent Service",
@@ -169,18 +171,19 @@ const itemTypeChoices: ItemTypeChoice[] = [
     icon: "tabler-repeat",
   },
   {
-    title: "Produced Product",
-    value: "Produced Product",
-    description:
-      "Item manufactured, assembled, or custom-built internally before delivery.",
-    icon: "tabler-building-factory-2",
-  },
-  {
     title: "Rental",
     value: "Rental",
     description:
       "Reusable asset hired out for a defined time window and then returned to stock.",
     icon: "tabler-calendar-time",
+    comingSoon: true,
+  },
+  {
+    title: "Retainer Service",
+    value: "Retainer Service",
+    description:
+      "Ongoing advisory or support service billed to reserve team availability over time.",
+    icon: "tabler-briefcase",
   },
 ];
 
@@ -214,11 +217,11 @@ const activeTextClass = (activeState: CatalogueActiveState) =>
     ? "text-success"
     : activeState === "Draft"
       ? "text-info"
-    : activeState === "Non-Active"
-      ? "text-warning"
-      : activeState === "Archived"
-        ? "text-secondary"
-        : "text-primary";
+      : activeState === "Non-Active"
+        ? "text-warning"
+        : activeState === "Archived"
+          ? "text-secondary"
+          : "text-primary";
 
 const isArchivedState = (value?: string | null) =>
   String(value ?? "")
@@ -379,6 +382,9 @@ const openAddItemTypeDialog = () => {
 };
 
 const goToAddItemPage = (type: string) => {
+  const selectedChoice = itemTypeChoices.find((choice) => choice.value === type);
+  if (selectedChoice?.comingSoon) return;
+
   isAddItemTypeDialogVisible.value = false;
   router.push({
     path: "/catalogues/add",
@@ -678,6 +684,7 @@ const goToEditItemPage = (item: CatalogueItem) => {
               <VCard
                 variant="outlined"
                 class="item-type-card h-100"
+                :class="{ 'item-type-card--disabled': choice.comingSoon }"
                 @click="goToAddItemPage(choice.value)"
               >
                 <VCardText class="d-flex align-start gap-4">
@@ -686,8 +693,18 @@ const goToEditItemPage = (item: CatalogueItem) => {
                   </VAvatar>
 
                   <div class="flex-grow-1">
-                    <div class="text-h6 text-high-emphasis mb-1">
+                    <div class="d-flex align-center justify-space-between gap-3 mb-1">
+                      <div class="text-h6 text-high-emphasis">
                       {{ choice.title }}
+                      </div>
+                      <VChip
+                        v-if="choice.comingSoon"
+                        size="small"
+                        color="warning"
+                        variant="tonal"
+                      >
+                        Coming Soon
+                      </VChip>
                     </div>
                     <div class="text-body-2 text-medium-emphasis">
                       {{ choice.description }}
@@ -740,6 +757,17 @@ const goToEditItemPage = (item: CatalogueItem) => {
     border-color: rgb(var(--v-theme-primary));
     background-color: rgba(var(--v-theme-primary), 0.04);
     transform: translateY(-2px);
+  }
+}
+
+.item-type-card--disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+
+  &:hover {
+    border-color: rgba(var(--v-border-color), var(--v-border-opacity));
+    background-color: transparent;
+    transform: none;
   }
 }
 </style>
