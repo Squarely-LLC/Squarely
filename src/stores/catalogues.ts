@@ -131,22 +131,6 @@ function normalizeQty(type: CatalogueItemType, qty?: number | null) {
   return null;
 }
 
-function calculatePeriodQty(
-  startDate?: string | null,
-  endDate?: string | null,
-) {
-  if (!startDate || !endDate) return null;
-
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const diff = Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
-
-  return diff > 0 ? diff : null;
-}
-
 function normalizeJobTask(
   task: Partial<CatalogueJobConfigTask>,
   fallbackId: number,
@@ -453,14 +437,9 @@ function normalizeRecord(
     const milestones = Array.isArray(payload.jobConfiguration?.milestones)
       ? payload.jobConfiguration.milestones
       : [];
-    const startDate = payload.startDate ?? null;
-    const endDate = payload.endDate ?? null;
-
     return {
       ...base,
-      startDate,
-      endDate,
-      qty: calculatePeriodQty(startDate, endDate),
+      qty,
       retainerServices: retainerServices.map((service, index) => ({
         id: Number.isFinite(Number(service.id))
           ? Number(service.id)

@@ -148,8 +148,6 @@ const publishButtonLabel = computed(() =>
 const itemName = ref("");
 const selectedCategory = ref("");
 const selectedStatus = ref<CatalogueActiveState>("Active");
-const periodStartDate = ref<string | null>(null);
-const periodEndDate = ref<string | null>(null);
 const itemImage = ref<string | null>(null);
 const itemImageInputRef = ref<HTMLInputElement | null>(null);
 const isImageUrlDialogOpen = ref(false);
@@ -316,15 +314,6 @@ onMounted(() => {
   requestAnimationFrame(activateDeferredSections);
 });
 
-const syncRetainerMilestoneDueDate = () => {
-  if (!isRetainerService.value) return;
-
-  const milestone = jobConfigMilestones.value[0];
-  if (!milestone) return;
-
-  milestone.dueDate = periodEndDate.value ?? null;
-};
-
 watch(
   defaultMilestoneName,
   (nextName) => {
@@ -332,14 +321,6 @@ watch(
     if (!milestone || hasCustomMilestoneName.value) return;
 
     milestone.name = nextName;
-  },
-  { immediate: true },
-);
-
-watch(
-  [isRetainerService, periodEndDate],
-  () => {
-    syncRetainerMilestoneDueDate();
   },
   { immediate: true },
 );
@@ -1187,8 +1168,6 @@ const applySharedRecord = (record: CatalogueRecord) => {
   itemName.value = record.name;
   selectedCategory.value = record.category;
   selectedStatus.value = record.activeState;
-  periodStartDate.value = null;
-  periodEndDate.value = null;
   itemBestPrice.value = record.bestPrice ?? null;
   isTaxChargeToItem.value = record.chargeTax ?? true;
   itemImage.value = record.image ?? null;
@@ -1252,8 +1231,6 @@ const applyServiceTemplateRecord = (
     phases.value = [];
     phaseId.value = 1;
     isPhaseComposerVisible.value = false;
-    periodStartDate.value = record.startDate ?? null;
-    periodEndDate.value = record.endDate ?? null;
   } else {
     phases.value = (record.phases || []).map((phase) => ({
       id: phase.id,
@@ -1346,7 +1323,6 @@ const applyServiceTemplateRecord = (
 
   jobConfigMilestones.value = milestones;
   expandedMilestones.value = milestones.map((milestone) => milestone.id);
-  if (record.type === "Retainer Service") syncRetainerMilestoneDueDate();
   if (record.type === "Retainer Service") syncRetainerServiceGoals();
   if (record.type === "Contractual Service") syncContractualPhaseGoals();
   syncExpandedGoals();
@@ -1377,8 +1353,6 @@ const resetOnetimeServiceForm = () => {
   itemName.value = "";
   selectedCategory.value = "";
   selectedStatus.value = "Active";
-  periodStartDate.value = null;
-  periodEndDate.value = null;
   itemBestPrice.value = null;
   isTaxChargeToItem.value = true;
   itemImage.value = null;
@@ -1418,8 +1392,6 @@ const saveItem = async () => {
     name: itemName.value.trim(),
     category: selectedCategory.value.trim() || "Uncategorized",
     activeState: selectedStatus.value,
-    startDate: isRetainerService.value ? periodStartDate.value : undefined,
-    endDate: isRetainerService.value ? periodEndDate.value : undefined,
     image: itemImage.value?.trim() || null,
     bestPrice: isContractualService.value
       ? contractualPhaseTotalPrice.value
@@ -1482,10 +1454,7 @@ const saveItem = async () => {
       milestones: jobConfigMilestones.value.map((milestone, index) => ({
         id: milestone.id,
         name: milestone.name.trim(),
-        dueDate:
-          isRetainerService.value && index === 0
-            ? periodEndDate.value
-            : milestone.dueDate,
+        dueDate: milestone.dueDate,
         priority: milestone.priority,
         note: milestone.note.trim(),
         tasks: milestone.tasks.map((task) => serializeTaskTemplate(task)),
@@ -1603,22 +1572,6 @@ watch(
                     :items="activeStateOptions"
                   />
                 </VCol>
-                <template v-if="isRetainerService">
-                  <VCol cols="12" md="6">
-                    <AppDateTimePicker
-                      v-model="periodStartDate"
-                      label="Start Date"
-                      placeholder="YYYY-MM-DD"
-                    />
-                  </VCol>
-                  <VCol cols="12" md="6">
-                    <AppDateTimePicker
-                      v-model="periodEndDate"
-                      label="End Date"
-                      placeholder="YYYY-MM-DD"
-                    />
-                  </VCol>
-                </template>
                 <VCol>
                   <span class="mb-1">Description (optional)</span>
                   <AsyncProductDescriptionEditor

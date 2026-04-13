@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import type {
@@ -48,6 +48,7 @@ const selectedType = ref<string | undefined>();
 const selectedCategory = ref<string | undefined>();
 const selectedActive = ref<string | undefined>();
 const searchQuery = ref("");
+const isCompactListScreen = ref(false);
 
 const DEFAULT_TYPE_OPTIONS: CatalogueItemType[] = [
   "Onetime Service",
@@ -228,12 +229,27 @@ const isArchivedState = (value?: string | null) =>
     .trim()
     .toLowerCase() === "archived";
 
-const truncateDescription = (value?: string | null, limit = 45) => {
+const truncateDescription = (value?: string | null, limit = 35) => {
   const text = String(value ?? "").trim();
   if (!text) return "";
 
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}...` : text;
 };
+
+const truncateTitle = (value?: string | null, limit = 30) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+
+  return text.length > limit ? `${text.slice(0, limit).trimEnd()}...` : text;
+};
+
+const displayTitle = (value?: string | null) =>
+  isCompactListScreen.value ? truncateTitle(value) : String(value ?? "").trim();
+
+const displayDescription = (value?: string | null) =>
+  isCompactListScreen.value
+    ? truncateDescription(value)
+    : String(value ?? "").trim();
 
 const itemAvatarIcon = (type: CatalogueItemType) => {
   if (type === "Product") return "tabler-package";
@@ -244,6 +260,13 @@ const itemAvatarIcon = (type: CatalogueItemType) => {
   if (type === "Retainer Service") return "tabler-briefcase";
   return "tabler-repeat";
 };
+
+const itemTypeDisplay = (type: string) =>
+  String(type).trim() === "Produced Product"
+    ? "Produced"
+    : String(type)
+        .replace(/\s+Service$/i, "")
+        .trim();
 
 const hasInventoryQuantity = (product: CatalogueItem) =>
   product.type === "Product" ||
@@ -382,7 +405,9 @@ const openAddItemTypeDialog = () => {
 };
 
 const goToAddItemPage = (type: string) => {
-  const selectedChoice = itemTypeChoices.find((choice) => choice.value === type);
+  const selectedChoice = itemTypeChoices.find(
+    (choice) => choice.value === type,
+  );
   if (selectedChoice?.comingSoon) return;
 
   isAddItemTypeDialogVisible.value = false;
@@ -403,6 +428,24 @@ const goToEditItemPage = (item: CatalogueItem) => {
     },
   });
 };
+
+let compactListMediaQuery: MediaQueryList | null = null;
+
+const syncCompactListScreen = () => {
+  isCompactListScreen.value = compactListMediaQuery?.matches ?? false;
+};
+
+onMounted(() => {
+  if (typeof window === "undefined") return;
+
+  compactListMediaQuery = window.matchMedia("(max-width: 1366px)");
+  syncCompactListScreen();
+  compactListMediaQuery.addEventListener("change", syncCompactListScreen);
+});
+
+onBeforeUnmount(() => {
+  compactListMediaQuery?.removeEventListener("change", syncCompactListScreen);
+});
 </script>
 
 <template>
@@ -504,10 +547,10 @@ const goToEditItemPage = (item: CatalogueItem) => {
             </VAvatar>
             <div class="d-flex flex-column">
               <span class="text-body-1 font-weight-medium text-high-emphasis">
-                {{ item.name }}
+                {{ displayTitle(item.name) }}
               </span>
               <span v-if="item.description" class="text-body-2">
-                {{ truncateDescription(item.description) }}
+                {{ displayDescription(item.description) }}
               </span>
             </div>
           </div>
@@ -535,7 +578,7 @@ const goToEditItemPage = (item: CatalogueItem) => {
             @keydown.enter.prevent="goToEditItemPage(item)"
             @keydown.space.prevent="goToEditItemPage(item)"
           >
-            {{ item.type }}
+            {{ itemTypeDisplay(item.type) }}
           </span>
         </template>
 
@@ -693,9 +736,11 @@ const goToEditItemPage = (item: CatalogueItem) => {
                   </VAvatar>
 
                   <div class="flex-grow-1">
-                    <div class="d-flex align-center justify-space-between gap-3 mb-1">
+                    <div
+                      class="d-flex align-center justify-space-between gap-3 mb-1"
+                    >
                       <div class="text-h6 text-high-emphasis">
-                      {{ choice.title }}
+                        {{ choice.title }}
                       </div>
                       <VChip
                         v-if="choice.comingSoon"

@@ -282,8 +282,6 @@ export const db: DB = {
         chargeTax: true,
         description: "Monthly acoustic consulting retainer for ongoing workplace planning and review.",
         createdAt: "2026-02-05T10:10:00Z",
-        startDate: "2026-02-05",
-        endDate: "2026-03-06",
         qty: 30,
         retainerServices: [
           {

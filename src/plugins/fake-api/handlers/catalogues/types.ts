@@ -149,8 +149,6 @@ export interface CatalogueContractualServiceRecord extends CatalogueServiceRecor
 
 export interface CatalogueRetainerServiceRecord extends CatalogueServiceRecord {
   type: "Retainer Service";
-  startDate: string | null;
-  endDate: string | null;
   qty: number | null;
   retainerServices: CatalogueRetainerLinkedService[];
   salesTasks: CatalogueSalesTask[];
@@ -190,8 +188,6 @@ export interface CatalogueItem {
 export interface CatalogueRecordInput extends Partial<CatalogueItem> {
   relatedItems?: CatalogueRelatedItem[];
   phases?: CataloguePhase[];
-  startDate?: string | null;
-  endDate?: string | null;
   retainerServices?: CatalogueRetainerLinkedService[];
   salesTasks?: CatalogueSalesTask[];
   jobConfiguration?: CatalogueJobConfiguration;
