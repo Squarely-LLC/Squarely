@@ -269,10 +269,7 @@ const itemTypeDisplay = (type: string) =>
         .trim();
 
 const hasInventoryQuantity = (product: CatalogueItem) =>
-  product.type === "Product" ||
-  product.type === "Produced Product" ||
-  product.type === "Rental" ||
-  product.type === "Retainer Service";
+  product.type === "Product";
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 

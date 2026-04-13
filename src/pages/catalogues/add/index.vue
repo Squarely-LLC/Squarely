@@ -167,6 +167,8 @@ const imageUrlDraft = ref("");
 const relatedItemId = ref(1);
 const relatedItems = ref<RelatedItemDraft[]>([]);
 const isRelatedItemDialogOpen = ref(false);
+const relatedItemDialogMode = ref<"create" | "edit">("create");
+const relatedItemEditId = ref<number | null>(null);
 const relatedItemName = ref("");
 const relatedItemCategory = ref("");
 const relatedItemPrice = ref<number | null>(null);
@@ -300,7 +302,22 @@ const relatedButtonLabel = computed(() =>
   isRetainerService.value ? "Retainer Service" : "Related Item",
 );
 const relatedDialogTitle = computed(() =>
-  isRetainerService.value ? "Add Retainer Service" : "Add Related Item",
+  relatedItemDialogMode.value === "edit"
+    ? isRetainerService.value
+      ? "Edit Retainer Service"
+      : "Edit Related Item"
+    : isRetainerService.value
+      ? "Add Retainer Service"
+      : "Add Related Item",
+);
+const relatedDialogSaveLabel = computed(() =>
+  relatedItemDialogMode.value === "edit"
+    ? isRetainerService.value
+      ? "Save Retainer Service"
+      : "Save Related Item"
+    : isRetainerService.value
+      ? "Add Retainer Service"
+      : "Save Related Item",
 );
 const retainerLinkedServicesTotalPrice = computed(() =>
   relatedItems.value.reduce((sum, item) => sum + (Number(item.price) || 0), 0),
@@ -506,6 +523,8 @@ const removeSalesTask = (taskId: number) => {
 };
 
 const resetRelatedItemDraft = () => {
+  relatedItemDialogMode.value = "create";
+  relatedItemEditId.value = null;
   relatedItemName.value = "";
   relatedItemCategory.value = "";
   relatedItemPrice.value = null;
@@ -522,6 +541,21 @@ const openRelatedItemDialog = () => {
   isRelatedItemDialogOpen.value = true;
 };
 
+const openEditRelatedItemDialog = (item: RelatedItemDraft) => {
+  relatedItemDialogMode.value = "edit";
+  relatedItemEditId.value = item.id;
+  relatedItemName.value = item.name;
+  relatedItemCategory.value = item.category;
+  relatedItemPrice.value = item.price;
+  isRelatedItemChargeTax.value = item.chargeTax;
+  relatedItemDescription.value = item.description;
+  relatedItemErrors.value = {
+    name: "",
+    category: "",
+  };
+  isRelatedItemDialogOpen.value = true;
+};
+
 const saveRelatedItem = () => {
   const trimmedName = relatedItemName.value.trim();
   const trimmedCategory = relatedItemCategory.value.trim();
@@ -533,8 +567,8 @@ const saveRelatedItem = () => {
 
   if (!trimmedName || !trimmedCategory) return;
 
-  relatedItems.value.push({
-    id: relatedItemId.value++,
+  const nextItem = {
+    id: relatedItemEditId.value ?? relatedItemId.value++,
     name: trimmedName,
     category: trimmedCategory,
     price:
@@ -545,7 +579,22 @@ const saveRelatedItem = () => {
           : null,
     chargeTax: isRelatedItemChargeTax.value,
     description: relatedItemDescription.value.trim(),
-  });
+  };
+
+  if (
+    relatedItemDialogMode.value === "edit" &&
+    relatedItemEditId.value !== null
+  ) {
+    const existingItem = relatedItems.value.find(
+      (item) => item.id === relatedItemEditId.value,
+    );
+
+    if (!existingItem) return;
+
+    Object.assign(existingItem, nextItem);
+  } else {
+    relatedItems.value.push(nextItem);
+  }
 
   if (isRetainerService.value) syncRetainerServiceGoals();
 
@@ -1871,6 +1920,15 @@ watch(
                   v-for="relatedItem in relatedItems"
                   :key="relatedItem.id"
                   class="related-item-card"
+                  role="button"
+                  tabindex="0"
+                  @click="openEditRelatedItemDialog(relatedItem)"
+                  @keydown.enter.prevent="
+                    openEditRelatedItemDialog(relatedItem)
+                  "
+                  @keydown.space.prevent="
+                    openEditRelatedItemDialog(relatedItem)
+                  "
                 >
                   <div class="related-item-card__header">
                     <div class="related-item-card__dot" />
@@ -1906,14 +1964,24 @@ watch(
                       </div>
                     </div>
 
-                    <VBtn
-                      icon
-                      variant="text"
-                      color="error"
-                      @click="removeRelatedItem(relatedItem.id)"
-                    >
-                      <VIcon icon="tabler-trash" />
-                    </VBtn>
+                    <div class="d-flex align-center">
+                      <VBtn
+                        icon
+                        variant="text"
+                        color="primary"
+                        @click.stop="openEditRelatedItemDialog(relatedItem)"
+                      >
+                        <VIcon icon="tabler-edit" />
+                      </VBtn>
+                      <VBtn
+                        icon
+                        variant="text"
+                        color="error"
+                        @click.stop="removeRelatedItem(relatedItem.id)"
+                      >
+                        <VIcon icon="tabler-trash" />
+                      </VBtn>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2811,7 +2879,7 @@ watch(
 
         <VCardActions class="px-6 pb-6 justify-space-between">
           <VBtn color="primary" variant="tonal" @click="saveRelatedItem">
-            Save Related Item
+            {{ relatedDialogSaveLabel }}
           </VBtn>
           <VBtn
             variant="tonal"
@@ -3122,6 +3190,19 @@ watch(
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 16px;
   background: rgba(var(--v-theme-on-surface), 0.02);
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.related-item-card:hover,
+.related-item-card:focus-visible {
+  border-color: rgba(var(--v-theme-primary), 0.45);
+  background: rgba(var(--v-theme-primary), 0.05);
+  outline: none;
+  transform: translateY(-1px);
 }
 
 .related-item-card__header {

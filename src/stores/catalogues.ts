@@ -119,12 +119,7 @@ function getTableKeyForType(type?: string | null): CatalogueTableKey {
 }
 
 function normalizeQty(type: CatalogueItemType, qty?: number | null) {
-  if (
-    type === "Product" ||
-    type === "Produced Product" ||
-    type === "Rental" ||
-    type === "Retainer Service"
-  ) {
+  if (type === "Product") {
     return Number.isFinite(Number(qty)) ? Number(qty) : 0;
   }
 
