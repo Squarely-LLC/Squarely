@@ -49,12 +49,19 @@ export interface CatalogueRetainerLinkedService {
   description: string;
 }
 
+export interface CatalogueReccurentLinkedService {
+  id: number;
+  name: string;
+  category: string;
+  price: number | null;
+  chargeTax: boolean;
+  description: string;
+}
+
 export interface CataloguePhase {
   id: number;
   name: string;
   price: number | null;
-  chargeTax: boolean;
-  description: string;
 }
 
 export interface CatalogueTaskStartTrigger {
@@ -106,6 +113,7 @@ export interface CatalogueJobConfigGoal {
   milestoneId: number;
   phaseId?: number | null;
   retainerServiceId?: number | null;
+  reccurentServiceId?: number | null;
   name: string;
   afterWhen?: string | null;
   startTrigger?: CatalogueTaskStartTrigger | null;
@@ -166,6 +174,10 @@ export interface CatalogueRetainerServiceRecord extends CatalogueServiceRecord {
 
 export interface CatalogueReccurentServiceRecord extends CatalogueServiceRecord {
   type: "Reccurent Service";
+  qty: number | null;
+  reccurentServices: CatalogueReccurentLinkedService[];
+  salesTasks: CatalogueSalesTask[];
+  jobConfiguration: CatalogueJobConfiguration;
 }
 
 export type CatalogueRecord =
@@ -198,6 +210,7 @@ export interface CatalogueRecordInput extends Partial<CatalogueItem> {
   relatedItems?: CatalogueRelatedItem[];
   phases?: CataloguePhase[];
   retainerServices?: CatalogueRetainerLinkedService[];
+  reccurentServices?: CatalogueReccurentLinkedService[];
   salesTasks?: CatalogueSalesTask[];
   jobConfiguration?: CatalogueJobConfiguration;
 }

@@ -7,6 +7,7 @@ import type {
   CatalogueContractualServiceRecord,
   CatalogueItemType,
   CatalogueOnetimeServiceRecord,
+  CatalogueReccurentServiceRecord,
   CatalogueRecord,
   CatalogueRetainerServiceRecord,
   CatalogueTaskStartTrigger,
@@ -40,8 +41,6 @@ type PhaseDraft = {
   id: number;
   name: string;
   price: number | null;
-  chargeTax: boolean;
-  description: string;
 };
 
 type JobConfigPriority = "Low" | "Normal" | "High";
@@ -73,6 +72,7 @@ type JobConfigGoal = {
   milestoneId: number;
   phaseId?: number | null;
   retainerServiceId?: number | null;
+  reccurentServiceId?: number | null;
   name: string;
   startTrigger?: CatalogueTaskStartTrigger | null;
   dueDate: string | null;
@@ -142,7 +142,10 @@ const typeDescriptions: Record<string, string> = {
     "Reusable asset hired out for a defined time window and then returned to stock.",
 };
 
-const pageTitle = computed(() => `Add ${selectedType.value}`);
+const pageTitle = computed(
+  () =>
+    `Add ${selectedType.value === "Retainer Service" ? "Retainer" : selectedType.value}`,
+);
 const editingItemId = computed(() => {
   const raw = route.query.id;
   return typeof raw === "string" && raw.trim() ? raw : null;
@@ -181,11 +184,11 @@ const relatedItemErrors = ref({
 const phaseId = ref(1);
 const phases = ref<PhaseDraft[]>([]);
 const isPhaseComposerVisible = ref(false);
+const phaseComposerMode = ref<"create" | "edit">("create");
+const phaseEditId = ref<number | null>(null);
 const phaseTitleFieldRef = ref<any>(null);
 const phaseName = ref("");
 const phasePrice = ref<number | null>(null);
-const isPhaseChargeTax = ref(true);
-const phaseDescription = ref("<p></p>");
 const phaseErrors = ref({
   name: "",
 });
@@ -295,29 +298,57 @@ const isContractualService = computed(
 const isRetainerService = computed(
   () => selectedType.value === "Retainer Service",
 );
+const isReccurentService = computed(
+  () => selectedType.value === "Reccurent Service",
+);
+const usesRecurringLinkedServicesUi = computed(
+  () => isRetainerService.value || isReccurentService.value,
+);
 const relatedSectionTitle = computed(() =>
-  isRetainerService.value ? "Retainer services" : "Related items",
+  isRetainerService.value
+    ? "Retainer services"
+    : isReccurentService.value
+      ? "Reccurent services"
+      : "Related items",
 );
 const relatedButtonLabel = computed(() =>
-  isRetainerService.value ? "Retainer Service" : "Related Item",
+  isRetainerService.value
+    ? "Retainer Service"
+    : isReccurentService.value
+      ? "Reccurent Service"
+      : "Related Item",
+);
+const shouldShowRetainerCategoryField = computed(
+  () => !usesRecurringLinkedServicesUi.value,
+);
+const shouldShowRetainerChargeTaxField = computed(
+  () => !usesRecurringLinkedServicesUi.value,
 );
 const relatedDialogTitle = computed(() =>
   relatedItemDialogMode.value === "edit"
     ? isRetainerService.value
       ? "Edit Retainer Service"
-      : "Edit Related Item"
+      : isReccurentService.value
+        ? "Edit Reccurent Service"
+        : "Edit Related Item"
     : isRetainerService.value
       ? "Add Retainer Service"
-      : "Add Related Item",
+      : isReccurentService.value
+        ? "Add Reccurent Service"
+        : "Add Related Item",
 );
 const relatedDialogSaveLabel = computed(() =>
   relatedItemDialogMode.value === "edit"
     ? isRetainerService.value
       ? "Save Retainer Service"
-      : "Save Related Item"
+      : isReccurentService.value
+        ? "Save Reccurent Service"
+        : "Save Related Item"
     : isRetainerService.value
       ? "Add Retainer Service"
-      : "Save Related Item",
+      : isReccurentService.value
+        ? "Add Reccurent Service"
+        : "Save Related Item",
 );
 const retainerLinkedServicesTotalPrice = computed(() =>
   relatedItems.value.reduce((sum, item) => sum + (Number(item.price) || 0), 0),
@@ -545,9 +576,13 @@ const openEditRelatedItemDialog = (item: RelatedItemDraft) => {
   relatedItemDialogMode.value = "edit";
   relatedItemEditId.value = item.id;
   relatedItemName.value = item.name;
-  relatedItemCategory.value = item.category;
+  relatedItemCategory.value = usesRecurringLinkedServicesUi.value
+    ? ""
+    : item.category;
   relatedItemPrice.value = item.price;
-  isRelatedItemChargeTax.value = item.chargeTax;
+  isRelatedItemChargeTax.value = usesRecurringLinkedServicesUi.value
+    ? false
+    : item.chargeTax;
   relatedItemDescription.value = item.description;
   relatedItemErrors.value = {
     name: "",
@@ -558,14 +593,23 @@ const openEditRelatedItemDialog = (item: RelatedItemDraft) => {
 
 const saveRelatedItem = () => {
   const trimmedName = relatedItemName.value.trim();
-  const trimmedCategory = relatedItemCategory.value.trim();
+  const trimmedCategory = usesRecurringLinkedServicesUi.value
+    ? ""
+    : relatedItemCategory.value.trim();
 
   relatedItemErrors.value = {
     name: trimmedName ? "" : "Title is required",
-    category: trimmedCategory ? "" : "Category is required",
+    category:
+      usesRecurringLinkedServicesUi.value || trimmedCategory
+        ? ""
+        : "Category is required",
   };
 
-  if (!trimmedName || !trimmedCategory) return;
+  if (
+    !trimmedName ||
+    (!usesRecurringLinkedServicesUi.value && !trimmedCategory)
+  )
+    return;
 
   const nextItem = {
     id: relatedItemEditId.value ?? relatedItemId.value++,
@@ -577,7 +621,9 @@ const saveRelatedItem = () => {
         : Number.isFinite(Number(relatedItemPrice.value))
           ? Number(relatedItemPrice.value)
           : null,
-    chargeTax: isRelatedItemChargeTax.value,
+    chargeTax: usesRecurringLinkedServicesUi.value
+      ? false
+      : isRelatedItemChargeTax.value,
     description: relatedItemDescription.value.trim(),
   };
 
@@ -596,7 +642,7 @@ const saveRelatedItem = () => {
     relatedItems.value.push(nextItem);
   }
 
-  if (isRetainerService.value) syncRetainerServiceGoals();
+  if (usesRecurringLinkedServicesUi.value) syncLinkedServiceGoals();
 
   isRelatedItemDialogOpen.value = false;
   resetRelatedItemDraft();
@@ -604,14 +650,14 @@ const saveRelatedItem = () => {
 
 const removeRelatedItem = (itemId: number) => {
   relatedItems.value = relatedItems.value.filter((item) => item.id !== itemId);
-  if (isRetainerService.value) syncRetainerServiceGoals();
+  if (usesRecurringLinkedServicesUi.value) syncLinkedServiceGoals();
 };
 
 const resetPhaseDraft = () => {
+  phaseComposerMode.value = "create";
+  phaseEditId.value = null;
   phaseName.value = "";
   phasePrice.value = null;
-  isPhaseChargeTax.value = true;
-  phaseDescription.value = "<p></p>";
   phaseErrors.value = {
     name: "",
   };
@@ -619,6 +665,25 @@ const resetPhaseDraft = () => {
 
 const showPhaseComposer = () => {
   resetPhaseDraft();
+  isPhaseComposerVisible.value = true;
+
+  nextTick(() => {
+    const input =
+      phaseTitleFieldRef.value?.$el?.querySelector?.("input") ||
+      phaseTitleFieldRef.value?.querySelector?.("input");
+
+    input?.focus();
+  });
+};
+
+const openEditPhase = (phase: PhaseDraft) => {
+  phaseComposerMode.value = "edit";
+  phaseEditId.value = phase.id;
+  phaseName.value = phase.name;
+  phasePrice.value = phase.price;
+  phaseErrors.value = {
+    name: "",
+  };
   isPhaseComposerVisible.value = true;
 
   nextTick(() => {
@@ -644,8 +709,8 @@ const savePhase = () => {
 
   if (!trimmedName) return;
 
-  phases.value.push({
-    id: phaseId.value++,
+  const nextPhase = {
+    id: phaseEditId.value ?? phaseId.value++,
     name: trimmedName,
     price:
       phasePrice.value === null || phasePrice.value === undefined
@@ -653,9 +718,19 @@ const savePhase = () => {
         : Number.isFinite(Number(phasePrice.value))
           ? Number(phasePrice.value)
           : null,
-    chargeTax: isPhaseChargeTax.value,
-    description: phaseDescription.value.replace(/<[^>]+>/g, " ").trim(),
-  });
+  };
+
+  if (phaseComposerMode.value === "edit" && phaseEditId.value !== null) {
+    const existingPhase = phases.value.find(
+      (phase) => phase.id === phaseEditId.value,
+    );
+
+    if (!existingPhase) return;
+
+    Object.assign(existingPhase, nextPhase);
+  } else {
+    phases.value.push(nextPhase);
+  }
 
   hidePhaseComposer();
   syncContractualPhaseGoals();
@@ -893,7 +968,7 @@ const syncContractualPhaseGoals = () => {
       },
       dueDate: existingGoal?.dueDate ?? null,
       priority: existingGoal?.priority ?? "Normal",
-      note: phase.description,
+      note: existingGoal?.note ?? "",
       tasks: existingGoal?.tasks ? [...existingGoal.tasks] : [],
     } satisfies JobConfigGoal;
   });
@@ -902,26 +977,36 @@ const syncContractualPhaseGoals = () => {
   syncExpandedGoals();
 };
 
-const syncRetainerServiceGoals = () => {
-  if (!isRetainerService.value) return;
+const syncLinkedServiceGoals = () => {
+  if (!usesRecurringLinkedServicesUi.value) return;
 
   const milestone = jobConfigMilestones.value[0];
   if (!milestone) return;
 
-  const manualGoals = milestone.goals.filter((goal) => !goal.retainerServiceId);
-  const retainerGoals = relatedItems.value.map((service) => {
+  const manualGoals = milestone.goals.filter((goal) =>
+    isRetainerService.value
+      ? !goal.retainerServiceId
+      : !goal.reccurentServiceId,
+  );
+  const linkedServiceGoals = relatedItems.value.map((service) => {
     const existingGoal = milestone.goals.find(
       (goal) =>
-        goal.retainerServiceId === service.id ||
-        ((goal.retainerServiceId === null ||
-          goal.retainerServiceId === undefined) &&
+        (isRetainerService.value
+          ? goal.retainerServiceId === service.id
+          : goal.reccurentServiceId === service.id) ||
+        ((isRetainerService.value
+          ? goal.retainerServiceId === null ||
+            goal.retainerServiceId === undefined
+          : goal.reccurentServiceId === null ||
+            goal.reccurentServiceId === undefined) &&
           goal.name === service.name),
     );
 
     return {
       id: existingGoal?.id ?? jobConfigGoalId.value++,
       milestoneId: milestone.id,
-      retainerServiceId: service.id,
+      retainerServiceId: isRetainerService.value ? service.id : null,
+      reccurentServiceId: isReccurentService.value ? service.id : null,
       name: service.name,
       startTrigger: existingGoal?.startTrigger ?? {
         type: "time",
@@ -935,7 +1020,7 @@ const syncRetainerServiceGoals = () => {
     } satisfies JobConfigGoal;
   });
 
-  milestone.goals = [...manualGoals, ...retainerGoals];
+  milestone.goals = [...manualGoals, ...linkedServiceGoals];
   syncExpandedGoals();
 };
 
@@ -1081,6 +1166,7 @@ const saveGoal = async () => {
       note: draft.note.trim(),
       tasks: [],
       retainerServiceId: null,
+      reccurentServiceId: null,
     });
   }
 
@@ -1457,7 +1543,8 @@ const applyServiceTemplateRecord = (
   record:
     | CatalogueOnetimeServiceRecord
     | CatalogueContractualServiceRecord
-    | CatalogueRetainerServiceRecord,
+    | CatalogueRetainerServiceRecord
+    | CatalogueReccurentServiceRecord,
 ) => {
   applySharedRecord(record);
   if (record.type === "Onetime Service") {
@@ -1474,13 +1561,21 @@ const applyServiceTemplateRecord = (
     phases.value = [];
     phaseId.value = 1;
     isPhaseComposerVisible.value = false;
-  } else if (record.type === "Retainer Service") {
-    relatedItems.value = (record.retainerServices || []).map((item) => ({
+  } else if (
+    record.type === "Retainer Service" ||
+    record.type === "Reccurent Service"
+  ) {
+    const linkedServices =
+      record.type === "Retainer Service"
+        ? record.retainerServices || []
+        : record.reccurentServices || [];
+
+    relatedItems.value = linkedServices.map((item) => ({
       id: item.id,
       name: item.name,
-      category: item.category,
+      category: "",
       price: item.price ?? null,
-      chargeTax: item.chargeTax ?? true,
+      chargeTax: false,
       description: item.description,
     }));
     relatedItemId.value =
@@ -1493,8 +1588,6 @@ const applyServiceTemplateRecord = (
       id: phase.id,
       name: phase.name,
       price: phase.price ?? null,
-      chargeTax: phase.chargeTax ?? true,
-      description: phase.description,
     }));
     phaseId.value =
       phases.value.reduce((max, item) => Math.max(max, item.id), 0) + 1;
@@ -1554,6 +1647,7 @@ const applyServiceTemplateRecord = (
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
           retainerServiceId: goal.retainerServiceId ?? null,
+          reccurentServiceId: goal.reccurentServiceId ?? null,
           startTrigger: normalizeStartTrigger(goal.startTrigger),
           tasks: (goal.tasks || []).map((task) => ({
             ...task,
@@ -1585,7 +1679,12 @@ const applyServiceTemplateRecord = (
 
   jobConfigMilestones.value = milestones;
   expandedMilestones.value = milestones.map((milestone) => milestone.id);
-  if (record.type === "Retainer Service") syncRetainerServiceGoals();
+  if (
+    record.type === "Retainer Service" ||
+    record.type === "Reccurent Service"
+  ) {
+    syncLinkedServiceGoals();
+  }
   if (record.type === "Contractual Service") syncContractualPhaseGoals();
   syncExpandedGoals();
   hasCustomMilestoneName.value =
@@ -1665,7 +1764,7 @@ const saveItem = async () => {
     chargeTax: isTaxChargeToItem.value,
     description: stripRichText(content.value),
     relatedItems:
-      isContractualService.value || isRetainerService.value
+      isContractualService.value || usesRecurringLinkedServicesUi.value
         ? undefined
         : relatedItems.value.map((item) => ({
             id: item.id,
@@ -1684,14 +1783,29 @@ const saveItem = async () => {
       ? relatedItems.value.map((item) => ({
           id: item.id,
           name: item.name.trim(),
-          category: item.category.trim(),
+          category: "",
           price:
             item.price === null || item.price === undefined
               ? null
               : Number.isFinite(Number(item.price))
                 ? Number(item.price)
                 : null,
-          chargeTax: item.chargeTax,
+          chargeTax: false,
+          description: item.description.trim(),
+        }))
+      : undefined,
+    reccurentServices: isReccurentService.value
+      ? relatedItems.value.map((item) => ({
+          id: item.id,
+          name: item.name.trim(),
+          category: "",
+          price:
+            item.price === null || item.price === undefined
+              ? null
+              : Number.isFinite(Number(item.price))
+                ? Number(item.price)
+                : null,
+          chargeTax: false,
           description: item.description.trim(),
         }))
       : undefined,
@@ -1705,8 +1819,6 @@ const saveItem = async () => {
               : Number.isFinite(Number(phase.price))
                 ? Number(phase.price)
                 : null,
-          chargeTax: phase.chargeTax,
-          description: phase.description.trim(),
         }))
       : undefined,
     salesTasks: salesTasks.value
@@ -1728,6 +1840,7 @@ const saveItem = async () => {
           startTrigger: normalizeStartTrigger(goal.startTrigger),
           phaseId: goal.phaseId ?? null,
           retainerServiceId: goal.retainerServiceId ?? null,
+          reccurentServiceId: goal.reccurentServiceId ?? null,
           priority: goal.priority,
           note: goal.note.trim(),
           tasks: goal.tasks.map((task) => serializeTaskTemplate(task)),
@@ -1762,7 +1875,8 @@ watch(
     if (
       record.type === "Onetime Service" ||
       record.type === "Contractual Service" ||
-      record.type === "Retainer Service"
+      record.type === "Retainer Service" ||
+      record.type === "Reccurent Service"
     ) {
       applyServiceTemplateRecord(record);
       return;
@@ -1848,61 +1962,6 @@ watch(
                     <VDivider class="my-2" />
                     <div class="text-body-2 text-medium-emphasis">Phases</div>
                   </VCol>
-                  <VCol v-if="isPhaseComposerVisible" cols="12" md="6">
-                    <AppTextField
-                      ref="phaseTitleFieldRef"
-                      v-model="phaseName"
-                      label="Name"
-                      placeholder="Mobilization"
-                      :error="Boolean(phaseErrors.name)"
-                      :error-messages="phaseErrors.name"
-                    />
-                  </VCol>
-                  <VCol v-if="isPhaseComposerVisible" cols="12" md="6">
-                    <AppTextField
-                      v-model.number="phasePrice"
-                      label="Phase Price"
-                      placeholder="900"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                    />
-                  </VCol>
-                  <VCol v-if="isPhaseComposerVisible" cols="12">
-                    <VCheckbox
-                      v-model="isPhaseChargeTax"
-                      label="Charge Tax on this phase"
-                    />
-                  </VCol>
-                  <VCol v-if="isPhaseComposerVisible" cols="12">
-                    <span class="mb-1">Phase Description (optional)</span>
-                    <AsyncProductDescriptionEditor
-                      v-model="phaseDescription"
-                      placeholder="Phase Description"
-                      class="border rounded"
-                    />
-                  </VCol>
-                  <VCol
-                    v-if="isPhaseComposerVisible"
-                    cols="12"
-                    class="d-flex justify-end gap-3 flex-wrap"
-                  >
-                    <VBtn
-                      variant="tonal"
-                      color="secondary"
-                      @click="hidePhaseComposer"
-                    >
-                      Cancel
-                    </VBtn>
-                    <VBtn
-                      variant="tonal"
-                      color="primary"
-                      prepend-icon="tabler-layers-linked"
-                      @click="savePhase"
-                    >
-                      Add Phase
-                    </VBtn>
-                  </VCol>
                 </template>
               </VRow>
             </VForm>
@@ -1949,6 +2008,7 @@ watch(
                           ${{ relatedItem.price }}
                         </VChip>
                         <VChip
+                          v-if="!usesRecurringLinkedServicesUi"
                           size="small"
                           :color="
                             relatedItem.chargeTax ? 'success' : 'secondary'
@@ -1959,7 +2019,10 @@ watch(
                         </VChip>
                       </div>
 
-                      <div class="text-body-2 text-medium-emphasis">
+                      <div
+                        v-if="!usesRecurringLinkedServicesUi"
+                        class="text-body-2 text-medium-emphasis"
+                      >
                         {{ relatedItem.category || "Uncategorized" }}
                       </div>
                     </div>
@@ -1988,13 +2051,16 @@ watch(
             </div>
 
             <div v-if="isContractualService && phases.length" class="mt-6">
-              <div class="text-body-2 text-medium-emphasis mb-4">Phases</div>
-
               <div class="d-flex flex-column gap-4">
                 <div
                   v-for="phase in phases"
                   :key="phase.id"
                   class="related-item-card"
+                  role="button"
+                  tabindex="0"
+                  @click="openEditPhase(phase)"
+                  @keydown.enter.prevent="openEditPhase(phase)"
+                  @keydown.space.prevent="openEditPhase(phase)"
                 >
                   <div class="related-item-card__header">
                     <div class="related-item-card__dot" />
@@ -2014,31 +2080,27 @@ watch(
                         >
                           ${{ phase.price }}
                         </VChip>
-                        <VChip
-                          size="small"
-                          :color="phase.chargeTax ? 'success' : 'secondary'"
-                          variant="text"
-                        >
-                          {{ phase.chargeTax ? "Taxable" : "No Tax" }}
-                        </VChip>
-                      </div>
-
-                      <div
-                        v-if="phase.description"
-                        class="text-body-2 text-medium-emphasis"
-                      >
-                        {{ phase.description }}
                       </div>
                     </div>
 
-                    <VBtn
-                      icon
-                      variant="text"
-                      color="error"
-                      @click="removePhase(phase.id)"
-                    >
-                      <VIcon icon="tabler-trash" />
-                    </VBtn>
+                    <div class="d-flex align-center">
+                      <VBtn
+                        icon
+                        variant="text"
+                        color="primary"
+                        @click.stop="openEditPhase(phase)"
+                      >
+                        <VIcon icon="tabler-edit" />
+                      </VBtn>
+                      <VBtn
+                        icon
+                        variant="text"
+                        color="error"
+                        @click.stop="removePhase(phase.id)"
+                      >
+                        <VIcon icon="tabler-trash" />
+                      </VBtn>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2072,6 +2134,53 @@ watch(
               >
                 Add Phase
               </VBtn>
+            </div>
+
+            <div
+              v-if="isContractualService && isPhaseComposerVisible"
+              class="mt-6"
+            >
+              <VRow>
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    ref="phaseTitleFieldRef"
+                    v-model="phaseName"
+                    label="Name"
+                    placeholder="Mobilization"
+                    :error="Boolean(phaseErrors.name)"
+                    :error-messages="phaseErrors.name"
+                  />
+                </VCol>
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model.number="phasePrice"
+                    label="Phase Price"
+                    placeholder="900"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                  />
+                </VCol>
+                <VCol cols="12" class="d-flex justify-end gap-3 flex-wrap">
+                  <VBtn
+                    variant="tonal"
+                    color="secondary"
+                    @click="hidePhaseComposer"
+                  >
+                    Cancel
+                  </VBtn>
+                  <VBtn
+                    variant="tonal"
+                    color="primary"
+                    prepend-icon="tabler-layers-linked"
+                    @click="savePhase"
+                  >
+                    {{
+                      phaseComposerMode === "edit" ? "Save Phase" : "Add Phase"
+                    }}
+                  </VBtn>
+                </VCol>
+              </VRow>
             </div>
           </VCardText>
 
@@ -2672,7 +2781,7 @@ watch(
               disabled
             />
             <AppTextField
-              v-else-if="isRetainerService"
+              v-else-if="usesRecurringLinkedServicesUi"
               v-model.number="itemBestPrice"
               label="Best Price"
               placeholder="Price"
@@ -2682,7 +2791,7 @@ watch(
               class="mb-6"
             />
             <div
-              v-if="isRetainerService"
+              v-if="usesRecurringLinkedServicesUi"
               class="text-body-2 text-medium-emphasis mb-6"
             >
               Linked services total: ${{ retainerLinkedServicesTotalPrice }}
@@ -2826,7 +2935,7 @@ watch(
 
         <VCardText>
           <VRow>
-            <VCol cols="12">
+            <VCol cols="12" :md="shouldShowRetainerCategoryField ? 12 : 6">
               <AppTextField
                 v-model="relatedItemName"
                 label="Name"
@@ -2835,7 +2944,7 @@ watch(
                 :error-messages="relatedItemErrors.name"
               />
             </VCol>
-            <VCol cols="6" md="6">
+            <VCol v-if="shouldShowRetainerCategoryField" cols="6" md="6">
               <AsyncCatalogueCategoryTreeSelect
                 v-model="relatedItemCategory"
                 label="Category"
@@ -2849,7 +2958,7 @@ watch(
                 {{ relatedItemErrors.category }}
               </div>
             </VCol>
-            <VCol cols="6" md="6">
+            <VCol :cols="shouldShowRetainerCategoryField ? '6' : '12'" md="6">
               <AppTextField
                 v-model.number="relatedItemPrice"
                 label="Price"
@@ -2859,7 +2968,7 @@ watch(
                 step="0.01"
               />
             </VCol>
-            <VCol cols="12" md="6">
+            <VCol v-if="shouldShowRetainerChargeTaxField" cols="12" md="6">
               <VCheckbox
                 v-model="isRelatedItemChargeTax"
                 label="Charge Tax on this  item"

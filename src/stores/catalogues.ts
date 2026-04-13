@@ -42,12 +42,17 @@ const skuPrefixByType: Record<CatalogueItemType, string> = {
 
 function cloneRecord<T extends CatalogueRecord>(record: T): T {
   const raw = toRaw(record) as T;
+  const cloned =
+    typeof structuredClone === "function"
+      ? structuredClone(raw)
+      : (JSON.parse(JSON.stringify(raw)) as T);
+
   return {
-    ...raw,
-    image: raw.image ?? null,
-    bestPrice: raw.bestPrice ?? null,
-    chargeTax: raw.chargeTax ?? true,
-    description: raw.description ?? "",
+    ...cloned,
+    image: cloned.image ?? null,
+    bestPrice: cloned.bestPrice ?? null,
+    chargeTax: cloned.chargeTax ?? true,
+    description: cloned.description ?? "",
   };
 }
 
@@ -267,6 +272,12 @@ function normalizeJobGoal(
         : Number.isFinite(Number(goal.retainerServiceId))
           ? Number(goal.retainerServiceId)
           : null,
+    reccurentServiceId:
+      goal.reccurentServiceId === null || goal.reccurentServiceId === undefined
+        ? null
+        : Number.isFinite(Number(goal.reccurentServiceId))
+          ? Number(goal.reccurentServiceId)
+          : null,
     name: String(goal.name ?? "").trim(),
     afterWhen: normalizedAfterWhen,
     startTrigger: goal.startTrigger
@@ -425,9 +436,6 @@ function normalizeRecord(
             : Number.isFinite(Number(phase.price))
               ? Number(phase.price)
               : null,
-        chargeTax:
-          phase.chargeTax === undefined ? true : Boolean(phase.chargeTax),
-        description: String(phase.description ?? "").trim(),
       })),
       salesTasks: salesTasks.map((task, index) => ({
         ...normalizeSalesTask(task, index + 1),
@@ -454,6 +462,47 @@ function normalizeRecord(
       ...base,
       qty,
       retainerServices: retainerServices.map((service, index) => ({
+        id: Number.isFinite(Number(service.id))
+          ? Number(service.id)
+          : index + 1,
+        name: String(service.name ?? "").trim(),
+        category: String(service.category ?? "").trim(),
+        price:
+          service.price === null || service.price === undefined
+            ? null
+            : Number.isFinite(Number(service.price))
+              ? Number(service.price)
+              : null,
+        chargeTax:
+          service.chargeTax === undefined ? true : Boolean(service.chargeTax),
+        description: String(service.description ?? "").trim(),
+      })),
+      salesTasks: salesTasks.map((task, index) => ({
+        ...normalizeSalesTask(task, index + 1),
+      })),
+      jobConfiguration: {
+        milestones: milestones.map((milestone, index) =>
+          normalizeJobMilestone(milestone, index + 1),
+        ),
+      },
+    } as CatalogueRecord;
+  }
+
+  if (mappedType === "Reccurent Service") {
+    const reccurentServices = Array.isArray(payload.reccurentServices)
+      ? payload.reccurentServices
+      : [];
+    const salesTasks = Array.isArray(payload.salesTasks)
+      ? payload.salesTasks
+      : [];
+    const milestones = Array.isArray(payload.jobConfiguration?.milestones)
+      ? payload.jobConfiguration.milestones
+      : [];
+
+    return {
+      ...base,
+      qty,
+      reccurentServices: reccurentServices.map((service, index) => ({
         id: Number.isFinite(Number(service.id))
           ? Number(service.id)
           : index + 1,

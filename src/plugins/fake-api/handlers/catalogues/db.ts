@@ -27,7 +27,8 @@ export const db: DB = {
         image: product10,
         bestPrice: 420,
         chargeTax: true,
-        description: "Compact upholstered lounge chair for reception and waiting areas.",
+        description:
+          "Compact upholstered lounge chair for reception and waiting areas.",
         createdAt: "2026-01-19T11:15:00Z",
       },
       {
@@ -41,7 +42,8 @@ export const db: DB = {
         image: product19,
         bestPrice: 135,
         chargeTax: true,
-        description: "Indoor planter set with liners for lobbies, corridors, and breakout spaces.",
+        description:
+          "Indoor planter set with liners for lobbies, corridors, and breakout spaces.",
         createdAt: "2026-03-02T09:45:00Z",
       },
     ],
@@ -57,7 +59,8 @@ export const db: DB = {
         image: product1,
         bestPrice: 2450,
         chargeTax: true,
-        description: "Custom-built executive workstation manufactured in-house for client fit-outs.",
+        description:
+          "Custom-built executive workstation manufactured in-house for client fit-outs.",
         createdAt: "2026-01-12T09:00:00Z",
       },
     ],
@@ -73,7 +76,8 @@ export const db: DB = {
         image: product11,
         bestPrice: 180,
         chargeTax: true,
-        description: "Short-term pendant lighting kit available for staged events and temporary installs.",
+        description:
+          "Short-term pendant lighting kit available for staged events and temporary installs.",
         createdAt: "2026-01-08T08:20:00Z",
       },
     ],
@@ -176,7 +180,8 @@ export const db: DB = {
         image: product12,
         bestPrice: 3200,
         chargeTax: true,
-        description: "Annual maintenance contract covering inspection, cleaning, and minor lighting repairs.",
+        description:
+          "Annual maintenance contract covering inspection, cleaning, and minor lighting repairs.",
         createdAt: "2026-02-02T13:40:00Z",
         phases: [
           {
@@ -184,14 +189,16 @@ export const db: DB = {
             name: "Mobilization",
             price: 900,
             chargeTax: false,
-            description: "Kickoff, asset verification, and site-access coordination before recurring service begins.",
+            description:
+              "Kickoff, asset verification, and site-access coordination before recurring service begins.",
           },
           {
             id: 2,
             name: "Preventive Maintenance",
             price: 2300,
             chargeTax: true,
-            description: "Scheduled inspections, cleaning, testing, and minor corrective works during the contract term.",
+            description:
+              "Scheduled inspections, cleaning, testing, and minor corrective works during the contract term.",
           },
         ],
         salesTasks: [
@@ -280,7 +287,8 @@ export const db: DB = {
         image: product14,
         bestPrice: 1500,
         chargeTax: true,
-        description: "Monthly acoustic consulting retainer for ongoing workplace planning and review.",
+        description:
+          "Monthly acoustic consulting retainer for ongoing workplace planning and review.",
         createdAt: "2026-02-05T10:10:00Z",
         qty: 30,
         retainerServices: [
@@ -290,7 +298,8 @@ export const db: DB = {
             category: "Acoustic Panels",
             price: 1500,
             chargeTax: true,
-            description: "Scheduled workplace acoustic review and recommendations for active projects.",
+            description:
+              "Scheduled workplace acoustic review and recommendations for active projects.",
           },
         ],
         salesTasks: [
@@ -344,8 +353,45 @@ export const db: DB = {
         image: product2,
         bestPrice: 260,
         chargeTax: true,
-        description: "Recurring monthly cleaning and upkeep service for enclosed meeting pods.",
+        description:
+          "Recurring monthly cleaning and upkeep service for enclosed meeting pods.",
         createdAt: "2025-08-22T16:05:00Z",
+        qty: 12,
+        reccurentServices: [
+          {
+            id: 1,
+            name: "Monthly Pod Cleaning Visit",
+            category: "",
+            price: 260,
+            chargeTax: false,
+            description: "Recurring scheduled cleaning visit for meeting pods.",
+          },
+        ],
+        salesTasks: [],
+        jobConfiguration: {
+          milestones: [
+            {
+              id: 1,
+              name: "Monthly Meeting Pod Cleaning Service",
+              dueDate: null,
+              priority: "Normal",
+              note: "",
+              tasks: [],
+              goals: [
+                {
+                  id: 1,
+                  milestoneId: 1,
+                  reccurentServiceId: 1,
+                  name: "Monthly Pod Cleaning Visit",
+                  dueDate: null,
+                  priority: "Normal",
+                  note: "Recurring scheduled cleaning visit for meeting pods.",
+                  tasks: [],
+                },
+              ],
+            },
+          ],
+        },
       },
     ],
   },
