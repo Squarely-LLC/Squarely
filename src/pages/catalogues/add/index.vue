@@ -19,6 +19,7 @@ import {
   computed,
   defineAsyncComponent,
   nextTick,
+  onBeforeUnmount,
   onMounted,
   ref,
   watch,
@@ -111,6 +112,9 @@ cataloguesStore.init();
 const configStore = useConfigStore();
 configStore.init();
 const renderDeferredSections = ref(false);
+const topActionBarRef = ref<HTMLElement | null>(null);
+const isFloatingActionBarVisible = ref(false);
+let topActionBarObserver: IntersectionObserver | null = null;
 
 const itemBestPrice = ref<number | null>(null);
 const isTaxChargeToItem = ref(true);
@@ -240,6 +244,9 @@ const goalDialog = ref({
   },
 });
 const goalAfterWhenValue = ref<number | null>(null);
+const goalAfterWhenPreset = ref<"1_day" | "2_days" | "1_week" | "custom">(
+  "1_day",
+);
 const goalStartMode = ref<"time" | "goal">("time");
 const selectedGoalDependencyId = ref<string | null>(null);
 const isTaskTemplateDrawerOpen = ref(false);
@@ -329,6 +336,13 @@ const goalStartModeOptions = [
   { title: "After goal completion", value: "goal" },
 ] as const;
 
+const goalAfterWhenPresetOptions = [
+  { title: "After 1 day", value: "1_day" },
+  { title: "After 2 days", value: "2_days" },
+  { title: "After 1 week", value: "1_week" },
+  { title: "Custom", value: "custom" },
+] as const;
+
 const buildGoalStartTrigger = (): CatalogueTaskStartTrigger | null => {
   if (goalStartMode.value === "goal") {
     return selectedGoalDependencyId.value
@@ -390,6 +404,28 @@ onMounted(() => {
   requestAnimationFrame(activateDeferredSections);
 });
 
+onMounted(() => {
+  if (!topActionBarRef.value || typeof IntersectionObserver === "undefined") {
+    return;
+  }
+
+  topActionBarObserver = new IntersectionObserver(
+    ([entry]) => {
+      isFloatingActionBarVisible.value = !entry?.isIntersecting;
+    },
+    {
+      threshold: 0.15,
+    },
+  );
+
+  topActionBarObserver.observe(topActionBarRef.value);
+});
+
+onBeforeUnmount(() => {
+  topActionBarObserver?.disconnect();
+  topActionBarObserver = null;
+});
+
 watch(
   defaultMilestoneName,
   (nextName) => {
@@ -433,8 +469,11 @@ const openEditSalesTask = (task: SalesTaskDraft) => {
     title: task.title,
     collaborators: task.collaborators,
     afterWhen: task.afterWhen,
-    startTrigger:
-      task.startTrigger ?? { type: "time", goalId: null, taskId: null },
+    startTrigger: task.startTrigger ?? {
+      type: "time",
+      goalId: null,
+      taskId: null,
+    },
     notes: task.notes,
     important: task.important,
     status: task.status,
@@ -661,10 +700,6 @@ const addMilestoneAfterWhenDays = (days: number) => {
   addAfterWhenDays(milestoneAfterWhenValue, days);
 };
 
-const addGoalAfterWhenDays = (days: number) => {
-  addAfterWhenDays(goalAfterWhenValue, days);
-};
-
 const normalizeJobTaskStatus = (
   status?: string | null,
 ): JobConfigTaskStatus => {
@@ -770,6 +805,7 @@ const resetGoalDraft = () => {
   };
   goalStartMode.value = "time";
   selectedGoalDependencyId.value = null;
+  goalAfterWhenPreset.value = "1_day";
   goalAfterWhenValue.value = null;
 };
 
@@ -790,7 +826,11 @@ const syncContractualPhaseGoals = () => {
       milestoneId: milestone.id,
       phaseId: phase.id,
       name: phase.name,
-      startTrigger: existingGoal?.startTrigger ?? { type: "time", goalId: null, taskId: null },
+      startTrigger: existingGoal?.startTrigger ?? {
+        type: "time",
+        goalId: null,
+        taskId: null,
+      },
       dueDate: existingGoal?.dueDate ?? null,
       priority: existingGoal?.priority ?? "Normal",
       note: phase.description,
@@ -823,7 +863,11 @@ const syncRetainerServiceGoals = () => {
       milestoneId: milestone.id,
       retainerServiceId: service.id,
       name: service.name,
-      startTrigger: existingGoal?.startTrigger ?? { type: "time", goalId: null, taskId: null },
+      startTrigger: existingGoal?.startTrigger ?? {
+        type: "time",
+        goalId: null,
+        taskId: null,
+      },
       dueDate: existingGoal?.dueDate ?? null,
       priority: existingGoal?.priority ?? "Normal",
       note: service.description,
@@ -887,6 +931,7 @@ const openCreateGoal = (milestoneId: number) => {
   goalDialog.value.milestoneId = milestoneId;
   goalStartMode.value = "time";
   selectedGoalDependencyId.value = null;
+  goalAfterWhenPreset.value = "1_day";
   goalAfterWhenValue.value = null;
   expandedMilestones.value = [
     ...new Set([...expandedMilestones.value, milestoneId]),
@@ -902,16 +947,27 @@ const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
   goalDialog.value.draft = {
     name: goal.name,
     dueDate: goal.dueDate,
-    startTrigger: goal.startTrigger ?? { type: "time", goalId: null, taskId: null },
+    startTrigger: goal.startTrigger ?? {
+      type: "time",
+      goalId: null,
+      taskId: null,
+    },
     priority: goal.priority,
     note: goal.note,
   };
-  goalStartMode.value =
-    goal.startTrigger?.type === "goal" ? "goal" : "time";
+  goalStartMode.value = goal.startTrigger?.type === "goal" ? "goal" : "time";
   selectedGoalDependencyId.value = goal.startTrigger?.goalId
     ? String(goal.startTrigger.goalId)
     : null;
   goalAfterWhenValue.value = parseAfterWhenValue(goal.dueDate);
+  goalAfterWhenPreset.value =
+    goalAfterWhenValue.value === 1
+      ? "1_day"
+      : goalAfterWhenValue.value === 2
+        ? "2_days"
+        : goalAfterWhenValue.value === 7
+          ? "1_week"
+          : "custom";
   nextTick(() => goalFormRef.value?.resetValidation());
 };
 
@@ -919,6 +975,15 @@ const saveGoal = async () => {
   const result = await goalFormRef.value?.validate();
   if (!result?.valid || goalDialog.value.milestoneId === null) return;
   if (goalStartMode.value === "goal" && !selectedGoalDependencyId.value) return;
+
+  const resolvedGoalAfterWhenValue =
+    goalAfterWhenPreset.value === "1_day"
+      ? 1
+      : goalAfterWhenPreset.value === "2_days"
+        ? 2
+        : goalAfterWhenPreset.value === "1_week"
+          ? 7
+          : goalAfterWhenValue.value;
 
   const milestone = jobConfigMilestones.value.find(
     (entry) => entry.id === goalDialog.value.milestoneId,
@@ -936,7 +1001,7 @@ const saveGoal = async () => {
       goal.name = draft.name.trim();
       goal.dueDate =
         goalStartMode.value === "time"
-          ? buildAfterWhenValue(goalAfterWhenValue.value)
+          ? buildAfterWhenValue(resolvedGoalAfterWhenValue)
           : null;
       goal.startTrigger = buildGoalStartTrigger();
       goal.priority = draft.priority;
@@ -949,7 +1014,7 @@ const saveGoal = async () => {
       name: draft.name.trim(),
       dueDate:
         goalStartMode.value === "time"
-          ? buildAfterWhenValue(goalAfterWhenValue.value)
+          ? buildAfterWhenValue(resolvedGoalAfterWhenValue)
           : null,
       startTrigger: buildGoalStartTrigger(),
       priority: draft.priority,
@@ -1033,8 +1098,11 @@ const openEditTaskForMilestone = (milestoneId: number, task: JobConfigTask) => {
     title: task.title,
     collaborators: task.collaborators,
     afterWhen: task.afterWhen,
-    startTrigger:
-      task.startTrigger ?? { type: "time", goalId: null, taskId: null },
+    startTrigger: task.startTrigger ?? {
+      type: "time",
+      goalId: null,
+      taskId: null,
+    },
     notes: task.notes,
     status: task.status,
     important: task.important,
@@ -1055,8 +1123,11 @@ const openEditTaskForGoal = (goalId: number, task: JobConfigTask) => {
     title: task.title,
     collaborators: task.collaborators,
     afterWhen: task.afterWhen,
-    startTrigger:
-      task.startTrigger ?? { type: "time", goalId: null, taskId: null },
+    startTrigger: task.startTrigger ?? {
+      type: "time",
+      goalId: null,
+      taskId: null,
+    },
     notes: task.notes,
     status: task.status,
     important: task.important,
@@ -1680,7 +1751,7 @@ watch(
 </script>
 
 <template>
-  <div>
+  <div class="catalogue-add-page">
     <div
       class="d-flex flex-wrap justify-start justify-sm-space-between gap-y-4 gap-x-6 mb-6"
     >
@@ -1693,7 +1764,7 @@ watch(
         </div>
       </div>
 
-      <div class="d-flex gap-4 align-center flex-wrap">
+      <div ref="topActionBarRef" class="d-flex gap-4 align-center flex-wrap">
         <VBtn
           variant="tonal"
           color="secondary"
@@ -2905,39 +2976,26 @@ watch(
               <VCol v-if="goalStartMode === 'time'" cols="12">
                 <div class="text-body-2 mb-2">After when</div>
                 <div class="after-when-control">
+                  <AppSelect
+                    v-model="goalAfterWhenPreset"
+                    :items="goalAfterWhenPresetOptions"
+                    item-title="title"
+                    item-value="value"
+                    hide-details="auto"
+                    class="after-when-select"
+                  />
+
                   <AppTextField
+                    v-if="goalAfterWhenPreset === 'custom'"
                     v-model.number="goalAfterWhenValue"
                     type="number"
                     min="1"
                     step="1"
                     hide-details="auto"
+                    :rules="[requiredValidator]"
                     class="after-when-input"
                     suffix="days"
                   />
-
-                  <div class="after-when-actions">
-                    <VBtn
-                      size="small"
-                      variant="tonal"
-                      @click="addGoalAfterWhenDays(1)"
-                    >
-                      +1 day
-                    </VBtn>
-                    <VBtn
-                      size="small"
-                      variant="tonal"
-                      @click="addGoalAfterWhenDays(7)"
-                    >
-                      +1 week
-                    </VBtn>
-                    <VBtn
-                      size="small"
-                      variant="tonal"
-                      @click="addGoalAfterWhenDays(30)"
-                    >
-                      +1 month
-                    </VBtn>
-                  </div>
                 </div>
               </VCol>
               <VCol v-else cols="12">
@@ -2977,10 +3035,66 @@ watch(
       :goal-trigger-options="goalTriggerOptions"
       @save="handleTaskTemplateCreated"
     />
+
+    <div
+      v-show="isFloatingActionBarVisible"
+      class="catalogue-add-page__action-bar"
+    >
+      <div class="catalogue-add-page__action-bar-inner">
+        <VBtn
+          variant="tonal"
+          color="secondary"
+          @click="router.push('/catalogues/list')"
+        >
+          Discard
+        </VBtn>
+        <VBtn @click="saveItem">{{ publishButtonLabel }}</VBtn>
+      </div>
+    </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
+.catalogue-add-page {
+  padding-block-end: 6.5rem;
+}
+
+.catalogue-add-page__action-bar {
+  position: fixed;
+  z-index: 20;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(
+    to top,
+    rgba(var(--v-theme-surface), 0.98),
+    rgba(var(--v-theme-surface), 0.88)
+  );
+  border-block-start: 1px solid
+    rgba(var(--v-border-color), var(--v-border-opacity));
+  inset-block-end: 0;
+  inset-inline: 0;
+  padding-block: 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+  padding-inline: 1rem;
+}
+
+.catalogue-add-page__action-bar-inner {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  inline-size: min(100%, 1440px);
+  margin-inline: auto;
+}
+
+@media (max-width: 599px) {
+  .catalogue-add-page__action-bar-inner {
+    justify-content: stretch;
+  }
+
+  .catalogue-add-page__action-bar-inner :deep(.v-btn) {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+}
+
 .drop-zone {
   border: 2px dashed rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 6px;
@@ -2991,6 +3105,11 @@ watch(
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+
+.after-when-select {
+  flex: 1 1 auto;
+  min-inline-size: 0;
 }
 
 .after-when-input {
