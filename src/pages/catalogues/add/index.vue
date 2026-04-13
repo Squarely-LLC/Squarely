@@ -361,6 +361,24 @@ const buildGoalStartTrigger = (): CatalogueTaskStartTrigger | null => {
   };
 };
 
+const normalizeStartTrigger = (
+  startTrigger?: CatalogueTaskStartTrigger | null,
+): CatalogueTaskStartTrigger => {
+  if (startTrigger?.type === "goal" || startTrigger?.type === "task") {
+    return {
+      type: startTrigger.type,
+      goalId: startTrigger.goalId ?? null,
+      taskId: startTrigger.taskId ?? null,
+    };
+  }
+
+  return {
+    type: "time",
+    goalId: null,
+    taskId: null,
+  };
+};
+
 const formatGoalStart = (
   dueDate?: string | null,
   startTrigger?: CatalogueTaskStartTrigger | null,
@@ -765,14 +783,7 @@ const serializeTaskTemplate = (
       }
     ).dueAt ??
     null,
-  startTrigger:
-    task.startTrigger?.type === "goal" || task.startTrigger?.type === "task"
-      ? {
-          type: task.startTrigger.type,
-          goalId: task.startTrigger.goalId ?? null,
-          taskId: task.startTrigger.taskId ?? null,
-        }
-      : { type: "time", goalId: null, taskId: null },
+  startTrigger: normalizeStartTrigger(task.startTrigger),
   manhours: task.manhours ?? null,
   notes: String(task.notes ?? "").trim(),
   status: normalizeJobTaskStatus(task.status),
@@ -1457,14 +1468,7 @@ const applyServiceTemplateRecord = (
       ).afterWhen ??
       (task as { dueAt?: string | null }).dueAt ??
       null,
-    startTrigger:
-      task.startTrigger?.type === "goal" || task.startTrigger?.type === "task"
-        ? {
-            type: task.startTrigger.type,
-            goalId: task.startTrigger.goalId ?? null,
-            taskId: task.startTrigger.taskId ?? null,
-          }
-        : { type: "time", goalId: null, taskId: null },
+    startTrigger: normalizeStartTrigger(task.startTrigger),
     manhours: task.manhours ?? null,
     notes: task.notes ?? "",
     status: task.status ?? "pending",
@@ -1476,7 +1480,8 @@ const applyServiceTemplateRecord = (
   salesTaskId.value =
     salesTasks.value.reduce((max, task) => Math.max(max, task.id), 0) + 1;
 
-  const milestones = record.jobConfiguration?.milestones?.length
+  const milestones: JobConfigMilestone[] = record.jobConfiguration?.milestones
+    ?.length
     ? record.jobConfiguration.milestones.map((milestone) => ({
         id: milestone.id,
         name: milestone.name,
@@ -1494,28 +1499,13 @@ const applyServiceTemplateRecord = (
             ).afterWhen ??
             (task as { dueAt?: string | null }).dueAt ??
             null,
-          startTrigger:
-            task.startTrigger?.type === "goal" ||
-            task.startTrigger?.type === "task"
-              ? {
-                  type: task.startTrigger.type,
-                  goalId: task.startTrigger.goalId ?? null,
-                  taskId: task.startTrigger.taskId ?? null,
-                }
-              : { type: "time", goalId: null, taskId: null },
+          startTrigger: normalizeStartTrigger(task.startTrigger),
           steps: cloneTaskSteps(task.steps),
         })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
           retainerServiceId: goal.retainerServiceId ?? null,
-          startTrigger:
-            goal.startTrigger?.type === "goal"
-              ? {
-                  type: "goal",
-                  goalId: goal.startTrigger.goalId ?? null,
-                  taskId: null,
-                }
-              : { type: "time", goalId: null, taskId: null },
+          startTrigger: normalizeStartTrigger(goal.startTrigger),
           tasks: (goal.tasks || []).map((task) => ({
             ...task,
             afterWhen:
@@ -1527,15 +1517,7 @@ const applyServiceTemplateRecord = (
               ).afterWhen ??
               (task as { dueAt?: string | null }).dueAt ??
               null,
-            startTrigger:
-              task.startTrigger?.type === "goal" ||
-              task.startTrigger?.type === "task"
-                ? {
-                    type: task.startTrigger.type,
-                    goalId: task.startTrigger.goalId ?? null,
-                    taskId: task.startTrigger.taskId ?? null,
-                  }
-                : { type: "time", goalId: null, taskId: null },
+            startTrigger: normalizeStartTrigger(task.startTrigger),
             steps: cloneTaskSteps(task.steps),
           })),
         })),
@@ -1694,14 +1676,7 @@ const saveItem = async () => {
           milestoneId: goal.milestoneId,
           name: goal.name.trim(),
           dueDate: goal.dueDate,
-          startTrigger:
-            goal.startTrigger?.type === "goal"
-              ? {
-                  type: "goal",
-                  goalId: goal.startTrigger.goalId ?? null,
-                  taskId: null,
-                }
-              : { type: "time", goalId: null, taskId: null },
+          startTrigger: normalizeStartTrigger(goal.startTrigger),
           phaseId: goal.phaseId ?? null,
           retainerServiceId: goal.retainerServiceId ?? null,
           priority: goal.priority,
