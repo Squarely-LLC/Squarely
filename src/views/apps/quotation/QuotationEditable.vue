@@ -46,6 +46,28 @@ const clients = computed<Client[]>(() =>
     .map((contact) => mapContactToClient(contact)),
 );
 
+watch(
+  () => [quotation.value.client.name, quotation.value.client.companyEmail],
+  () => {
+    const clientName = quotation.value.client.name.trim().toLowerCase();
+    const clientEmail = quotation.value.client.companyEmail
+      .trim()
+      .toLowerCase();
+    const matchedContact = contactsStore.all.find((contact) => {
+      const contactEmail = contact.email?.trim().toLowerCase() || "";
+      const contactName = contact.fullName?.trim().toLowerCase() || "";
+
+      return (
+        (clientEmail && contactEmail === clientEmail) ||
+        (clientName && contactName === clientName)
+      );
+    });
+
+    quotation.value.avatar = matchedContact?.picture || "";
+  },
+  { immediate: true },
+);
+
 const addItem = () => {
   emit("push", {
     title: "New line item",

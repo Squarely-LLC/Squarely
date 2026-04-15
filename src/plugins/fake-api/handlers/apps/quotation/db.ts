@@ -1,10 +1,4 @@
 import type { QuotationRecord } from "@db/apps/quotation/types";
-import avatar1 from "@images/avatars/avatar-1.png";
-import avatar2 from "@images/avatars/avatar-2.png";
-import avatar3 from "@images/avatars/avatar-3.png";
-import avatar4 from "@images/avatars/avatar-4.png";
-import avatar5 from "@images/avatars/avatar-5.png";
-import avatar6 from "@images/avatars/avatar-6.png";
 import { db as contactsDb } from "../contact/db";
 import type { ContactProperties } from "../contact/types";
 
@@ -29,6 +23,16 @@ const getSeedClient = (contactId: number) => {
   }
 
   return mapContactToClient(contact);
+};
+
+const getSeedAvatar = (contactId: number) => {
+  const contact = contactsDb.users.find((entry) => entry.id === contactId);
+
+  if (!contact) {
+    throw new Error(`Missing contact seed for quotation avatar ${contactId}`);
+  }
+
+  return contact.picture || "";
 };
 
 const buildRecord = (
@@ -86,14 +90,14 @@ const buildRecord = (
 });
 
 export const database: QuotationRecord[] = [
-  buildRecord(6101, "Pending", avatar1, {
+  buildRecord(6101, "Pending", getSeedAvatar(2), {
     total: 4200,
     client: getSeedClient(2),
     service: "Interior fit-out quotation",
     dealId: 201,
     linkedRecordType: "deal",
   }),
-  buildRecord(6102, "Approved", avatar2, {
+  buildRecord(6102, "Approved", getSeedAvatar(5), {
     total: 7600,
     client: getSeedClient(5),
     service: "Retail branch design package",
@@ -109,21 +113,21 @@ export const database: QuotationRecord[] = [
     source: "external",
     attachmentName: "peakfit-quotation.pdf",
   }),
-  buildRecord(6104, "Converted to Invoice", avatar3, {
+  buildRecord(6104, "Converted to Invoice", getSeedAvatar(10), {
     total: 9200,
     client: getSeedClient(10),
     service: "Lobby renovation scope",
     dealId: 204,
     linkedRecordType: "deal",
   }),
-  buildRecord(6105, "Converted to Proforma", avatar4, {
+  buildRecord(6105, "Converted to Proforma", getSeedAvatar(1), {
     total: 5800,
     client: getSeedClient(1),
     service: "Guest suite refurbishment",
     dealId: 205,
     linkedRecordType: "contract",
   }),
-  buildRecord(6106, "Pending", avatar5, {
+  buildRecord(6106, "Pending", getSeedAvatar(9), {
     total: 2500,
     client: getSeedClient(9),
     service: "Clinic partition works",
@@ -132,7 +136,7 @@ export const database: QuotationRecord[] = [
     source: "external",
     attachmentName: "northstar-quote.xlsx",
   }),
-  buildRecord(6107, "Approved", avatar6, {
+  buildRecord(6107, "Approved", getSeedAvatar(8), {
     total: 4450,
     client: getSeedClient(8),
     service: "Pop-up kiosk fabrication",
@@ -146,7 +150,7 @@ export const database: QuotationRecord[] = [
     dealId: 208,
     linkedRecordType: "deal",
   }),
-  buildRecord(6111, "Approved", avatar2, {
+  buildRecord(6111, "Approved", getSeedAvatar(5), {
     quoteNumber: "QT-6102-R1",
     total: 7350,
     client: getSeedClient(5),
@@ -157,7 +161,7 @@ export const database: QuotationRecord[] = [
     isRevision: true,
     revisionLabel: "R1",
   }),
-  buildRecord(6112, "Approved", avatar2, {
+  buildRecord(6112, "Approved", getSeedAvatar(5), {
     quoteNumber: "QT-6102-R2",
     total: 7600,
     client: getSeedClient(5),

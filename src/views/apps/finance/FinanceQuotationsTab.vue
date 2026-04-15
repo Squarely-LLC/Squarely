@@ -185,7 +185,6 @@ const getContactId = (quotation: Quotation) => {
         (contact) => contact.email.trim().toLowerCase() === clientEmail,
       )
     : null;
-
   if (byEmail) return byEmail.id;
 
   const byName = clientName
@@ -196,6 +195,28 @@ const getContactId = (quotation: Quotation) => {
 
   return byName?.id ?? null;
 };
+
+const getMatchedContact = (quotation: Quotation) => {
+  const clientName = quotation.client.name.trim().toLowerCase();
+  const clientEmail = quotation.client.companyEmail.trim().toLowerCase();
+
+  return (
+    (clientEmail
+      ? contactsStore.all.find(
+          (contact) => contact.email.trim().toLowerCase() === clientEmail,
+        )
+      : null) ??
+    (clientName
+      ? contactsStore.all.find(
+          (contact) => contact.fullName.trim().toLowerCase() === clientName,
+        )
+      : null) ??
+    null
+  );
+};
+
+const getQuotationAvatar = (quotation: Quotation) =>
+  getMatchedContact(quotation)?.picture || quotation.avatar || "";
 
 const getContactRouteId = (quotation: Quotation) =>
   getContactId(quotation) ?? 0;
@@ -643,14 +664,17 @@ watch(totalQuotations, (value) => {
             <VAvatar
               size="34"
               :color="
-                !item.avatar.length
+                !getQuotationAvatar(item).length
                   ? resolveStatusVariantAndIcon(item.quotationStatus).variant
                   : undefined
               "
-              :variant="!item.avatar.length ? 'tonal' : undefined"
+              :variant="!getQuotationAvatar(item).length ? 'tonal' : undefined"
               class="me-3"
             >
-              <VImg v-if="item.avatar.length" :src="item.avatar" />
+              <VImg
+                v-if="getQuotationAvatar(item).length"
+                :src="getQuotationAvatar(item)"
+              />
               <span v-else>{{ avatarText(item.client.name) }}</span>
             </VAvatar>
             <div class="d-flex flex-column">
