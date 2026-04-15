@@ -1,4 +1,7 @@
 <script lang="ts" setup>
+import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import type { Client } from "@/plugins/fake-api/handlers/apps/quotation/types";
+import { useContactsStore } from "@/stores/contacts";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
@@ -9,8 +12,36 @@ import type {
 
 const route = useRoute();
 const router = useRouter();
+const contactsStore = useContactsStore();
+contactsStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
+
+const mapContactToClient = (contact: ContactProperties): Client => ({
+  address: contact.address?.trim() || "",
+  company: contact.fullName.trim(),
+  companyEmail: contact.email?.trim() || "",
+  country: contact.country?.trim() || "Lebanon",
+  contact: contact.number?.trim() || "",
+  name: contact.fullName.trim(),
+});
+
+const buildDefaultClient = (): Client => {
+  const firstContact = contactsStore.all.find((contact) =>
+    contact.fullName?.trim(),
+  );
+
+  if (firstContact) return mapContactToClient(firstContact);
+
+  return {
+    address: "",
+    company: "",
+    companyEmail: "",
+    country: "Lebanon",
+    contact: "",
+    name: "",
+  };
+};
 
 const buildBlankQuotation = (): QuotationData => {
   const id = quotationsStore.nextId();
@@ -23,14 +54,7 @@ const buildBlankQuotation = (): QuotationData => {
       dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10),
-      client: {
-        address: "",
-        company: "Squarely Client",
-        companyEmail: "",
-        country: "Lebanon",
-        contact: "",
-        name: "New Client",
-      },
+      client: buildDefaultClient(),
       service: "Architectural services",
       total: 0,
       avatar: "",

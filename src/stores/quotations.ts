@@ -257,11 +257,11 @@ function defaultPaymentDetails(total: number): PaymentDetails {
 function ensureClient(client: Partial<Client> | undefined): Client {
   return {
     address: client?.address?.trim() || "",
-    company: client?.company?.trim() || "Squarely Client",
-    companyEmail: client?.companyEmail?.trim() || "client@squarely.app",
+    company: client?.company?.trim() || client?.name?.trim() || "",
+    companyEmail: client?.companyEmail?.trim() || "",
     country: client?.country?.trim() || "Lebanon",
     contact: client?.contact?.trim() || "",
-    name: client?.name?.trim() || "Unknown Contact",
+    name: client?.name?.trim() || "",
   };
 }
 

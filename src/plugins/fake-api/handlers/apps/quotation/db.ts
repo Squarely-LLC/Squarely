@@ -5,8 +5,31 @@ import avatar3 from "@images/avatars/avatar-3.png";
 import avatar4 from "@images/avatars/avatar-4.png";
 import avatar5 from "@images/avatars/avatar-5.png";
 import avatar6 from "@images/avatars/avatar-6.png";
+import { db as contactsDb } from "../contact/db";
+import type { ContactProperties } from "../contact/types";
 
 const year = new Date().getFullYear();
+
+const mapContactToClient = (
+  contact: ContactProperties,
+): QuotationRecord["quotation"]["client"] => ({
+  address: contact.address?.trim() || "",
+  company: contact.fullName.trim(),
+  companyEmail: contact.email?.trim() || "",
+  country: contact.country?.trim() || "Lebanon",
+  contact: contact.number?.trim() || "",
+  name: contact.fullName.trim(),
+});
+
+const getSeedClient = (contactId: number) => {
+  const contact = contactsDb.users.find((entry) => entry.id === contactId);
+
+  if (!contact) {
+    throw new Error(`Missing contact seed for quotation client ${contactId}`);
+  }
+
+  return mapContactToClient(contact);
+};
 
 const buildRecord = (
   id: number,
@@ -65,42 +88,21 @@ const buildRecord = (
 export const database: QuotationRecord[] = [
   buildRecord(6101, "Pending", avatar1, {
     total: 4200,
-    client: {
-      address: "Mar Mikhael Street",
-      company: "Cedars Development",
-      companyEmail: "pm@cedarsdev.com",
-      country: "Lebanon",
-      contact: "+961 3 888 221",
-      name: "Maya Khoury",
-    },
+    client: getSeedClient(2),
     service: "Interior fit-out quotation",
     dealId: 201,
     linkedRecordType: "deal",
   }),
   buildRecord(6102, "Approved", avatar2, {
     total: 7600,
-    client: {
-      address: "Hamra Main Road",
-      company: "Urban Core SAL",
-      companyEmail: "ops@urbancore.com",
-      country: "Lebanon",
-      contact: "+961 1 332 455",
-      name: "Karim Saab",
-    },
+    client: getSeedClient(5),
     service: "Retail branch design package",
     dealId: 202,
     linkedRecordType: "deal",
   }),
   buildRecord(6103, "Lost", "", {
     total: 3100,
-    client: {
-      address: "Bsalim District",
-      company: "Peak Fit Club",
-      companyEmail: "admin@peakfit.com",
-      country: "Lebanon",
-      contact: "+961 70 544 311",
-      name: "Rita Hanna",
-    },
+    client: getSeedClient(7),
     service: "Gym reception redesign",
     dealId: null,
     linkedRecordType: null,
@@ -109,42 +111,21 @@ export const database: QuotationRecord[] = [
   }),
   buildRecord(6104, "Converted to Invoice", avatar3, {
     total: 9200,
-    client: {
-      address: "Antelias Waterfront",
-      company: "Harbor Residence",
-      companyEmail: "procurement@harborres.com",
-      country: "Lebanon",
-      contact: "+961 4 999 104",
-      name: "Elie Tannous",
-    },
+    client: getSeedClient(10),
     service: "Lobby renovation scope",
     dealId: 204,
     linkedRecordType: "deal",
   }),
   buildRecord(6105, "Converted to Proforma", avatar4, {
     total: 5800,
-    client: {
-      address: "Jbeil old souk",
-      company: "Phoenicia Hospitality",
-      companyEmail: "finance@phoeniciah.com",
-      country: "Lebanon",
-      contact: "+961 9 441 002",
-      name: "Dana Azar",
-    },
+    client: getSeedClient(1),
     service: "Guest suite refurbishment",
     dealId: 205,
     linkedRecordType: "contract",
   }),
   buildRecord(6106, "Pending", avatar5, {
     total: 2500,
-    client: {
-      address: "Verdun Plaza",
-      company: "Northstar Clinics",
-      companyEmail: "projects@northstarclinics.com",
-      country: "Lebanon",
-      contact: "+961 70 221 778",
-      name: "Samer Younes",
-    },
+    client: getSeedClient(9),
     service: "Clinic partition works",
     dealId: null,
     linkedRecordType: null,
@@ -153,28 +134,14 @@ export const database: QuotationRecord[] = [
   }),
   buildRecord(6107, "Approved", avatar6, {
     total: 4450,
-    client: {
-      address: "Downtown Beirut",
-      company: "Muse Retail Group",
-      companyEmail: "commercial@museretail.com",
-      country: "Lebanon",
-      contact: "+961 76 103 552",
-      name: "Lynn Farah",
-    },
+    client: getSeedClient(8),
     service: "Pop-up kiosk fabrication",
     dealId: 207,
     linkedRecordType: "deal",
   }),
   buildRecord(6108, "Pending", "", {
     total: 6900,
-    client: {
-      address: "Dbayeh Business Park",
-      company: "Vertex Offices",
-      companyEmail: "admin@vertexoffices.com",
-      country: "Lebanon",
-      contact: "+961 4 558 102",
-      name: "Joe Bitar",
-    },
+    client: getSeedClient(6),
     service: "Workspace redesign proposal",
     dealId: 208,
     linkedRecordType: "deal",
@@ -182,14 +149,7 @@ export const database: QuotationRecord[] = [
   buildRecord(6111, "Approved", avatar2, {
     quoteNumber: "QT-6102-R1",
     total: 7350,
-    client: {
-      address: "Hamra Main Road",
-      company: "Urban Core SAL",
-      companyEmail: "ops@urbancore.com",
-      country: "Lebanon",
-      contact: "+961 1 332 455",
-      name: "Karim Saab",
-    },
+    client: getSeedClient(5),
     service: "Retail branch design package - revision 1",
     dealId: 202,
     linkedRecordType: "deal",
@@ -200,14 +160,7 @@ export const database: QuotationRecord[] = [
   buildRecord(6112, "Approved", avatar2, {
     quoteNumber: "QT-6102-R2",
     total: 7600,
-    client: {
-      address: "Hamra Main Road",
-      company: "Urban Core SAL",
-      companyEmail: "ops@urbancore.com",
-      country: "Lebanon",
-      contact: "+961 1 332 455",
-      name: "Karim Saab",
-    },
+    client: getSeedClient(5),
     service: "Retail branch design package - revision 2",
     dealId: 202,
     linkedRecordType: "deal",

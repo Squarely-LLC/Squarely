@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import { useContactsStore } from "@/stores/contacts";
 import { useQuotationsStore } from "@/stores/quotations";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type { Quotation, QuotationStatus } from "@db/apps/quotation/types";
@@ -12,7 +13,7 @@ const userData = useCookie<Record<string, unknown> | null | undefined>(
 );
 const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
-const expanded = ref<number[]>([]);
+const expanded = ref<string[]>([]);
 const router = useRouter();
 
 type DealContractOption = {
@@ -36,6 +37,9 @@ type ExternalQuotationForm = {
 
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
+
+const contactsStore = useContactsStore();
+contactsStore.init();
 
 const itemsPerPage = ref(10);
 const page = ref(1);
@@ -148,10 +152,10 @@ const getRevisionCount = (quotation: Quotation) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
 const isExpanded = (quotation: Quotation) =>
-  expanded.value.includes(quotation.id);
+  expanded.value.includes(quotation.quoteNumber);
 
 const toggleRow = (quotation: Quotation) => {
-  const id = quotation.id;
+  const id = quotation.quoteNumber;
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -171,6 +175,30 @@ const getRevisions = (quotationId: number | string) =>
 
     return getRevisionOrder(a) - getRevisionOrder(b);
   });
+
+const getContactId = (quotation: Quotation) => {
+  const clientName = quotation.client.name.trim().toLowerCase();
+  const clientEmail = quotation.client.companyEmail.trim().toLowerCase();
+
+  const byEmail = clientEmail
+    ? contactsStore.all.find(
+        (contact) => contact.email.trim().toLowerCase() === clientEmail,
+      )
+    : null;
+
+  if (byEmail) return byEmail.id;
+
+  const byName = clientName
+    ? contactsStore.all.find(
+        (contact) => contact.fullName.trim().toLowerCase() === clientName,
+      )
+    : null;
+
+  return byName?.id ?? null;
+};
+
+const getContactRouteId = (quotation: Quotation) =>
+  getContactId(quotation) ?? 0;
 
 const dealContractOptions = computed<DealContractOption[]>(() => {
   const options = new Map<string, DealContractOption>();
@@ -348,12 +376,14 @@ const saveExternalQuotation = () => {
       dueDate: externalQuotationForm.value.date!,
       client: {
         address: "",
-        company: "Imported quotation",
+        company:
+          externalQuotationForm.value.contactName.trim() ||
+          externalQuotationForm.value.contactEmail.trim() ||
+          "",
         companyEmail: externalQuotationForm.value.contactEmail.trim(),
         country: "Lebanon",
         contact: "",
-        name:
-          externalQuotationForm.value.contactName.trim() || "Imported Contact",
+        name: externalQuotationForm.value.contactName.trim(),
       },
       service: "Imported quotation",
       total: Number(externalQuotationForm.value.amount),
@@ -571,7 +601,7 @@ watch(totalQuotations, (value) => {
         :items-length="totalQuotations"
         :headers="headers"
         :items="paginatedQuotations"
-        item-value="id"
+        item-value="quoteNumber"
         class="text-no-wrap"
         @update:options="updateOptions"
       >
@@ -625,14 +655,18 @@ watch(totalQuotations, (value) => {
             </VAvatar>
             <div class="d-flex flex-column">
               <RouterLink
+                v-if="getContactId(item)"
                 :to="{
-                  name: 'pages-user-profile-tab',
-                  params: { tab: 'profile' },
+                  name: 'apps-contact-view-id',
+                  params: { id: getContactRouteId(item) },
                 }"
                 class="text-link font-weight-medium"
               >
                 {{ item.client.name }}
               </RouterLink>
+              <span v-else class="font-weight-medium">
+                {{ item.client.name }}
+              </span>
               <RouterLink
                 v-if="item.dealId"
                 :to="{ name: 'wizard-examples-create-deal' }"

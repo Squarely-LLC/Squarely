@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useContactsStore } from "@/stores/contacts";
 import { useQuotationsStore } from "@/stores/quotations";
 import type { Client } from "@db/apps/quotation/types";
 import { VNodeRenderer } from "@layouts/components/VNodeRenderer";
@@ -21,12 +23,28 @@ const emit = defineEmits<{
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
+const contactsStore = useContactsStore();
+contactsStore.init();
+
 const quotation = toRef(props.data, "quotation");
 const salesperson = toRef(props.data, "salesperson");
 const thanksNote = toRef(props.data, "thanksNote");
 const note = toRef(props.data, "note");
 
-const clients = computed<Client[]>(() => quotationsStore.clients);
+const mapContactToClient = (contact: ContactProperties): Client => ({
+  address: contact.address?.trim() || "",
+  company: contact.fullName.trim(),
+  companyEmail: contact.email?.trim() || "",
+  country: contact.country?.trim() || "Lebanon",
+  contact: contact.number?.trim() || "",
+  name: contact.fullName.trim(),
+});
+
+const clients = computed<Client[]>(() =>
+  contactsStore.all
+    .filter((contact) => contact.fullName?.trim())
+    .map((contact) => mapContactToClient(contact)),
+);
 
 const addItem = () => {
   emit("push", {
@@ -43,7 +61,8 @@ const removeProduct = (id: number) => {
 
 const subtotal = computed(() =>
   props.data.purchasedProducts.reduce(
-    (sum, product) => sum + Number(product.cost || 0) * Number(product.hours || 0),
+    (sum, product) =>
+      sum + Number(product.cost || 0) * Number(product.hours || 0),
     0,
   ),
 );
@@ -64,9 +83,13 @@ const total = computed(() => Number(quotation.value.total || 0));
           </h6>
         </div>
 
-        <p class="text-high-emphasis mb-0">Office 149, 450 South Brand Brooklyn</p>
+        <p class="text-high-emphasis mb-0">
+          Office 149, 450 South Brand Brooklyn
+        </p>
         <p class="text-high-emphasis mb-0">San Diego County, CA 91905, USA</p>
-        <p class="text-high-emphasis mb-0">+1 (123) 456 7891, +44 (876) 543 2198</p>
+        <p class="text-high-emphasis mb-0">
+          +1 (123) 456 7891, +44 (876) 543 2198
+        </p>
       </div>
 
       <div class="d-flex flex-column gap-2">
@@ -89,7 +112,9 @@ const total = computed(() => Number(quotation.value.total || 0));
           </span>
         </div>
 
-        <div class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row">
+        <div
+          class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row"
+        >
           <span
             class="text-high-emphasis text-sm-end"
             style="inline-size: 5.625rem"
@@ -107,7 +132,9 @@ const total = computed(() => Number(quotation.value.total || 0));
           </span>
         </div>
 
-        <div class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row">
+        <div
+          class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row"
+        >
           <span
             class="text-high-emphasis text-sm-end"
             style="inline-size: 5.625rem"
@@ -170,7 +197,9 @@ const total = computed(() => Number(quotation.value.total || 0));
             <tr>
               <td class="pe-4">IBAN:</td>
               <td>
-                <p class="text-wrap me-4">{{ props.data.paymentDetails.iban }}</p>
+                <p class="text-wrap me-4">
+                  {{ props.data.paymentDetails.iban }}
+                </p>
               </td>
             </tr>
             <tr>
