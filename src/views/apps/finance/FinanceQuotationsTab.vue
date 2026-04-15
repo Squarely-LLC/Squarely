@@ -13,6 +13,7 @@ const userData = useCookie<Record<string, unknown> | null | undefined>(
 );
 const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
+const isDeleteQuotationDialogOpen = ref(false);
 const expanded = ref<string[]>([]);
 const router = useRouter();
 
@@ -455,6 +456,65 @@ const openRevisionDraft = async (quotationId: number) => {
   });
 };
 
+const pendingDeleteQuotationId = ref<number | null>(null);
+
+const pendingDeleteQuotation = computed(() => {
+  if (pendingDeleteQuotationId.value === null) return null;
+
+  return (
+    quotationsStore.byId(pendingDeleteQuotationId.value)?.quotation ?? null
+  );
+});
+
+const pendingDeleteRevisionCount = computed(() => {
+  const quotation = pendingDeleteQuotation.value;
+  if (!quotation || quotation.parentQuotationId) return 0;
+
+  return quotationsStore.revisionsByParent(quotation.id).length;
+});
+
+const deleteDialogMessage = computed(() => {
+  const quotation = pendingDeleteQuotation.value;
+  if (!quotation) return "";
+
+  if (quotation.parentQuotationId) {
+    return `Are you sure you want to delete revision ${quotation.quoteNumber}?`;
+  }
+
+  if (pendingDeleteRevisionCount.value > 0) {
+    return `Are you sure you want to delete ${quotation.quoteNumber} and its ${pendingDeleteRevisionCount.value} revision${pendingDeleteRevisionCount.value === 1 ? "" : "s"}?`;
+  }
+
+  return `Are you sure you want to delete quotation ${quotation.quoteNumber}?`;
+});
+
+const closeDeleteQuotationDialog = () => {
+  isDeleteQuotationDialogOpen.value = false;
+  pendingDeleteQuotationId.value = null;
+};
+
+const deleteQuotation = (quotationId: number) => {
+  const record = quotationsStore.byId(quotationId);
+  if (!record) return;
+
+  pendingDeleteQuotationId.value = quotationId;
+  isDeleteQuotationDialogOpen.value = true;
+};
+
+const confirmDeleteQuotation = () => {
+  const quotation = pendingDeleteQuotation.value;
+  if (!quotation) {
+    closeDeleteQuotationDialog();
+    return;
+  }
+
+  quotationsStore.removeQuotation(quotation.id);
+  expanded.value = expanded.value.filter(
+    (value) => value !== quotation.quoteNumber,
+  );
+  closeDeleteQuotationDialog();
+};
+
 const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
   if (revision.revisionLabel?.trim()) return revision.revisionLabel.trim();
 
@@ -508,6 +568,7 @@ const computedMoreList = computed(() => {
       value: "delete",
       prependIcon: "tabler-trash",
       class: "text-error",
+      onClick: () => deleteQuotation(paramId),
     },
   ];
 });
@@ -519,6 +580,13 @@ const revisionMenuList = computed(() => {
       value: "preview",
       prependIcon: "tabler-eye",
       to: { name: "apps-quotation-preview-id", params: { id: paramId } },
+    },
+    {
+      title: "Delete",
+      value: "delete",
+      prependIcon: "tabler-trash",
+      class: "text-error",
+      onClick: () => deleteQuotation(paramId),
     },
   ];
 });
@@ -993,6 +1061,25 @@ watch(totalQuotations, (value) => {
           cancel-text="Cancel"
           @save="saveExternalQuotation"
           @cancel="isExternalQuotationDialogOpen = false"
+        />
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="isDeleteQuotationDialogOpen" max-width="440" persistent>
+    <VCard>
+      <VCardText class="pt-6">
+        {{ deleteDialogMessage }}
+      </VCardText>
+
+      <VCardActions class="pt-2 px-6 pb-6">
+        <DialogActionBar
+          save-text="Delete"
+          save-color="error"
+          save-variant="tonal"
+          cancel-text="Cancel"
+          @save="confirmDeleteQuotation"
+          @cancel="closeDeleteQuotationDialog"
         />
       </VCardActions>
     </VCard>

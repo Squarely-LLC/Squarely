@@ -517,13 +517,26 @@ export const useQuotationsStore = defineStore("quotations", {
     },
 
     removeQuotation(id: number | string) {
-      const index = this.items.findIndex(
+      const target = this.items.find(
         (record) => String(record.quotation.id) === String(id),
       );
 
-      if (index === -1) return;
+      if (!target) return;
 
-      this.items.splice(index, 1);
+      const numericId = Number(target.quotation.id);
+      const parentId = target.quotation.parentQuotationId;
+
+      this.items = this.items.filter((record) => {
+        if (String(record.quotation.id) === String(id)) return false;
+
+        if (!parentId && record.quotation.parentQuotationId === numericId) {
+          return false;
+        }
+
+        return true;
+      });
+
+      this.items = resequenceRevisions(this.items);
     },
 
     replaceAll(records: QuotationRecord[]) {
