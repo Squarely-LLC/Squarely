@@ -1,71 +1,172 @@
 <script setup lang="ts">
-import SettingsCheckout from "@/views/apps/ecommerce/settings/SettingsCheckout.vue";
-import SettingsLocations from "@/views/apps/ecommerce/settings/SettingsLocations.vue";
-import SettingsNotifications from "@/views/apps/ecommerce/settings/SettingsNotifications.vue";
-import SettingsPayment from "@/views/apps/ecommerce/settings/SettingsPayment.vue";
-import SettingsShippingAndDelivery from "@/views/apps/ecommerce/settings/SettingsShippingAndDelivery.vue";
-import SettingsStoreDetails from "@/views/apps/ecommerce/settings/SettingsStoreDetails.vue";
+import { onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+
+import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
+
+const route = useRoute();
+const router = useRouter();
 
 const tabsData = [
-  { icon: "tabler-building-store", title: "Store Details" },
-  { icon: "tabler-credit-card", title: "Payments" },
-  { icon: "tabler-shopping-cart", title: "Checkout" },
-  { icon: "tabler-discount", title: "Shipping & Delivery" },
-  { icon: "tabler-map-pin", title: "Location" },
-  { icon: "tabler-bell-ringing", title: "Notifications" },
-];
+  {
+    icon: "tabler-file-text",
+    title: "Quotations",
+    key: "quotations",
+    description: "Manage customer quotations and draft pricing proposals.",
+  },
+  {
+    icon: "tabler-file-dollar",
+    title: "Pro-forma",
+    key: "pro-forma",
+    description: "Prepare and review pro-forma documents before invoicing.",
+  },
+  {
+    icon: "tabler-file-invoice",
+    title: "Invoice",
+    key: "invoice",
+    description: "Track issued invoices, statuses, and payment follow-up.",
+  },
+  {
+    icon: "tabler-receipt-2",
+    title: "Receipt",
+    key: "receipt",
+    description: "Review receipt records and confirmed incoming payments.",
+  },
+  {
+    icon: "tabler-credit-card-pay",
+    title: "Expenses",
+    key: "expenses",
+    description: "Monitor company spending, reimbursements, and cost items.",
+  },
+  {
+    icon: "tabler-users-group",
+    title: "Payroll",
+    key: "payroll",
+    description: "Handle payroll cycles, payouts, and salary-related records.",
+  },
+  {
+    icon: "tabler-file-delta",
+    title: "Debit Note",
+    key: "debit-note",
+    description: "Create and manage debit note adjustments and references.",
+  },
+  {
+    icon: "tabler-file-minus",
+    title: "Credit Note",
+    key: "credit-note",
+    description: "Track issued credit notes and billing corrections.",
+  },
+  {
+    icon: "tabler-arrows-exchange",
+    title: "Transfers",
+    key: "transfers",
+    description: "View internal transfers and movement of financial balances.",
+  },
+  {
+    icon: "tabler-wallet",
+    title: "Advances hr",
+    key: "advances-hr",
+    description: "Manage HR-related employee advances and recovery tracking.",
+  },
+] as const;
 
-const activeTab = ref(null);
+const activeTab = ref<number | null>(null);
+
+const setTabFromQuery = () => {
+  try {
+    const queryTab = String(route.query.tab || tabsData[0].key);
+    const index = tabsData.findIndex(tab => tab.key === queryTab);
+
+    activeTab.value = index === -1 ? 0 : index;
+  } catch {
+    activeTab.value = 0;
+  }
+};
+
+onMounted(() => {
+  setTabFromQuery();
+});
+
+watch(
+  () => route.query.tab,
+  () => {
+    setTabFromQuery();
+  },
+);
+
+watch(
+  () => activeTab.value,
+  value => {
+    if (value == null) return;
+
+    const key = tabsData[value]?.key || tabsData[0].key;
+
+    if (String(route.query.tab) === key) return;
+
+    try {
+      router.replace({
+        name: route.name as string,
+        params: route.params,
+        query: { ...(route.query || {}), tab: key },
+      });
+    } catch {
+      // Ignore route replacement failures.
+    }
+  },
+);
 </script>
 
 <template>
   <VRow>
-    <VCol cols="12" md="4">
-      <h5 class="text-h5 mb-4">Getting Started</h5>
+    <VCol cols="12" md="3" lg="2">
+      <h5 class="text-h5 mb-4">Finance</h5>
 
       <VTabs
         v-model="activeTab"
         direction="vertical"
-        class="v-tabs-pill disable-tab-transition"
+        class="finance-tabs v-tabs-pill disable-tab-transition"
       >
         <VTab
-          v-for="(tabItem, index) in tabsData"
-          :key="index"
+          v-for="tabItem in tabsData"
+          :key="tabItem.key"
           :prepend-icon="tabItem.icon"
+          class="finance-tab-item"
         >
           {{ tabItem.title }}
         </VTab>
       </VTabs>
     </VCol>
 
-    <VCol cols="12" md="8">
+    <VCol cols="12" md="9" lg="10">
       <VWindow
         v-model="activeTab"
         class="disable-tab-transition"
         :touch="false"
       >
-        <VWindowItem>
-          <SettingsStoreDetails />
-        </VWindowItem>
+        <VWindowItem
+          v-for="tabItem in tabsData"
+          :key="tabItem.key"
+        >
+          <FinanceQuotationsTab v-if="tabItem.key === 'quotations'" />
 
-        <VWindowItem>
-          <SettingsPayment />
-        </VWindowItem>
+          <VCard v-else>
+            <VCardText class="pa-6">
+              <div class="d-flex align-center mb-3">
+                <VIcon
+                  :icon="tabItem.icon"
+                  size="22"
+                  class="me-2"
+                />
+                <h6 class="text-h6 mb-0">
+                  {{ tabItem.title }}
+                </h6>
+              </div>
 
-        <VWindowItem>
-          <SettingsCheckout />
-        </VWindowItem>
-
-        <VWindowItem>
-          <SettingsShippingAndDelivery />
-        </VWindowItem>
-
-        <VWindowItem>
-          <SettingsLocations />
-        </VWindowItem>
-
-        <VWindowItem>
-          <SettingsNotifications />
+              <p class="text-body-1 mb-0">
+                {{ tabItem.description }}
+              </p>
+            </VCardText>
+          </VCard>
         </VWindowItem>
       </VWindow>
     </VCol>
@@ -73,9 +174,22 @@ const activeTab = ref(null);
 </template>
 
 <style lang="scss">
-.my-class {
-  padding: 1.25rem;
-  border-radius: 0.375rem;
-  background-color: rgba(var(--v-theme-on-surface), var(--v-hover-opacity));
+.finance-tabs {
+  inline-size: 100%;
+  max-inline-size: 14rem;
+}
+
+.finance-tab-item {
+  min-block-size: 2.5rem;
+  justify-content: flex-start;
+  padding-inline: 0.75rem;
+}
+
+.finance-tab-item :deep(.v-tab__slider) {
+  display: none;
+}
+
+.finance-tab-item :deep(.v-icon) {
+  margin-inline-end: 0.5rem;
 }
 </style>
