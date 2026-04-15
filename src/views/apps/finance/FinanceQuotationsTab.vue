@@ -1,24 +1,54 @@
 <script setup lang="ts">
-import { formatSystemDate } from "@core/utils/formatters";
-import type { Invoice } from "@db/apps/invoice/types";
-
-type InvoiceStatus =
-  | "Downloaded"
-  | "Draft"
-  | "Paid"
-  | "Sent"
-  | "Partial Payment"
-  | "Past Due"
-  | null;
+import DialogActionBar from "@/components/DialogActionBar.vue";
+import { useQuotationsStore } from "@/stores/quotations";
+import { avatarText, formatSystemDate } from "@core/utils/formatters";
+import type { Quotation, QuotationStatus } from "@db/apps/quotation/types";
 
 const searchQuery = ref("");
-const selectedStatus = ref<InvoiceStatus>(null);
+const selectedStatus = ref<QuotationStatus | null>(null);
 const selectedRows = ref<number[]>([]);
+const userData = useCookie<Record<string, unknown> | null | undefined>(
+  "userData",
+);
+const isCreateMenuOpen = ref(false);
+const isExternalQuotationDialogOpen = ref(false);
+const expanded = ref<string[]>([]);
+const router = useRouter();
+
+type DealContractOption = {
+  title: string;
+  value: string;
+  recordType: "deal" | "contract";
+  contactName: string;
+  contactEmail: string;
+};
+
+type ExternalQuotationForm = {
+  date: string | null;
+  quoteNumber: string;
+  amount: number | null;
+  linkedRecord: string | null;
+  contactName: string;
+  contactEmail: string;
+  status: QuotationStatus | null;
+  attachment: File | File[] | null;
+};
+
+const quotationsStore = useQuotationsStore();
+quotationsStore.init();
 
 const itemsPerPage = ref(10);
 const page = ref(1);
-const sortBy = ref();
-const orderBy = ref();
+const sortBy = ref<string>();
+const orderBy = ref<string>();
+
+const currentUserRole = computed(() =>
+  String(userData.value?.role ?? "")
+    .trim()
+    .toLowerCase(),
+);
+
+const canSelectRows = computed(() => currentUserRole.value === "auditor");
 
 const updateOptions = (options: any) => {
   sortBy.value = options.sortBy[0]?.key;
@@ -26,86 +56,434 @@ const updateOptions = (options: any) => {
 };
 
 const headers = [
-  { title: "#", key: "id" },
-  { title: "Status", key: "status", sortable: false },
   { title: "Client", key: "client" },
+  { title: "#", key: "id" },
   { title: "Total", key: "total" },
   { title: "Issued Date", key: "date" },
-  { title: "Balance", key: "balance" },
+  { title: "Status", key: "status", sortable: false },
   { title: "Actions", key: "actions", sortable: false },
 ];
 
-const { data: invoiceData, execute: fetchInvoices } = await useApi<any>(
-  createUrl("/apps/invoice", {
-    query: {
-      q: searchQuery,
-      status: selectedStatus,
-      itemsPerPage,
-      page,
-      sortBy,
-      orderBy,
-    },
-  }),
+const allQuotationRecords = computed(() => quotationsStore.all);
+const allQuotations = computed(() =>
+  allQuotationRecords.value
+    .map((record) => record.quotation)
+    .filter((quotation) => !quotation.isRevision),
 );
+const revisionMap = computed(() => {
+  const map = new Map<number, Quotation[]>();
 
-const quotations = computed((): Invoice[] => invoiceData.value.invoices);
-const totalQuotations = computed(() => invoiceData.value.totalInvoices);
+  for (const record of allQuotationRecords.value) {
+    const quotation = record.quotation;
+    if (!quotation.isRevision || !quotation.parentQuotationId) continue;
 
-const resolveBalanceVariant = (balance: string | number, total: number) => {
-  if (balance === total) return { status: "Unpaid", chip: { color: "error" } };
+    const existing = map.get(quotation.parentQuotationId) ?? [];
+    existing.push(quotation);
+    map.set(quotation.parentQuotationId, existing);
+  }
 
-  if (balance === 0) return { status: "Paid", chip: { color: "success" } };
+  return map;
+});
 
-  return { status: balance, chip: { variant: "text" } };
+const filteredQuotations = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase();
+
+  let records = allQuotations.value.filter((quotation) => {
+    const matchesQuery =
+      !query ||
+      quotation.client.name.toLowerCase().includes(query) ||
+      quotation.client.companyEmail.toLowerCase().includes(query) ||
+      quotation.quoteNumber.toLowerCase().includes(query) ||
+      quotation.service.toLowerCase().includes(query) ||
+      String(quotation.id).includes(query);
+
+    const matchesStatus =
+      !selectedStatus.value || quotation.quotationStatus === selectedStatus.value;
+
+    return matchesQuery && matchesStatus;
+  });
+
+  if (sortBy.value) {
+    records = [...records].sort((a, b) => {
+      if (sortBy.value === "client") {
+        return orderBy.value === "asc"
+          ? a.client.name.localeCompare(b.client.name)
+          : b.client.name.localeCompare(a.client.name);
+      }
+
+      if (sortBy.value === "id") {
+        return orderBy.value === "asc" ? a.id - b.id : b.id - a.id;
+      }
+
+      if (sortBy.value === "total") {
+        return orderBy.value === "asc" ? a.total - b.total : b.total - a.total;
+      }
+
+      if (sortBy.value === "date") {
+        return orderBy.value === "asc"
+          ? new Date(a.issuedDate).getTime() - new Date(b.issuedDate).getTime()
+          : new Date(b.issuedDate).getTime() - new Date(a.issuedDate).getTime();
+      }
+
+      return 0;
+    });
+  }
+
+  return records;
+});
+
+const totalQuotations = computed(() => filteredQuotations.value.length);
+const paginatedQuotations = computed(() => {
+  if (itemsPerPage.value === -1) return filteredQuotations.value;
+
+  const start = (page.value - 1) * itemsPerPage.value;
+  return filteredQuotations.value.slice(start, start + itemsPerPage.value);
+});
+
+const hasRevisions = (quotation: Quotation) =>
+  (revisionMap.value.get(quotation.id) ?? []).length > 0;
+
+const isExpanded = (quotation: Quotation) =>
+  expanded.value.includes(String(quotation.id));
+
+const toggleRow = (quotation: Quotation) => {
+  const id = String(quotation.id);
+  expanded.value = isExpanded(quotation)
+    ? expanded.value.filter((value) => value !== id)
+    : [...expanded.value, id];
 };
 
+const getRevisions = (quotationId: number | string) =>
+  [...(revisionMap.value.get(Number(quotationId)) ?? [])].sort((a, b) => {
+    const getRevisionOrder = (quotation: Quotation) => {
+      const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
+      if (labelMatch?.[1]) return Number(labelMatch[1]);
+
+      const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
+      if (quoteMatch?.[1]) return Number(quoteMatch[1]);
+
+      return quotation.id;
+    };
+
+    return getRevisionOrder(a) - getRevisionOrder(b);
+  });
+
+const dealContractOptions = computed<DealContractOption[]>(() => {
+  const options = new Map<string, DealContractOption>();
+
+  for (const quotation of allQuotations.value) {
+    if (!quotation.dealId) continue;
+
+    options.set(String(quotation.dealId), {
+      title: `${
+        quotation.linkedRecordType === "contract" ? "Contract" : "Deal"
+      } ${quotation.dealId} - ${quotation.client.name}`,
+      value: String(quotation.dealId),
+      recordType: quotation.linkedRecordType ?? "deal",
+      contactName: quotation.client.name,
+      contactEmail: quotation.client.companyEmail,
+    });
+  }
+
+  return Array.from(options.values());
+});
+
+const emptyExternalQuotationForm = (): ExternalQuotationForm => ({
+  date: null,
+  quoteNumber: "",
+  amount: null,
+  linkedRecord: null,
+  contactName: "",
+  contactEmail: "",
+  status: "Pending",
+  attachment: null,
+});
+
+const externalQuotationForm = ref<ExternalQuotationForm>(
+  emptyExternalQuotationForm(),
+);
+const externalQuotationError = ref("");
+const externalQuotationSuccess = ref("");
+const allowedAttachmentTypes = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "image/png",
+  "image/jpeg",
+];
+const allowedAttachmentExtensions = [
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".png",
+  ".jpg",
+  ".jpeg",
+];
+const attachmentAccept = allowedAttachmentExtensions.join(",");
+const maxAttachmentSizeBytes = 10 * 1024 * 1024;
+
+const selectedAttachment = computed<File | null>(() => {
+  const value = externalQuotationForm.value.attachment;
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+});
+
+const hasLinkedDealOrContract = computed(
+  () => !!externalQuotationForm.value.linkedRecord,
+);
+const selectedLinkedOption = computed(
+  () =>
+    dealContractOptions.value.find(
+      (option) => option.value === externalQuotationForm.value.linkedRecord,
+    ) || null,
+);
+const shouldAutoSelectContact = computed(
+  () => selectedLinkedOption.value?.recordType === "deal",
+);
+
+const externalFormIsValid = computed(() => {
+  return Boolean(
+    externalQuotationForm.value.date &&
+      externalQuotationForm.value.quoteNumber.trim() &&
+      externalQuotationForm.value.amount !== null &&
+      externalQuotationForm.value.amount > 0 &&
+      externalQuotationForm.value.status,
+  );
+});
+
 const resolveStatusVariantAndIcon = (status: string) => {
-  if (status === "Partial Payment")
-    return { variant: "warning", icon: "tabler-chart-pie-2" };
-  if (status === "Paid") return { variant: "success", icon: "tabler-check" };
-  if (status === "Downloaded")
-    return { variant: "info", icon: "tabler-arrow-down" };
-  if (status === "Draft") return { variant: "primary", icon: "tabler-folder" };
-  if (status === "Sent") return { variant: "secondary", icon: "tabler-mail" };
-  if (status === "Past Due") return { variant: "error", icon: "tabler-help" };
+  if (status === "Pending")
+    return { variant: "warning", icon: "tabler-clock-hour-4" };
+  if (status === "Approved")
+    return { variant: "success", icon: "tabler-check" };
+  if (status === "Lost") return { variant: "error", icon: "tabler-x" };
+  if (status === "Converted to Invoice")
+    return { variant: "primary", icon: "tabler-file-invoice" };
+  if (status === "Converted to Proforma")
+    return { variant: "info", icon: "tabler-file-dollar" };
 
   return { variant: "secondary", icon: "tabler-x" };
 };
 
+const openExternalQuotationDialog = () => {
+  isCreateMenuOpen.value = false;
+  externalQuotationError.value = "";
+  externalQuotationSuccess.value = "";
+  externalQuotationForm.value = emptyExternalQuotationForm();
+  isExternalQuotationDialogOpen.value = true;
+};
+
+const handleLinkedRecordChange = (value: string | null) => {
+  const linkedRecord = value ? String(value) : null;
+  externalQuotationForm.value.linkedRecord = linkedRecord;
+
+  const selectedOption =
+    dealContractOptions.value.find((option) => option.value === linkedRecord) ||
+    null;
+
+  if (!selectedOption) {
+    externalQuotationForm.value.contactName = "";
+    externalQuotationForm.value.contactEmail = "";
+    return;
+  }
+
+  if (selectedOption.recordType !== "deal") return;
+
+  externalQuotationForm.value.contactName = selectedOption.contactName;
+  externalQuotationForm.value.contactEmail = selectedOption.contactEmail;
+};
+
+const validateExternalAttachment = () => {
+  const file = selectedAttachment.value;
+
+  if (!file) return "";
+
+  const fileName = file.name.toLowerCase();
+  const hasAllowedExtension = allowedAttachmentExtensions.some((extension) =>
+    fileName.endsWith(extension),
+  );
+  const hasAllowedMimeType = allowedAttachmentTypes.includes(file.type);
+
+  if (!hasAllowedExtension && !hasAllowedMimeType) {
+    return "Attachment type is not allowed. Use PDF, Word, Excel, PNG, or JPG files only.";
+  }
+
+  if (file.size > maxAttachmentSizeBytes) {
+    return "Attachment must be 10MB or smaller.";
+  }
+
+  return "";
+};
+
+const saveExternalQuotation = () => {
+  externalQuotationError.value = "";
+  externalQuotationSuccess.value = "";
+
+  if (!externalFormIsValid.value) {
+    externalQuotationError.value =
+      "Complete the required fields: Date, Quote #, Amount, and Status.";
+    return;
+  }
+
+  const attachmentValidationError = validateExternalAttachment();
+
+  if (attachmentValidationError) {
+    externalQuotationError.value = attachmentValidationError;
+    return;
+  }
+
+  quotationsStore.addQuotation({
+    quotation: {
+      quoteNumber: externalQuotationForm.value.quoteNumber.trim(),
+      issuedDate: externalQuotationForm.value.date!,
+      dueDate: externalQuotationForm.value.date!,
+      client: {
+        address: "",
+        company: "Imported quotation",
+        companyEmail: externalQuotationForm.value.contactEmail.trim(),
+        country: "Lebanon",
+        contact: "",
+        name: externalQuotationForm.value.contactName.trim() || "Imported Contact",
+      },
+      service: "Imported quotation",
+      total: Number(externalQuotationForm.value.amount),
+      avatar: "",
+      quotationStatus: externalQuotationForm.value.status ?? "Pending",
+      balance: 0,
+      dealId: selectedLinkedOption.value
+        ? Number(selectedLinkedOption.value.value)
+        : null,
+      linkedRecordType: selectedLinkedOption.value?.recordType ?? null,
+      source: "external",
+      attachmentName: selectedAttachment.value?.name ?? null,
+    },
+    purchasedProducts: [
+      {
+        title: "Imported quotation amount",
+        cost: Number(externalQuotationForm.value.amount),
+        hours: 1,
+        description: "Imported from another system.",
+      },
+    ],
+    paymentDetails: {
+      totalDue: `$${Number(
+        externalQuotationForm.value.amount || 0,
+      ).toLocaleString()}`,
+      bankName: "Byblos Bank",
+      country: "Lebanon",
+      iban: "LB12345678901234567890123456",
+      swiftCode: "BYBALBBX",
+    },
+    note: selectedLinkedOption.value
+      ? "Imported quotation linked to an existing record."
+      : "Imported quotation without linked deal or contract.",
+    paymentMethod: "Bank Transfer",
+    salesperson: "Squarely Team",
+    thanksNote: "Imported into Squarely.",
+  });
+
+  externalQuotationSuccess.value = hasLinkedDealOrContract.value
+    ? "Quotation import draft captured and linked to the selected deal/contract."
+    : "Quotation import draft captured. This quotation is flagged because it is not linked to a deal or contract.";
+};
+
+const openRevisionDraft = async (quotationId: number) => {
+  await router.push({
+    name: "apps-quotation-add",
+    query: { revisionOf: String(quotationId) },
+  });
+};
+
+const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
+  if (revision.revisionLabel?.trim()) return revision.revisionLabel.trim();
+
+  const revisionMatch = revision.quoteNumber.match(/-R(\d+)$/i);
+  if (revisionMatch?.[1]) return `R${revisionMatch[1]}`;
+
+  return `R${index + 1}`;
+};
+
 const computedMoreList = computed(() => {
   return (paramId: number) => [
+    {
+      title: "Edit",
+      value: "edit",
+      prependIcon: "tabler-pencil",
+      to: { name: "apps-quotation-edit-id", params: { id: paramId } },
+    },
+    {
+      title: "Revise",
+      value: "revise",
+      prependIcon: "tabler-refresh",
+      onClick: () => openRevisionDraft(paramId),
+    },
+    {
+      title: "Convert to Proforma",
+      value: "convert-to-proforma",
+      prependIcon: "tabler-file-dollar",
+    },
+    {
+      title: "Convert to Tax invoice",
+      value: "convert-to-tax-invoice",
+      prependIcon: "tabler-file-invoice",
+    },
     {
       title: "Download",
       value: "download",
       prependIcon: "tabler-download",
     },
     {
-      title: "Edit",
-      value: "edit",
-      prependIcon: "tabler-pencil",
-      to: { name: "apps-invoice-edit-id", params: { id: paramId } },
+      title: "Print",
+      value: "print",
+      prependIcon: "tabler-printer",
     },
     {
-      title: "Duplicate",
-      value: "duplicate",
-      prependIcon: "tabler-layers-intersect",
+      title: "Email",
+      value: "email",
+      prependIcon: "tabler-mail",
+    },
+    {
+      title: "Delete",
+      value: "delete",
+      prependIcon: "tabler-trash",
+      class: "text-error",
     },
   ];
 });
 
-const deleteQuotation = async (id: number) => {
-  await $api(`/apps/invoice/${id}`, { method: "DELETE" });
+const revisionMenuList = computed(() => {
+  return (paramId: number) => [
+    {
+      title: "Preview",
+      value: "preview",
+      prependIcon: "tabler-eye",
+      to: { name: "apps-quotation-preview-id", params: { id: paramId } },
+    },
+  ];
+});
 
-  const index = selectedRows.value.findIndex(row => row === id);
+watch(canSelectRows, (value) => {
+  if (!value) selectedRows.value = [];
+});
 
-  if (index !== -1) selectedRows.value.splice(index, 1);
+watch([searchQuery, selectedStatus, itemsPerPage], () => {
+  page.value = 1;
+});
 
-  fetchInvoices();
-};
+watch(totalQuotations, (value) => {
+  const maxPage =
+    itemsPerPage.value === -1 ? 1 : Math.max(1, Math.ceil(value / itemsPerPage.value));
+  if (page.value > maxPage) page.value = maxPage;
+});
 </script>
 
 <template>
-  <section v-if="quotations">
+  <section v-if="allQuotations">
     <VCard id="quotation-list">
       <VCardText class="d-flex flex-wrap gap-4">
         <div class="d-flex align-center gap-2">
@@ -141,16 +519,38 @@ const deleteQuotation = async (id: number) => {
               clearable
               clear-icon="tabler-x"
               single-line
-              :items="['Downloaded', 'Draft', 'Sent', 'Paid', 'Partial Payment', 'Past Due']"
+              :items="[
+                'Pending',
+                'Approved',
+                'Lost',
+                'Converted to Invoice',
+                'Converted to Proforma',
+              ]"
             />
           </div>
 
-          <VBtn
-            prepend-icon="tabler-plus"
-            :to="{ name: 'apps-invoice-add' }"
-          >
-            Create quotation
-          </VBtn>
+          <VMenu v-model="isCreateMenuOpen">
+            <template #activator="{ props }">
+              <VBtn v-bind="props" prepend-icon="tabler-plus">
+                Create Quotation
+              </VBtn>
+            </template>
+
+            <VList>
+              <VListItem
+                :to="{ name: 'apps-quotation-add' }"
+                prepend-icon="tabler-building-estate"
+              >
+                From Squarely
+              </VListItem>
+              <VListItem
+                prepend-icon="tabler-paperclip"
+                @click="openExternalQuotationDialog"
+              >
+                Attachment from another system
+              </VListItem>
+            </VList>
+          </VMenu>
         </div>
       </VCardText>
       <VDivider />
@@ -159,112 +559,174 @@ const deleteQuotation = async (id: number) => {
         v-model:model-value="selectedRows"
         v-model:items-per-page="itemsPerPage"
         v-model:page="page"
-        show-select
+        v-model:expanded="expanded"
+        :show-select="canSelectRows"
         :items-length="totalQuotations"
         :headers="headers"
-        :items="quotations"
+        :items="paginatedQuotations"
         item-value="id"
         class="text-no-wrap"
         @update:options="updateOptions"
       >
         <template #item.id="{ item }">
-          <RouterLink :to="{ name: 'apps-invoice-preview-id', params: { id: item.id } }">
-            #{{ item.id }}
+          <RouterLink
+            :to="{ name: 'apps-quotation-preview-id', params: { id: item.id } }"
+          >
+            {{ item.quoteNumber }}
           </RouterLink>
-        </template>
-
-        <template #item.status="{ item }">
-          <VTooltip>
-            <template #activator="{ props }">
-              <VAvatar
-                :size="28"
-                v-bind="props"
-                :color="resolveStatusVariantAndIcon(item.invoiceStatus).variant"
-                variant="tonal"
-              >
-                <VIcon
-                  :size="16"
-                  :icon="resolveStatusVariantAndIcon(item.invoiceStatus).icon"
-                />
-              </VAvatar>
-            </template>
-            <p class="mb-0">
-              {{ item.invoiceStatus }}
-            </p>
-            <p class="mb-0">
-              Balance: {{ item.balance }}
-            </p>
-            <p class="mb-0">
-              Due date: {{ formatSystemDate(item.dueDate) }}
-            </p>
-          </VTooltip>
         </template>
 
         <template #item.client="{ item }">
           <div class="d-flex align-center">
+            <div class="quotation-chevron-slot">
+              <VBtn
+                v-if="hasRevisions(item)"
+                icon
+                variant="text"
+                size="small"
+                class="quotation-chevron-btn"
+                @click.stop="toggleRow(item)"
+              >
+                <VIcon
+                  :icon="
+                    isExpanded(item)
+                      ? 'tabler-chevron-up'
+                      : 'tabler-chevron-down'
+                  "
+                  size="18"
+                />
+              </VBtn>
+              <div v-else class="quotation-chevron-placeholder" aria-hidden="true" />
+            </div>
+
             <VAvatar
               size="34"
-              :color="!item.avatar.length ? resolveStatusVariantAndIcon(item.invoiceStatus).variant : undefined"
+              :color="
+                !item.avatar.length
+                  ? resolveStatusVariantAndIcon(item.quotationStatus).variant
+                  : undefined
+              "
               :variant="!item.avatar.length ? 'tonal' : undefined"
               class="me-3"
             >
-              <VImg
-                v-if="item.avatar.length"
-                :src="item.avatar"
-              />
+              <VImg v-if="item.avatar.length" :src="item.avatar" />
               <span v-else>{{ avatarText(item.client.name) }}</span>
             </VAvatar>
             <div class="d-flex flex-column">
               <RouterLink
-                :to="{ name: 'pages-user-profile-tab', params: { tab: 'profile' } }"
+                :to="{
+                  name: 'pages-user-profile-tab',
+                  params: { tab: 'profile' },
+                }"
                 class="text-link font-weight-medium"
               >
                 {{ item.client.name }}
               </RouterLink>
-              <span class="text-sm text-medium-emphasis">{{ item.client.companyEmail }}</span>
+              <RouterLink
+                v-if="item.dealId"
+                :to="{ name: 'wizard-examples-create-deal' }"
+                class="text-sm text-link"
+              >
+                Deal #{{ item.dealId }}
+              </RouterLink>
+              <span v-else class="text-sm text-medium-emphasis">No linked deal</span>
             </div>
           </div>
         </template>
 
-        <template #item.total="{ item }">
-          ${{ item.total }}
-        </template>
+        <template #item.total="{ item }">${{ item.total.toLocaleString() }}</template>
 
         <template #item.date="{ item }">
           {{ formatSystemDate(item.issuedDate) }}
         </template>
 
-        <template #item.balance="{ item }">
+        <template #item.status="{ item }">
           <VChip
-            v-if="typeof resolveBalanceVariant(item.balance, item.total).status === 'string'"
-            :color="resolveBalanceVariant(item.balance, item.total).chip.color"
+            :color="resolveStatusVariantAndIcon(item.quotationStatus).variant"
             label
             size="x-small"
+            variant="tonal"
           >
-            {{ resolveBalanceVariant(item.balance, item.total).status }}
+            {{ item.quotationStatus }}
           </VChip>
-
-          <template v-else>
-            <span class="text-base text-high-emphasis">
-              {{ Number(resolveBalanceVariant(item.balance, item.total).status) > 0 ? `$${resolveBalanceVariant(item.balance, item.total).status}` : `-$${Math.abs(Number(resolveBalanceVariant(item.balance, item.total).status))}` }}
-            </span>
-          </template>
         </template>
 
         <template #item.actions="{ item }">
-          <IconBtn @click="deleteQuotation(item.id)">
-            <VIcon icon="tabler-trash" />
-          </IconBtn>
-
-          <IconBtn :to="{ name: 'apps-invoice-preview-id', params: { id: item.id } }">
-            <VIcon icon="tabler-eye" />
-          </IconBtn>
-
           <MoreBtn
             :menu-list="computedMoreList(item.id)"
             item-props
             color="undefined"
           />
+        </template>
+
+        <template #expanded-row="{ item, columns }">
+          <tr
+            v-if="getRevisions(item.id).length"
+            class="v-data-table__tr expanded-row"
+          >
+            <td :colspan="columns.length">
+              <div class="quotation-expanded-inner">
+                <div class="quotation-expanded-header mb-2">
+                  <h6 class="text-h6 mb-0">Revisions</h6>
+                </div>
+
+                <div class="d-flex flex-column gap-2">
+                  <div
+                    v-for="(revision, revisionIndex) in getRevisions(item.id)"
+                    :key="revision.id"
+                    class="quotation-revision-card"
+                  >
+                    <div class="quotation-revision-main">
+                      <div class="d-flex flex-column">
+                        <RouterLink
+                          :to="{
+                            name: 'apps-quotation-preview-id',
+                            params: { id: revision.id },
+                          }"
+                          class="text-link font-weight-medium"
+                        >
+                          {{ getRevisionDisplayLabel(revision, revisionIndex) }}
+                        </RouterLink>
+                        <span class="text-sm text-medium-emphasis">
+                          {{ revision.quoteNumber }}
+                        </span>
+                      </div>
+
+                      <div class="text-sm">
+                        {{ formatSystemDate(revision.issuedDate) }}
+                      </div>
+
+                      <div class="text-sm">
+                        ${{ revision.total.toLocaleString() }}
+                      </div>
+
+                      <div>
+                        <VChip
+                          :color="
+                            resolveStatusVariantAndIcon(revision.quotationStatus)
+                              .variant
+                          "
+                          label
+                          size="x-small"
+                          variant="tonal"
+                        >
+                          {{ revision.quotationStatus }}
+                        </VChip>
+                      </div>
+
+                      <div class="quotation-revision-actions">
+                        <MoreBtn
+                          :menu-list="revisionMenuList(revision.id)"
+                          item-props
+                          color="undefined"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
         </template>
 
         <template #bottom>
@@ -283,6 +745,176 @@ const deleteQuotation = async (id: number) => {
       <VCardTitle>No Quotation Found</VCardTitle>
     </VCard>
   </section>
+
+  <VDialog v-model="isExternalQuotationDialogOpen" max-width="760">
+    <VCard class="pa-sm-6 pa-4">
+      <VCardTitle class="text-h5 pb-2">
+        Import Quotation From Another System
+      </VCardTitle>
+      <VCardText class="text-body-1 text-medium-emphasis pb-6">
+        Add the external quotation details and upload the source attachment.
+      </VCardText>
+
+      <VRow>
+        <VCol cols="12" md="6">
+          <AppDateTimePicker
+            v-model="externalQuotationForm.date"
+            label="Date"
+            placeholder="Select date"
+          />
+        </VCol>
+
+        <VCol cols="12" md="6">
+          <AppTextField
+            v-model="externalQuotationForm.quoteNumber"
+            label="Quote #"
+            placeholder="Enter quote number"
+          />
+        </VCol>
+
+        <VCol cols="12" md="6">
+          <AppTextField
+            :model-value="externalQuotationForm.amount"
+            label="Amount"
+            placeholder="Total amount including VAT"
+            type="number"
+            min="0"
+            step="0.01"
+            @update:model-value="
+              externalQuotationForm.amount = $event ? Number($event) : null
+            "
+          />
+        </VCol>
+
+        <VCol cols="12" md="6">
+          <AppSelect
+            :model-value="externalQuotationForm.linkedRecord"
+            label="Deal or Contract"
+            placeholder="Select deal or contract"
+            :items="dealContractOptions"
+            clearable
+            clear-icon="tabler-x"
+            @update:model-value="handleLinkedRecordChange"
+          />
+        </VCol>
+
+        <VCol cols="12">
+          <VAlert
+            v-if="!hasLinkedDealOrContract"
+            color="warning"
+            variant="tonal"
+            border="start"
+          >
+            This quotation is not linked to a deal or contract.
+          </VAlert>
+        </VCol>
+
+        <VCol cols="12" md="6">
+          <AppTextField
+            v-model="externalQuotationForm.contactName"
+            label="Contact"
+            :placeholder="
+              shouldAutoSelectContact
+                ? 'Auto-selected from linked deal'
+                : 'Enter contact name'
+            "
+            :readonly="shouldAutoSelectContact"
+          />
+        </VCol>
+
+        <VCol cols="12" md="6">
+          <AppTextField
+            v-model="externalQuotationForm.contactEmail"
+            label="Contact Email"
+            :placeholder="
+              shouldAutoSelectContact
+                ? 'Auto-selected from linked deal'
+                : 'Enter contact email'
+            "
+            :readonly="shouldAutoSelectContact"
+          />
+        </VCol>
+
+        <VCol cols="12">
+          <VAlert
+            v-if="shouldAutoSelectContact"
+            color="info"
+            variant="tonal"
+            border="start"
+          >
+            Contact information was auto-selected from the linked deal and
+            cannot be edited.
+          </VAlert>
+        </VCol>
+
+        <VCol cols="12" md="6" class="quotation-form-field">
+          <div class="quotation-form-control">
+            <div class="quotation-form-label">Status</div>
+            <AppSelect
+              v-model="externalQuotationForm.status"
+              placeholder="Select status"
+              :items="[
+                'Pending',
+                'Approved',
+                'Lost',
+                'Converted to Invoice',
+                'Converted to Proforma',
+              ]"
+            />
+          </div>
+        </VCol>
+
+        <VCol cols="12" md="6" class="quotation-form-field">
+          <div class="quotation-form-control quotation-form-control--attachment">
+            <div class="quotation-form-label">Attachment</div>
+            <VFileInput
+              v-model="externalQuotationForm.attachment"
+              class="quotation-attachment-input"
+              placeholder="Upload quotation file"
+              :accept="attachmentAccept"
+              show-size
+              clearable
+              hide-details
+            />
+            <div class="quotation-form-help">
+              Maximum file size: 10MB. Allowed types: PDF, DOC, DOCX, XLS, XLSX,
+              PNG, JPG.
+            </div>
+          </div>
+        </VCol>
+
+        <VCol cols="12">
+          <VAlert
+            v-if="externalQuotationError"
+            color="error"
+            variant="tonal"
+            border="start"
+          >
+            {{ externalQuotationError }}
+          </VAlert>
+
+          <VAlert
+            v-else-if="externalQuotationSuccess"
+            color="success"
+            variant="tonal"
+            border="start"
+          >
+            {{ externalQuotationSuccess }}
+          </VAlert>
+        </VCol>
+      </VRow>
+
+      <VCardActions class="pt-6 px-0">
+        <DialogActionBar
+          save-text="Save Import"
+          :save-disabled="!externalFormIsValid"
+          cancel-text="Cancel"
+          @save="saveExternalQuotation"
+          @cancel="isExternalQuotationDialogOpen = false"
+        />
+      </VCardActions>
+    </VCard>
+  </VDialog>
 </template>
 
 <style lang="scss">
@@ -294,5 +926,96 @@ const deleteQuotation = async (id: number) => {
   .quotation-list-filter {
     inline-size: 12rem;
   }
+}
+
+:deep(.v-data-table .expanded-row > td) {
+  background: rgba(var(--v-theme-surface), 0.2);
+}
+
+.quotation-chevron-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2rem;
+  margin-inline-end: 0.5rem;
+}
+
+.quotation-chevron-placeholder {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+
+.quotation-chevron-btn {
+  min-inline-size: 2rem;
+}
+
+.quotation-expanded-inner {
+  padding: 12px 16px 16px 4.75rem;
+}
+
+.quotation-expanded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.quotation-revision-card {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 0.75rem;
+  background: rgba(var(--v-theme-surface), 0.32);
+}
+
+.quotation-revision-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 140px 120px 180px 56px;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+}
+
+.quotation-revision-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 960px) {
+  .quotation-revision-main {
+    grid-template-columns: 1fr;
+  }
+
+  .quotation-expanded-inner {
+    padding-inline-start: 1rem;
+  }
+}
+
+.quotation-form-field {
+  display: flex;
+  align-items: flex-start;
+}
+
+.quotation-form-control {
+  inline-size: 100%;
+}
+
+.quotation-form-label {
+  margin-block-end: 0.375rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.quotation-form-help {
+  margin-block-start: 0.375rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.quotation-form-control--attachment :deep(.v-field) {
+  min-block-size: 56px;
+}
+
+.quotation-attachment-input :deep(.v-field__prepend-inner) {
+  display: none;
 }
 </style>

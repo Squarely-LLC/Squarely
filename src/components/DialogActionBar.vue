@@ -5,9 +5,9 @@ interface Props {
   saveType?: "button" | "submit" | "reset";
   cancelType?: "button" | "submit" | "reset";
   saveColor?: string;
-  saveVariant?: string;
+  saveVariant?: "flat" | "text" | "tonal" | "elevated" | "outlined" | "plain";
   cancelColor?: string;
-  cancelVariant?: string;
+  cancelVariant?: "flat" | "text" | "tonal" | "elevated" | "outlined" | "plain";
   saveLoading?: boolean;
   saveDisabled?: boolean;
   cancelDisabled?: boolean;
@@ -19,7 +19,7 @@ withDefaults(defineProps<Props>(), {
   saveType: "button",
   cancelType: "button",
   saveColor: "primary",
-  saveVariant: "tonal",
+  saveVariant: "flat",
   cancelColor: "secondary",
   cancelVariant: "tonal",
   saveLoading: false,
