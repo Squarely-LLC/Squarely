@@ -9,7 +9,7 @@ import type {
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.quotations.v3";
+const STORAGE_KEY = "app.quotations.v6";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
   quotation?: Partial<Quotation>;
 };
@@ -158,20 +158,20 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
       const match = baseQuoteNumber?.match(/^QT-(\d+)$/i);
       return match?.[1] ? Number(match[1]) : null;
     })();
+  const hasParent = Boolean(parentQuotationId);
   const isRevision =
-    Boolean(parentQuotationId) ||
-    Boolean(revisionNumber) ||
-    cloned.quotation.isRevision;
+    hasParent || Boolean(revisionNumber) || cloned.quotation.isRevision;
+  const finalParentId = isRevision ? derivedParentId : null;
 
-  cloned.quotation.parentQuotationId = isRevision ? derivedParentId : null;
-  cloned.quotation.isRevision = isRevision;
-  cloned.quotation.revisionLabel = isRevision
+  cloned.quotation.parentQuotationId = finalParentId;
+  cloned.quotation.isRevision = Boolean(finalParentId);
+  cloned.quotation.revisionLabel = finalParentId
     ? normaliseRevisionLabel(
         revisionNumber ? `R${revisionNumber}` : cloned.quotation.revisionLabel,
       )
     : null;
 
-  if (isRevision && baseQuoteNumber) {
+  if (finalParentId && baseQuoteNumber) {
     const safeRevisionNumber = revisionNumber ?? 1;
     cloned.quotation.quoteNumber = `${baseQuoteNumber}-R${safeRevisionNumber}`;
   } else if (baseQuoteNumber) {
@@ -186,7 +186,7 @@ function resequenceRevisions(records: QuotationRecord[]): QuotationRecord[] {
   const parentQuoteNumbers = new Map<number, string>();
 
   for (const record of cloned) {
-    if (record.quotation.isRevision) continue;
+    if (record.quotation.parentQuotationId) continue;
 
     parentQuoteNumbers.set(
       record.quotation.id,
@@ -198,8 +198,7 @@ function resequenceRevisions(records: QuotationRecord[]): QuotationRecord[] {
   const revisionsByParent = new Map<number, QuotationRecord[]>();
 
   for (const record of cloned) {
-    if (!record.quotation.isRevision || !record.quotation.parentQuotationId)
-      continue;
+    if (!record.quotation.parentQuotationId) continue;
 
     const parentId = Number(record.quotation.parentQuotationId);
     const existing = revisionsByParent.get(parentId) ?? [];
@@ -419,13 +418,13 @@ export const useQuotationsStore = defineStore("quotations", {
     summaries: (state) =>
       state.items
         .map((record) => record.quotation)
-        .filter((quotation) => !quotation.isRevision),
+        .filter((quotation) => !quotation.parentQuotationId),
     revisionsByParent: (state) => (parentId: number | string) =>
       state.items
         .map((record) => record.quotation)
         .filter(
           (quotation) =>
-            quotation.isRevision &&
+            quotation.parentQuotationId &&
             String(quotation.parentQuotationId) === String(parentId),
         ),
     byId: (state) => (id: number | string) =>
@@ -449,6 +448,15 @@ export const useQuotationsStore = defineStore("quotations", {
   actions: {
     init(force = false) {
       if (this.initialized && !force) return;
+
+      // Migrate: remove all older storage versions
+      if (typeof window !== "undefined") {
+        for (const key of Object.keys(localStorage)) {
+          if (key.startsWith("app.quotations.") && key !== STORAGE_KEY) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
 
       const stored = loadFromStorage();
 

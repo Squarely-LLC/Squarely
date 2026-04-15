@@ -12,7 +12,7 @@ const userData = useCookie<Record<string, unknown> | null | undefined>(
 );
 const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
-const expanded = ref<string[]>([]);
+const expanded = ref<number[]>([]);
 const router = useRouter();
 
 type DealContractOption = {
@@ -68,14 +68,14 @@ const allQuotationRecords = computed(() => quotationsStore.all);
 const allQuotations = computed(() =>
   allQuotationRecords.value
     .map((record) => record.quotation)
-    .filter((quotation) => !quotation.isRevision),
+    .filter((quotation) => !quotation.parentQuotationId),
 );
 const revisionMap = computed(() => {
   const map = new Map<number, Quotation[]>();
 
   for (const record of allQuotationRecords.value) {
     const quotation = record.quotation;
-    if (!quotation.isRevision || !quotation.parentQuotationId) continue;
+    if (!quotation.parentQuotationId) continue;
 
     const existing = map.get(quotation.parentQuotationId) ?? [];
     existing.push(quotation);
@@ -98,7 +98,8 @@ const filteredQuotations = computed(() => {
       String(quotation.id).includes(query);
 
     const matchesStatus =
-      !selectedStatus.value || quotation.quotationStatus === selectedStatus.value;
+      !selectedStatus.value ||
+      quotation.quotationStatus === selectedStatus.value;
 
     return matchesQuery && matchesStatus;
   });
@@ -143,11 +144,14 @@ const paginatedQuotations = computed(() => {
 const hasRevisions = (quotation: Quotation) =>
   (revisionMap.value.get(quotation.id) ?? []).length > 0;
 
+const getRevisionCount = (quotation: Quotation) =>
+  (revisionMap.value.get(quotation.id) ?? []).length;
+
 const isExpanded = (quotation: Quotation) =>
-  expanded.value.includes(String(quotation.id));
+  expanded.value.includes(quotation.id);
 
 const toggleRow = (quotation: Quotation) => {
-  const id = String(quotation.id);
+  const id = quotation.id;
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -249,10 +253,10 @@ const shouldAutoSelectContact = computed(
 const externalFormIsValid = computed(() => {
   return Boolean(
     externalQuotationForm.value.date &&
-      externalQuotationForm.value.quoteNumber.trim() &&
-      externalQuotationForm.value.amount !== null &&
-      externalQuotationForm.value.amount > 0 &&
-      externalQuotationForm.value.status,
+    externalQuotationForm.value.quoteNumber.trim() &&
+    externalQuotationForm.value.amount !== null &&
+    externalQuotationForm.value.amount > 0 &&
+    externalQuotationForm.value.status,
   );
 });
 
@@ -348,7 +352,8 @@ const saveExternalQuotation = () => {
         companyEmail: externalQuotationForm.value.contactEmail.trim(),
         country: "Lebanon",
         contact: "",
-        name: externalQuotationForm.value.contactName.trim() || "Imported Contact",
+        name:
+          externalQuotationForm.value.contactName.trim() || "Imported Contact",
       },
       service: "Imported quotation",
       total: Number(externalQuotationForm.value.amount),
@@ -477,7 +482,9 @@ watch([searchQuery, selectedStatus, itemsPerPage], () => {
 
 watch(totalQuotations, (value) => {
   const maxPage =
-    itemsPerPage.value === -1 ? 1 : Math.max(1, Math.ceil(value / itemsPerPage.value));
+    itemsPerPage.value === -1
+      ? 1
+      : Math.max(1, Math.ceil(value / itemsPerPage.value));
   if (page.value > maxPage) page.value = maxPage;
 });
 </script>
@@ -596,7 +603,11 @@ watch(totalQuotations, (value) => {
                   size="18"
                 />
               </VBtn>
-              <div v-else class="quotation-chevron-placeholder" aria-hidden="true" />
+              <div
+                v-else
+                class="quotation-chevron-placeholder"
+                aria-hidden="true"
+              />
             </div>
 
             <VAvatar
@@ -629,12 +640,22 @@ watch(totalQuotations, (value) => {
               >
                 Deal #{{ item.dealId }}
               </RouterLink>
-              <span v-else class="text-sm text-medium-emphasis">No linked deal</span>
+              <span
+                v-if="hasRevisions(item)"
+                class="text-sm text-medium-emphasis"
+              >
+                Revisions: {{ getRevisionCount(item) }}
+              </span>
+              <span v-else class="text-sm text-medium-emphasis"
+                >No linked deal</span
+              >
             </div>
           </div>
         </template>
 
-        <template #item.total="{ item }">${{ item.total.toLocaleString() }}</template>
+        <template #item.total="{ item }"
+          >${{ item.total.toLocaleString() }}</template
+        >
 
         <template #item.date="{ item }">
           {{ formatSystemDate(item.issuedDate) }}
@@ -703,8 +724,9 @@ watch(totalQuotations, (value) => {
                       <div>
                         <VChip
                           :color="
-                            resolveStatusVariantAndIcon(revision.quotationStatus)
-                              .variant
+                            resolveStatusVariantAndIcon(
+                              revision.quotationStatus,
+                            ).variant
                           "
                           label
                           size="x-small"
@@ -865,7 +887,9 @@ watch(totalQuotations, (value) => {
         </VCol>
 
         <VCol cols="12" md="6" class="quotation-form-field">
-          <div class="quotation-form-control quotation-form-control--attachment">
+          <div
+            class="quotation-form-control quotation-form-control--attachment"
+          >
             <div class="quotation-form-label">Attachment</div>
             <VFileInput
               v-model="externalQuotationForm.attachment"
@@ -941,8 +965,8 @@ watch(totalQuotations, (value) => {
 }
 
 .quotation-chevron-placeholder {
-  inline-size: 2rem;
   block-size: 2rem;
+  inline-size: 2rem;
 }
 
 .quotation-chevron-btn {
@@ -950,7 +974,8 @@ watch(totalQuotations, (value) => {
 }
 
 .quotation-expanded-inner {
-  padding: 12px 16px 16px 4.75rem;
+  padding-block: 12px 16px;
+  padding-inline: 4.75rem 16px;
 }
 
 .quotation-expanded-header {
@@ -967,10 +992,11 @@ watch(totalQuotations, (value) => {
 
 .quotation-revision-main {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) 140px 120px 180px 56px;
-  gap: 1rem;
   align-items: center;
-  padding: 1rem 1.25rem;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 2fr) 140px 120px 180px 56px;
+  padding-block: 1rem;
+  padding-inline: 1.25rem;
 }
 
 .quotation-revision-actions {
@@ -998,17 +1024,17 @@ watch(totalQuotations, (value) => {
 }
 
 .quotation-form-label {
-  margin-block-end: 0.375rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.8125rem;
   font-weight: 500;
+  margin-block-end: 0.375rem;
 }
 
 .quotation-form-help {
-  margin-block-start: 0.375rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.75rem;
   line-height: 1.25rem;
+  margin-block-start: 0.375rem;
 }
 
 .quotation-form-control--attachment :deep(.v-field) {

@@ -67,6 +67,19 @@ try {
   // console.warn('employees initialization failed', error);
 }
 
+// Centralized quotations initialization (same pattern as contacts/employees)
+// The store migrates old localStorage versions and re-seeds if needed.
+try {
+  if (typeof window !== "undefined") {
+    const { useQuotationsStore } = require("@/stores/quotations") as any;
+
+    const quotationsStore = useQuotationsStore(store);
+    quotationsStore.init();
+  }
+} catch (error) {
+  // non-fatal: skip if something goes wrong
+}
+
 // Mount vue app only after the first route is resolved so the
 // HTML loading spinner stays visible until Vue can actually render content.
 import { router } from "@/plugins/1.router/index";

@@ -45,6 +45,20 @@
     </div>
     <script type="module" src="/src/main.ts"></script>
     <script>
+      // One-time migration: remove stale quotation storage keys so the store
+      // re-seeds with the correct schema on next init.  This runs before any
+      // module code loads, making it immune to Vite HMR caching.
+      (function () {
+        var dominated = "app.quotations.v6";
+        for (var i = localStorage.length - 1; i >= 0; i--) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf("app.quotations.") === 0 && k !== dominated) {
+            localStorage.removeItem(k);
+          }
+        }
+      })();
+    </script>
+    <script>
       const loaderColor =
         localStorage.getItem("vuexy-initial-loader-bg") || "#FFFFFF";
       const primaryColor =
