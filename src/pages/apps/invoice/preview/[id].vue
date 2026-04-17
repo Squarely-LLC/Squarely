@@ -1,294 +1,554 @@
 <script setup lang="ts">
-import { formatSystemDate } from '@core/utils/formatters'
-import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
-import { themeConfig } from '@themeConfig'
+import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
+import { useConfigStore } from "@/stores/config";
+import {
+  applyInvoicePayment,
+  getInvoiceOutstandingBalance,
+  useInvoicesStore,
+  type InvoicePaymentInput,
+} from "@/stores/invoices";
+import { useNotificationsStore } from "@/stores/notifications";
+import { createPdfFileFromElement } from "@/utils/domPdf";
+import {
+  loadInvoicePreviewDraft,
+  saveInvoicePreviewDraft,
+} from "@/utils/invoicePreviewDraft";
+import {
+  buildQuotationPaymentDetails,
+  getQuotationCompanyAddressLines,
+  getQuotationCompanyContactLines,
+  resolveQuotationLogoUrl,
+} from "@/utils/quotationConfig";
+import { createQuotationPdfFile } from "@/utils/quotationPdf";
+import {
+  getLineTotal,
+  getQuotationDiscountTotal,
+  getQuotationGrandTotal,
+  getQuotationSubtotal,
+} from "@/utils/quotationPricing";
+import { openWhatsAppIntent } from "@/utils/shareToWhatsApp";
+import { shareWithSystem } from "@/utils/shareWithSystem";
+import { formatSystemDate } from "@core/utils/formatters";
 
-// Components
-import InvoiceAddPaymentDrawer from '@/views/apps/invoice/InvoiceAddPaymentDrawer.vue'
-import InvoiceSendInvoiceDrawer from '@/views/apps/invoice/InvoiceSendInvoiceDrawer.vue'
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
+import type { InvoiceRecord } from "@db/apps/invoice/types";
 
-const route = useRoute('apps-invoice-preview-id')
+const route = useRoute("apps-invoice-preview-id");
+const isEmbeddedActionFrame = route.query.embedded === "1";
+const configStore = useConfigStore();
+const notifications = useNotificationsStore();
+const invoicesStore = useInvoicesStore();
 
-const isAddPaymentSidebarVisible = ref(false)
-const isSendPaymentSidebarVisible = ref(false)
-
-const { data: invoiceData } = await useApi<any>(`/apps/invoice/${Number(route.params.id)}`)
-const invoice = ref()
-const paymentDetails = ref()
-
-if (invoiceData.value) {
-  invoice.value = invoiceData.value.invoice
-  paymentDetails.value = invoiceData.value.paymentDetails
+if (!isEmbeddedActionFrame) {
+  configStore.init();
+  invoicesStore.init();
 }
 
-// 👉 Invoice Description
-// ℹ️ Your real data will contain this information
-const purchasedProducts = [
-  {
-    name: 'Premium Branding Package',
-    description: 'Branding & Promotion',
-    qty: 1,
-    hours: 15,
-    price: 32,
-  },
-  {
-    name: 'SMM',
-    description: 'Social media templates',
-    qty: 1,
-    hours: 14,
-    price: 28,
-  },
-  {
-    name: 'Web Design',
-    description: 'Web designing package',
-    qty: 1,
-    hours: 12,
-    price: 24,
-  },
-  {
-    name: 'SEO',
-    description: 'Search engine optimization',
-    qty: 1,
-    hours: 5,
-    price: 22,
-  },
-]
+type EmbeddedPreviewPayload = {
+  action: "print" | "download";
+  quotation: InvoiceRecord;
+  legal: AppConfigurations["legal"];
+  financial: AppConfigurations["financial"];
+};
 
-// 👉 Print Invoice
-const printInvoice = () => {
-  window.print()
+const embeddedPreviewPayload = ref<EmbeddedPreviewPayload | null>(null);
+const draftPreviewState = ref(loadInvoicePreviewDraft());
+
+const draftPreview = computed(() => {
+  if (isEmbeddedActionFrame) return null;
+  if (route.query.draft !== "1") return null;
+
+  const previewDraft = draftPreviewState.value;
+  if (!previewDraft) return null;
+  if (String(previewDraft.quotation.quotation.id) !== String(route.params.id)) {
+    return null;
+  }
+
+  return previewDraft;
+});
+const quotationRecord = computed(
+  () =>
+    embeddedPreviewPayload.value?.quotation ??
+    draftPreview.value?.quotation ??
+    invoicesStore.byId(route.params.id),
+);
+const canReturnToEditor = computed(() => Boolean(draftPreview.value));
+const editRoute = computed(() => {
+  if (draftPreview.value?.source === "add") {
+    return { name: "apps-invoice-add" as const };
+  }
+
+  return {
+    name: "apps-invoice-edit-id" as const,
+    params: { id: route.params.id },
+  };
+});
+const quotation = computed(() => quotationRecord.value?.quotation ?? null);
+const legalConfiguration = computed(
+  () => embeddedPreviewPayload.value?.legal ?? configStore.legal,
+);
+const financialConfiguration = computed(
+  () => embeddedPreviewPayload.value?.financial ?? configStore.financial,
+);
+const paymentMethod = computed(
+  () => quotationRecord.value?.paymentMethod || "Bank Transfer",
+);
+const creditCardPaymentLink = computed(
+  () => quotationRecord.value?.paymentLink?.trim() || "",
+);
+const showClientCompany = computed(() => {
+  const clientName = quotation.value?.client.name.trim() || "";
+  const clientCompany = quotation.value?.client.company.trim() || "";
+
+  return Boolean(clientCompany) && clientCompany !== clientName;
+});
+const paymentDetails = computed(() => {
+  if (!quotationRecord.value) return null;
+
+  return {
+    ...buildQuotationPaymentDetails(
+      quotationRecord.value.quotation.total,
+      legalConfiguration.value,
+      financialConfiguration.value,
+    ),
+    ...quotationRecord.value.paymentDetails,
+  };
+});
+const purchasedProducts = computed(
+  () => quotationRecord.value?.purchasedProducts ?? [],
+);
+const companyLogoUrl = ref("");
+const companyName = computed(
+  () => legalConfiguration.value?.companyName?.trim() || "Squarely",
+);
+const companyAddressLines = computed(() =>
+  getQuotationCompanyAddressLines(legalConfiguration.value),
+);
+const companyContactLines = computed(() =>
+  getQuotationCompanyContactLines(legalConfiguration.value),
+);
+
+const isAddPaymentSidebarVisible = ref(false);
+const isSendPaymentSidebarVisible = ref(false);
+const hasExecutedAutoAction = ref(false);
+const emailDialogRef = ref<any | null>(null);
+const quotationPdfTarget = ref<any | null>(null);
+const currentQuotationBalance = computed(() =>
+  quotationRecord.value
+    ? getInvoiceOutstandingBalance(quotationRecord.value)
+    : 0,
+);
+
+const printQuotation = () => {
+  window.print();
+};
+
+const createCurrentQuotationPdfFile = () => {
+  const currentRecord = quotationRecord.value;
+  if (!currentRecord) return null;
+
+  return createQuotationPdfFile({
+    quotationRecord: currentRecord,
+    companyName: companyName.value,
+    companyAddressLines: companyAddressLines.value,
+    companyContactLines: companyContactLines.value,
+    documentLabel: "Invoice",
+    recipientLabel: "Invoice To",
+  });
+};
+
+const downloadFile = (file: File) => {
+  const objectUrl = URL.createObjectURL(file);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = file.name;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 0);
+};
+
+const downloadQuotation = async () => {
+  await nextTick();
+
+  const quoteNumber = quotation.value?.quoteNumber?.trim() || "quotation";
+  const targetElement = (quotationPdfTarget.value?.$el ??
+    quotationPdfTarget.value) as HTMLElement | null;
+
+  if (targetElement) {
+    try {
+      const pdfFile = await createPdfFileFromElement(
+        targetElement,
+        `${quoteNumber}.pdf`,
+      );
+      downloadFile(pdfFile);
+      return;
+    } catch {
+      // Fall back to the text-based PDF renderer if DOM capture fails.
+    }
+  }
+
+  const fallbackPdfFile = createCurrentQuotationPdfFile();
+  if (!fallbackPdfFile) return;
+  downloadFile(fallbackPdfFile);
+};
+
+const quotationEmailDraft = computed(() => {
+  const currentQuotation = quotation.value;
+  const to = currentQuotation?.client.companyEmail?.trim() || "";
+  const clientName = currentQuotation?.client.name?.trim() || "there";
+  const quoteNumber = currentQuotation?.quoteNumber?.trim() || "quotation";
+  const total = Number(currentQuotation?.total || 0).toLocaleString();
+  const expiryDate = currentQuotation?.dueDate?.trim() || "";
+
+  return {
+    to,
+    subject: `Invoice ${quoteNumber} from ${companyName.value}`,
+    message: `Dear ${clientName},
+
+Please find invoice ${quoteNumber} attached.
+
+Invoice amount: $${total}
+${expiryDate ? `Expiry date: ${expiryDate}` : ""}
+
+Thank you,
+${companyName.value}`.trim(),
+    attachments: [
+      {
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Invoice Attached",
+      },
+    ],
+  };
+});
+
+const openQuotationEmailDialog = () => {
+  isSendPaymentSidebarVisible.value = true;
+
+  nextTick(() => {
+    emailDialogRef.value?.openWith?.(quotationEmailDraft.value);
+  });
+};
+
+const shareQuotationOnWhatsApp = async () => {
+  const currentQuotation = quotation.value;
+  if (!currentQuotation) return;
+
+  await openWhatsAppIntent({
+    url: window.location.href,
+    text: `Invoice ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+  });
+};
+
+const shareQuotationWithOthers = async () => {
+  const currentQuotation = quotation.value;
+  const pdfFile = createCurrentQuotationPdfFile();
+  if (!currentQuotation || !pdfFile) return;
+
+  await shareWithSystem({
+    file: pdfFile,
+    title: pdfFile.name,
+    text: `Invoice ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+  });
+};
+
+const recordQuotationPayment = (payment: InvoicePaymentInput) => {
+  const currentRecord = quotationRecord.value;
+  if (!currentRecord) return;
+
+  const updatedRecord = applyInvoicePayment(currentRecord, payment);
+
+  if (draftPreview.value) {
+    const updatedDraft = {
+      source: draftPreview.value.source,
+      quotation: updatedRecord,
+    };
+
+    draftPreviewState.value = updatedDraft;
+    saveInvoicePreviewDraft(updatedDraft);
+    notifications.push(
+      `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+      "success",
+      3500,
+    );
+    return;
+  }
+
+  invoicesStore.updateInvoice(updatedRecord.quotation.id, updatedRecord);
+  notifications.push(
+    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    "success",
+    3500,
+  );
+};
+
+const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
+const discountTotal = computed(() =>
+  getQuotationDiscountTotal(purchasedProducts.value),
+);
+const grandTotal = computed(() =>
+  getQuotationGrandTotal(purchasedProducts.value),
+);
+
+watch(
+  () => legalConfiguration.value?.logo,
+  async (logo) => {
+    companyLogoUrl.value = await resolveQuotationLogoUrl(logo);
+  },
+  { immediate: true },
+);
+
+const handleEmbeddedPreviewMessage = async (event: MessageEvent) => {
+  if (!isEmbeddedActionFrame) return;
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "invoice-preview-action") return;
+
+  const payload = event.data.payload as EmbeddedPreviewPayload | undefined;
+  if (!payload?.quotation) return;
+
+  embeddedPreviewPayload.value = payload;
+  await nextTick();
+
+  if (payload.action === "download") {
+    await downloadQuotation();
+    return;
+  }
+
+  window.print();
+};
+
+onMounted(() => {
+  if (!isEmbeddedActionFrame) return;
+
+  window.addEventListener("message", handleEmbeddedPreviewMessage);
+  window.parent?.postMessage(
+    { type: "invoice-preview-ready" },
+    window.location.origin,
+  );
+});
+
+onBeforeUnmount(() => {
+  if (!isEmbeddedActionFrame) return;
+
+  window.removeEventListener("message", handleEmbeddedPreviewMessage);
+});
+
+if (!isEmbeddedActionFrame) {
+  watch(
+    () =>
+      [
+        route.query.print,
+        route.query.download,
+        route.query.email,
+        quotation.value?.id,
+      ] as const,
+    async ([print, download, email, quotationId]) => {
+      if (!quotationId || hasExecutedAutoAction.value) return;
+
+      if (email === "1") {
+        hasExecutedAutoAction.value = true;
+        openQuotationEmailDialog();
+        return;
+      }
+
+      if (download === "1") {
+        hasExecutedAutoAction.value = true;
+        await downloadQuotation();
+        return;
+      }
+
+      if (print === "1") {
+        hasExecutedAutoAction.value = true;
+        await nextTick();
+        window.print();
+      }
+    },
+    { immediate: true },
+  );
 }
 </script>
 
 <template>
-  <section v-if="invoice && paymentDetails">
+  <section v-if="quotation && paymentDetails">
     <VRow>
-      <VCol
-        cols="12"
-        md="9"
-      >
-        <VCard class="invoice-preview-wrapper pa-6 pa-sm-12">
-          <!-- SECTION Header -->
-          <div class="invoice-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6">
-            <!-- 👉 Left Content -->
+      <VCol cols="12" md="9">
+        <VCard
+          ref="quotationPdfTarget"
+          class="quotation-preview-wrapper pa-6 pa-sm-12"
+        >
+          <div
+            class="quotation-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6"
+          >
             <div>
-              <div class="d-flex align-center app-logo mb-6">
-                <!-- 👉 Logo -->
-                <VNodeRenderer :nodes="themeConfig.app.logo" />
-
-                <!-- 👉 Title -->
-                <h6 class="app-logo-title">
-                  {{ themeConfig.app.title }}
+              <div class="quotation-company-brand mb-6">
+                <img
+                  v-if="companyLogoUrl"
+                  :src="companyLogoUrl"
+                  :alt="companyName"
+                  class="quotation-company-logo"
+                />
+                <h6 class="app-logo-title quotation-company-title">
+                  {{ companyName }}
                 </h6>
               </div>
 
-              <!-- 👉 Address -->
-              <h6 class="text-h6 font-weight-regular">
-                Office 149, 450 South Brand Brooklyn
+              <h6
+                v-for="(line, index) in companyAddressLines"
+                :key="`address-${index}`"
+                class="text-h6 font-weight-regular"
+              >
+                {{ line }}
               </h6>
-              <h6 class="text-h6 font-weight-regular">
-                San Diego County, CA 91905, USA
-              </h6>
-              <h6 class="text-h6 font-weight-regular">
-                +1 (123) 456 7891, +44 (876) 543 2198
+              <h6
+                v-for="(line, index) in companyContactLines"
+                :key="`contact-${index}`"
+                class="text-h6 font-weight-regular"
+              >
+                {{ line }}
               </h6>
             </div>
 
-            <!-- 👉 Right Content -->
             <div>
-              <!-- 👉 Invoice ID -->
               <h6 class="font-weight-medium text-lg mb-6">
-                Invoice #{{ invoice.id }}
+                Invoice {{ quotation.quoteNumber }}
               </h6>
 
-              <!-- 👉 Issue Date -->
               <h6 class="text-h6 font-weight-regular">
                 <span>Date Issued: </span>
-                <span>{{ formatSystemDate(invoice.issuedDate) }}</span>
+                <span>{{ formatSystemDate(quotation.issuedDate) }}</span>
               </h6>
 
-              <!-- 👉 Due Date -->
               <h6 class="text-h6 font-weight-regular">
-                <span>Due Date: </span>
-                <span>{{ formatSystemDate(invoice.dueDate) }}</span>
+                <span>Expiry Date: </span>
+                <span>{{ formatSystemDate(quotation.dueDate) }}</span>
               </h6>
             </div>
           </div>
-          <!-- !SECTION -->
 
-          <!-- 👉 Payment Details -->
           <VRow class="print-row mb-6">
             <VCol class="text-no-wrap">
-              <h6 class="text-h6 mb-4">
-                Invoice To:
-              </h6>
+              <h6 class="text-h6 mb-4">Invoice To:</h6>
 
-              <p class="mb-0">
-                {{ invoice.client.name }}
+              <p class="mb-0">{{ quotation.client.name }}</p>
+              <p v-if="showClientCompany" class="mb-0">
+                {{ quotation.client.company }}
               </p>
               <p class="mb-0">
-                {{ invoice.client.company }}
+                {{ quotation.client.address }}, {{ quotation.client.country }}
               </p>
-              <p class="mb-0">
-                {{ invoice.client.address }}, {{ invoice.client.country }}
-              </p>
-              <p class="mb-0">
-                {{ invoice.client.contact }}
-              </p>
-              <p class="mb-0">
-                {{ invoice.client.companyEmail }}
-              </p>
+              <p class="mb-0">{{ quotation.client.contact }}</p>
+              <p class="mb-0">{{ quotation.client.companyEmail }}</p>
             </VCol>
 
             <VCol class="text-no-wrap">
-              <h6 class="text-h6 mb-4">
-                Bill To:
-              </h6>
-              <table>
-                <tbody>
-                  <tr>
-                    <td class="pe-4">
-                      Total Due:
-                    </td>
-                    <td>
-                      {{ paymentDetails.totalDue }}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">
-                      Bank Name:
-                    </td>
-                    <td>
-                      {{ paymentDetails.bankName }}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">
-                      Country:
-                    </td>
-                    <td>
-                      {{ paymentDetails.country }}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">
-                      IBAN:
-                    </td>
-                    <td>
-                      {{ paymentDetails.iban }}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">
-                      SWIFT Code:
-                    </td>
-                    <td>
-                      {{ paymentDetails.swiftCode }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <h6 class="text-h6 mb-4">Payment Details:</h6>
+              <template v-if="paymentMethod === 'Bank Transfer'">
+                <table>
+                  <tbody>
+                    <tr>
+                      <td class="pe-4">Bank Name:</td>
+                      <td>{{ paymentDetails.bankName }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">Country:</td>
+                      <td>{{ paymentDetails.country }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">IBAN:</td>
+                      <td>{{ paymentDetails.iban }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">SWIFT Code:</td>
+                      <td>{{ paymentDetails.swiftCode }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+
+              <template v-else-if="paymentMethod === 'Cash'">
+                <p class="mb-0">Cash</p>
+              </template>
+
+              <template v-else>
+                <p class="mb-2">Credit card payment link</p>
+                <p class="mb-0 text-wrap">
+                  <a
+                    v-if="creditCardPaymentLink"
+                    :href="creditCardPaymentLink"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {{ creditCardPaymentLink }}
+                  </a>
+                  <span v-else>No payment link added yet.</span>
+                </p>
+              </template>
             </VCol>
           </VRow>
 
-          <!-- 👉 invoice Table -->
-          <VTable class="invoice-preview-table border text-high-emphasis overflow-hidden mb-6">
+          <VTable
+            class="quotation-preview-table border text-high-emphasis overflow-hidden mb-6"
+          >
             <thead>
               <tr>
-                <th scope="col">
-                  ITEM
-                </th>
-                <th scope="col">
-                  DESCRIPTION
-                </th>
-                <th
-                  scope="col"
-                  class="text-center"
-                >
-                  HOURS
-                </th>
-                <th
-                  scope="col"
-                  class="text-center"
-                >
-                  QTY
-                </th>
-                <th
-                  scope="col"
-                  class="text-center"
-                >
-                  TOTAL
-                </th>
+                <th scope="col">ITEM</th>
+                <th scope="col">DESCRIPTION</th>
+                <th scope="col" class="text-center">QUANTITY</th>
+                <th scope="col" class="text-center">PRICE</th>
+                <th scope="col" class="text-center">TOTAL</th>
               </tr>
             </thead>
 
             <tbody class="text-base">
               <tr
-                v-for="item in purchasedProducts"
-                :key="item.name"
+                v-for="(item, index) in purchasedProducts"
+                :key="`${item.title}-${index}`"
               >
-                <td class="text-no-wrap">
-                  {{ item.name }}
-                </td>
-                <td class="text-no-wrap">
+                <td class="quotation-item-cell">{{ item.title }}</td>
+                <td class="quotation-description-cell">
                   {{ item.description }}
                 </td>
-                <td class="text-center">
-                  {{ item.hours }}
-                </td>
-                <td class="text-center">
-                  {{ item.qty }}
-                </td>
-                <td class="text-center">
-                  ${{ item.price }}
-                </td>
+                <td class="text-center">{{ item.hours }}</td>
+                <td class="text-center">${{ item.cost }}</td>
+                <td class="text-center">${{ getLineTotal(item) }}</td>
               </tr>
             </tbody>
           </VTable>
 
-          <!-- 👉 Total -->
-          <div class="d-flex justify-space-between flex-column flex-sm-row print-row">
-            <div class="mb-2">
-              <div class="d-flex align-center mb-1">
-                <h6 class="text-h6 me-2">
-                  Salesperson:
-                </h6>
-                <span>Jenny Parker</span>
-              </div>
-              <p>Thanks for your business</p>
-            </div>
-
+          <div class="d-flex justify-end flex-column flex-sm-row print-row">
             <div>
               <table class="w-100">
                 <tbody>
                   <tr>
-                    <td class="pe-16">
-                      Subtotal:
-                    </td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td class="pe-16">Subtotal:</td>
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">
-                        $1800
+                        ${{ subtotal.toLocaleString() }}
                       </h6>
                     </td>
                   </tr>
                   <tr>
-                    <td class="pe-16">
-                      Discount:
-                    </td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td class="pe-16">Discount:</td>
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">
-                        $28
+                        ${{ discountTotal.toLocaleString() }}
                       </h6>
                     </td>
                   </tr>
                   <tr>
-                    <td class="pe-16">
-                      Tax:
-                    </td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                      <h6 class="text-base font-weight-medium">
-                        21%
-                      </h6>
+                    <td class="pe-16">VAT:</td>
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
+                      <h6 class="text-base font-weight-medium">Included</h6>
                     </td>
                   </tr>
                 </tbody>
@@ -299,12 +559,22 @@ const printInvoice = () => {
               <table class="w-100">
                 <tbody>
                   <tr>
-                    <td class="pe-16">
-                      Total:
-                    </td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td class="pe-16">Total:</td>
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">
-                        $1690
+                        ${{ grandTotal.toLocaleString() }}
+                      </h6>
+                    </td>
+                  </tr>
+                  <tr v-if="quotationRecord?.totalFx?.trim()">
+                    <td class="pe-16">Total FX:</td>
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
+                      <h6 class="text-base font-weight-medium">
+                        {{ quotationRecord.totalFx }}
                       </h6>
                     </td>
                   </tr>
@@ -313,64 +583,116 @@ const printInvoice = () => {
             </div>
           </div>
 
-          <VDivider class="my-6 border-dashed" />
+          <template v-if="quotationRecord?.showClientNote">
+            <VDivider class="my-6 border-dashed" />
 
-          <p class="mb-0">
-            <span class="text-high-emphasis font-weight-medium me-1">
-              Note:
-            </span>
-            <span>It was a pleasure working with you and your team. We hope you will keep us in mind for future freelance projects. Thank You!</span>
-          </p>
+            <p class="mb-0">
+              <span class="text-high-emphasis font-weight-medium me-1">
+                Client Note:
+              </span>
+              <span>{{ quotationRecord?.note }}</span>
+            </p>
+          </template>
         </VCard>
       </VCol>
 
-      <VCol
-        cols="12"
-        md="3"
-        class="d-print-none"
-      >
+      <VCol cols="12" md="3" class="d-print-none">
         <VCard>
           <VCardText>
-            <!-- 👉 Send Invoice Trigger button -->
-            <VBtn
-              block
-              prepend-icon="tabler-send"
-              class="mb-4"
-              @click="isSendPaymentSidebarVisible = true"
-            >
-              Send Invoice
-            </VBtn>
+            <div class="quotation-action-row mb-4">
+              <VTooltip text="Email" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="openQuotationEmailDialog"
+                  >
+                    <VIcon icon="tabler-mail" />
+                  </VBtn>
+                </template>
+              </VTooltip>
+
+              <VTooltip text="Download PDF" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="downloadQuotation"
+                  >
+                    <VIcon icon="tabler-download" />
+                  </VBtn>
+                </template>
+              </VTooltip>
+
+              <VTooltip text="Share on WhatsApp" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="shareQuotationOnWhatsApp"
+                  >
+                    <VIcon icon="tabler-brand-whatsapp" />
+                  </VBtn>
+                </template>
+              </VTooltip>
+
+              <VTooltip text="Others" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="shareQuotationWithOthers"
+                  >
+                    <VIcon icon="tabler-dots" />
+                  </VBtn>
+                </template>
+              </VTooltip>
+
+              <VTooltip text="Print" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="printQuotation"
+                  >
+                    <VIcon icon="tabler-printer" />
+                  </VBtn>
+                </template>
+              </VTooltip>
+            </div>
 
             <VBtn
+              v-if="canReturnToEditor"
               block
               color="secondary"
               variant="tonal"
               class="mb-4"
+              :to="editRoute"
             >
-              Download
+              Back
             </VBtn>
 
             <div class="d-flex flex-wrap gap-4">
               <VBtn
-                variant="tonal"
-                color="secondary"
-                class="flex-grow-1"
-                @click="printInvoice"
-              >
-                Print
-              </VBtn>
-
-              <VBtn
                 color="secondary"
                 variant="tonal"
                 class="mb-4 flex-grow-1"
-                :to="{ name: 'apps-invoice-edit-id', params: { id: route.params.id } }"
+                :to="editRoute"
               >
                 Edit
               </VBtn>
             </div>
 
-            <!-- 👉  Add Payment trigger button  -->
             <VBtn
               block
               prepend-icon="tabler-currency-dollar"
@@ -384,29 +706,96 @@ const printInvoice = () => {
       </VCol>
     </VRow>
 
-    <!-- 👉 Add Payment Sidebar -->
-    <InvoiceAddPaymentDrawer v-model:is-drawer-open="isAddPaymentSidebarVisible" />
+    <InvoiceAddPaymentDrawer
+      v-model:is-drawer-open="isAddPaymentSidebarVisible"
+      :current-balance="currentQuotationBalance"
+      :default-payment-method="quotationRecord?.paymentMethod"
+      document-label="Invoice"
+      @submit="recordQuotationPayment"
+    />
 
-    <!-- 👉 Send Invoice Sidebar -->
-    <InvoiceSendInvoiceDrawer v-model:is-drawer-open="isSendPaymentSidebarVisible" />
+    <EmailDialog
+      ref="emailDialogRef"
+      v-model:is-dialog-visible="isSendPaymentSidebarVisible"
+    />
   </section>
+
   <section v-else>
-    <VAlert
-      type="error"
-      variant="tonal"
-    >
-      Invoice with ID  {{ route.params.id }} not found!
+    <VAlert type="error" variant="tonal">
+      Invoice with ID {{ route.params.id }} not found!
     </VAlert>
   </section>
 </template>
 
 <style lang="scss">
-.invoice-preview-table {
+.quotation-company-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.quotation-company-logo {
+  max-block-size: 72px;
+  max-inline-size: 160px;
+  object-fit: contain;
+}
+
+.quotation-company-title {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.quotation-action-btn {
+  padding: 0;
+  block-size: 44px;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.quotation-action-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.quotation-preview-table {
   --v-table-header-color: var(--v-theme-surface);
 
-  &.v-table .v-table__wrapper table thead tr th {
-    border-block-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+  table {
+    table-layout: fixed;
   }
+
+  th:nth-child(1),
+  td:nth-child(1) {
+    inline-size: 30%;
+  }
+
+  th:nth-child(2),
+  td:nth-child(2) {
+    inline-size: 34%;
+  }
+
+  th:nth-child(3),
+  td:nth-child(3),
+  th:nth-child(4),
+  td:nth-child(4),
+  th:nth-child(5),
+  td:nth-child(5) {
+    inline-size: 12%;
+  }
+
+  &.v-table .v-table__wrapper table thead tr th {
+    border-block-end: 1px solid
+      rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+  }
+}
+
+.quotation-item-cell,
+.quotation-description-cell {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
 }
 
 @media print {
@@ -420,21 +809,19 @@ const printInvoice = () => {
     background: none !important;
   }
 
-  .invoice-header-preview,
-  .invoice-preview-wrapper {
+  .quotation-header-preview,
+  .quotation-preview-wrapper {
     padding: 0 !important;
   }
 
-  .product-buy-now {
-    display: none;
-  }
-
+  .product-buy-now,
   .v-navigation-drawer,
   .layout-vertical-nav,
   .app-customizer-toggler,
   .layout-footer,
   .layout-navbar,
-  .layout-navbar-and-nav-container {
+  .layout-navbar-and-nav-container,
+  .vue-devtools__anchor {
     display: none;
   }
 
@@ -452,10 +839,6 @@ const printInvoice = () => {
 
   .v-table__wrapper {
     overflow: hidden !important;
-  }
-
-  .vue-devtools__anchor {
-    display: none;
   }
 }
 </style>

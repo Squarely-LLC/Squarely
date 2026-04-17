@@ -3,9 +3,8 @@ import { emailValidator, requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
-import { useInvoicesStore } from "@/stores/invoices";
+import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
-import { cloneProformaRecord, useProformasStore } from "@/stores/proformas";
 import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
@@ -14,14 +13,14 @@ import {
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
-  Proforma,
-  ProformaRecord,
-  ProformaStatus,
-} from "@db/apps/proforma/types";
+  Invoice,
+  InvoiceRecord,
+  InvoiceStatus,
+} from "@db/apps/invoice/types";
 import type { VForm } from "vuetify/components/VForm";
 
 const searchQuery = ref("");
-const selectedStatus = ref<ProformaStatus | null>(null);
+const selectedStatus = ref<InvoiceStatus | null>(null);
 const selectedRows = ref<number[]>([]);
 const userData = useCookie<Record<string, unknown> | null | undefined>(
   "userData",
@@ -56,14 +55,12 @@ type ExternalQuotationForm = {
   linkedRecord: string | null;
   contactName: string;
   contactEmail: string;
-  status: ProformaStatus | null;
+  status: InvoiceStatus | null;
   attachment: File | File[] | null;
 };
 
-const quotationsStore = useProformasStore();
+const quotationsStore = useInvoicesStore();
 quotationsStore.init();
-const invoicesStore = useInvoicesStore();
-invoicesStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
@@ -92,7 +89,7 @@ const pushFinanceSuccess = (message: string) => {
 const getQuotationLabel = (quotationId: number) => {
   return (
     quotationsStore.byId(quotationId)?.quotation.quoteNumber ||
-    `proforma #${quotationId}`
+    `invoice #${quotationId}`
   );
 };
 
@@ -139,7 +136,7 @@ const ensurePreviewActionFrame = () => {
     if (!preloadQuotationId) return;
 
     const routeLocation = router.resolve({
-      name: "apps-proforma-preview-id",
+      name: "apps-invoice-preview-id",
       params: { id: preloadQuotationId },
       query: { embedded: "1" },
     });
@@ -169,10 +166,10 @@ const sendPreviewAction = (
 
   previewActionFrame.value.contentWindow.postMessage(
     {
-      type: "proforma-preview-action",
+      type: "invoice-preview-action",
       payload: {
         action,
-        quotation: cloneProformaRecord(quotationRecord),
+        quotation: cloneInvoiceRecord(quotationRecord),
         legal: clonePreviewPayloadSection(configStore.legal),
         financial: clonePreviewPayloadSection(configStore.financial),
       },
@@ -194,7 +191,7 @@ const flushPendingPreviewAction = () => {
 
 const handlePreviewActionFrameMessage = (event: MessageEvent) => {
   if (event.origin !== window.location.origin) return;
-  if (event.data?.type !== "proforma-preview-ready") return;
+  if (event.data?.type !== "invoice-preview-ready") return;
 
   isPreviewActionFrameReady.value = true;
   flushPendingPreviewAction();
@@ -224,7 +221,7 @@ watch(
   { immediate: true },
 );
 const revisionMap = computed(() => {
-  const map = new Map<number, Proforma[]>();
+  const map = new Map<number, Invoice[]>();
 
   for (const record of allQuotationRecords.value) {
     const quotation = record.quotation;
@@ -294,16 +291,16 @@ const paginatedQuotations = computed(() => {
   return filteredQuotations.value.slice(start, start + itemsPerPage.value);
 });
 
-const hasRevisions = (quotation: Proforma) =>
+const hasRevisions = (quotation: Invoice) =>
   (revisionMap.value.get(quotation.id) ?? []).length > 0;
 
-const getRevisionCount = (quotation: Proforma) =>
+const getRevisionCount = (quotation: Invoice) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
-const isExpanded = (quotation: Proforma) =>
+const isExpanded = (quotation: Invoice) =>
   expanded.value.includes(quotation.id);
 
-const toggleRow = (quotation: Proforma) => {
+const toggleRow = (quotation: Invoice) => {
   const id = quotation.id;
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
@@ -312,7 +309,7 @@ const toggleRow = (quotation: Proforma) => {
 
 const getRevisions = (quotationId: number | string) =>
   [...(revisionMap.value.get(Number(quotationId)) ?? [])].sort((a, b) => {
-    const getRevisionOrder = (quotation: Proforma) => {
+    const getRevisionOrder = (quotation: Invoice) => {
       const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
       if (labelMatch?.[1]) return Number(labelMatch[1]);
 
@@ -325,7 +322,7 @@ const getRevisions = (quotationId: number | string) =>
     return getRevisionOrder(a) - getRevisionOrder(b);
   });
 
-const getContactId = (quotation: Proforma) => {
+const getContactId = (quotation: Invoice) => {
   const clientName = quotation.client.name.trim().toLowerCase();
   const clientEmail = quotation.client.companyEmail.trim().toLowerCase();
 
@@ -345,7 +342,7 @@ const getContactId = (quotation: Proforma) => {
   return byName?.id ?? null;
 };
 
-const getMatchedContact = (quotation: Proforma) => {
+const getMatchedContact = (quotation: Invoice) => {
   const clientName = quotation.client.name.trim().toLowerCase();
   const clientEmail = quotation.client.companyEmail.trim().toLowerCase();
 
@@ -364,10 +361,10 @@ const getMatchedContact = (quotation: Proforma) => {
   );
 };
 
-const getQuotationAvatar = (quotation: Proforma) =>
+const getQuotationAvatar = (quotation: Invoice) =>
   getMatchedContact(quotation)?.picture || quotation.avatar || "";
 
-const getContactRouteId = (quotation: Proforma) => getContactId(quotation) ?? 0;
+const getContactRouteId = (quotation: Invoice) => getContactId(quotation) ?? 0;
 
 const dealContractOptions = computed<DealContractOption[]>(() => {
   const options = new Map<string, DealContractOption>();
@@ -468,7 +465,7 @@ const uniqueQuotationNumberValidator = (value: unknown) => {
       record.quotation.quoteNumber.trim().toLowerCase() === quoteNumber,
   );
 
-  return exists ? "Proforma number already exists" : true;
+  return exists ? "Invoice number already exists" : true;
 };
 
 const attachmentValidator = () => {
@@ -589,7 +586,7 @@ const saveExternalQuotation = async () => {
     return;
   }
 
-  quotationsStore.addProforma({
+  quotationsStore.addInvoice({
     quotation: {
       quoteNumber: externalQuotationForm.value.quoteNumber.trim(),
       issuedDate: externalQuotationForm.value.date!,
@@ -605,7 +602,7 @@ const saveExternalQuotation = async () => {
         contact: "",
         name: externalQuotationForm.value.contactName.trim(),
       },
-      service: "Imported proforma",
+      service: "Imported invoice",
       total: Number(externalQuotationForm.value.amount),
       avatar: "",
       quotationStatus: externalQuotationForm.value.status ?? "Not Paid",
@@ -619,7 +616,7 @@ const saveExternalQuotation = async () => {
     },
     purchasedProducts: [
       {
-        title: "Imported proforma amount",
+        title: "Imported invoice amount",
         cost: Number(externalQuotationForm.value.amount),
         hours: 1,
         description: "Imported from another system.",
@@ -631,16 +628,16 @@ const saveExternalQuotation = async () => {
       configStore.financial,
     ),
     note: selectedLinkedOption.value
-      ? "Imported proforma linked to an existing record."
-      : "Imported proforma without linked deal or contract.",
+      ? "Imported invoice linked to an existing record."
+      : "Imported invoice without linked deal or contract.",
     paymentMethod: "Bank Transfer",
     salesperson: buildQuotationSalesperson(configStore.legal),
     thanksNote: buildQuotationThanksNote(configStore.legal),
   });
 
   externalQuotationSuccess.value = hasLinkedDealOrContract.value
-    ? "Proforma import draft captured and linked to the selected deal/contract."
-    : "Proforma import draft captured. This proforma is flagged because it is not linked to a deal or contract.";
+    ? "Invoice import draft captured and linked to the selected deal/contract."
+    : "Invoice import draft captured. This invoice is flagged because it is not linked to a deal or contract.";
 
   pushFinanceSuccess(externalQuotationSuccess.value);
 
@@ -649,63 +646,12 @@ const saveExternalQuotation = async () => {
 
 const openRevisionDraft = async (quotationId: number) => {
   await router.push({
-    name: "apps-proforma-add",
+    name: "apps-invoice-add",
     query: { revisionOf: String(quotationId) },
   });
 
   pushFinanceSuccess(
     `Revision draft opened for ${getQuotationLabel(quotationId)}.`,
-  );
-};
-
-const convertProformaToInvoice = (quotationId: number) => {
-  const proformaRecord = quotationsStore.byId(quotationId);
-  if (!proformaRecord) return;
-
-  const created = invoicesStore.addInvoice({
-    quotation: {
-      issuedDate: proformaRecord.quotation.issuedDate,
-      dueDate: proformaRecord.quotation.dueDate,
-      client: proformaRecord.quotation.client,
-      service: proformaRecord.quotation.service,
-      total: proformaRecord.quotation.total,
-      avatar: proformaRecord.quotation.avatar,
-      quotationStatus: "Not Paid",
-      balance: proformaRecord.quotation.total,
-      dealId: proformaRecord.quotation.dealId,
-      linkedRecordType: proformaRecord.quotation.linkedRecordType,
-      source: proformaRecord.quotation.source,
-      attachmentName: proformaRecord.quotation.attachmentName,
-      parentQuotationId: null,
-      isRevision: false,
-      revisionLabel: null,
-    },
-    paymentDetails: proformaRecord.paymentDetails,
-    purchasedProducts: proformaRecord.purchasedProducts,
-    note: [
-      proformaRecord.note?.trim(),
-      `Converted from proforma ${proformaRecord.quotation.quoteNumber}.`,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    showClientNote: proformaRecord.showClientNote,
-    totalFx: proformaRecord.totalFx,
-    paymentMethod: proformaRecord.paymentMethod,
-    paymentLink: proformaRecord.paymentLink,
-    approvalMode: proformaRecord.approvalMode,
-    approverEmployeeId: proformaRecord.approverEmployeeId,
-    salesperson: proformaRecord.salesperson,
-    thanksNote: proformaRecord.thanksNote,
-  });
-
-  if (created?.quotation.id) {
-    quotationsStore.updateProforma(quotationId, {
-      convertedInvoiceId: created.quotation.id,
-    });
-  }
-
-  pushFinanceSuccess(
-    `Converted ${proformaRecord.quotation.quoteNumber} to ${created?.quotation.quoteNumber || "an invoice"}.`,
   );
 };
 
@@ -738,7 +684,7 @@ const deleteDialogMessage = computed(() => {
     return `Are you sure you want to delete ${quotation.quoteNumber} and its ${pendingDeleteRevisionCount.value} revision${pendingDeleteRevisionCount.value === 1 ? "" : "s"}?`;
   }
 
-  return `Are you sure you want to delete proforma ${quotation.quoteNumber}?`;
+  return `Are you sure you want to delete invoice ${quotation.quoteNumber}?`;
 });
 
 const closeDeleteQuotationDialog = () => {
@@ -761,13 +707,13 @@ const confirmDeleteQuotation = () => {
     return;
   }
 
-  quotationsStore.removeProforma(quotation.id);
+  quotationsStore.removeInvoice(quotation.id);
   expanded.value = expanded.value.filter((value) => value !== quotation.id);
   pushFinanceSuccess(`${quotation.quoteNumber} deleted successfully.`);
   closeDeleteQuotationDialog();
 };
 
-const emailQuotationRecord = computed<ProformaRecord | null>(() => {
+const emailQuotationRecord = computed<InvoiceRecord | null>(() => {
   if (pendingEmailQuotationId.value === null) return null;
   return quotationsStore.byId(pendingEmailQuotationId.value) ?? null;
 });
@@ -783,19 +729,19 @@ const quotationEmailDraft = computed(() => {
 
   return {
     to,
-    subject: `Proforma ${quoteNumber} from ${companyName}`,
+    subject: `Invoice ${quoteNumber} from ${companyName}`,
     message: `Dear ${clientName},
 
 Please find ${quoteNumber} attached.
 
-Proforma amount: $${total}
+Invoice amount: $${total}
 ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,
 ${companyName}`.trim(),
     attachments: [
       {
-        name: quoteNumber ? `${quoteNumber}.pdf` : "Proforma Attached",
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Invoice Attached",
       },
     ],
   };
@@ -845,7 +791,7 @@ const onQuotationEmailSend = (payload: any) => {
   closeQuotationEmailDialog();
 };
 
-const getRevisionDisplayLabel = (revision: Proforma, index: number) => {
+const getRevisionDisplayLabel = (revision: Invoice, index: number) => {
   if (revision.revisionLabel?.trim()) return revision.revisionLabel.trim();
 
   const revisionMatch = revision.quoteNumber.match(/-R(\d+)$/i);
@@ -856,31 +802,18 @@ const getRevisionDisplayLabel = (revision: Proforma, index: number) => {
 
 const computedMoreList = computed(() => {
   return (paramId: number) => [
-    ...(() => {
-      const proformaRecord = quotationsStore.byId(paramId);
-
-      return [
-        {
-          title: "Edit",
-          value: "edit",
-          prependIcon: "tabler-pencil",
-          to: { name: "apps-proforma-edit-id", params: { id: paramId } },
-        },
-        {
-          title: "Revise",
-          value: "revise",
-          prependIcon: "tabler-refresh",
-          onClick: () => openRevisionDraft(paramId),
-        },
-        {
-          title: "Convert to Tax invoice",
-          value: "convert-to-tax-invoice",
-          prependIcon: "tabler-file-invoice",
-          disabled: Boolean(proformaRecord?.convertedInvoiceId),
-          onClick: () => convertProformaToInvoice(paramId),
-        },
-      ];
-    })(),
+    {
+      title: "Edit",
+      value: "edit",
+      prependIcon: "tabler-pencil",
+      to: { name: "apps-invoice-edit-id", params: { id: paramId } },
+    },
+    {
+      title: "Revise",
+      value: "revise",
+      prependIcon: "tabler-refresh",
+      onClick: () => openRevisionDraft(paramId),
+    },
     {
       title: "Download",
       value: "download",
@@ -915,7 +848,7 @@ const revisionMenuList = computed(() => {
       title: "Preview",
       value: "preview",
       prependIcon: "tabler-eye",
-      to: { name: "apps-proforma-preview-id", params: { id: paramId } },
+      to: { name: "apps-invoice-preview-id", params: { id: paramId } },
     },
     {
       title: "Delete",
@@ -972,16 +905,13 @@ watch(totalQuotations, (value) => {
 
         <div class="quotation-list-toolbar d-flex align-center flex-wrap gap-4">
           <div class="quotation-list-filter">
-            <AppTextField
-              v-model="searchQuery"
-              placeholder="Search Quotation"
-            />
+            <AppTextField v-model="searchQuery" placeholder="Search Invoice" />
           </div>
 
           <div class="quotation-list-filter">
             <AppSelect
               v-model="selectedStatus"
-              placeholder="Proforma Status"
+              placeholder="Invoice Status"
               clearable
               clear-icon="tabler-x"
               single-line
@@ -992,13 +922,13 @@ watch(totalQuotations, (value) => {
           <VMenu v-model="isCreateMenuOpen">
             <template #activator="{ props }">
               <VBtn v-bind="props" prepend-icon="tabler-plus">
-                Create Proforma
+                Create Invoice
               </VBtn>
             </template>
 
             <VList>
               <VListItem
-                :to="{ name: 'apps-proforma-add' }"
+                :to="{ name: 'apps-invoice-add' }"
                 prepend-icon="tabler-building-estate"
               >
                 From Squarely
@@ -1030,7 +960,7 @@ watch(totalQuotations, (value) => {
       >
         <template #item.id="{ item }">
           <RouterLink
-            :to="{ name: 'apps-proforma-preview-id', params: { id: item.id } }"
+            :to="{ name: 'apps-invoice-preview-id', params: { id: item.id } }"
           >
             {{ item.quoteNumber }}
           </RouterLink>
@@ -1065,7 +995,7 @@ watch(totalQuotations, (value) => {
 
             <RouterLink
               :to="{
-                name: 'apps-proforma-preview-id',
+                name: 'apps-invoice-preview-id',
                 params: { id: item.id },
               }"
               class="me-3"
@@ -1091,7 +1021,7 @@ watch(totalQuotations, (value) => {
             <div class="d-flex flex-column">
               <RouterLink
                 :to="{
-                  name: 'apps-proforma-preview-id',
+                  name: 'apps-invoice-preview-id',
                   params: { id: item.id },
                 }"
                 class="text-link font-weight-medium"
@@ -1166,7 +1096,7 @@ watch(totalQuotations, (value) => {
                       <div class="d-flex flex-column">
                         <RouterLink
                           :to="{
-                            name: 'apps-proforma-preview-id',
+                            name: 'apps-invoice-preview-id',
                             params: { id: revision.id },
                           }"
                           class="text-link font-weight-medium"
@@ -1229,17 +1159,17 @@ watch(totalQuotations, (value) => {
 
   <section v-else>
     <VCard>
-      <VCardTitle>No Proforma Found</VCardTitle>
+      <VCardTitle>No Invoice Found</VCardTitle>
     </VCard>
   </section>
 
   <VDialog v-model="isExternalQuotationDialogOpen" max-width="760">
     <VCard class="pa-sm-6 pa-4">
       <VCardTitle class="text-h5 pb-2">
-        Import Proforma From Another System
+        Import Invoice From Another System
       </VCardTitle>
       <VCardText class="text-body-1 text-medium-emphasis pb-6">
-        Add the external proforma details and upload the source attachment.
+        Add the external invoice details and upload the source attachment.
       </VCardText>
 
       <VForm
@@ -1300,7 +1230,7 @@ watch(totalQuotations, (value) => {
               variant="tonal"
               border="start"
             >
-              This quotation is not linked to a deal or contract.
+              This invoice is not linked to a deal or contract.
             </VAlert>
           </VCol>
 
@@ -1351,13 +1281,7 @@ watch(totalQuotations, (value) => {
                 v-model="externalQuotationForm.status"
                 placeholder="Select status"
                 :rules="[requiredValidator]"
-                :items="[
-                  'Pending',
-                  'Approved',
-                  'Lost',
-                  'Converted to Invoice',
-                  'Converted to Proforma',
-                ]"
+                :items="['Not Paid', 'Partially Paid', 'Paid']"
               />
             </div>
           </VCol>
@@ -1370,7 +1294,7 @@ watch(totalQuotations, (value) => {
               <VFileInput
                 v-model="externalQuotationForm.attachment"
                 class="quotation-attachment-input"
-                placeholder="Upload quotation file"
+                placeholder="Upload invoice file"
                 :accept="attachmentAccept"
                 :rules="[attachmentValidator]"
                 show-size

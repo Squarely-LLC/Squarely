@@ -69,6 +69,7 @@ export interface ProformaRecord {
   paymentDetails: PaymentDetails;
   payments: ProformaPaymentEntry[];
   purchasedProducts: PurchasedProduct[];
+  convertedInvoiceId?: number | null;
   note: string;
   showClientNote: boolean;
   totalFx: string | null;

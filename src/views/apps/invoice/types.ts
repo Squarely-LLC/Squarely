@@ -1,26 +1,12 @@
-import type { Invoice, PaymentDetails } from '@db/apps/invoice/types'
+import type { InvoiceRecord, PurchasedProduct } from "@db/apps/invoice/types";
 
-export interface PurchasedProduct {
-  title: string
-  cost: number
-  hours: number
-  description: string
-}
-
-export interface InvoiceData {
-  invoice: Invoice
-  paymentDetails: PaymentDetails
-  purchasedProducts: PurchasedProduct[]
-  note: string
-  paymentMethod: string
-  salesperson: string
-  thanksNote: string
-}
+export type InvoiceData = InvoiceRecord;
+export type { PurchasedProduct };
 
 export interface InvoiceParams {
-  q?: string
-  status?: string
-  startDate?: string
-  endDate?: string
-  options?: object
+  q?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  options?: object;
 }

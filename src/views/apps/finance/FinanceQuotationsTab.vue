@@ -3,6 +3,7 @@ import { emailValidator, requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
@@ -64,6 +65,8 @@ const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 const proformasStore = useProformasStore();
 proformasStore.init();
+const invoicesStore = useInvoicesStore();
+invoicesStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
@@ -716,6 +719,62 @@ const convertQuotationToProforma = (quotationId: number) => {
   );
 };
 
+const convertQuotationToInvoice = (quotationId: number) => {
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (!quotationRecord) return;
+
+  if (quotationRecord.quotation.quotationStatus === "Converted to Invoice") {
+    pushFinanceSuccess(
+      `${quotationRecord.quotation.quoteNumber} is already converted to invoice.`,
+    );
+    return;
+  }
+
+  const created = invoicesStore.addInvoice({
+    quotation: {
+      issuedDate: quotationRecord.quotation.issuedDate,
+      dueDate: quotationRecord.quotation.dueDate,
+      client: quotationRecord.quotation.client,
+      service: quotationRecord.quotation.service,
+      total: quotationRecord.quotation.total,
+      avatar: quotationRecord.quotation.avatar,
+      quotationStatus: "Not Paid",
+      balance: quotationRecord.quotation.total,
+      dealId: quotationRecord.quotation.dealId,
+      linkedRecordType: quotationRecord.quotation.linkedRecordType,
+      source: quotationRecord.quotation.source,
+      attachmentName: quotationRecord.quotation.attachmentName,
+      parentQuotationId: null,
+      isRevision: false,
+      revisionLabel: null,
+    },
+    paymentDetails: quotationRecord.paymentDetails,
+    purchasedProducts: quotationRecord.purchasedProducts,
+    note: [
+      quotationRecord.note?.trim(),
+      `Converted from quotation ${quotationRecord.quotation.quoteNumber}.`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    showClientNote: quotationRecord.showClientNote,
+    totalFx: quotationRecord.totalFx,
+    paymentMethod: quotationRecord.paymentMethod,
+    paymentLink: quotationRecord.paymentLink,
+    approvalMode: quotationRecord.approvalMode,
+    approverEmployeeId: quotationRecord.approverEmployeeId,
+    salesperson: quotationRecord.salesperson,
+    thanksNote: quotationRecord.thanksNote,
+  });
+
+  quotationsStore.updateQuotation(quotationId, {
+    quotation: { quotationStatus: "Converted to Invoice" },
+  });
+
+  pushFinanceSuccess(
+    `Converted ${quotationRecord.quotation.quoteNumber} to ${created?.quotation.quoteNumber || "an invoice"}.`,
+  );
+};
+
 const pendingDeleteQuotationId = ref<number | null>(null);
 
 const pendingDeleteQuotation = computed(() => {
@@ -865,29 +924,39 @@ const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
 
 const computedMoreList = computed(() => {
   return (paramId: number) => [
-    {
-      title: "Edit",
-      value: "edit",
-      prependIcon: "tabler-pencil",
-      to: { name: "apps-quotation-edit-id", params: { id: paramId } },
-    },
-    {
-      title: "Revise",
-      value: "revise",
-      prependIcon: "tabler-refresh",
-      onClick: () => openRevisionDraft(paramId),
-    },
-    {
-      title: "Convert to Proforma",
-      value: "convert-to-proforma",
-      prependIcon: "tabler-file-dollar",
-      onClick: () => convertQuotationToProforma(paramId),
-    },
-    {
-      title: "Convert to Tax invoice",
-      value: "convert-to-tax-invoice",
-      prependIcon: "tabler-file-invoice",
-    },
+    ...(() => {
+      const quotationStatus =
+        quotationsStore.byId(paramId)?.quotation.quotationStatus ?? null;
+
+      return [
+        {
+          title: "Edit",
+          value: "edit",
+          prependIcon: "tabler-pencil",
+          to: { name: "apps-quotation-edit-id", params: { id: paramId } },
+        },
+        {
+          title: "Revise",
+          value: "revise",
+          prependIcon: "tabler-refresh",
+          onClick: () => openRevisionDraft(paramId),
+        },
+        {
+          title: "Convert to Proforma",
+          value: "convert-to-proforma",
+          prependIcon: "tabler-file-dollar",
+          disabled: quotationStatus === "Converted to Proforma",
+          onClick: () => convertQuotationToProforma(paramId),
+        },
+        {
+          title: "Convert to Tax invoice",
+          value: "convert-to-tax-invoice",
+          prependIcon: "tabler-file-invoice",
+          disabled: quotationStatus === "Converted to Invoice",
+          onClick: () => convertQuotationToInvoice(paramId),
+        },
+      ];
+    })(),
     {
       title: "Download",
       value: "download",

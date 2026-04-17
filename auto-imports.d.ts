@@ -20,6 +20,7 @@ declare global {
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
+  const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
   const clearQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']
   const computed: typeof import('vue')['computed']
@@ -97,6 +98,7 @@ declare global {
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
   const loadActiveAppConfigurations: typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']
+  const loadInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['loadInvoicePreviewDraft']
   const loadProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['loadProformaPreviewDraft']
   const loadQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['loadQuotationPreviewDraft']
   const logicAnd: typeof import('@vueuse/math')['logicAnd']
@@ -160,6 +162,7 @@ declare global {
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
   const saveFile: typeof import('./src/utils/fileStore')['saveFile']
+  const saveInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']
   const saveProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']
   const saveQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']
   const setActivePinia: typeof import('pinia')['setActivePinia']
@@ -415,6 +418,7 @@ declare module 'vue' {
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
+    readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
     readonly clearQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
@@ -492,6 +496,7 @@ declare module 'vue' {
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
     readonly loadActiveAppConfigurations: UnwrapRef<typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']>
+    readonly loadInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['loadInvoicePreviewDraft']>
     readonly loadProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['loadProformaPreviewDraft']>
     readonly loadQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['loadQuotationPreviewDraft']>
     readonly logicAnd: UnwrapRef<typeof import('@vueuse/math')['logicAnd']>
@@ -555,6 +560,7 @@ declare module 'vue' {
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
     readonly saveFile: UnwrapRef<typeof import('./src/utils/fileStore')['saveFile']>
+    readonly saveInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']>
     readonly saveProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']>
     readonly saveQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>

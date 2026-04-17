@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
 import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
 import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
 
@@ -147,6 +148,7 @@ watch(
         <VWindowItem v-for="tabItem in tabsData" :key="tabItem.key">
           <FinanceQuotationsTab v-if="tabItem.key === 'quotations'" />
           <FinanceProformasTab v-else-if="tabItem.key === 'pro-forma'" />
+          <FinanceInvoicesTab v-else-if="tabItem.key === 'invoice'" />
 
           <VCard v-else>
             <VCardText class="pa-6">

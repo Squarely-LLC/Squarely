@@ -1,44 +1,93 @@
 <script setup lang="ts">
-import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
+import type { InvoicePaymentInput } from "@/stores/invoices";
+import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
-interface SubmitData {
-  invoiceBalance: string
-  paymentAmount: string
-  paymentDate: string
-  paymentMethod: string
-  paymentNote: string
-}
 interface Emit {
-  (e: 'update:isDrawerOpen', value: boolean): void
-  (e: 'submit', value: SubmitData): void
+  (e: "update:isDrawerOpen", value: boolean): void;
+  (e: "submit", value: InvoicePaymentInput): void;
 }
 
 interface Props {
-  isDrawerOpen: boolean
+  isDrawerOpen: boolean;
+  currentBalance: number;
+  defaultPaymentMethod?: string | null;
+  documentLabel?: string;
 }
-const props = defineProps<Props>()
-const emit = defineEmits<Emit>()
+const props = defineProps<Props>();
+const emit = defineEmits<Emit>();
 
-const invoiceBalance = ref()
-const paymentAmount = ref()
-const paymentDate = ref('')
-const paymentMethod = ref()
-const paymentNote = ref('')
+const quotationBalance = ref("");
+const paymentAmount = ref<string | number>("");
+const paymentDate = ref("");
+const paymentMethod = ref("");
+const paymentNote = ref("");
+const paymentAmountError = ref<string | null>(null);
+const paymentDateError = ref<string | null>(null);
+const paymentMethodError = ref<string | null>(null);
+const documentLabel = computed(() => props.documentLabel?.trim() || "Invoice");
+const balanceLabel = computed(() => `${documentLabel.value} Balance`);
+
+const resetForm = () => {
+  quotationBalance.value = props.currentBalance.toLocaleString();
+  paymentAmount.value = "";
+  paymentDate.value = new Date().toISOString().slice(0, 10);
+  paymentMethod.value = props.defaultPaymentMethod?.trim() || "Cash";
+  paymentNote.value = "";
+  paymentAmountError.value = null;
+  paymentDateError.value = null;
+  paymentMethodError.value = null;
+};
+
+watch(
+  () =>
+    [
+      props.isDrawerOpen,
+      props.currentBalance,
+      props.defaultPaymentMethod,
+    ] as const,
+  ([isDrawerOpen]) => {
+    if (!isDrawerOpen) return;
+    resetForm();
+  },
+  { immediate: true },
+);
 
 const onSubmit = () => {
-  emit('update:isDrawerOpen', false)
-  emit('submit', {
-    invoiceBalance: invoiceBalance.value,
-    paymentAmount: paymentAmount.value,
-    paymentDate: paymentDate.value,
-    paymentMethod: paymentMethod.value,
-    paymentNote: paymentNote.value,
-  })
-}
+  const amount = Math.max(0, Number(paymentAmount.value) || 0);
+
+  paymentAmountError.value =
+    amount > 0
+      ? amount > props.currentBalance
+        ? "Payment cannot exceed the remaining balance"
+        : null
+      : "Enter a payment amount greater than 0";
+  paymentDateError.value = paymentDate.value?.trim()
+    ? null
+    : "Select a payment date";
+  paymentMethodError.value = paymentMethod.value?.trim()
+    ? null
+    : "Select a payment method";
+
+  if (
+    paymentAmountError.value ||
+    paymentDateError.value ||
+    paymentMethodError.value
+  ) {
+    return;
+  }
+
+  emit("update:isDrawerOpen", false);
+  emit("submit", {
+    amount,
+    date: paymentDate.value,
+    method: paymentMethod.value,
+    note: paymentNote.value,
+  });
+};
 
 const handleDrawerModelValueUpdate = (val: boolean) => {
-  emit('update:isDrawerOpen', val)
-}
+  emit("update:isDrawerOpen", val);
+};
 </script>
 
 <template>
@@ -65,10 +114,10 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
             <VRow>
               <VCol cols="12">
                 <AppTextField
-                  id="invoice-balance"
-                  v-model="invoiceBalance"
-                  label="Invoice Balance"
-                  type="number"
+                  id="Quotation-balance"
+                  v-model="quotationBalance"
+                  :label="balanceLabel"
+                  readonly
                   placeholder="$99"
                 />
               </VCol>
@@ -80,31 +129,44 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   label="Payment Amount"
                   type="number"
                   placeholder="$99"
+                  :error-messages="
+                    paymentAmountError ? [paymentAmountError] : []
+                  "
                 />
               </VCol>
 
               <VCol cols="12">
                 <AppDateTimePicker
-                  id="invoice-payment-date"
+                  id="Quotation-payment-date"
                   v-model="paymentDate"
                   label="Payment Date"
                   placeholder="Select Date"
+                  :error-messages="paymentDateError ? [paymentDateError] : []"
                 />
               </VCol>
 
               <VCol cols="12">
                 <AppSelect
-                  id="invoice-payment-method"
+                  id="Quotation-payment-method"
                   v-model="paymentMethod"
                   label="Select Payment Method"
                   placeholder="Select Payment Method"
-                  :items="['Cash', 'Bank Transfer', 'Debit', 'Credit', 'PayPal']"
+                  :items="[
+                    'Cash',
+                    'Bank Transfer',
+                    'Debit',
+                    'Credit',
+                    'PayPal',
+                  ]"
+                  :error-messages="
+                    paymentMethodError ? [paymentMethodError] : []
+                  "
                 />
               </VCol>
 
               <VCol cols="12">
                 <AppTextarea
-                  id="invoice-payment-note"
+                  id="Quotation-payment-note"
                   v-model="paymentNote"
                   label="Internal Payment Note"
                   placeholder="Internal Payment Note"
@@ -112,12 +174,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
               </VCol>
 
               <VCol cols="12">
-                <VBtn
-                  type="submit"
-                  class="me-3"
-                >
-                  Send
-                </VBtn>
+                <VBtn type="submit" class="me-3"> Save Payment </VBtn>
 
                 <VBtn
                   type="reset"

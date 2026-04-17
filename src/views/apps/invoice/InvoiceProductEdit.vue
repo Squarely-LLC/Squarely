@@ -1,215 +1,234 @@
 <!-- eslint-disable vue/no-mutating-props -->
 <script setup lang="ts">
+import { useCataloguesStore } from "@/stores/catalogues";
+import { getLineTotal } from "@/utils/quotationPricing";
+
 interface Emit {
-  (e: 'removeProduct', value: number): void
-  (e: 'totalAmount', value: number): void
+  (e: "removeProduct", value: number): void;
 }
 
 interface Props {
-  id: number
+  id: number;
   data: {
-    title: string
-    cost: number
-    hours: number
-    description: string
-  }
+    catalogueItemId?: string | null;
+    title: string;
+    cost: number;
+    hours: number;
+    discountType?: "none" | "percent" | "currency";
+    discountValue?: number;
+    description: string;
+  };
 }
+
+type CatalogueOption = {
+  id: string;
+  title: string;
+  price: number;
+  description: string;
+};
 
 const props = withDefaults(defineProps<Props>(), {
   data: () => ({
-    title: 'App Design',
-    cost: 24,
+    catalogueItemId: null,
+    title: "",
+    cost: 0,
     hours: 1,
-    description: 'Designed UI kit & app pages.',
+    discountType: "none",
+    discountValue: 0,
+    description: "",
   }),
-})
+});
 
-const emit = defineEmits<Emit>()
+const emit = defineEmits<Emit>();
 
-const itemsOptions: Props['data'][] = [
-  {
-    title: 'App Design',
-    cost: 24,
-    hours: 1,
-    description: 'Designed UI kit & app pages.',
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
+
+const catalogueOptions = computed<CatalogueOption[]>(() =>
+  cataloguesStore.all
+    .filter((item) => item.name.trim())
+    .map((item) => ({
+      id: item.id,
+      title: item.name,
+      price: Number(item.bestPrice) || 0,
+      description: item.description?.trim() || "",
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title)),
+);
+
+const itemOptions = computed(() => catalogueOptions.value.map((item) => item.title));
+
+const selectedItem = computed({
+  get: () => props.data.title,
+  set: (value: string | null) => {
+    const title = String(value ?? "").trim();
+    const matchedItem =
+      catalogueOptions.value.find(
+        (item) => item.title.toLowerCase() === title.toLowerCase(),
+      ) || null;
+
+    if (matchedItem) {
+      props.data.catalogueItemId = matchedItem.id;
+      props.data.title = matchedItem.title;
+      props.data.cost = matchedItem.price;
+      props.data.description = matchedItem.description;
+      return;
+    }
+
+    props.data.catalogueItemId = null;
+    props.data.title = title;
+    props.data.cost = 0;
+    props.data.discountType = "none";
+    props.data.discountValue = 0;
+    props.data.description = "";
   },
-  {
-    title: 'App Customization',
-    cost: 26,
-    hours: 1,
-    description: 'Customization & Bug Fixes.',
-  },
-  {
-    title: 'ABC Template',
-    cost: 28,
-    hours: 1,
-    description: 'Vuetify admin template.',
-  },
-  {
-    title: 'App Development',
-    cost: 32,
-    hours: 1,
-    description: 'Native App Development.',
-  },
-]
+});
 
-const selectedItem = ref('App Customization')
-const localProductData = ref(structuredClone(toRaw(props.data)))
+const discountOptions = [
+  { title: "No", value: "none" },
+  { title: "%", value: "percent" },
+  { title: "Currency", value: "currency" },
+] as const;
+const lineBaseTotal = computed(
+  () => Number(props.data.cost || 0) * Number(props.data.hours || 0),
+);
+const discountValueMax = computed(() =>
+  props.data.discountType === "percent" ? 100 : lineBaseTotal.value,
+);
 
-watch(selectedItem, () => {
-  const item = itemsOptions.filter(obj => {
-    return obj.title === selectedItem.value
-  })
+watch(
+  () => props.data.discountType,
+  (discountType) => {
+    if (discountType !== "percent" && discountType !== "currency") {
+      props.data.discountValue = 0;
+      return;
+    }
 
-  localProductData.value = item[0]
-})
+    props.data.discountValue = Math.min(
+      Math.max(0, Number(props.data.discountValue || 0)),
+      discountValueMax.value,
+    );
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [props.data.discountValue, props.data.discountType, props.data.cost, props.data.hours],
+  () => {
+    if (
+      props.data.discountType !== "percent" &&
+      props.data.discountType !== "currency"
+    ) {
+      return;
+    }
+
+    props.data.discountValue = Math.min(
+      Math.max(0, Number(props.data.discountValue || 0)),
+      discountValueMax.value,
+    );
+  },
+);
 
 const removeProduct = () => {
-  emit('removeProduct', props.id)
-}
+  emit("removeProduct", props.id);
+};
 
-const totalPrice = computed(() => Number(localProductData.value.cost) * Number(localProductData.value.hours))
-
-watch(totalPrice, () => {
-  emit('totalAmount', totalPrice.value)
-}, { immediate: true })
+const totalPrice = computed(() => getLineTotal(props.data));
 </script>
 
 <template>
-  <!-- eslint-disable vue/no-mutating-props -->
   <div class="add-products-header mb-2 d-none d-md-flex mb-4">
     <VRow class="me-10">
-      <VCol
-        cols="12"
-        md="6"
-      >
-        <h6 class="text-h6">
-          Item
-        </h6>
+      <VCol cols="12" md="6">
+        <h6 class="text-h6">Item</h6>
       </VCol>
-      <VCol
-        cols="12"
-        md="2"
-      >
-        <h6 class="text-h6 ps-2">
-          Cost
-        </h6>
+      <VCol cols="12" md="2">
+        <h6 class="text-h6 ps-2">Price</h6>
       </VCol>
-      <VCol
-        cols="12"
-        md="2"
-      >
-        <h6 class="text-h6 ps-2">
-          Hours
-        </h6>
+      <VCol cols="12" md="2">
+        <h6 class="text-h6 ps-2">Quantity</h6>
       </VCol>
-      <VCol
-        cols="12"
-        md="2"
-      >
-        <h6 class="text-h6">
-          Price
-        </h6>
+      <VCol cols="12" md="2">
+        <h6 class="text-h6">Discount</h6>
       </VCol>
     </VRow>
   </div>
 
-  <VCard
-    flat
-    border
-    class="d-flex flex-sm-row flex-column-reverse"
-  >
-    <!-- 👉 Left Form -->
+  <VCard flat border class="d-flex flex-sm-row flex-column-reverse">
     <div class="pa-6 flex-grow-1">
       <VRow>
-        <VCol
-          cols="12"
-          md="6"
-        >
-          <AppSelect
+        <VCol cols="12" md="6">
+          <AppCombobox
             id="item"
             v-model="selectedItem"
-            :items="itemsOptions"
-            item-title="title"
-            item-value="title"
-            placeholder="Select Item"
+            :items="itemOptions"
+            placeholder="Search item"
             class="mb-6"
           />
 
           <AppTextarea
             id="item-description"
-            v-model="localProductData.description"
+            v-model="props.data.description"
             rows="2"
             placeholder="Item description"
             persistent-placeholder
           />
         </VCol>
-        <VCol
-          cols="12"
-          md="2"
-          sm="4"
-        >
+
+        <VCol cols="12" md="2" sm="4">
           <AppTextField
             id="item-cost"
-            v-model="localProductData.cost"
+            v-model="props.data.cost"
             type="number"
-            placeholder="Cost"
-            class="mb-6"
+            placeholder="Price"
           />
-
-          <div class="text-high-emphasis text-no-wrap mt-4">
-            <p class="mb-1">
-              Discount
-            </p>
-            <span>0%</span>
-            <span class="mx-2">
-              0%
-              <VTooltip activator="parent">Tax 1</VTooltip>
-            </span>
-            <span>
-              0%
-              <VTooltip activator="parent">Tax 2</VTooltip>
-            </span>
-          </div>
         </VCol>
-        <VCol
-          cols="12"
-          md="2"
-          sm="4"
-        >
+
+        <VCol cols="12" md="2" sm="4">
           <AppTextField
             id="item-hours"
-            v-model="localProductData.hours"
+            v-model="props.data.hours"
             type="number"
-            placeholder="5"
+            placeholder="1"
           />
         </VCol>
-        <VCol
-          cols="12"
-          md="2"
-          sm="4"
-        >
-          <p class="my-2">
-            <span class="d-inline d-md-none">Price: </span>
-            <span class="text-high-emphasis">${{ totalPrice }}</span>
+
+        <VCol cols="12" md="2" sm="4">
+          <AppSelect
+            id="item-discount-type"
+            v-model="props.data.discountType"
+            :items="discountOptions"
+            item-title="title"
+            item-value="value"
+            placeholder="No"
+            class="mb-4"
+          />
+
+          <AppTextField
+            v-if="props.data.discountType === 'percent' || props.data.discountType === 'currency'"
+            id="item-discount-value"
+            v-model="props.data.discountValue"
+            type="number"
+            :placeholder="props.data.discountType === 'percent' ? '%' : 'Amount'"
+            min="0"
+            :max="discountValueMax"
+            class="mb-2"
+          />
+
+          <p class="my-2 text-high-emphasis">
+            <span class="d-inline d-md-none">Line total: </span>
+            ${{ totalPrice }}
           </p>
         </VCol>
       </VRow>
     </div>
 
-    <!-- 👉 Item Actions -->
     <div
       class="d-flex flex-column align-end item-actions"
-      :class="$vuetify.display.smAndUp ? 'border-s' : 'border-b' "
+      :class="$vuetify.display.smAndUp ? 'border-s' : 'border-b'"
     >
-      <IconBtn
-        size="36"
-        @click="removeProduct"
-      >
-        <VIcon
-          :size="24"
-          icon="tabler-x"
-        />
+      <IconBtn size="36" @click="removeProduct">
+        <VIcon :size="24" icon="tabler-x" />
       </IconBtn>
     </div>
   </VCard>

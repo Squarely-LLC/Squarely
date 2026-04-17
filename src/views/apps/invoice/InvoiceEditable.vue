@@ -1,131 +1,239 @@
 <script setup lang="ts">
-import InvoiceProductEdit from './InvoiceProductEdit.vue'
-import type { InvoiceData, PurchasedProduct } from './types'
-import type { Client } from '@db/apps/invoice/types'
-import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
-import { themeConfig } from '@themeConfig'
+import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useConfigStore } from "@/stores/config";
+import { useContactsStore } from "@/stores/contacts";
+import { useInvoicesStore } from "@/stores/invoices";
+import {
+  buildQuotationPaymentDetails,
+  getQuotationCompanyAddressLines,
+  getQuotationCompanyContactLines,
+  resolveQuotationLogoUrl,
+} from "@/utils/quotationConfig";
+import {
+  getQuotationDiscountTotal,
+  getQuotationGrandTotal,
+  getQuotationSubtotal,
+} from "@/utils/quotationPricing";
+import type { Client } from "@db/apps/invoice/types";
+
+import InvoiceProductEdit from "./InvoiceProductEdit.vue";
+import type { InvoiceData, PurchasedProduct } from "./types";
 
 interface Props {
-  data: InvoiceData
+  data: InvoiceData;
+  documentLabel?: string;
 }
 
-const props = defineProps<Props>()
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
-  (e: 'push', value: PurchasedProduct): void
-  (e: 'remove', id: number): void
-}>()
+  (e: "push", value: PurchasedProduct): void;
+  (e: "remove", id: number): void;
+}>();
 
-const invoice = ref(props.data.invoice)
-const salesperson = ref(props.data.salesperson)
-const thanksNote = ref(props.data.thanksNote)
-const note = ref(props.data.note)
+const invoicesStore = useInvoicesStore();
+invoicesStore.init();
 
-// 👉 Clients
-const clients = ref<Client[]>([])
+const configStore = useConfigStore();
+configStore.init();
 
-// 👉 fetchClients
-const fetchClients = async () => {
-  const { data, error } = await useApi<any>('/apps/invoice/clients')
+const contactsStore = useContactsStore();
+contactsStore.init();
 
-  if (error.value)
-    console.log(error.value)
-  else
-    clients.value = data.value
-}
+const quotation = toRef(props.data, "quotation");
+const note = toRef(props.data, "note");
+const documentLabel = computed(() => props.documentLabel?.trim() || "Invoice");
+const recipientLabel = computed(() => `${documentLabel.value} To`);
 
-fetchClients()
+const mapContactToClient = (contact: ContactProperties): Client => ({
+  address: contact.address?.trim() || "",
+  company: contact.fullName.trim(),
+  companyEmail: contact.email?.trim() || "",
+  country: contact.country?.trim() || "Lebanon",
+  contact: contact.number?.trim() || "",
+  name: contact.fullName.trim(),
+});
 
-// 👉 Add item function
+const clients = computed<Client[]>(() =>
+  contactsStore.all
+    .filter((contact) => contact.fullName?.trim())
+    .map((contact) => mapContactToClient(contact)),
+);
+
+watch(
+  () => [quotation.value.client.name, quotation.value.client.companyEmail],
+  () => {
+    const clientName = quotation.value.client.name.trim().toLowerCase();
+    const clientEmail = quotation.value.client.companyEmail
+      .trim()
+      .toLowerCase();
+    const matchedContact = contactsStore.all.find((contact) => {
+      const contactEmail = contact.email?.trim().toLowerCase() || "";
+      const contactName = contact.fullName?.trim().toLowerCase() || "";
+
+      return (
+        (clientEmail && contactEmail === clientEmail) ||
+        (clientName && contactName === clientName)
+      );
+    });
+
+    quotation.value.avatar = matchedContact?.picture || "";
+  },
+  { immediate: true },
+);
+
 const addItem = () => {
-  emit('push', {
-    title: 'App Design',
-    cost: 24,
+  emit("push", {
+    catalogueItemId: null,
+    title: "",
+    cost: 0,
     hours: 1,
-    description: 'Designed UI kit & app pages.',
-  })
-}
+    discountType: "none",
+    discountValue: 0,
+    description: "",
+  });
+};
 
-// 👉 Remove Product edit section
 const removeProduct = (id: number) => {
-  emit('remove', id)
-}
+  emit("remove", id);
+};
+
+const subtotal = computed(() =>
+  getQuotationSubtotal(props.data.purchasedProducts),
+);
+const discountTotal = computed(() =>
+  getQuotationDiscountTotal(props.data.purchasedProducts),
+);
+const total = computed(() =>
+  getQuotationGrandTotal(props.data.purchasedProducts),
+);
+const paymentMethod = computed(
+  () => props.data.paymentMethod || "Bank Transfer",
+);
+const creditCardPaymentLink = computed(
+  () => props.data.paymentLink?.trim() || "",
+);
+const showClientCompany = computed(() => {
+  const clientName = quotation.value.client.name.trim();
+  const clientCompany = quotation.value.client.company.trim();
+
+  return Boolean(clientCompany) && clientCompany !== clientName;
+});
+const displayPaymentDetails = computed(() => ({
+  ...buildQuotationPaymentDetails(
+    total.value,
+    configStore.legal,
+    configStore.financial,
+  ),
+  ...props.data.paymentDetails,
+}));
+const companyLogoUrl = ref("");
+const companyName = computed(
+  () => configStore.legal?.companyName?.trim() || "Squarely",
+);
+const companyAddressLines = computed(() =>
+  getQuotationCompanyAddressLines(configStore.legal),
+);
+const companyContactLines = computed(() =>
+  getQuotationCompanyContactLines(configStore.legal),
+);
+
+watch(
+  () => configStore.legal?.logo,
+  async (logo) => {
+    companyLogoUrl.value = await resolveQuotationLogoUrl(logo);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
   <VCard class="pa-6 pa-sm-12">
-    <!-- SECTION Header -->
-    <div class="d-flex flex-wrap justify-space-between flex-column rounded bg-var-theme-background flex-sm-row gap-6 pa-6 mb-6">
-      <!-- 👉 Left Content -->
+    <div
+      class="d-flex flex-wrap justify-space-between flex-column rounded bg-var-theme-background flex-sm-row gap-6 pa-6 mb-6"
+    >
       <div>
-        <div class="d-flex align-center app-logo mb-6">
-          <!-- 👉 Logo -->
-          <VNodeRenderer :nodes="themeConfig.app.logo" />
-
-          <!-- 👉 Title -->
-          <h6 class="app-logo-title">
-            {{ themeConfig.app.title }}
+        <div class="quotation-company-brand mb-6">
+          <img
+            v-if="companyLogoUrl"
+            :src="companyLogoUrl"
+            :alt="companyName"
+            class="quotation-company-logo"
+          />
+          <h6 class="app-logo-title quotation-company-title">
+            {{ companyName }}
           </h6>
         </div>
 
-        <!-- 👉 Address -->
-        <p class="text-high-emphasis mb-0">
-          Office 149, 450 South Brand Brooklyn
+        <p
+          v-for="(line, index) in companyAddressLines"
+          :key="`address-${index}`"
+          class="text-high-emphasis mb-0"
+        >
+          {{ line }}
         </p>
-        <p class="text-high-emphasis mb-0">
-          San Diego County, CA 91905, USA
-        </p>
-        <p class="text-high-emphasis mb-0">
-          +1 (123) 456 7891, +44 (876) 543 2198
+        <p
+          v-for="(line, index) in companyContactLines"
+          :key="`contact-${index}`"
+          class="text-high-emphasis mb-0"
+        >
+          {{ line }}
         </p>
       </div>
 
-      <!-- 👉 Right Content -->
       <div class="d-flex flex-column gap-2">
-        <!-- 👉 Invoice Id -->
-        <div class="d-flex align-start align-sm-center gap-x-4 font-weight-medium text-lg flex-column flex-sm-row">
+        <div
+          class="d-flex align-start align-sm-center gap-x-4 font-weight-medium text-lg flex-column flex-sm-row"
+        >
           <span
             class="text-high-emphasis text-sm-end"
-            style="inline-size: 5.625rem ;"
-          >Invoice:</span>
+            style="inline-size: 5.625rem"
+          >
+            {{ documentLabel }}:
+          </span>
           <span>
             <AppTextField
-              id="invoice-id"
-              v-model="invoice.id"
+              id="quotation-id"
+              :model-value="quotation.quoteNumber"
               disabled
-              prefix="#"
-              style="inline-size: 9.5rem;"
+              style="inline-size: 9.5rem"
             />
           </span>
         </div>
 
-        <!-- 👉 Issue Date -->
-        <div class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row">
+        <div
+          class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row"
+        >
           <span
             class="text-high-emphasis text-sm-end"
-            style="inline-size: 5.625rem;"
-          >Date Issued:</span>
+            style="inline-size: 5.625rem"
+          >
+            Date Issued:
+          </span>
 
-          <span style="inline-size: 9.5rem;">
+          <span style="inline-size: 9.5rem">
             <AppDateTimePicker
               id="issued-date"
-              v-model="invoice.issuedDate"
+              v-model="quotation.issuedDate"
               placeholder="YYYY-MM-DD"
               :config="{ position: 'auto right' }"
             />
           </span>
         </div>
 
-        <!-- 👉 Due Date -->
-        <div class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row">
+        <div
+          class="d-flex gap-x-4 align-start align-sm-center flex-column flex-sm-row"
+        >
           <span
             class="text-high-emphasis text-sm-end"
-            style="inline-size: 5.625rem;"
-          >Due Date:</span>
-          <span style="min-inline-size: 9.5rem;">
+            style="inline-size: 5.625rem"
+          >
+            Expiry Date:
+          </span>
+          <span style="min-inline-size: 9.5rem">
             <AppDateTimePicker
               id="due-date"
-              v-model="invoice.dueDate"
+              v-model="quotation.dueDate"
               placeholder="YYYY-MM-DD"
               :config="{ position: 'auto right' }"
             />
@@ -133,97 +241,90 @@ const removeProduct = (id: number) => {
         </div>
       </div>
     </div>
-    <!-- !SECTION -->
 
     <VRow>
       <VCol class="text-no-wrap">
-        <h6 class="text-h6 mb-4">
-          Invoice To:
-        </h6>
+        <h6 class="text-h6 mb-4">{{ recipientLabel }}:</h6>
 
         <VSelect
           id="client-name"
-          v-model="invoice.client"
+          v-model="quotation.client"
           :items="clients"
           item-title="name"
           item-value="name"
           placeholder="Select Client"
           return-object
           class="mb-4"
-          style="inline-size: 11.875rem;"
+          style="inline-size: 11.875rem"
         />
-        <p class="mb-0">
-          {{ invoice.client.name }}
+        <p class="mb-0">{{ quotation.client.name }}</p>
+        <p v-if="showClientCompany" class="mb-0">
+          {{ quotation.client.company }}
         </p>
-        <p class="mb-0">
-          {{ invoice.client.company }}
+        <p v-if="quotation.client.address" class="mb-0">
+          {{ quotation.client.address }}, {{ quotation.client.country }}
         </p>
-        <p
-          v-if="invoice.client.address"
-          class="mb-0"
-        >
-          {{ invoice.client.address }}, {{ invoice.client.country }}
-        </p>
-        <p class="mb-0">
-          {{ invoice.client.contact }}
-        </p>
-        <p class="mb-0">
-          {{ invoice.client.companyEmail }}
-        </p>
+        <p class="mb-0">{{ quotation.client.contact }}</p>
+        <p class="mb-0">{{ quotation.client.companyEmail }}</p>
       </VCol>
 
       <VCol class="text-no-wrap">
-        <h6 class="text-h6 mb-4">
-          Bill To:
-        </h6>
+        <h6 class="text-h6 mb-4">Payment Details:</h6>
 
-        <table>
-          <tbody>
-            <tr>
-              <td class="pe-4">
-                Total Due:
-              </td>
-              <td>{{ props.data.paymentDetails.totalDue }}</td>
-            </tr>
-            <tr>
-              <td class="pe-4">
-                Bank Name:
-              </td>
-              <td>{{ props.data.paymentDetails.bankName }}</td>
-            </tr>
-            <tr>
-              <td class="pe-4">
-                Country:
-              </td>
-              <td>{{ props.data.paymentDetails.country }}</td>
-            </tr>
-            <tr>
-              <td class="pe-4">
-                IBAN:
-              </td>
-              <td>
-                <p class="text-wrap me-4">
-                  {{ props.data.paymentDetails.iban }}
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td class="pe-4">
-                SWIFT Code:
-              </td>
-              <td>{{ props.data.paymentDetails.swiftCode }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-if="paymentMethod === 'Bank Transfer'">
+          <table>
+            <tbody>
+              <tr>
+                <td class="pe-4">Bank Name:</td>
+                <td>{{ displayPaymentDetails.bankName }}</td>
+              </tr>
+              <tr>
+                <td class="pe-4">Country:</td>
+                <td>{{ displayPaymentDetails.country }}</td>
+              </tr>
+              <tr>
+                <td class="pe-4">IBAN:</td>
+                <td>
+                  <p class="text-wrap me-4">
+                    {{ displayPaymentDetails.iban }}
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td class="pe-4">SWIFT Code:</td>
+                <td>{{ displayPaymentDetails.swiftCode }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+
+        <template v-else-if="paymentMethod === 'Cash'">
+          <p class="mb-0">Cash</p>
+        </template>
+
+        <template v-else>
+          <p class="mb-2">Credit card payment link</p>
+          <p class="mb-0 text-wrap">
+            <a
+              v-if="creditCardPaymentLink"
+              :href="creditCardPaymentLink"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {{ creditCardPaymentLink }}
+            </a>
+            <span v-else>No payment link added yet.</span>
+          </p>
+        </template>
       </VCol>
     </VRow>
 
     <VDivider class="my-6 border-dashed" />
-    <!-- 👉 Add purchased products -->
+
     <div class="add-products-form">
       <div
         v-for="(product, index) in props.data.purchasedProducts"
-        :key="product.title"
+        :key="index"
         class="mb-4"
       >
         <InvoiceProductEdit
@@ -233,70 +334,33 @@ const removeProduct = (id: number) => {
         />
       </div>
 
-      <VBtn
-        size="small"
-        prepend-icon="tabler-plus"
-        @click="addItem"
-      >
+      <VBtn size="small" prepend-icon="tabler-plus" @click="addItem">
         Add Item
       </VBtn>
     </div>
 
     <VDivider class="my-6 border-dashed" />
 
-    <!-- 👉 Total Amount -->
     <div class="d-flex justify-space-between flex-wrap flex-column flex-sm-row">
-      <div class="mb-6 mb-sm-0">
-        <div class="d-flex align-center mb-4">
-          <h6 class="text-h6 me-2">
-            Salesperson:
-          </h6>
-          <AppTextField
-            id="salesperson"
-            v-model="salesperson"
-            style="inline-size: 8rem;"
-            placeholder="John Doe"
-          />
-        </div>
-
-        <AppTextField
-          id="thanks-note"
-          v-model="thanksNote"
-          placeholder="Thanks for your business"
-        />
-      </div>
-
       <div>
         <table class="w-100">
           <tbody>
             <tr>
-              <td class="pe-16">
-                Subtotal:
-              </td>
+              <td class="pe-16">Subtotal:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">
-                  $1800
-                </h6>
+                <h6 class="text-h6">${{ subtotal.toLocaleString() }}</h6>
               </td>
             </tr>
             <tr>
-              <td class="pe-16">
-                Discount:
-              </td>
+              <td class="pe-16">Discount:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">
-                  $28
-                </h6>
+                <h6 class="text-h6">${{ discountTotal.toLocaleString() }}</h6>
               </td>
             </tr>
             <tr>
-              <td class="pe-16">
-                Tax:
-              </td>
+              <td class="pe-16">VAT:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">
-                  21%
-                </h6>
+                <h6 class="text-h6">Included</h6>
               </td>
             </tr>
           </tbody>
@@ -307,13 +371,15 @@ const removeProduct = (id: number) => {
         <table class="w-100">
           <tbody>
             <tr>
-              <td class="pe-16">
-                Total:
-              </td>
+              <td class="pe-16">Total:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">
-                  $1690
-                </h6>
+                <h6 class="text-h6">${{ total.toLocaleString() }}</h6>
+              </td>
+            </tr>
+            <tr v-if="props.data.totalFx?.trim()">
+              <td class="pe-16">Total FX:</td>
+              <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                <h6 class="text-h6">{{ props.data.totalFx }}</h6>
               </td>
             </tr>
           </tbody>
@@ -321,18 +387,38 @@ const removeProduct = (id: number) => {
       </div>
     </div>
 
-    <VDivider class="my-6 border-dashed" />
+    <template v-if="props.data.showClientNote">
+      <VDivider class="my-6 border-dashed" />
 
-    <div>
-      <h6 class="text-h6 mb-2">
-        Note:
-      </h6>
-      <VTextarea
-        id="note"
-        v-model="note"
-        placeholder="Write note here..."
-        :rows="2"
-      />
-    </div>
+      <div>
+        <h6 class="text-h6 mb-2">Client Note:</h6>
+        <VTextarea
+          id="note"
+          v-model="note"
+          placeholder="Write note here..."
+          :rows="2"
+        />
+      </div>
+    </template>
   </VCard>
 </template>
+
+<style scoped>
+.quotation-company-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.quotation-company-logo {
+  max-block-size: 72px;
+  max-inline-size: 160px;
+  object-fit: contain;
+}
+
+.quotation-company-title {
+  margin: 0;
+  line-height: 1.2;
+}
+</style>
