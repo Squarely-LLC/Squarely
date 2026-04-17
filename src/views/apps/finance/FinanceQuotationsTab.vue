@@ -4,6 +4,7 @@ import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useProformasStore } from "@/stores/proformas";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import {
   buildQuotationPaymentDetails,
@@ -21,7 +22,7 @@ import type { VForm } from "vuetify/components/VForm";
 
 const searchQuery = ref("");
 const selectedStatus = ref<QuotationStatus | null>(null);
-const selectedRows = ref<number[]>([]);
+const selectedRows = ref<string[]>([]);
 const userData = useCookie<Record<string, unknown> | null | undefined>(
   "userData",
 );
@@ -29,7 +30,7 @@ const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
 const isSendQuotationDialogOpen = ref(false);
-const expanded = ref<number[]>([]);
+const expanded = ref<string[]>([]);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const isPreviewActionFrameReady = ref(false);
 const pendingPreviewAction = ref<{
@@ -61,6 +62,8 @@ type ExternalQuotationForm = {
 
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
+const proformasStore = useProformasStore();
+proformasStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
@@ -297,11 +300,13 @@ const hasRevisions = (quotation: Quotation) =>
 const getRevisionCount = (quotation: Quotation) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
+const getQuotationRowKey = (quotation: Quotation) => String(quotation.id);
+
 const isExpanded = (quotation: Quotation) =>
-  expanded.value.includes(quotation.id);
+  expanded.value.includes(getQuotationRowKey(quotation));
 
 const toggleRow = (quotation: Quotation) => {
-  const id = quotation.id;
+  const id = getQuotationRowKey(quotation);
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -483,7 +488,7 @@ const contactNameValidator = (value: unknown) => {
 };
 
 const contactEmailRules = computed(() => {
-  const rules = [emailValidator];
+  const rules: Array<(value: unknown) => true | string> = [emailValidator];
 
   if (shouldAutoSelectContact.value) return rules;
   if (externalQuotationForm.value.contactName.trim())
@@ -660,6 +665,57 @@ const openRevisionDraft = async (quotationId: number) => {
   );
 };
 
+const convertQuotationToProforma = (quotationId: number) => {
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (!quotationRecord) return;
+
+  if (quotationRecord.quotation.quotationStatus === "Converted to Proforma") {
+    pushFinanceSuccess(
+      `${quotationRecord.quotation.quoteNumber} is already converted to proforma.`,
+    );
+    return;
+  }
+
+  const created = proformasStore.addProforma({
+    quotation: {
+      issuedDate: quotationRecord.quotation.issuedDate,
+      dueDate: quotationRecord.quotation.dueDate,
+      client: quotationRecord.quotation.client,
+      service: quotationRecord.quotation.service,
+      total: quotationRecord.quotation.total,
+      avatar: quotationRecord.quotation.avatar,
+      quotationStatus: "Not Paid",
+      balance: quotationRecord.quotation.total,
+      dealId: quotationRecord.quotation.dealId,
+      linkedRecordType: quotationRecord.quotation.linkedRecordType,
+      source: quotationRecord.quotation.source,
+      attachmentName: quotationRecord.quotation.attachmentName,
+      parentQuotationId: null,
+      isRevision: false,
+      revisionLabel: null,
+    },
+    paymentDetails: quotationRecord.paymentDetails,
+    purchasedProducts: quotationRecord.purchasedProducts,
+    note: quotationRecord.note,
+    showClientNote: quotationRecord.showClientNote,
+    totalFx: quotationRecord.totalFx,
+    paymentMethod: quotationRecord.paymentMethod,
+    paymentLink: quotationRecord.paymentLink,
+    approvalMode: quotationRecord.approvalMode,
+    approverEmployeeId: quotationRecord.approverEmployeeId,
+    salesperson: quotationRecord.salesperson,
+    thanksNote: quotationRecord.thanksNote,
+  });
+
+  quotationsStore.updateQuotation(quotationId, {
+    quotation: { quotationStatus: "Converted to Proforma" },
+  });
+
+  pushFinanceSuccess(
+    `Converted ${quotationRecord.quotation.quoteNumber} to ${created?.quotation.quoteNumber || "a proforma"}.`,
+  );
+};
+
 const pendingDeleteQuotationId = ref<number | null>(null);
 
 const pendingDeleteQuotation = computed(() => {
@@ -713,7 +769,9 @@ const confirmDeleteQuotation = () => {
   }
 
   quotationsStore.removeQuotation(quotation.id);
-  expanded.value = expanded.value.filter((value) => value !== quotation.id);
+  expanded.value = expanded.value.filter(
+    (value) => value !== String(quotation.id),
+  );
   pushFinanceSuccess(`${quotation.quoteNumber} deleted successfully.`);
   closeDeleteQuotationDialog();
 };
@@ -823,6 +881,7 @@ const computedMoreList = computed(() => {
       title: "Convert to Proforma",
       value: "convert-to-proforma",
       prependIcon: "tabler-file-dollar",
+      onClick: () => convertQuotationToProforma(paramId),
     },
     {
       title: "Convert to Tax invoice",
@@ -978,7 +1037,7 @@ watch(totalQuotations, (value) => {
         :items-length="totalQuotations"
         :headers="headers"
         :items="paginatedQuotations"
-        item-value="id"
+        :item-value="getQuotationRowKey"
         class="text-no-wrap"
         @update:options="updateOptions"
       >
