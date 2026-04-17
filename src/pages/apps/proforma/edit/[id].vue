@@ -4,49 +4,52 @@ import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import {
-  cloneQuotationRecord,
-  getQuotationOutstandingBalance,
-  useQuotationsStore,
-} from "@/stores/quotations";
+  applyProformaPayment,
+  cloneProformaRecord,
+  getProformaOutstandingBalance,
+  useProformasStore,
+  type ProformaPaymentInput,
+} from "@/stores/proformas";
+import {
+  clearProformaPreviewDraft,
+  loadProformaPreviewDraft,
+  saveProformaPreviewDraft,
+} from "@/utils/proformaPreviewDraft";
 import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
 } from "@/utils/quotationConfig";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
-import {
-  clearQuotationPreviewDraft,
-  loadQuotationPreviewDraft,
-  saveQuotationPreviewDraft,
-} from "@/utils/quotationPreviewDraft";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import { openWhatsAppIntent } from "@/utils/shareToWhatsApp";
 import { shareWithSystem } from "@/utils/shareWithSystem";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
+import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
+import ProformaEditable from "@/views/apps/proforma/ProformaEditable.vue";
 import type {
+  ProformaData,
   PurchasedProduct,
-  QuotationData,
-} from "@/views/apps/quotation/types";
+} from "@/views/apps/proforma/types";
 
-const route = useRoute("apps-quotation-edit-id");
+const route = useRoute("apps-proforma-edit-id");
 const router = useRouter();
 const configStore = useConfigStore();
 configStore.init();
 const employeesStore = useEmployeesStore();
 employeesStore.init();
 const notifications = useNotificationsStore();
-const quotationsStore = useQuotationsStore();
-quotationsStore.init();
+const proformasStore = useProformasStore();
+proformasStore.init();
 
-const previewDraft = loadQuotationPreviewDraft();
+const previewDraft = loadProformaPreviewDraft();
 const sourceRecord =
   previewDraft?.source === "edit" &&
   String(previewDraft.quotation.quotation.id) === String(route.params.id)
     ? previewDraft.quotation
-    : quotationsStore.byId(route.params.id);
-const quotationData = ref<QuotationData | null>(
-  sourceRecord ? cloneQuotationRecord(sourceRecord) : null,
+    : proformasStore.byId(route.params.id);
+const quotationData = ref<ProformaData | null>(
+  sourceRecord ? cloneProformaRecord(sourceRecord) : null,
 );
 
 const addProduct = (value: PurchasedProduct) => {
@@ -57,6 +60,7 @@ const removeProduct = (id: number) => {
   quotationData.value?.purchasedProducts.splice(id, 1);
 };
 
+const isAddPaymentSidebarActive = ref(false);
 const isEmailDialogVisible = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
@@ -69,7 +73,7 @@ const approvalError = ref<string | null>(null);
 const dealOptions = computed(() => {
   const options = new Map<number, { title: string; value: number }>();
 
-  for (const record of quotationsStore.all) {
+  for (const record of proformasStore.all) {
     const quotation = record.quotation;
     if (!quotation.dealId) continue;
 
@@ -93,6 +97,10 @@ const companyAddressLines = computed(() =>
 const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(configStore.legal),
 );
+const currentQuotationBalance = computed(() =>
+  quotationData.value ? getProformaOutstandingBalance(quotationData.value) : 0,
+);
+
 const quotationEmailDraft = computed(() => {
   const currentQuotation = quotationData.value?.quotation;
   const companyName = configStore.legal?.companyName?.trim() || "Squarely";
@@ -104,19 +112,19 @@ const quotationEmailDraft = computed(() => {
 
   return {
     to,
-    subject: `Quotation ${quoteNumber} from ${companyName}`,
+    subject: `Proforma ${quoteNumber} from ${companyName}`,
     message: `Dear ${clientName},
 
-Please find ${quoteNumber} attached.
+Please find proforma ${quoteNumber} attached.
 
-Quotation amount: $${total}
+Proforma amount: $${total}
 ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,
 ${companyName}`.trim(),
     attachments: [
       {
-        name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Proforma Attached",
       },
     ],
   };
@@ -127,7 +135,7 @@ const buildPreviewQuotationDraft = () => {
   if (!validateCreditCardPaymentLink()) return null;
   if (!validateApprovalSelection()) return null;
 
-  const previewQuotation = cloneQuotationRecord(quotationData.value);
+  const previewQuotation = cloneProformaRecord(quotationData.value);
   const total = getQuotationGrandTotal(previewQuotation.purchasedProducts);
 
   previewQuotation.quotation.total = total;
@@ -152,10 +160,21 @@ const buildPreviewQuotationDraft = () => {
       ? (previewQuotation.approverEmployeeId ?? null)
       : null;
   previewQuotation.quotation.balance =
-    getQuotationOutstandingBalance(previewQuotation);
+    getProformaOutstandingBalance(previewQuotation);
   previewQuotation.paymentDetails.totalDue = `$${previewQuotation.quotation.balance.toLocaleString()}`;
 
   return previewQuotation;
+};
+
+const recordQuotationPayment = (payment: ProformaPaymentInput) => {
+  if (!quotationData.value) return;
+
+  quotationData.value = applyProformaPayment(quotationData.value, payment);
+  notifications.push(
+    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    "success",
+    3500,
+  );
 };
 
 const createDraftQuotationPdfFile = (previewQuotation: QuotationData) =>
@@ -164,6 +183,8 @@ const createDraftQuotationPdfFile = (previewQuotation: QuotationData) =>
     companyName: configStore.legal?.companyName?.trim() || "Squarely",
     companyAddressLines: companyAddressLines.value,
     companyContactLines: companyContactLines.value,
+    documentLabel: "Proforma",
+    recipientLabel: "Proforma To",
   });
 
 const ensurePreviewActionFrame = () => {
@@ -190,14 +211,14 @@ const triggerDraftPreviewAction = (action: "print" | "download") => {
   const previewQuotation = buildPreviewQuotationDraft();
   if (!previewQuotation) return;
 
-  saveQuotationPreviewDraft({
+  saveProformaPreviewDraft({
     source: "edit",
     quotation: previewQuotation,
   });
 
   const iframe = ensurePreviewActionFrame();
   const routeLocation = router.resolve({
-    name: "apps-quotation-preview-id",
+    name: "apps-proforma-preview-id",
     params: { id: previewQuotation.quotation.id },
     query: {
       draft: "1",
@@ -214,7 +235,7 @@ const openQuotationEmailDialog = () => {
   const previewQuotation = buildPreviewQuotationDraft();
   if (!previewQuotation) return;
 
-  saveQuotationPreviewDraft({
+  saveProformaPreviewDraft({
     source: "edit",
     quotation: previewQuotation,
   });
@@ -229,20 +250,20 @@ const shareQuotationOnWhatsApp = async () => {
   const previewQuotation = buildPreviewQuotationDraft();
   if (!previewQuotation) return;
 
-  saveQuotationPreviewDraft({
+  saveProformaPreviewDraft({
     source: "edit",
     quotation: previewQuotation,
   });
 
   const routeLocation = router.resolve({
-    name: "apps-quotation-preview-id",
+    name: "apps-proforma-preview-id",
     params: { id: previewQuotation.quotation.id },
     query: { draft: "1", source: "edit" },
   });
 
   await openWhatsAppIntent({
     url: `${window.location.origin}${routeLocation.href}`,
-    text: `Quotation ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
+    text: `Proforma ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
   });
 };
 
@@ -250,7 +271,7 @@ const shareQuotationWithOthers = async () => {
   const previewQuotation = buildPreviewQuotationDraft();
   if (!previewQuotation) return;
 
-  saveQuotationPreviewDraft({
+  saveProformaPreviewDraft({
     source: "edit",
     quotation: previewQuotation,
   });
@@ -260,7 +281,7 @@ const shareQuotationWithOthers = async () => {
   await shareWithSystem({
     file: pdfFile,
     title: pdfFile.name,
-    text: `Quotation ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
+    text: `Proforma ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
   });
 };
 
@@ -367,7 +388,7 @@ const saveQuotation = () => {
     configStore.legal,
     configStore.financial,
   );
-  quotationData.value.quotation.balance = getQuotationOutstandingBalance(
+  quotationData.value.quotation.balance = getProformaOutstandingBalance(
     quotationData.value,
   );
   quotationData.value.paymentDetails.totalDue = `$${quotationData.value.quotation.balance.toLocaleString()}`;
@@ -384,21 +405,21 @@ const saveQuotation = () => {
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
 
-  const updatedQuotation = quotationsStore.updateQuotation(
+  const updatedQuotation = proformasStore.updateProforma(
     quotationData.value.quotation.id,
-    cloneQuotationRecord(quotationData.value),
+    cloneProformaRecord(quotationData.value),
   );
   if (!updatedQuotation) return;
 
   notifications.push(
-    `Quotation ${updatedQuotation.quotation.quoteNumber} updated successfully.`,
+    `Proforma ${updatedQuotation.quotation.quoteNumber} updated successfully.`,
     "success",
     3500,
   );
 
-  clearQuotationPreviewDraft();
+  clearProformaPreviewDraft();
   router.push({
-    name: "apps-quotation-preview-id",
+    name: "apps-proforma-preview-id",
     params: { id: quotationData.value.quotation.id },
   });
 };
@@ -407,13 +428,13 @@ const openPreview = async () => {
   const previewQuotation = buildPreviewQuotationDraft();
   if (!previewQuotation) return;
 
-  saveQuotationPreviewDraft({
+  saveProformaPreviewDraft({
     source: "edit",
     quotation: previewQuotation,
   });
 
   await router.push({
-    name: "apps-quotation-preview-id",
+    name: "apps-proforma-preview-id",
     params: { id: previewQuotation.quotation.id },
     query: { draft: "1", source: "edit" },
   });
@@ -431,8 +452,9 @@ onBeforeUnmount(() => {
 <template>
   <VRow v-if="quotationData?.quotation">
     <VCol cols="12" md="9">
-      <QuotationEditable
+      <ProformaEditable
         :data="quotationData"
+        document-label="Proforma"
         @push="addProduct"
         @remove="removeProduct"
       />
@@ -525,6 +547,15 @@ onBeforeUnmount(() => {
 
             <VBtn class="mb-4 flex-grow-1" @click="saveQuotation">Save</VBtn>
           </div>
+
+          <VBtn
+            block
+            color="success"
+            prepend-icon="tabler-currency-dollar"
+            @click="isAddPaymentSidebarActive = true"
+          >
+            Add Payment
+          </VBtn>
         </VCardText>
       </VCard>
 
@@ -612,11 +643,18 @@ onBeforeUnmount(() => {
       ref="emailDialogRef"
       v-model:is-dialog-visible="isEmailDialogVisible"
     />
+    <ProformaAddPaymentDrawer
+      v-model:is-drawer-open="isAddPaymentSidebarActive"
+      :current-balance="currentQuotationBalance"
+      :default-payment-method="quotationData?.paymentMethod"
+      document-label="Proforma"
+      @submit="recordQuotationPayment"
+    />
   </VRow>
 
   <section v-else>
     <VAlert type="error" variant="tonal">
-      Quotation with ID {{ route.params.id }} not found!
+      Proforma with ID {{ route.params.id }} not found!
     </VAlert>
   </section>
 </template>

@@ -4,6 +4,27 @@ import type { ContactProperties } from "../contact/types";
 
 const year = new Date().getFullYear();
 
+const defaultPurchasedProducts = (): QuotationRecord["purchasedProducts"] => [
+  {
+    catalogueItemId: null,
+    title: "Concept design",
+    cost: 250,
+    hours: 8,
+    discountType: "none",
+    discountValue: 0,
+    description: "Initial concept preparation and client revisions.",
+  },
+  {
+    catalogueItemId: null,
+    title: "Technical coordination",
+    cost: 180,
+    hours: 4,
+    discountType: "none",
+    discountValue: 0,
+    description: "Coordination across architecture and MEP comments.",
+  },
+];
+
 const mapContactToClient = (
   contact: ContactProperties,
 ): QuotationRecord["quotation"]["client"] => ({
@@ -70,26 +91,7 @@ const buildRecord = (
     swiftCode: "BYBALBBX",
   },
   payments: [],
-  purchasedProducts: [
-    {
-      catalogueItemId: null,
-      title: "Concept design",
-      cost: 250,
-      hours: 8,
-      discountType: "none",
-      discountValue: 0,
-      description: "Initial concept preparation and client revisions.",
-    },
-    {
-      catalogueItemId: null,
-      title: "Technical coordination",
-      cost: 180,
-      hours: 4,
-      discountType: "none",
-      discountValue: 0,
-      description: "Coordination across architecture and MEP comments.",
-    },
-  ],
+  purchasedProducts: defaultPurchasedProducts(),
   note: "Pricing is valid for 14 days from the issue date.",
   showClientNote: true,
   totalFx: null,
@@ -116,15 +118,6 @@ export const database: QuotationRecord[] = [
     dealId: 202,
     linkedRecordType: "deal",
   }),
-  buildRecord(6103, "Lost", "", {
-    total: 3100,
-    client: getSeedClient(7),
-    service: "Gym reception redesign",
-    dealId: null,
-    linkedRecordType: null,
-    source: "external",
-    attachmentName: "peakfit-quotation.pdf",
-  }),
   buildRecord(6104, "Converted to Invoice", getSeedAvatar(10), {
     total: 9200,
     client: getSeedClient(10),
@@ -139,27 +132,11 @@ export const database: QuotationRecord[] = [
     dealId: 205,
     linkedRecordType: "contract",
   }),
-  buildRecord(6106, "Pending", getSeedAvatar(9), {
-    total: 2500,
-    client: getSeedClient(9),
-    service: "Clinic partition works",
-    dealId: null,
-    linkedRecordType: null,
-    source: "external",
-    attachmentName: "northstar-quote.xlsx",
-  }),
-  buildRecord(6107, "Approved", getSeedAvatar(8), {
-    total: 4450,
-    client: getSeedClient(8),
-    service: "Pop-up kiosk fabrication",
-    dealId: 207,
-    linkedRecordType: "deal",
-  }),
-  buildRecord(6108, "Pending", "", {
-    total: 6900,
-    client: getSeedClient(6),
-    service: "Workspace redesign proposal",
-    dealId: 208,
+  buildRecord(6109, "Converted to Proforma", getSeedAvatar(3), {
+    total: 8450,
+    client: getSeedClient(3),
+    service: "Showroom concept redesign",
+    dealId: 209,
     linkedRecordType: "deal",
   }),
   buildRecord(6111, "Approved", getSeedAvatar(5), {
@@ -172,16 +149,5 @@ export const database: QuotationRecord[] = [
     parentQuotationId: 6102,
     isRevision: true,
     revisionLabel: "R1",
-  }),
-  buildRecord(6112, "Approved", getSeedAvatar(5), {
-    quoteNumber: "QT-6102-R2",
-    total: 7600,
-    client: getSeedClient(5),
-    service: "Retail branch design package - revision 2",
-    dealId: 202,
-    linkedRecordType: "deal",
-    parentQuotationId: 6102,
-    isRevision: true,
-    revisionLabel: "R2",
   }),
 ];

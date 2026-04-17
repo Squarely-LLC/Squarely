@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { QuotationPaymentInput } from "@/stores/quotations";
+import type { ProformaPaymentInput } from "@/stores/proformas";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
 interface Emit {
   (e: "update:isDrawerOpen", value: boolean): void;
-  (e: "submit", value: QuotationPaymentInput): void;
+  (e: "submit", value: ProformaPaymentInput): void;
 }
 
 interface Props {
@@ -24,9 +24,7 @@ const paymentNote = ref("");
 const paymentAmountError = ref<string | null>(null);
 const paymentDateError = ref<string | null>(null);
 const paymentMethodError = ref<string | null>(null);
-const documentLabel = computed(
-  () => props.documentLabel?.trim() || "Quotation",
-);
+const documentLabel = computed(() => props.documentLabel?.trim() || "Proforma");
 const balanceLabel = computed(() => `${documentLabel.value} Balance`);
 
 const resetForm = () => {

@@ -1,0 +1,81 @@
+export type ProformaStatus = "Not Paid" | "Paid" | "Partially Paid";
+
+export type LinkedRecordType = "deal" | "contract";
+
+export type ProformaSource = "squarely" | "external";
+
+export interface Client {
+  address: string;
+  company: string;
+  companyEmail: string;
+  country: string;
+  contact: string;
+  name: string;
+}
+
+export interface Proforma {
+  id: number;
+  quoteNumber: string;
+  issuedDate: string;
+  dueDate: string;
+  client: Client;
+  service: string;
+  total: number;
+  avatar: string;
+  quotationStatus: ProformaStatus;
+  balance: number;
+  dealId: number | null;
+  linkedRecordType: LinkedRecordType | null;
+  source: ProformaSource;
+  attachmentName: string | null;
+  parentQuotationId: number | null;
+  isRevision: boolean;
+  revisionLabel: string | null;
+}
+
+export interface PaymentDetails {
+  totalDue: string;
+  bankName: string;
+  country: string;
+  iban: string;
+  swiftCode: string;
+}
+
+export interface PurchasedProduct {
+  catalogueItemId?: string | null;
+  title: string;
+  cost: number;
+  hours: number;
+  discountType?: "none" | "percent" | "currency";
+  discountValue?: number;
+  description: string;
+}
+
+export interface ProformaPaymentEntry {
+  id: string;
+  amount: number;
+  date: string;
+  method: string;
+  note: string;
+  createdAt: string;
+  balanceBefore: number;
+  balanceAfter: number;
+}
+
+export type ProformaApprovalMode = "Automatic" | "Request Approval";
+
+export interface ProformaRecord {
+  quotation: Proforma;
+  paymentDetails: PaymentDetails;
+  payments: ProformaPaymentEntry[];
+  purchasedProducts: PurchasedProduct[];
+  note: string;
+  showClientNote: boolean;
+  totalFx: string | null;
+  paymentMethod: string;
+  paymentLink: string | null;
+  approvalMode: ProformaApprovalMode;
+  approverEmployeeId: number | string | null;
+  salesperson: string;
+  thanksNote: string;
+}

@@ -2,7 +2,7 @@
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
-import { useQuotationsStore } from "@/stores/quotations";
+import { useProformasStore } from "@/stores/proformas";
 import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
@@ -14,13 +14,13 @@ import {
   getQuotationGrandTotal,
   getQuotationSubtotal,
 } from "@/utils/quotationPricing";
-import type { Client } from "@db/apps/quotation/types";
+import type { Client } from "@db/apps/proforma/types";
 
-import QuotationProductEdit from "./QuotationProductEdit.vue";
-import type { PurchasedProduct, QuotationData } from "./types";
+import ProformaProductEdit from "./ProformaProductEdit.vue";
+import type { ProformaData, PurchasedProduct } from "./types";
 
 interface Props {
-  data: QuotationData;
+  data: ProformaData;
   documentLabel?: string;
 }
 
@@ -31,8 +31,8 @@ const emit = defineEmits<{
   (e: "remove", id: number): void;
 }>();
 
-const quotationsStore = useQuotationsStore();
-quotationsStore.init();
+const proformasStore = useProformasStore();
+proformasStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
@@ -42,9 +42,7 @@ contactsStore.init();
 
 const quotation = toRef(props.data, "quotation");
 const note = toRef(props.data, "note");
-const documentLabel = computed(
-  () => props.documentLabel?.trim() || "Quotation",
-);
+const documentLabel = computed(() => props.documentLabel?.trim() || "Proforma");
 const recipientLabel = computed(() => `${documentLabel.value} To`);
 
 const mapContactToClient = (contact: ContactProperties): Client => ({
@@ -329,7 +327,7 @@ watch(
         :key="index"
         class="mb-4"
       >
-        <QuotationProductEdit
+        <ProformaProductEdit
           :id="index"
           :data="product"
           @remove-product="removeProduct"

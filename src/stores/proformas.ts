@@ -1,11 +1,13 @@
-import { database } from "@/plugins/fake-api/handlers/apps/quotation/db";
+import { database } from "@/plugins/fake-api/handlers/apps/proforma/db";
 import type {
   Client,
   PaymentDetails,
+  Proforma,
+  ProformaPaymentEntry,
+  ProformaRecord,
+  ProformaStatus,
   PurchasedProduct,
-  Quotation,
-  QuotationRecord,
-} from "@/plugins/fake-api/handlers/apps/quotation/types";
+} from "@/plugins/fake-api/handlers/apps/proforma/types";
 import {
   buildQuotationNote,
   buildQuotationPaymentDetails,
@@ -16,9 +18,9 @@ import {
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.quotations.v6";
-type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
-  quotation?: Partial<Quotation>;
+const STORAGE_KEY = "app.proformas.v1";
+type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
+  quotation?: Partial<Proforma>;
 };
 
 function safeClone<T>(value: T, fallback: T): T {
@@ -47,7 +49,7 @@ function cloneClient(client: Client): Client {
   return safeClone(client, { ...client });
 }
 
-function cloneQuotation(quotation: Quotation): Quotation {
+function cloneQuotation(quotation: Proforma): Proforma {
   return safeClone(quotation, {
     ...quotation,
     client: cloneClient(quotation.client),
@@ -58,27 +60,35 @@ function clonePaymentDetails(paymentDetails: PaymentDetails): PaymentDetails {
   return safeClone(paymentDetails, { ...paymentDetails });
 }
 
+function cloneProformaPayment(
+  payment: ProformaPaymentEntry,
+): ProformaPaymentEntry {
+  return safeClone(payment, { ...payment });
+}
+
 function clonePurchasedProduct(product: PurchasedProduct): PurchasedProduct {
   return safeClone(product, { ...product });
 }
 
-export function cloneQuotationRecord(record: QuotationRecord): QuotationRecord {
+export function cloneProformaRecord(record: ProformaRecord): ProformaRecord {
   return safeClone(record, {
     ...record,
     quotation: cloneQuotation(record.quotation),
     paymentDetails: clonePaymentDetails(record.paymentDetails),
-    payments: [],
+    payments: (record.payments ?? []).map((payment) =>
+      cloneProformaPayment(payment),
+    ),
     purchasedProducts: record.purchasedProducts.map((product) =>
       clonePurchasedProduct(product),
     ),
   });
 }
 
-function cloneQuotationArray(records: QuotationRecord[]) {
-  return records.map((record) => cloneQuotationRecord(record));
+function cloneProformaArray(records: ProformaRecord[]) {
+  return records.map((record) => cloneProformaRecord(record));
 }
 
-function loadFromStorage(): QuotationRecord[] | null {
+function loadFromStorage(): ProformaRecord[] | null {
   if (typeof window === "undefined") return null;
 
   try {
@@ -86,24 +96,24 @@ function loadFromStorage(): QuotationRecord[] | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    return parsed as QuotationRecord[];
+    return parsed as ProformaRecord[];
   } catch (error) {
-    console.warn("Failed to load quotations from storage:", error);
+    console.warn("Failed to load proformas from storage:", error);
     return null;
   }
 }
 
-function saveToStorage(records: QuotationRecord[]) {
+function saveToStorage(records: ProformaRecord[]) {
   if (typeof window === "undefined") return;
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   } catch (error) {
-    console.warn("Failed to save quotations to storage:", error);
+    console.warn("Failed to save proformas to storage:", error);
   }
 }
 
-function nextQuotationId(items: QuotationRecord[]) {
+function nextProformaId(items: ProformaRecord[]) {
   const numericIds = items
     .map((record) => Number(record.quotation.id))
     .filter((value) => Number.isFinite(value) && value > 0);
@@ -114,7 +124,23 @@ function nextQuotationId(items: QuotationRecord[]) {
 }
 
 function formatQuoteNumber(id: number) {
-  return `QT-${id}`;
+  const prefix =
+    loadActiveAppConfigurations().deals?.proformaStartSeq?.trim() || "PF-";
+
+  return `${prefix}${id}`;
+}
+
+function normaliseProformaStatus(
+  status: ProformaStatus | string | null | undefined,
+): ProformaStatus {
+  const trimmed = String(status ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (trimmed === "paid") return "Paid";
+  if (trimmed === "partially paid") return "Partially Paid";
+
+  return "Not Paid";
 }
 
 function normaliseRevisionLabel(
@@ -169,8 +195,8 @@ function normalisePaymentMethod(
   return "Bank Transfer";
 }
 
-function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
-  const cloned = cloneQuotationRecord(record);
+function sanitizeStoredRecord(record: ProformaRecord): ProformaRecord {
+  const cloned = cloneProformaRecord(record);
   const config = loadActiveAppConfigurations();
   const parentQuotationId =
     cloned.quotation.parentQuotationId === null ||
@@ -184,7 +210,7 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
   const derivedParentId =
     parentQuotationId ??
     (() => {
-      const match = baseQuoteNumber?.match(/^QT-(\d+)$/i);
+      const match = baseQuoteNumber?.match(/(\d+)$/);
       return match?.[1] ? Number(match[1]) : null;
     })();
   const hasParent = Boolean(parentQuotationId);
@@ -212,7 +238,7 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.paymentMethod === "Credit Card"
       ? cloned.paymentLink?.trim() || null
       : null;
-  cloned.payments = [];
+  cloned.payments = ensurePayments(cloned.payments);
   cloned.totalFx = cloned.totalFx?.trim() || null;
   cloned.showClientNote =
     cloned.showClientNote ?? config.financial?.invoicing?.showNotes ?? true;
@@ -224,14 +250,17 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.approvalMode === "Request Approval"
       ? (cloned.approverEmployeeId ?? null)
       : null;
+  cloned.quotation.quotationStatus = normaliseProformaStatus(
+    cloned.quotation.quotationStatus,
+  );
 
-  syncQuotationFinancialState(cloned);
+  syncProformaPaymentState(cloned);
 
   return cloned;
 }
 
-function resequenceRevisions(records: QuotationRecord[]): QuotationRecord[] {
-  const cloned = cloneQuotationArray(records);
+function resequenceRevisions(records: ProformaRecord[]): ProformaRecord[] {
+  const cloned = cloneProformaArray(records);
   const parentQuoteNumbers = new Map<number, string>();
 
   for (const record of cloned) {
@@ -244,7 +273,7 @@ function resequenceRevisions(records: QuotationRecord[]): QuotationRecord[] {
     );
   }
 
-  const revisionsByParent = new Map<number, QuotationRecord[]>();
+  const revisionsByParent = new Map<number, ProformaRecord[]>();
 
   for (const record of cloned) {
     if (!record.quotation.parentQuotationId) continue;
@@ -340,27 +369,55 @@ function ensureProducts(
   }));
 }
 
+function ensurePayments(
+  payments: ProformaPaymentEntry[] | undefined | null,
+): ProformaPaymentEntry[] {
+  if (!Array.isArray(payments) || !payments.length) return [];
+
+  return payments.map((payment, index) => ({
+    id: payment.id?.trim() || `payment-${payment.date || "undated"}-${index}`,
+    amount: Math.max(0, Number(payment.amount) || 0),
+    date: payment.date?.trim() || new Date().toISOString().slice(0, 10),
+    method: payment.method?.trim() || "Cash",
+    note: payment.note?.trim() || "",
+    createdAt: payment.createdAt?.trim() || new Date().toISOString(),
+    balanceBefore: Math.max(0, Number(payment.balanceBefore) || 0),
+    balanceAfter: Math.max(0, Number(payment.balanceAfter) || 0),
+  }));
+}
+
 function formatCurrencyAmount(value: number) {
   return `$${Math.max(0, Number(value) || 0).toLocaleString()}`;
 }
 
-export type QuotationPaymentInput = {
+export type ProformaPaymentInput = {
   amount: number;
   date: string;
   method: string;
   note: string;
 };
 
-export function getQuotationOutstandingBalance(record: QuotationRecord) {
+export function getProformaOutstandingBalance(record: ProformaRecord) {
   const total = Math.max(0, Number(record.quotation.total) || 0);
+  const payments = ensurePayments(record.payments);
+
+  if (payments.length) {
+    const paidAmount = payments.reduce(
+      (sum, payment) => sum + Math.max(0, Number(payment.amount) || 0),
+      0,
+    );
+
+    return Math.max(0, total - paidAmount);
+  }
+
   const storedBalance = Math.max(0, Number(record.quotation.balance) || 0);
 
   return storedBalance > 0 ? storedBalance : total;
 }
 
-function syncQuotationFinancialState(record: QuotationRecord) {
-  record.payments = [];
-  record.quotation.balance = getQuotationOutstandingBalance(record);
+function syncProformaPaymentState(record: ProformaRecord) {
+  record.payments = ensurePayments(record.payments);
+  record.quotation.balance = getProformaOutstandingBalance(record);
   record.paymentDetails.totalDue = formatCurrencyAmount(
     record.quotation.balance,
   );
@@ -368,16 +425,54 @@ function syncQuotationFinancialState(record: QuotationRecord) {
   return record;
 }
 
-function normaliseQuotationRecord(
-  payload: QuotationPayload,
+export function applyProformaPayment(
+  record: ProformaRecord,
+  paymentInput: ProformaPaymentInput,
+) {
+  const nextRecord = cloneProformaRecord(record);
+  const balanceBefore = getProformaOutstandingBalance(nextRecord);
+  const amount = Math.min(
+    Math.max(0, Number(paymentInput.amount) || 0),
+    balanceBefore,
+  );
+  const paymentDate =
+    paymentInput.date?.trim() || new Date().toISOString().slice(0, 10);
+  const paymentMethod = paymentInput.method?.trim() || "Cash";
+  const paymentNote = paymentInput.note?.trim() || "";
+  const balanceAfter = Math.max(0, balanceBefore - amount);
+
+  nextRecord.payments = [
+    ...ensurePayments(nextRecord.payments),
+    {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `payment-${Date.now()}`,
+      amount,
+      date: paymentDate,
+      method: paymentMethod,
+      note: paymentNote,
+      createdAt: new Date().toISOString(),
+      balanceBefore,
+      balanceAfter,
+    },
+  ];
+  nextRecord.quotation.balance = balanceAfter;
+  nextRecord.paymentDetails.totalDue = formatCurrencyAmount(balanceAfter);
+
+  return nextRecord;
+}
+
+function normaliseProformaRecord(
+  payload: ProformaPayload,
   assignedId: number,
-): QuotationRecord {
+): ProformaRecord {
   const config = loadActiveAppConfigurations();
-  const quotation: Partial<Quotation> = payload.quotation ?? {};
+  const quotation: Partial<Proforma> = payload.quotation ?? {};
   const client = ensureClient(quotation.client);
   const total = Number(quotation.total) || 0;
 
-  const record: QuotationRecord = {
+  const record: ProformaRecord = {
     quotation: {
       id: assignedId,
       quoteNumber:
@@ -392,7 +487,7 @@ function normaliseQuotationRecord(
       service: quotation.service?.trim() || "Architectural services",
       total,
       avatar: quotation.avatar || "",
-      quotationStatus: quotation.quotationStatus ?? "Pending",
+      quotationStatus: normaliseProformaStatus(quotation.quotationStatus),
       balance: Number(quotation.balance) || 0,
       dealId:
         quotation.dealId === null || quotation.dealId === undefined
@@ -412,7 +507,7 @@ function normaliseQuotationRecord(
     paymentDetails: payload.paymentDetails
       ? clonePaymentDetails(payload.paymentDetails)
       : defaultPaymentDetails(total),
-    payments: [],
+    payments: ensurePayments(payload.payments),
     purchasedProducts: ensureProducts(payload.purchasedProducts),
     note: payload.note?.trim() || buildQuotationNote(config.financial, 7),
     showClientNote:
@@ -437,15 +532,15 @@ function normaliseQuotationRecord(
       payload.thanksNote?.trim() || buildQuotationThanksNote(config.legal),
   };
 
-  return syncQuotationFinancialState(record);
+  return syncProformaPaymentState(record);
 }
 
-function mergeQuotationRecord(
-  original: QuotationRecord,
-  patch: QuotationPayload,
-): QuotationRecord {
-  const quotationPatch: Partial<Quotation> = patch.quotation ?? {};
-  const mergedQuotation: Quotation = {
+function mergeProformaRecord(
+  original: ProformaRecord,
+  patch: ProformaPayload,
+): ProformaRecord {
+  const quotationPatch: Partial<Proforma> = patch.quotation ?? {};
+  const mergedQuotation: Proforma = {
     ...original.quotation,
     ...quotationPatch,
     client: ensureClient({
@@ -482,14 +577,17 @@ function mergeQuotationRecord(
         : normaliseRevisionLabel(quotationPatch.revisionLabel),
   };
 
-  const merged: QuotationRecord = {
+  const merged: ProformaRecord = {
     ...original,
     ...patch,
     quotation: mergedQuotation,
     paymentDetails: patch.paymentDetails
       ? clonePaymentDetails(patch.paymentDetails)
       : clonePaymentDetails(original.paymentDetails),
-    payments: [],
+    payments:
+      patch.payments === undefined
+        ? ensurePayments(original.payments)
+        : ensurePayments(patch.payments),
     purchasedProducts: ensureProducts(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
@@ -526,15 +624,18 @@ function mergeQuotationRecord(
         ? (original.approverEmployeeId ?? null)
         : (patch.approverEmployeeId ?? null)
       : null;
+  merged.quotation.quotationStatus = normaliseProformaStatus(
+    quotationPatch.quotationStatus ?? original.quotation.quotationStatus,
+  );
 
-  return cloneQuotationRecord(syncQuotationFinancialState(merged));
+  return cloneProformaRecord(syncProformaPaymentState(merged));
 }
 
-const seedQuotations = () => cloneQuotationArray(database);
+const seedProformas = () => cloneProformaArray(database);
 
-export const useQuotationsStore = defineStore("quotations", {
+export const useProformasStore = defineStore("proformas", {
   state: () => ({
-    items: [] as QuotationRecord[],
+    items: [] as ProformaRecord[],
     initialized: false,
   }),
   getters: {
@@ -579,6 +680,9 @@ export const useQuotationsStore = defineStore("quotations", {
           if (key.startsWith("app.quotations.") && key !== STORAGE_KEY) {
             localStorage.removeItem(key);
           }
+          if (key.startsWith("app.proformas.") && key !== STORAGE_KEY) {
+            localStorage.removeItem(key);
+          }
         }
       }
 
@@ -591,7 +695,7 @@ export const useQuotationsStore = defineStore("quotations", {
         saveToStorage(this.items);
       } else {
         this.items = resequenceRevisions(
-          seedQuotations().map((record) => sanitizeStoredRecord(record)),
+          seedProformas().map((record) => sanitizeStoredRecord(record)),
         );
         saveToStorage(this.items);
       }
@@ -601,7 +705,7 @@ export const useQuotationsStore = defineStore("quotations", {
       if (typeof window !== "undefined") {
         this.$subscribe(
           (_mutation, state) => {
-            saveToStorage(cloneQuotationArray(state.items));
+            saveToStorage(cloneProformaArray(state.items));
           },
           { detached: true },
         );
@@ -609,38 +713,46 @@ export const useQuotationsStore = defineStore("quotations", {
     },
 
     nextId() {
-      return nextQuotationId(this.items);
+      return nextProformaId(this.items);
     },
 
-    addQuotation(payload: QuotationPayload) {
+    addProforma(payload: ProformaPayload) {
       const incomingId =
         payload.quotation?.id && Number(payload.quotation.id) > 0
           ? Number(payload.quotation.id)
           : undefined;
 
-      const id = incomingId ?? nextQuotationId(this.items);
+      const id = incomingId ?? nextProformaId(this.items);
       const normalised = sanitizeStoredRecord(
-        normaliseQuotationRecord(payload, id),
+        normaliseProformaRecord(payload, id),
       );
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
       return this.byId(id);
     },
 
-    updateQuotation(id: number | string, patch: QuotationPayload) {
+    updateProforma(id: number | string, patch: ProformaPayload) {
       const index = this.items.findIndex(
         (record) => String(record.quotation.id) === String(id),
       );
 
       if (index === -1) return null;
 
-      const updated = mergeQuotationRecord(this.items[index], patch);
+      const updated = mergeProformaRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
       return this.byId(id);
     },
 
-    removeQuotation(id: number | string) {
+    recordPayment(id: number | string, payment: ProformaPaymentInput) {
+      const current = this.byId(id);
+      if (!current) return null;
+
+      const updated = applyProformaPayment(current, payment);
+      return this.updateProforma(id, updated);
+    },
+
+    removeProforma(id: number | string) {
       const target = this.items.find(
         (record) => String(record.quotation.id) === String(id),
       );
@@ -663,7 +775,7 @@ export const useQuotationsStore = defineStore("quotations", {
       this.items = resequenceRevisions(this.items);
     },
 
-    replaceAll(records: QuotationRecord[]) {
+    replaceAll(records: ProformaRecord[]) {
       this.items = resequenceRevisions(records);
     },
   },

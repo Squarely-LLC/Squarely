@@ -11,6 +11,8 @@ type CreateQuotationPdfFileOptions = {
   companyName: string;
   companyAddressLines?: string[];
   companyContactLines?: string[];
+  documentLabel?: string;
+  recipientLabel?: string;
 };
 
 const PAGE_WIDTH = 595;
@@ -73,6 +75,8 @@ const buildContentLines = ({
   companyName,
   companyAddressLines = [],
   companyContactLines = [],
+  documentLabel = "Quotation",
+  recipientLabel = `${documentLabel} To`,
 }: CreateQuotationPdfFileOptions) => {
   const subtotal = getQuotationSubtotal(quotationRecord.purchasedProducts);
   const discount = getQuotationDiscountTotal(quotationRecord.purchasedProducts);
@@ -87,12 +91,12 @@ const buildContentLines = ({
   for (const line of companyContactLines) pushWrapped(line);
   lines.push("");
 
-  pushWrapped(`Quotation ${quotationRecord.quotation.quoteNumber}`);
+  pushWrapped(`${documentLabel} ${quotationRecord.quotation.quoteNumber}`);
   pushWrapped(`Issued Date: ${quotationRecord.quotation.issuedDate}`);
   pushWrapped(`Expiry Date: ${quotationRecord.quotation.dueDate}`);
   lines.push("");
 
-  pushWrapped(`Quotation To: ${quotationRecord.quotation.client.name}`);
+  pushWrapped(`${recipientLabel}: ${quotationRecord.quotation.client.name}`);
   if (quotationRecord.quotation.client.company.trim()) {
     pushWrapped(quotationRecord.quotation.client.company);
   }
@@ -217,7 +221,9 @@ const buildPdfBytes = (pages: string[][]) => {
 
 const createQuotationPdfFile = (options: CreateQuotationPdfFileOptions) => {
   const quoteNumber =
-    options.quotationRecord.quotation.quoteNumber?.trim() || "quotation";
+    options.quotationRecord.quotation.quoteNumber?.trim() ||
+    options.documentLabel?.trim().toLowerCase() ||
+    "quotation";
   const lines = buildContentLines(options);
   const bytes = buildPdfBytes(paginateLines(lines));
 

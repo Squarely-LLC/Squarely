@@ -13,6 +13,7 @@ import { handlerAppsInvoice } from "@db/apps/invoice/index";
 import { handlerAppsKanban } from "@db/apps/kanban/index";
 import { handlerAppLogistics } from "@db/apps/logistics/index";
 import { handlerAppsPermission } from "@db/apps/permission/index";
+import { handlerAppsProforma } from "@db/apps/proforma/index";
 import { handlerAppsQuotation } from "@db/apps/quotation/index";
 import { handlerAppsUsers } from "@db/apps/users/index";
 import { handlerAuth } from "@db/auth/index";
@@ -29,6 +30,7 @@ const worker = setupWorker(
   ...handlerAppsEcommerce,
   ...handlerAppsAcademy,
   ...handlerAppsInvoice,
+  ...handlerAppsProforma,
   ...handlerAppsQuotation,
   ...handlerAppsUsers,
   ...handlerAppsEmployees,

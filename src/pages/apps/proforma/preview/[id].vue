@@ -2,8 +2,17 @@
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
-import { useQuotationsStore } from "@/stores/quotations";
+import {
+  applyProformaPayment,
+  getProformaOutstandingBalance,
+  useProformasStore,
+  type ProformaPaymentInput,
+} from "@/stores/proformas";
 import { createPdfFileFromElement } from "@/utils/domPdf";
+import {
+  loadProformaPreviewDraft,
+  saveProformaPreviewDraft,
+} from "@/utils/proformaPreviewDraft";
 import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
@@ -11,7 +20,6 @@ import {
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
-import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
 import {
   getLineTotal,
   getQuotationDiscountTotal,
@@ -23,28 +31,29 @@ import { shareWithSystem } from "@/utils/shareWithSystem";
 import { formatSystemDate } from "@core/utils/formatters";
 
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import type { QuotationRecord } from "@db/apps/quotation/types";
+import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
+import type { ProformaRecord } from "@db/apps/proforma/types";
 
-const route = useRoute("apps-quotation-preview-id");
+const route = useRoute("apps-proforma-preview-id");
 const isEmbeddedActionFrame = route.query.embedded === "1";
 const configStore = useConfigStore();
 const notifications = useNotificationsStore();
-const quotationsStore = useQuotationsStore();
+const proformasStore = useProformasStore();
 
 if (!isEmbeddedActionFrame) {
   configStore.init();
-  quotationsStore.init();
+  proformasStore.init();
 }
 
 type EmbeddedPreviewPayload = {
   action: "print" | "download";
-  quotation: QuotationRecord;
+  quotation: ProformaRecord;
   legal: AppConfigurations["legal"];
   financial: AppConfigurations["financial"];
 };
 
 const embeddedPreviewPayload = ref<EmbeddedPreviewPayload | null>(null);
-const draftPreviewState = ref(loadQuotationPreviewDraft());
+const draftPreviewState = ref(loadProformaPreviewDraft());
 
 const draftPreview = computed(() => {
   if (isEmbeddedActionFrame) return null;
@@ -62,16 +71,16 @@ const quotationRecord = computed(
   () =>
     embeddedPreviewPayload.value?.quotation ??
     draftPreview.value?.quotation ??
-    quotationsStore.byId(route.params.id),
+    proformasStore.byId(route.params.id),
 );
 const canReturnToEditor = computed(() => Boolean(draftPreview.value));
 const editRoute = computed(() => {
   if (draftPreview.value?.source === "add") {
-    return { name: "apps-quotation-add" as const };
+    return { name: "apps-proforma-add" as const };
   }
 
   return {
-    name: "apps-quotation-edit-id" as const,
+    name: "apps-proforma-edit-id" as const,
     params: { id: route.params.id },
   };
 });
@@ -120,10 +129,16 @@ const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(legalConfiguration.value),
 );
 
+const isAddPaymentSidebarVisible = ref(false);
 const isSendPaymentSidebarVisible = ref(false);
 const hasExecutedAutoAction = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const quotationPdfTarget = ref<any | null>(null);
+const currentQuotationBalance = computed(() =>
+  quotationRecord.value
+    ? getProformaOutstandingBalance(quotationRecord.value)
+    : 0,
+);
 
 const printQuotation = () => {
   window.print();
@@ -138,6 +153,8 @@ const createCurrentQuotationPdfFile = () => {
     companyName: companyName.value,
     companyAddressLines: companyAddressLines.value,
     companyContactLines: companyContactLines.value,
+    documentLabel: "Proforma",
+    recipientLabel: "Proforma To",
   });
 };
 
@@ -191,19 +208,19 @@ const quotationEmailDraft = computed(() => {
 
   return {
     to,
-    subject: `Quotation ${quoteNumber} from ${companyName.value}`,
+    subject: `Proforma ${quoteNumber} from ${companyName.value}`,
     message: `Dear ${clientName},
 
-Please find ${quoteNumber} attached.
+Please find proforma ${quoteNumber} attached.
 
-Quotation amount: $${total}
+Proforma amount: $${total}
 ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,
 ${companyName.value}`.trim(),
     attachments: [
       {
-        name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Proforma Attached",
       },
     ],
   };
@@ -223,7 +240,7 @@ const shareQuotationOnWhatsApp = async () => {
 
   await openWhatsAppIntent({
     url: window.location.href,
-    text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+    text: `Proforma ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
   });
 };
 
@@ -235,8 +252,38 @@ const shareQuotationWithOthers = async () => {
   await shareWithSystem({
     file: pdfFile,
     title: pdfFile.name,
-    text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+    text: `Proforma ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
   });
+};
+
+const recordQuotationPayment = (payment: ProformaPaymentInput) => {
+  const currentRecord = quotationRecord.value;
+  if (!currentRecord) return;
+
+  const updatedRecord = applyProformaPayment(currentRecord, payment);
+
+  if (draftPreview.value) {
+    const updatedDraft = {
+      source: draftPreview.value.source,
+      quotation: updatedRecord,
+    };
+
+    draftPreviewState.value = updatedDraft;
+    saveProformaPreviewDraft(updatedDraft);
+    notifications.push(
+      `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+      "success",
+      3500,
+    );
+    return;
+  }
+
+  proformasStore.updateProforma(updatedRecord.quotation.id, updatedRecord);
+  notifications.push(
+    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    "success",
+    3500,
+  );
 };
 
 const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
@@ -258,7 +305,7 @@ watch(
 const handleEmbeddedPreviewMessage = async (event: MessageEvent) => {
   if (!isEmbeddedActionFrame) return;
   if (event.origin !== window.location.origin) return;
-  if (event.data?.type !== "quotation-preview-action") return;
+  if (event.data?.type !== "proforma-preview-action") return;
 
   const payload = event.data.payload as EmbeddedPreviewPayload | undefined;
   if (!payload?.quotation) return;
@@ -279,7 +326,7 @@ onMounted(() => {
 
   window.addEventListener("message", handleEmbeddedPreviewMessage);
   window.parent?.postMessage(
-    { type: "quotation-preview-ready" },
+    { type: "proforma-preview-ready" },
     window.location.origin,
   );
 });
@@ -367,7 +414,7 @@ if (!isEmbeddedActionFrame) {
 
             <div>
               <h6 class="font-weight-medium text-lg mb-6">
-                Quotation {{ quotation.quoteNumber }}
+                Proforma {{ quotation.quoteNumber }}
               </h6>
 
               <h6 class="text-h6 font-weight-regular">
@@ -384,7 +431,7 @@ if (!isEmbeddedActionFrame) {
 
           <VRow class="print-row mb-6">
             <VCol class="text-no-wrap">
-              <h6 class="text-h6 mb-4">Quotation To:</h6>
+              <h6 class="text-h6 mb-4">Proforma To:</h6>
 
               <p class="mb-0">{{ quotation.client.name }}</p>
               <p v-if="showClientCompany" class="mb-0">
@@ -645,10 +692,27 @@ if (!isEmbeddedActionFrame) {
                 Edit
               </VBtn>
             </div>
+
+            <VBtn
+              block
+              prepend-icon="tabler-currency-dollar"
+              color="success"
+              @click="isAddPaymentSidebarVisible = true"
+            >
+              Add Payment
+            </VBtn>
           </VCardText>
         </VCard>
       </VCol>
     </VRow>
+
+    <ProformaAddPaymentDrawer
+      v-model:is-drawer-open="isAddPaymentSidebarVisible"
+      :current-balance="currentQuotationBalance"
+      :default-payment-method="quotationRecord?.paymentMethod"
+      document-label="Proforma"
+      @submit="recordQuotationPayment"
+    />
 
     <EmailDialog
       ref="emailDialogRef"
@@ -658,7 +722,7 @@ if (!isEmbeddedActionFrame) {
 
   <section v-else>
     <VAlert type="error" variant="tonal">
-      Quotation with ID {{ route.params.id }} not found!
+      Proforma with ID {{ route.params.id }} not found!
     </VAlert>
   </section>
 </template>

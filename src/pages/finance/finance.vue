@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
 import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
 
 const route = useRoute();
@@ -75,7 +76,7 @@ const activeTab = ref<number | null>(null);
 const setTabFromQuery = () => {
   try {
     const queryTab = String(route.query.tab || tabsData[0].key);
-    const index = tabsData.findIndex(tab => tab.key === queryTab);
+    const index = tabsData.findIndex((tab) => tab.key === queryTab);
 
     activeTab.value = index === -1 ? 0 : index;
   } catch {
@@ -96,7 +97,7 @@ watch(
 
 watch(
   () => activeTab.value,
-  value => {
+  (value) => {
     if (value == null) return;
 
     const key = tabsData[value]?.key || tabsData[0].key;
@@ -143,20 +144,14 @@ watch(
         class="disable-tab-transition"
         :touch="false"
       >
-        <VWindowItem
-          v-for="tabItem in tabsData"
-          :key="tabItem.key"
-        >
+        <VWindowItem v-for="tabItem in tabsData" :key="tabItem.key">
           <FinanceQuotationsTab v-if="tabItem.key === 'quotations'" />
+          <FinanceProformasTab v-else-if="tabItem.key === 'pro-forma'" />
 
           <VCard v-else>
             <VCardText class="pa-6">
               <div class="d-flex align-center mb-3">
-                <VIcon
-                  :icon="tabItem.icon"
-                  size="22"
-                  class="me-2"
-                />
+                <VIcon :icon="tabItem.icon" size="22" class="me-2" />
                 <h6 class="text-h6 mb-0">
                   {{ tabItem.title }}
                 </h6>
@@ -180,8 +175,8 @@ watch(
 }
 
 .finance-tab-item {
-  min-block-size: 2.5rem;
   justify-content: flex-start;
+  min-block-size: 2.5rem;
   padding-inline: 0.75rem;
 }
 
