@@ -26,6 +26,12 @@ const paymentMethod = computed(
 const creditCardPaymentLink = computed(
   () => quotationRecord.value?.paymentLink?.trim() || "",
 );
+const showClientCompany = computed(() => {
+  const clientName = quotation.value?.client.name.trim() || "";
+  const clientCompany = quotation.value?.client.company.trim() || "";
+
+  return Boolean(clientCompany) && clientCompany !== clientName;
+});
 const paymentDetails = computed(() => {
   if (!quotationRecord.value) return null;
 
@@ -134,7 +140,9 @@ watch(
               <h6 class="text-h6 mb-4">Quotation To:</h6>
 
               <p class="mb-0">{{ quotation.client.name }}</p>
-              <p class="mb-0">{{ quotation.client.company }}</p>
+              <p v-if="showClientCompany" class="mb-0">
+                {{ quotation.client.company }}
+              </p>
               <p class="mb-0">
                 {{ quotation.client.address }}, {{ quotation.client.country }}
               </p>
@@ -147,10 +155,6 @@ watch(
               <template v-if="paymentMethod === 'Bank Transfer'">
                 <table>
                   <tbody>
-                    <tr>
-                      <td class="pe-4">Payment Method:</td>
-                      <td>{{ paymentMethod }}</td>
-                    </tr>
                     <tr>
                       <td class="pe-4">Bank Name:</td>
                       <td>{{ paymentDetails.bankName }}</td>
@@ -172,11 +176,11 @@ watch(
               </template>
 
               <template v-else-if="paymentMethod === 'Cash'">
-                <p class="mb-0">Payment Method: Cash</p>
+                <p class="mb-0">Cash</p>
               </template>
 
               <template v-else>
-                <p class="mb-2">Payment Method: Credit Card</p>
+                <p class="mb-2">Credit card payment link</p>
                 <p class="mb-0 text-wrap">
                   <a
                     v-if="creditCardPaymentLink"
@@ -199,8 +203,8 @@ watch(
               <tr>
                 <th scope="col">ITEM</th>
                 <th scope="col">DESCRIPTION</th>
-                <th scope="col" class="text-center">HOURS</th>
-                <th scope="col" class="text-center">RATE</th>
+                <th scope="col" class="text-center">QUANTITY</th>
+                <th scope="col" class="text-center">PRICE</th>
                 <th scope="col" class="text-center">TOTAL</th>
               </tr>
             </thead>
@@ -246,7 +250,7 @@ watch(
                     </td>
                   </tr>
                   <tr>
-                    <td class="pe-16">Tax:</td>
+                    <td class="pe-16">VAT:</td>
                     <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
                       <h6 class="text-base font-weight-medium">Included</h6>
                     </td>
@@ -271,12 +275,16 @@ watch(
             </div>
           </div>
 
-          <VDivider class="my-6 border-dashed" />
+          <template v-if="quotationRecord?.showClientNote">
+            <VDivider class="my-6 border-dashed" />
 
-          <p class="mb-0">
-            <span class="text-high-emphasis font-weight-medium me-1">Note:</span>
-            <span>{{ quotationRecord?.note }}</span>
-          </p>
+            <p class="mb-0">
+              <span class="text-high-emphasis font-weight-medium me-1">
+                Client Note:
+              </span>
+              <span>{{ quotationRecord?.note }}</span>
+            </p>
+          </template>
         </VCard>
       </VCol>
 

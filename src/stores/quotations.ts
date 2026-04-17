@@ -170,6 +170,7 @@ function normalisePaymentMethod(
 
 function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
   const cloned = cloneQuotationRecord(record);
+  const config = loadActiveAppConfigurations();
   const parentQuotationId =
     cloned.quotation.parentQuotationId === null ||
     cloned.quotation.parentQuotationId === undefined
@@ -209,6 +210,16 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
   cloned.paymentLink =
     cloned.paymentMethod === "Credit Card"
       ? cloned.paymentLink?.trim() || null
+      : null;
+  cloned.showClientNote =
+    cloned.showClientNote ?? config.financial?.invoicing?.showNotes ?? true;
+  cloned.approvalMode =
+    cloned.approvalMode === "Request Approval"
+      ? "Request Approval"
+      : "Automatic";
+  cloned.approverEmployeeId =
+    cloned.approvalMode === "Request Approval"
+      ? cloned.approverEmployeeId ?? null
       : null;
 
   return cloned;
@@ -303,7 +314,8 @@ function ensureProducts(
   if (!Array.isArray(products) || !products.length) {
     return [
       {
-        title: "Concept design",
+        catalogueItemId: null,
+        title: "",
         cost: 0,
         hours: 1,
         description: "",
@@ -312,7 +324,8 @@ function ensureProducts(
   }
 
   return products.map((product) => ({
-    title: product.title?.trim() || "New line item",
+    catalogueItemId: product.catalogueItemId?.trim() || null,
+    title: product.title?.trim() || "",
     cost: Number(product.cost) || 0,
     hours: Number(product.hours) || 1,
     description: product.description?.trim() || "",
@@ -367,10 +380,20 @@ function normaliseQuotationRecord(
     note:
       payload.note?.trim() ||
       buildQuotationNote(config.financial, 7),
+    showClientNote:
+      payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     paymentMethod: normalisePaymentMethod(payload.paymentMethod),
     paymentLink:
       normalisePaymentMethod(payload.paymentMethod) === "Credit Card"
         ? payload.paymentLink?.trim() || null
+        : null,
+    approvalMode:
+      payload.approvalMode === "Request Approval"
+        ? "Request Approval"
+        : "Automatic",
+    approverEmployeeId:
+      payload.approvalMode === "Request Approval"
+        ? payload.approverEmployeeId ?? null
         : null,
     salesperson:
       payload.salesperson?.trim() || buildQuotationSalesperson(config.legal),
@@ -432,10 +455,18 @@ function mergeQuotationRecord(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
     note: patch.note ?? original.note,
+    showClientNote: patch.showClientNote ?? original.showClientNote,
     paymentMethod: normalisePaymentMethod(
       patch.paymentMethod ?? original.paymentMethod,
     ),
     paymentLink: null,
+    approvalMode:
+      patch.approvalMode === undefined
+        ? original.approvalMode
+        : patch.approvalMode === "Request Approval"
+          ? "Request Approval"
+          : "Automatic",
+    approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
   };
@@ -445,6 +476,12 @@ function mergeQuotationRecord(
       ? patch.paymentLink === undefined
         ? original.paymentLink?.trim() || null
         : patch.paymentLink?.trim() || null
+      : null;
+  merged.approverEmployeeId =
+    merged.approvalMode === "Request Approval"
+      ? patch.approverEmployeeId === undefined
+        ? original.approverEmployeeId ?? null
+        : patch.approverEmployeeId ?? null
       : null;
 
   merged.paymentDetails.totalDue = `$${Number(

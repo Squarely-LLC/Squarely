@@ -1,9 +1,11 @@
 <script lang="ts" setup>
+import { requiredValidator, urlValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type { Client } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useEmployeesStore } from "@/stores/employees";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import {
   buildQuotationNote,
@@ -17,7 +19,6 @@ import type {
   PurchasedProduct,
   QuotationData,
 } from "@/views/apps/quotation/types";
-import type { RouteLocationRaw } from "vue-router";
 import { onBeforeRouteLeave } from "vue-router";
 
 const route = useRoute();
@@ -26,6 +27,8 @@ const configStore = useConfigStore();
 configStore.init();
 const contactsStore = useContactsStore();
 contactsStore.init();
+const employeesStore = useEmployeesStore();
+employeesStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
@@ -87,15 +90,19 @@ const buildBlankQuotation = (): QuotationData => {
     ),
     purchasedProducts: [
       {
-        title: "New line item",
+        catalogueItemId: null,
+        title: "",
         cost: 0,
         hours: 1,
         description: "",
       },
     ],
     note: buildQuotationNote(configStore.financial, 7),
+    showClientNote: configStore.financial?.invoicing?.showNotes ?? true,
     paymentMethod: "Bank Transfer",
     paymentLink: null,
+    approvalMode: "Automatic",
+    approverEmployeeId: null,
     salesperson: buildQuotationSalesperson(configStore.legal),
     thanksNote: buildQuotationThanksNote(configStore.legal),
   };
@@ -160,12 +167,16 @@ const buildInitialQuotation = (): QuotationData => {
 const quotationData = ref<QuotationData>(buildInitialQuotation());
 const initialDraftSnapshot = ref("");
 const paymentTerms = ref(true);
-const clientNotes = ref(false);
 const paymentStub = ref(false);
 const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
+const approvalModes = ["Automatic", "Request Approval"] as const;
+const creditCardPaymentLinkError = ref<string | null>(null);
+const approvalError = ref<string | null>(null);
 const isSendQuotationSidebarVisible = ref(false);
 const isLeaveDialogVisible = ref(false);
-const pendingNavigationTarget = ref<RouteLocationRaw | null>(null);
+const pendingNavigationTarget = ref<Parameters<typeof router.push>[0] | null>(
+  null,
+);
 const bypassUnsavedWarning = ref(false);
 
 const buildDraftSnapshot = (draft: QuotationData) =>
@@ -175,6 +186,27 @@ initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
 
 const hasUnsavedChanges = computed(
   () => buildDraftSnapshot(quotationData.value) !== initialDraftSnapshot.value,
+);
+const dealOptions = computed(() => {
+  const options = new Map<number, { title: string; value: number }>();
+
+  for (const record of quotationsStore.all) {
+    const quotation = record.quotation;
+    if (!quotation.dealId) continue;
+
+    options.set(quotation.dealId, {
+      title: `Deal ${quotation.dealId} - ${quotation.client.name}`,
+      value: quotation.dealId,
+    });
+  }
+
+  return Array.from(options.values());
+});
+const employeeOptions = computed(() =>
+  employeesStore.all.map((employee) => ({
+    title: employee.fullName,
+    value: employee.id,
+  })),
 );
 
 watch(
@@ -190,9 +222,81 @@ watch(
   (paymentMethod) => {
     if (paymentMethod !== "Credit Card") {
       quotationData.value.paymentLink = null;
+      creditCardPaymentLinkError.value = null;
     }
   },
 );
+
+watch(
+  () => quotationData.value.approvalMode,
+  (approvalMode) => {
+    if (approvalMode !== "Request Approval") {
+      quotationData.value.approverEmployeeId = null;
+      approvalError.value = null;
+    }
+  },
+);
+
+watch(
+  () => quotationData.value.paymentLink,
+  (paymentLink) => {
+    if (quotationData.value.paymentMethod !== "Credit Card") {
+      creditCardPaymentLinkError.value = null;
+      return;
+    }
+
+    const requiredResult = requiredValidator(paymentLink);
+    if (requiredResult !== true) {
+      creditCardPaymentLinkError.value = String(requiredResult);
+      return;
+    }
+
+    const urlResult = urlValidator(paymentLink);
+    creditCardPaymentLinkError.value =
+      urlResult === true ? null : String(urlResult);
+  },
+);
+
+const validateCreditCardPaymentLink = () => {
+  if (quotationData.value.paymentMethod !== "Credit Card") {
+    creditCardPaymentLinkError.value = null;
+    return true;
+  }
+
+  const requiredResult = requiredValidator(quotationData.value.paymentLink);
+  if (requiredResult !== true) {
+    creditCardPaymentLinkError.value = String(requiredResult);
+    return false;
+  }
+
+  const urlResult = urlValidator(quotationData.value.paymentLink);
+  if (urlResult !== true) {
+    creditCardPaymentLinkError.value = String(urlResult);
+    return false;
+  }
+
+  creditCardPaymentLinkError.value = null;
+  return true;
+};
+
+const validateApprovalSelection = () => {
+  if (quotationData.value.approvalMode !== "Request Approval") {
+    approvalError.value = null;
+    return true;
+  }
+
+  if (
+    quotationData.value.approverEmployeeId === null ||
+    quotationData.value.approverEmployeeId === undefined ||
+    quotationData.value.approverEmployeeId === ""
+  ) {
+    approvalError.value = "Please select an approver";
+    return false;
+  }
+
+  approvalError.value = null;
+  return true;
+};
 
 const addProduct = (value: PurchasedProduct) => {
   quotationData.value.purchasedProducts.push(value);
@@ -202,7 +306,7 @@ const removeProduct = (id: number) => {
   quotationData.value.purchasedProducts.splice(id, 1);
 };
 
-const requestLeave = (target: RouteLocationRaw) => {
+const requestLeave = (target: Parameters<typeof router.push>[0]) => {
   if (!hasUnsavedChanges.value) {
     router.push(target);
     return;
@@ -229,6 +333,9 @@ const confirmLeave = async () => {
 };
 
 const saveQuotation = () => {
+  if (!validateCreditCardPaymentLink()) return;
+  if (!validateApprovalSelection()) return;
+
   const total = quotationData.value.purchasedProducts.reduce(
     (sum, product) =>
       sum + Number(product.cost || 0) * Number(product.hours || 0),
@@ -241,12 +348,16 @@ const saveQuotation = () => {
     configStore.legal,
     configStore.financial,
   );
-  quotationData.value.note = buildQuotationNote(configStore.financial, 7);
-  quotationData.value.salesperson = buildQuotationSalesperson(configStore.legal);
-  quotationData.value.thanksNote = buildQuotationThanksNote(configStore.legal);
   quotationData.value.paymentLink =
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
+      : null;
+  quotationData.value.quotation.linkedRecordType = quotationData.value.quotation.dealId
+    ? "deal"
+    : null;
+  quotationData.value.approverEmployeeId =
+    quotationData.value.approvalMode === "Request Approval"
+      ? quotationData.value.approverEmployeeId ?? null
       : null;
 
   const created = quotationsStore.addQuotation(
@@ -341,6 +452,8 @@ onBeforeUnmount(() => {
         v-model="quotationData.paymentLink"
         label="Credit Card Payment Link"
         placeholder="https://"
+        :rules="[requiredValidator, urlValidator]"
+        :error-messages="creditCardPaymentLinkError ? [creditCardPaymentLinkError] : []"
         class="mb-6"
       />
 
@@ -354,7 +467,7 @@ onBeforeUnmount(() => {
       <div class="d-flex align-center justify-space-between">
         <VLabel for="client-notes">Client Notes</VLabel>
         <div>
-          <VSwitch id="client-notes" v-model="clientNotes" />
+          <VSwitch id="client-notes" v-model="quotationData.showClientNote" />
         </div>
       </div>
 
@@ -364,6 +477,35 @@ onBeforeUnmount(() => {
           <VSwitch id="payment-stub" v-model="paymentStub" />
         </div>
       </div>
+
+      <AppSelect
+        id="deal-id"
+        v-model="quotationData.quotation.dealId"
+        :items="dealOptions"
+        label="Deal"
+        placeholder="Select deal"
+        clearable
+        class="mt-4"
+      />
+
+      <AppSelect
+        id="approval-mode"
+        v-model="quotationData.approvalMode"
+        :items="approvalModes"
+        label="Approval"
+        class="mt-4"
+      />
+
+      <AppSelect
+        v-if="quotationData.approvalMode === 'Request Approval'"
+        id="approver-employee"
+        v-model="quotationData.approverEmployeeId"
+        :items="employeeOptions"
+        label="Approver"
+        placeholder="Select employee"
+        :error-messages="approvalError ? [approvalError] : []"
+        class="mt-4"
+      />
     </VCol>
   </VRow>
 

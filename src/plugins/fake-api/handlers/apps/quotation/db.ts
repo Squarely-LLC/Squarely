@@ -71,12 +71,14 @@ const buildRecord = (
   },
   purchasedProducts: [
     {
+      catalogueItemId: null,
       title: "Concept design",
       cost: 250,
       hours: 8,
       description: "Initial concept preparation and client revisions.",
     },
     {
+      catalogueItemId: null,
       title: "Technical coordination",
       cost: 180,
       hours: 4,
@@ -84,8 +86,11 @@ const buildRecord = (
     },
   ],
   note: "Pricing is valid for 14 days from the issue date.",
+  showClientNote: true,
   paymentMethod: "Bank Transfer",
   paymentLink: null,
+  approvalMode: "Automatic",
+  approverEmployeeId: null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
 });

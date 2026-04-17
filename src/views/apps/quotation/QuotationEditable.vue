@@ -78,7 +78,8 @@ watch(
 
 const addItem = () => {
   emit("push", {
-    title: "New line item",
+    catalogueItemId: null,
+    title: "",
     cost: 0,
     hours: 1,
     description: "",
@@ -98,8 +99,18 @@ const subtotal = computed(() =>
 );
 
 const total = computed(() => Number(quotation.value.total || 0));
-const paymentMethod = computed(() => props.data.paymentMethod || "Bank Transfer");
-const creditCardPaymentLink = computed(() => props.data.paymentLink?.trim() || "");
+const paymentMethod = computed(
+  () => props.data.paymentMethod || "Bank Transfer",
+);
+const creditCardPaymentLink = computed(
+  () => props.data.paymentLink?.trim() || "",
+);
+const showClientCompany = computed(() => {
+  const clientName = quotation.value.client.name.trim();
+  const clientCompany = quotation.value.client.company.trim();
+
+  return Boolean(clientCompany) && clientCompany !== clientName;
+});
 const displayPaymentDetails = computed(() => ({
   ...props.data.paymentDetails,
   ...buildQuotationPaymentDetails(
@@ -239,7 +250,9 @@ watch(
           style="inline-size: 11.875rem"
         />
         <p class="mb-0">{{ quotation.client.name }}</p>
-        <p class="mb-0">{{ quotation.client.company }}</p>
+        <p v-if="showClientCompany" class="mb-0">
+          {{ quotation.client.company }}
+        </p>
         <p v-if="quotation.client.address" class="mb-0">
           {{ quotation.client.address }}, {{ quotation.client.country }}
         </p>
@@ -253,10 +266,6 @@ watch(
         <template v-if="paymentMethod === 'Bank Transfer'">
           <table>
             <tbody>
-              <tr>
-                <td class="pe-4">Payment Method:</td>
-                <td>{{ paymentMethod }}</td>
-              </tr>
               <tr>
                 <td class="pe-4">Bank Name:</td>
                 <td>{{ displayPaymentDetails.bankName }}</td>
@@ -282,11 +291,11 @@ watch(
         </template>
 
         <template v-else-if="paymentMethod === 'Cash'">
-          <p class="mb-0">Payment Method: Cash</p>
+          <p class="mb-0">Cash</p>
         </template>
 
         <template v-else>
-          <p class="mb-2">Payment Method: Credit Card</p>
+          <p class="mb-2">Credit card payment link</p>
           <p class="mb-0 text-wrap">
             <a
               v-if="creditCardPaymentLink"
@@ -307,7 +316,7 @@ watch(
     <div class="add-products-form">
       <div
         v-for="(product, index) in props.data.purchasedProducts"
-        :key="`${product.title}-${index}`"
+        :key="index"
         class="mb-4"
       >
         <QuotationProductEdit
@@ -359,7 +368,7 @@ watch(
               </td>
             </tr>
             <tr>
-              <td class="pe-16">Tax:</td>
+              <td class="pe-16">VAT:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
                 <h6 class="text-h6">Included</h6>
               </td>
@@ -382,17 +391,19 @@ watch(
       </div>
     </div>
 
-    <VDivider class="my-6 border-dashed" />
+    <template v-if="props.data.showClientNote">
+      <VDivider class="my-6 border-dashed" />
 
-    <div>
-      <h6 class="text-h6 mb-2">Note:</h6>
-      <VTextarea
-        id="note"
-        v-model="note"
-        placeholder="Write note here..."
-        :rows="2"
-      />
-    </div>
+      <div>
+        <h6 class="text-h6 mb-2">Client Note:</h6>
+        <VTextarea
+          id="note"
+          v-model="note"
+          placeholder="Write note here..."
+          :rows="2"
+        />
+      </div>
+    </template>
   </VCard>
 </template>
 
@@ -411,7 +422,7 @@ watch(
 }
 
 .quotation-company-title {
-  line-height: 1.2;
   margin: 0;
+  line-height: 1.2;
 }
 </style>

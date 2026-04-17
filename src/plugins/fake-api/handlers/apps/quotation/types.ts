@@ -47,19 +47,25 @@ export interface PaymentDetails {
 }
 
 export interface PurchasedProduct {
+  catalogueItemId?: string | null;
   title: string;
   cost: number;
   hours: number;
   description: string;
 }
 
+export type QuotationApprovalMode = "Automatic" | "Request Approval";
+
 export interface QuotationRecord {
   quotation: Quotation;
   paymentDetails: PaymentDetails;
   purchasedProducts: PurchasedProduct[];
   note: string;
+  showClientNote: boolean;
   paymentMethod: string;
   paymentLink: string | null;
+  approvalMode: QuotationApprovalMode;
+  approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;
 }
