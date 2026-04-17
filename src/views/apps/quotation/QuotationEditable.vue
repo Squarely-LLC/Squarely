@@ -4,6 +4,11 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
+  getQuotationDiscountTotal,
+  getQuotationGrandTotal,
+  getQuotationSubtotal,
+} from "@/utils/quotationPricing";
+import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
@@ -35,8 +40,6 @@ const contactsStore = useContactsStore();
 contactsStore.init();
 
 const quotation = toRef(props.data, "quotation");
-const salesperson = toRef(props.data, "salesperson");
-const thanksNote = toRef(props.data, "thanksNote");
 const note = toRef(props.data, "note");
 
 const mapContactToClient = (contact: ContactProperties): Client => ({
@@ -82,6 +85,8 @@ const addItem = () => {
     title: "",
     cost: 0,
     hours: 1,
+    discountType: "none",
+    discountValue: 0,
     description: "",
   });
 };
@@ -90,15 +95,11 @@ const removeProduct = (id: number) => {
   emit("remove", id);
 };
 
-const subtotal = computed(() =>
-  props.data.purchasedProducts.reduce(
-    (sum, product) =>
-      sum + Number(product.cost || 0) * Number(product.hours || 0),
-    0,
-  ),
+const subtotal = computed(() => getQuotationSubtotal(props.data.purchasedProducts));
+const discountTotal = computed(() =>
+  getQuotationDiscountTotal(props.data.purchasedProducts),
 );
-
-const total = computed(() => Number(quotation.value.total || 0));
+const total = computed(() => getQuotationGrandTotal(props.data.purchasedProducts));
 const paymentMethod = computed(
   () => props.data.paymentMethod || "Bank Transfer",
 );
@@ -334,24 +335,6 @@ watch(
     <VDivider class="my-6 border-dashed" />
 
     <div class="d-flex justify-space-between flex-wrap flex-column flex-sm-row">
-      <div class="mb-6 mb-sm-0">
-        <div class="d-flex align-center mb-4">
-          <h6 class="text-h6 me-2">Salesperson:</h6>
-          <AppTextField
-            id="salesperson"
-            v-model="salesperson"
-            style="inline-size: 8rem"
-            placeholder="John Doe"
-          />
-        </div>
-
-        <AppTextField
-          id="thanks-note"
-          v-model="thanksNote"
-          placeholder="Thanks for your business"
-        />
-      </div>
-
       <div>
         <table class="w-100">
           <tbody>
@@ -364,7 +347,7 @@ watch(
             <tr>
               <td class="pe-16">Discount:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">$0</h6>
+                <h6 class="text-h6">${{ discountTotal.toLocaleString() }}</h6>
               </td>
             </tr>
             <tr>

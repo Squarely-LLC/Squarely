@@ -318,6 +318,8 @@ function ensureProducts(
         title: "",
         cost: 0,
         hours: 1,
+        discountType: "none",
+        discountValue: 0,
         description: "",
       },
     ];
@@ -328,6 +330,11 @@ function ensureProducts(
     title: product.title?.trim() || "",
     cost: Number(product.cost) || 0,
     hours: Number(product.hours) || 1,
+    discountType:
+      product.discountType === "percent" || product.discountType === "currency"
+        ? product.discountType
+        : "none",
+    discountValue: Math.max(0, Number(product.discountValue || 0)),
     description: product.description?.trim() || "",
   }));
 }

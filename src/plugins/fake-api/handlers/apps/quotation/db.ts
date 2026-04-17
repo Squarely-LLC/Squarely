@@ -75,6 +75,8 @@ const buildRecord = (
       title: "Concept design",
       cost: 250,
       hours: 8,
+      discountType: "none",
+      discountValue: 0,
       description: "Initial concept preparation and client revisions.",
     },
     {
@@ -82,6 +84,8 @@ const buildRecord = (
       title: "Technical coordination",
       cost: 180,
       hours: 4,
+      discountType: "none",
+      discountValue: 0,
       description: "Coordination across architecture and MEP comments.",
     },
   ],

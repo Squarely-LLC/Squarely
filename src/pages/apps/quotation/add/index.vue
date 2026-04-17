@@ -7,6 +7,12 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  clearQuotationPreviewDraft,
+  loadQuotationPreviewDraft,
+  saveQuotationPreviewDraft,
+} from "@/utils/quotationPreviewDraft";
 import {
   buildQuotationNote,
   buildQuotationPaymentDetails,
@@ -94,6 +100,8 @@ const buildBlankQuotation = (): QuotationData => {
         title: "",
         cost: 0,
         hours: 1,
+        discountType: "none",
+        discountValue: 0,
         description: "",
       },
     ],
@@ -155,6 +163,11 @@ const buildRevisionDraft = (parentId: number): QuotationData => {
 };
 
 const buildInitialQuotation = (): QuotationData => {
+  const previewDraft = loadQuotationPreviewDraft();
+  if (previewDraft?.source === "add") {
+    return cloneQuotationRecord(previewDraft.quotation);
+  }
+
   const revisionOf = Number(route.query.revisionOf);
 
   if (Number.isFinite(revisionOf) && revisionOf > 0) {
@@ -336,11 +349,7 @@ const saveQuotation = () => {
   if (!validateCreditCardPaymentLink()) return;
   if (!validateApprovalSelection()) return;
 
-  const total = quotationData.value.purchasedProducts.reduce(
-    (sum, product) =>
-      sum + Number(product.cost || 0) * Number(product.hours || 0),
-    0,
-  );
+  const total = getQuotationGrandTotal(quotationData.value.purchasedProducts);
 
   quotationData.value.quotation.total = total;
   quotationData.value.paymentDetails = buildQuotationPaymentDetails(
@@ -365,11 +374,50 @@ const saveQuotation = () => {
   );
   if (!created) return;
 
+  clearQuotationPreviewDraft();
   initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
   bypassUnsavedWarning.value = true;
   router.push({
     name: "apps-quotation-preview-id",
     params: { id: created.quotation.id },
+  });
+};
+
+const openPreview = async () => {
+  if (!validateCreditCardPaymentLink()) return;
+  if (!validateApprovalSelection()) return;
+
+  const previewDraft = cloneQuotationRecord(quotationData.value);
+  const total = getQuotationGrandTotal(previewDraft.purchasedProducts);
+
+  previewDraft.quotation.total = total;
+  previewDraft.paymentDetails = buildQuotationPaymentDetails(
+    total,
+    configStore.legal,
+    configStore.financial,
+  );
+  previewDraft.paymentLink =
+    previewDraft.paymentMethod === "Credit Card"
+      ? previewDraft.paymentLink?.trim() || null
+      : null;
+  previewDraft.quotation.linkedRecordType = previewDraft.quotation.dealId
+    ? "deal"
+    : null;
+  previewDraft.approverEmployeeId =
+    previewDraft.approvalMode === "Request Approval"
+      ? previewDraft.approverEmployeeId ?? null
+      : null;
+
+  saveQuotationPreviewDraft({
+    source: "add",
+    quotation: previewDraft,
+  });
+
+  bypassUnsavedWarning.value = true;
+  await router.push({
+    name: "apps-quotation-preview-id",
+    params: { id: previewDraft.quotation.id },
+    query: { draft: "1", source: "add" },
   });
 };
 
@@ -429,10 +477,12 @@ onBeforeUnmount(() => {
             color="secondary"
             variant="tonal"
             class="mb-4"
-            @click="requestLeave({ name: 'apps-quotation-list' })"
+            @click="openPreview"
           >
-            Back to List
+            Preview
           </VBtn>
+
+          <VBtn block color="secondary" variant="tonal" class="mb-4" @click="requestLeave({ name: 'apps-quotation-list' })">Back to List</VBtn>
 
           <VBtn block @click="saveQuotation">Save</VBtn>
         </VCardText>

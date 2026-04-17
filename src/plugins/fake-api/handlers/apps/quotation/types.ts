@@ -51,6 +51,8 @@ export interface PurchasedProduct {
   title: string;
   cost: number;
   hours: number;
+  discountType?: "none" | "percent" | "currency";
+  discountValue?: number;
   description: string;
 }
 

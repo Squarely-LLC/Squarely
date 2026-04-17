@@ -1,6 +1,7 @@
 <!-- eslint-disable vue/no-mutating-props -->
 <script setup lang="ts">
 import { useCataloguesStore } from "@/stores/catalogues";
+import { getLineTotal } from "@/utils/quotationPricing";
 
 interface Emit {
   (e: "removeProduct", value: number): void;
@@ -13,6 +14,8 @@ interface Props {
     title: string;
     cost: number;
     hours: number;
+    discountType?: "none" | "percent" | "currency";
+    discountValue?: number;
     description: string;
   };
 }
@@ -30,6 +33,8 @@ const props = withDefaults(defineProps<Props>(), {
     title: "",
     cost: 0,
     hours: 1,
+    discountType: "none",
+    discountValue: 0,
     description: "",
   }),
 });
@@ -73,17 +78,62 @@ const selectedItem = computed({
     props.data.catalogueItemId = null;
     props.data.title = title;
     props.data.cost = 0;
+    props.data.discountType = "none";
+    props.data.discountValue = 0;
     props.data.description = "";
   },
 });
+
+const discountOptions = [
+  { title: "No", value: "none" },
+  { title: "%", value: "percent" },
+  { title: "Currency", value: "currency" },
+] as const;
+const lineBaseTotal = computed(
+  () => Number(props.data.cost || 0) * Number(props.data.hours || 0),
+);
+const discountValueMax = computed(() =>
+  props.data.discountType === "percent" ? 100 : lineBaseTotal.value,
+);
+
+watch(
+  () => props.data.discountType,
+  (discountType) => {
+    if (discountType !== "percent" && discountType !== "currency") {
+      props.data.discountValue = 0;
+      return;
+    }
+
+    props.data.discountValue = Math.min(
+      Math.max(0, Number(props.data.discountValue || 0)),
+      discountValueMax.value,
+    );
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [props.data.discountValue, props.data.discountType, props.data.cost, props.data.hours],
+  () => {
+    if (
+      props.data.discountType !== "percent" &&
+      props.data.discountType !== "currency"
+    ) {
+      return;
+    }
+
+    props.data.discountValue = Math.min(
+      Math.max(0, Number(props.data.discountValue || 0)),
+      discountValueMax.value,
+    );
+  },
+);
 
 const removeProduct = () => {
   emit("removeProduct", props.id);
 };
 
-const totalPrice = computed(
-  () => Number(props.data.cost || 0) * Number(props.data.hours || 0),
-);
+const totalPrice = computed(() => getLineTotal(props.data));
 </script>
 
 <template>
@@ -99,7 +149,7 @@ const totalPrice = computed(
         <h6 class="text-h6 ps-2">Quantity</h6>
       </VCol>
       <VCol cols="12" md="2">
-        <h6 class="text-h6">Total</h6>
+        <h6 class="text-h6">Discount</h6>
       </VCol>
     </VRow>
   </div>
@@ -131,21 +181,7 @@ const totalPrice = computed(
             v-model="props.data.cost"
             type="number"
             placeholder="Price"
-            class="mb-6"
           />
-
-          <div class="text-high-emphasis text-no-wrap mt-4">
-            <p class="mb-1">Discount</p>
-            <span>0%</span>
-            <span class="mx-2">
-              0%
-              <VTooltip activator="parent">VAT 1</VTooltip>
-            </span>
-            <span>
-              0%
-              <VTooltip activator="parent">VAT 2</VTooltip>
-            </span>
-          </div>
         </VCol>
 
         <VCol cols="12" md="2" sm="4">
@@ -158,9 +194,30 @@ const totalPrice = computed(
         </VCol>
 
         <VCol cols="12" md="2" sm="4">
-          <p class="my-2">
-            <span class="d-inline d-md-none">Total: </span>
-            <span class="text-high-emphasis">${{ totalPrice }}</span>
+          <AppSelect
+            id="item-discount-type"
+            v-model="props.data.discountType"
+            :items="discountOptions"
+            item-title="title"
+            item-value="value"
+            placeholder="No"
+            class="mb-4"
+          />
+
+          <AppTextField
+            v-if="props.data.discountType === 'percent' || props.data.discountType === 'currency'"
+            id="item-discount-value"
+            v-model="props.data.discountValue"
+            type="number"
+            :placeholder="props.data.discountType === 'percent' ? '%' : 'Amount'"
+            min="0"
+            :max="discountValueMax"
+            class="mb-2"
+          />
+
+          <p class="my-2 text-high-emphasis">
+            <span class="d-inline d-md-none">Line total: </span>
+            ${{ totalPrice }}
           </p>
         </VCol>
       </VRow>

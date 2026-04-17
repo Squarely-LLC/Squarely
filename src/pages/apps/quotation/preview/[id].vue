@@ -2,11 +2,18 @@
 import { useConfigStore } from "@/stores/config";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
+  getLineTotal,
+  getQuotationDiscountTotal,
+  getQuotationGrandTotal,
+  getQuotationSubtotal,
+} from "@/utils/quotationPricing";
+import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
+import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
 import { formatSystemDate } from "@core/utils/formatters";
 
 import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
@@ -18,7 +25,33 @@ configStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
-const quotationRecord = computed(() => quotationsStore.byId(route.params.id));
+const draftPreview = computed(() => {
+  if (route.query.draft !== "1") return null;
+
+  const previewDraft = loadQuotationPreviewDraft();
+  if (!previewDraft) return null;
+  if (
+    String(previewDraft.quotation.quotation.id) !== String(route.params.id)
+  ) {
+    return null;
+  }
+
+  return previewDraft;
+});
+const quotationRecord = computed(
+  () => draftPreview.value?.quotation ?? quotationsStore.byId(route.params.id),
+);
+const canReturnToEditor = computed(() => Boolean(draftPreview.value));
+const editRoute = computed(() => {
+  if (draftPreview.value?.source === "add") {
+    return { name: "apps-quotation-add" as const };
+  }
+
+  return {
+    name: "apps-quotation-edit-id" as const,
+    params: { id: route.params.id },
+  };
+});
 const quotation = computed(() => quotationRecord.value?.quotation ?? null);
 const paymentMethod = computed(
   () => quotationRecord.value?.paymentMethod || "Bank Transfer",
@@ -65,12 +98,11 @@ const printQuotation = () => {
   window.print();
 };
 
-const subtotal = computed(() =>
-  purchasedProducts.value.reduce(
-    (sum, item) => sum + Number(item.cost || 0) * Number(item.hours || 0),
-    0,
-  ),
+const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
+const discountTotal = computed(() =>
+  getQuotationDiscountTotal(purchasedProducts.value),
 );
+const grandTotal = computed(() => getQuotationGrandTotal(purchasedProducts.value));
 
 watch(
   () => configStore.legal?.logo,
@@ -218,7 +250,7 @@ watch(
                 <td class="text-no-wrap">{{ item.description }}</td>
                 <td class="text-center">{{ item.hours }}</td>
                 <td class="text-center">${{ item.cost }}</td>
-                <td class="text-center">${{ item.cost * item.hours }}</td>
+                <td class="text-center">${{ getLineTotal(item) }}</td>
               </tr>
             </tbody>
           </VTable>
@@ -246,7 +278,9 @@ watch(
                   <tr>
                     <td class="pe-16">Discount:</td>
                     <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                      <h6 class="text-base font-weight-medium">$0</h6>
+                      <h6 class="text-base font-weight-medium">
+                        ${{ discountTotal.toLocaleString() }}
+                      </h6>
                     </td>
                   </tr>
                   <tr>
@@ -266,7 +300,7 @@ watch(
                     <td class="pe-16">Total:</td>
                     <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
                       <h6 class="text-base font-weight-medium">
-                        ${{ quotation.total.toLocaleString() }}
+                        ${{ grandTotal.toLocaleString() }}
                       </h6>
                     </td>
                   </tr>
@@ -300,6 +334,17 @@ watch(
               Send Quotation
             </VBtn>
 
+            <VBtn
+              v-if="canReturnToEditor"
+              block
+              color="secondary"
+              variant="tonal"
+              class="mb-4"
+              :to="editRoute"
+            >
+              Back
+            </VBtn>
+
             <VBtn block color="secondary" variant="tonal" class="mb-4">
               Download
             </VBtn>
@@ -318,7 +363,7 @@ watch(
                 color="secondary"
                 variant="tonal"
                 class="mb-4 flex-grow-1"
-                :to="{ name: 'apps-quotation-edit-id', params: { id: route.params.id } }"
+                :to="editRoute"
               >
                 Edit
               </VBtn>

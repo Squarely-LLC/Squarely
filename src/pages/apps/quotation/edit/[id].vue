@@ -3,6 +3,12 @@ import { requiredValidator, urlValidator } from "@/@core/utils/validators";
 import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  clearQuotationPreviewDraft,
+  loadQuotationPreviewDraft,
+  saveQuotationPreviewDraft,
+} from "@/utils/quotationPreviewDraft";
 import { buildQuotationPaymentDetails } from "@/utils/quotationConfig";
 import type {
   PurchasedProduct,
@@ -21,7 +27,12 @@ employeesStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
-const sourceRecord = quotationsStore.byId(route.params.id);
+const previewDraft = loadQuotationPreviewDraft();
+const sourceRecord =
+  previewDraft?.source === "edit" &&
+  String(previewDraft.quotation.quotation.id) === String(route.params.id)
+    ? previewDraft.quotation
+    : quotationsStore.byId(route.params.id);
 const quotationData = ref<QuotationData | null>(
   sourceRecord ? cloneQuotationRecord(sourceRecord) : null,
 );
@@ -150,10 +161,7 @@ const saveQuotation = () => {
   if (!validateCreditCardPaymentLink()) return;
   if (!validateApprovalSelection()) return;
 
-  const total = quotationData.value.purchasedProducts.reduce(
-    (sum, product) => sum + Number(product.cost || 0) * Number(product.hours || 0),
-    0,
-  );
+  const total = getQuotationGrandTotal(quotationData.value.purchasedProducts);
 
   quotationData.value.quotation.total = total;
   quotationData.value.paymentDetails = buildQuotationPaymentDetails(
@@ -178,9 +186,48 @@ const saveQuotation = () => {
     cloneQuotationRecord(quotationData.value),
   );
 
+  clearQuotationPreviewDraft();
   router.push({
     name: "apps-quotation-preview-id",
     params: { id: quotationData.value.quotation.id },
+  });
+};
+
+const openPreview = async () => {
+  if (!quotationData.value) return;
+  if (!validateCreditCardPaymentLink()) return;
+  if (!validateApprovalSelection()) return;
+
+  const previewQuotation = cloneQuotationRecord(quotationData.value);
+  const total = getQuotationGrandTotal(previewQuotation.purchasedProducts);
+
+  previewQuotation.quotation.total = total;
+  previewQuotation.paymentDetails = buildQuotationPaymentDetails(
+    total,
+    configStore.legal,
+    configStore.financial,
+  );
+  previewQuotation.paymentLink =
+    previewQuotation.paymentMethod === "Credit Card"
+      ? previewQuotation.paymentLink?.trim() || null
+      : null;
+  previewQuotation.quotation.linkedRecordType = previewQuotation.quotation.dealId
+    ? "deal"
+    : null;
+  previewQuotation.approverEmployeeId =
+    previewQuotation.approvalMode === "Request Approval"
+      ? previewQuotation.approverEmployeeId ?? null
+      : null;
+
+  saveQuotationPreviewDraft({
+    source: "edit",
+    quotation: previewQuotation,
+  });
+
+  await router.push({
+    name: "apps-quotation-preview-id",
+    params: { id: previewQuotation.quotation.id },
+    query: { draft: "1", source: "edit" },
   });
 };
 </script>
@@ -212,10 +259,7 @@ const saveQuotation = () => {
               color="secondary"
               variant="tonal"
               class="flex-grow-1"
-              :to="{
-                name: 'apps-quotation-preview-id',
-                params: { id: route.params.id },
-              }"
+              @click="openPreview"
             >
               Preview
             </VBtn>
