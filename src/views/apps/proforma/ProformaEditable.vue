@@ -5,8 +5,10 @@ import { useContactsStore } from "@/stores/contacts";
 import { useProformasStore } from "@/stores/proformas";
 import {
   buildQuotationPaymentDetails,
+  formatCurrencyAmount,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
+  getVatSummary,
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import {
@@ -44,6 +46,7 @@ const quotation = toRef(props.data, "quotation");
 const note = toRef(props.data, "note");
 const documentLabel = computed(() => props.documentLabel?.trim() || "Proforma");
 const recipientLabel = computed(() => `${documentLabel.value} To`);
+const vatSummary = computed(() => getVatSummary(configStore.financial));
 
 const mapContactToClient = (contact: ContactProperties): Client => ({
   address: contact.address?.trim() || "",
@@ -348,19 +351,25 @@ watch(
             <tr>
               <td class="pe-16">Subtotal:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">${{ subtotal.toLocaleString() }}</h6>
+                <h6 class="text-h6">
+                  {{ formatCurrencyAmount(subtotal, configStore.financial) }}
+                </h6>
               </td>
             </tr>
             <tr>
               <td class="pe-16">Discount:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">${{ discountTotal.toLocaleString() }}</h6>
+                <h6 class="text-h6">
+                  {{
+                    formatCurrencyAmount(discountTotal, configStore.financial)
+                  }}
+                </h6>
               </td>
             </tr>
             <tr>
-              <td class="pe-16">VAT:</td>
+              <td class="pe-16">{{ vatSummary.label }}:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">Included</h6>
+                <h6 class="text-h6">{{ vatSummary.value }}</h6>
               </td>
             </tr>
           </tbody>
@@ -373,7 +382,9 @@ watch(
             <tr>
               <td class="pe-16">Total:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
-                <h6 class="text-h6">${{ total.toLocaleString() }}</h6>
+                <h6 class="text-h6">
+                  {{ formatCurrencyAmount(total, configStore.financial) }}
+                </h6>
               </td>
             </tr>
             <tr v-if="props.data.totalFx?.trim()">

@@ -47,6 +47,7 @@ export const db: ConfigDB = {
         showNotes: true,
         notesOnInvoice: "Payment due within 30 days.",
         noteOnQuotation: "Prices valid for 14 days from issue date.",
+        noteOnProforma: "Prices valid for 14 days from issue date.",
       },
       documentTypes: ["Invoice", "Quotation", "Proforma", "Receipt"],
       invoiceSequence: "INV-YYYY-",
@@ -229,111 +230,111 @@ export const db: ConfigDB = {
       ],
       activeStates: ["Active", "Draft", "Non-Active", "Archived"],
       hideArchivedByDefault: true,
-        categories: [
-          {
-            id: "cat-furniture",
-            name: "Furniture",
-            children: [
-              {
-                id: "cat-furniture-office",
-                name: "Office Furniture",
-                children: [
-                  {
-                    id: "cat-furniture-office-desks",
-                    name: "Desks",
-                    children: [],
-                  },
-                  {
-                    id: "cat-furniture-office-seating",
-                    name: "Seating",
-                    children: [],
-                  },
-                  {
-                    id: "cat-furniture-office-storage",
-                    name: "Storage",
-                    children: [],
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            id: "cat-lighting",
-            name: "Lighting",
-            children: [
-              {
-                id: "cat-lighting-decorative",
-                name: "Decorative",
-                children: [],
-              },
-              {
-                id: "cat-lighting-architectural",
-                name: "Architectural",
-                children: [],
-              },
-            ],
-          },
-          {
-            id: "cat-finishes",
-            name: "Finishes",
-            children: [
-              {
-                id: "cat-finishes-acoustic",
-                name: "Acoustic Panels",
-                children: [],
-              },
-              {
-                id: "cat-finishes-wall",
-                name: "Wall Finishes",
-                children: [],
-              },
-            ],
-          },
-          {
-            id: "cat-outdoor",
-            name: "Outdoor",
-            children: [
-              {
-                id: "cat-outdoor-planters",
-                name: "Planters",
-                children: [],
-              },
-              {
-                id: "cat-outdoor-paving",
-                name: "Paving",
-                children: [],
-              },
-            ],
-          },
-          {
-            id: "cat-accessories",
-            name: "Accessories",
-            children: [
-              {
-                id: "cat-accessories-mirrors",
-                name: "Mirrors",
-                children: [],
-              },
-              {
-                id: "cat-accessories-decor",
-                name: "Decor",
-                children: [],
-              },
-            ],
-          },
-          {
-            id: "cat-modular",
-            name: "Modular Spaces",
-            children: [
-              {
-                id: "cat-modular-meeting-pods",
-                name: "Meeting Pods",
-                children: [],
-              },
-            ],
-          },
-        ],
-      },
+      categories: [
+        {
+          id: "cat-furniture",
+          name: "Furniture",
+          children: [
+            {
+              id: "cat-furniture-office",
+              name: "Office Furniture",
+              children: [
+                {
+                  id: "cat-furniture-office-desks",
+                  name: "Desks",
+                  children: [],
+                },
+                {
+                  id: "cat-furniture-office-seating",
+                  name: "Seating",
+                  children: [],
+                },
+                {
+                  id: "cat-furniture-office-storage",
+                  name: "Storage",
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "cat-lighting",
+          name: "Lighting",
+          children: [
+            {
+              id: "cat-lighting-decorative",
+              name: "Decorative",
+              children: [],
+            },
+            {
+              id: "cat-lighting-architectural",
+              name: "Architectural",
+              children: [],
+            },
+          ],
+        },
+        {
+          id: "cat-finishes",
+          name: "Finishes",
+          children: [
+            {
+              id: "cat-finishes-acoustic",
+              name: "Acoustic Panels",
+              children: [],
+            },
+            {
+              id: "cat-finishes-wall",
+              name: "Wall Finishes",
+              children: [],
+            },
+          ],
+        },
+        {
+          id: "cat-outdoor",
+          name: "Outdoor",
+          children: [
+            {
+              id: "cat-outdoor-planters",
+              name: "Planters",
+              children: [],
+            },
+            {
+              id: "cat-outdoor-paving",
+              name: "Paving",
+              children: [],
+            },
+          ],
+        },
+        {
+          id: "cat-accessories",
+          name: "Accessories",
+          children: [
+            {
+              id: "cat-accessories-mirrors",
+              name: "Mirrors",
+              children: [],
+            },
+            {
+              id: "cat-accessories-decor",
+              name: "Decor",
+              children: [],
+            },
+          ],
+        },
+        {
+          id: "cat-modular",
+          name: "Modular Spaces",
+          children: [
+            {
+              id: "cat-modular-meeting-pods",
+              name: "Meeting Pods",
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
   },
 };
 

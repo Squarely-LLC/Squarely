@@ -8,6 +8,7 @@ import type {
 import { getFileObjectUrl } from "@/utils/fileStore";
 
 const CONFIG_STORAGE_KEY = "app.configurations.v1";
+type DocumentConfigKind = "quotation" | "proforma" | "invoice";
 
 export function loadActiveAppConfigurations(): AppConfigurations {
   if (typeof window === "undefined") return seedConfigDb.configurations;
@@ -30,6 +31,53 @@ export function getPrimaryBankDetails(
   return bankDetails.find((item) => item.enabled) ?? bankDetails[0] ?? null;
 }
 
+export function getDocumentSequencePrefix(
+  documentKind: DocumentConfigKind,
+  config?: AppConfigurations | null,
+) {
+  const activeConfig = config ?? loadActiveAppConfigurations();
+
+  if (documentKind === "quotation") {
+    return activeConfig.deals?.quotationStartsSeq?.trim() || "QT-";
+  }
+
+  if (documentKind === "proforma") {
+    return activeConfig.deals?.proformaStartSeq?.trim() || "PF-";
+  }
+
+  return activeConfig.financial?.invoiceSequence?.trim() || "INV-";
+}
+
+export function getConfiguredCurrencySymbol(
+  financial?: FinancialConfig | null,
+) {
+  const configuredCurrency = financial?.currency?.trim() || "";
+  const symbolInParens = configuredCurrency.match(
+    /\([^()]*?([^()\s]{1,5})\)\s*$/,
+  );
+
+  if (symbolInParens?.[1]) return symbolInParens[1];
+
+  const explicitSymbol = configuredCurrency.match(/[$€£¥₹₦₵₨₫₴₱₪₭₮₡₲₸₼₽₺₴]/);
+  if (explicitSymbol?.[0]) return explicitSymbol[0];
+
+  return "$";
+}
+
+export function formatCurrencyAmount(
+  amount: number | string | null | undefined,
+  financial?: FinancialConfig | null,
+) {
+  return `${getConfiguredCurrencySymbol(financial)}${Number(amount || 0).toLocaleString()}`;
+}
+
+export function getVatSummary(financial?: FinancialConfig | null) {
+  return {
+    label: "VAT",
+    value: financial?.vat?.enabled ? "Included" : "Not Applied",
+  };
+}
+
 export function buildQuotationPaymentDetails(
   total: number,
   legal?: LegalConfig | null,
@@ -38,7 +86,7 @@ export function buildQuotationPaymentDetails(
   const bank = getPrimaryBankDetails(financial);
 
   return {
-    totalDue: `$${Number(total || 0).toLocaleString()}`,
+    totalDue: formatCurrencyAmount(total, financial),
     bankName: bank?.bankName?.trim() || "",
     country: legal?.country?.trim() || "",
     iban: bank?.iban?.trim() || "",
@@ -46,14 +94,39 @@ export function buildQuotationPaymentDetails(
   };
 }
 
+export function buildDocumentNote(
+  financial?: FinancialConfig | null,
+  documentKind: DocumentConfigKind = "quotation",
+  fallbackDays = 7,
+) {
+  const configuredNote =
+    documentKind === "invoice"
+      ? financial?.invoicing?.notesOnInvoice?.trim()
+      : documentKind === "proforma"
+        ? financial?.invoicing?.noteOnProforma?.trim()
+        : financial?.invoicing?.noteOnQuotation?.trim();
+
+  if (configuredNote) return configuredNote;
+
+  if (documentKind === "invoice") {
+    return `Payment due within ${fallbackDays} days.`;
+  }
+
+  return `Pricing is valid for ${fallbackDays} days from the issue date.`;
+}
+
 export function buildQuotationNote(
   financial?: FinancialConfig | null,
   fallbackDays = 7,
 ) {
-  return (
-    financial?.invoicing?.noteOnQuotation?.trim() ||
-    `Pricing is valid for ${fallbackDays} days from the issue date.`
-  );
+  return buildDocumentNote(financial, "quotation", fallbackDays);
+}
+
+export function buildProformaNote(
+  financial?: FinancialConfig | null,
+  fallbackDays = 7,
+) {
+  return buildDocumentNote(financial, "proforma", fallbackDays);
 }
 
 export function buildQuotationSalesperson(legal?: LegalConfig | null) {

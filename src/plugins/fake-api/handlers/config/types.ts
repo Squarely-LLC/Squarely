@@ -32,6 +32,7 @@ export interface InvoicingSettings {
   showNotes: boolean;
   notesOnInvoice?: string;
   noteOnQuotation?: string;
+  noteOnProforma?: string;
 }
 
 export interface FinancialConfig {

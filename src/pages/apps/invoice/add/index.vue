@@ -18,10 +18,12 @@ import {
   saveInvoicePreviewDraft,
 } from "@/utils/invoicePreviewDraft";
 import {
-  buildQuotationNote,
+  buildDocumentNote,
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  formatCurrencyAmount,
+  getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import InvoiceEditable from "@/views/apps/invoice/InvoiceEditable.vue";
@@ -72,7 +74,7 @@ const buildBlankQuotation = (): InvoiceData => {
   return {
     quotation: {
       id,
-      quoteNumber: `INV-${id}`,
+      quoteNumber: `${getDocumentSequencePrefix("invoice")}${id}`,
       issuedDate: new Date().toISOString().slice(0, 10),
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         .toISOString()
@@ -108,7 +110,7 @@ const buildBlankQuotation = (): InvoiceData => {
         description: "",
       },
     ],
-    note: buildQuotationNote(configStore.financial, 7),
+    note: buildDocumentNote(configStore.financial, "invoice", 7),
     showClientNote: configStore.financial?.invoicing?.showNotes ?? true,
     totalFx: null,
     paymentMethod: "Bank Transfer",
@@ -363,7 +365,10 @@ const saveQuotation = () => {
   quotationData.value.quotation.balance = getInvoiceOutstandingBalance(
     quotationData.value,
   );
-  quotationData.value.paymentDetails.totalDue = `$${quotationData.value.quotation.balance.toLocaleString()}`;
+  quotationData.value.paymentDetails.totalDue = formatCurrencyAmount(
+    quotationData.value.quotation.balance,
+    configStore.financial,
+  );
   quotationData.value.paymentLink =
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
@@ -411,7 +416,10 @@ const openPreview = async () => {
     configStore.financial,
   );
   previewDraft.quotation.balance = getInvoiceOutstandingBalance(previewDraft);
-  previewDraft.paymentDetails.totalDue = `$${previewDraft.quotation.balance.toLocaleString()}`;
+  previewDraft.paymentDetails.totalDue = formatCurrencyAmount(
+    previewDraft.quotation.balance,
+    configStore.financial,
+  );
   previewDraft.paymentLink =
     previewDraft.paymentMethod === "Credit Card"
       ? previewDraft.paymentLink?.trim() || null

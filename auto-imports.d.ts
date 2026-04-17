@@ -16,6 +16,8 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
+  const buildProformaNote: typeof import('./src/utils/quotationConfig')['buildProformaNote']
   const buildQuotationNote: typeof import('./src/utils/quotationConfig')['buildQuotationNote']
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
@@ -58,14 +60,17 @@ declare global {
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
   const extendRef: typeof import('@vueuse/core')['extendRef']
+  const formatCurrencyAmount: typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
   const formatSystemDate: typeof import('./src/@core/utils/formatters')['formatSystemDate']
   const formatSystemDateTime: typeof import('./src/@core/utils/formatters')['formatSystemDateTime']
   const formatSystemMonthYear: typeof import('./src/@core/utils/formatters')['formatSystemMonthYear']
   const getActivePinia: typeof import('pinia')['getActivePinia']
+  const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getDocumentSequencePrefix: typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']
   const getFileInfo: typeof import('./src/utils/fileStore')['getFileInfo']
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
   const getFileObjectUrl: typeof import('./src/utils/fileStore')['getFileObjectUrl']
@@ -79,6 +84,7 @@ declare global {
   const getQuotationDiscountTotal: typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']
   const getQuotationGrandTotal: typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']
   const getQuotationSubtotal: typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']
+  const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -414,6 +420,8 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
+    readonly buildProformaNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildProformaNote']>
     readonly buildQuotationNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationNote']>
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
@@ -456,14 +464,17 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly formatCurrencyAmount: UnwrapRef<typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
     readonly formatSystemDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemDate']>
     readonly formatSystemDateTime: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemDateTime']>
     readonly formatSystemMonthYear: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemMonthYear']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
+    readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getDocumentSequencePrefix: UnwrapRef<typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']>
     readonly getFileInfo: UnwrapRef<typeof import('./src/utils/fileStore')['getFileInfo']>
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>
     readonly getFileObjectUrl: UnwrapRef<typeof import('./src/utils/fileStore')['getFileObjectUrl']>
@@ -477,6 +488,7 @@ declare module 'vue' {
     readonly getQuotationDiscountTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']>
     readonly getQuotationGrandTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']>
     readonly getQuotationSubtotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']>
+    readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>

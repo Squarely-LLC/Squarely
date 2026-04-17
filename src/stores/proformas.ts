@@ -9,10 +9,11 @@ import type {
   PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import {
-  buildQuotationNote,
+  buildProformaNote,
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { defineStore } from "pinia";
@@ -124,10 +125,7 @@ function nextProformaId(items: ProformaRecord[]) {
 }
 
 function formatQuoteNumber(id: number) {
-  const prefix =
-    loadActiveAppConfigurations().deals?.proformaStartSeq?.trim() || "PF-";
-
-  return `${prefix}${id}`;
+  return `${getDocumentSequencePrefix("proforma")}${id}`;
 }
 
 function normaliseProformaStatus(
@@ -532,7 +530,7 @@ function normaliseProformaRecord(
       payload.convertedInvoiceId === undefined
         ? null
         : Number(payload.convertedInvoiceId),
-    note: payload.note?.trim() || buildQuotationNote(config.financial, 7),
+    note: payload.note?.trim() || buildProformaNote(config.financial, 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     totalFx: payload.totalFx?.trim() || null,

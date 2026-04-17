@@ -10,6 +10,7 @@ import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  formatCurrencyAmount,
 } from "@/utils/quotationConfig";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
@@ -778,7 +779,7 @@ const quotationEmailDraft = computed(() => {
   const to = quotation?.client.companyEmail?.trim() || "";
   const clientName = quotation?.client.name?.trim() || "there";
   const quoteNumber = quotation?.quoteNumber?.trim() || "quotation";
-  const total = Number(quotation?.total || 0).toLocaleString();
+  const total = formatCurrencyAmount(quotation?.total, configStore.financial);
   const expiryDate = quotation?.dueDate?.trim() || "";
 
   return {
@@ -788,7 +789,7 @@ const quotationEmailDraft = computed(() => {
 
 Please find ${quoteNumber} attached.
 
-Proforma amount: $${total}
+Proforma amount: ${total}
 ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,

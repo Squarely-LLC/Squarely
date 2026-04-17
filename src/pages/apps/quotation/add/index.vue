@@ -17,6 +17,8 @@ import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  formatCurrencyAmount,
+  getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import {
   clearQuotationPreviewDraft,
@@ -75,7 +77,7 @@ const buildBlankQuotation = (): QuotationData => {
   return {
     quotation: {
       id,
-      quoteNumber: `QT-${id}`,
+      quoteNumber: `${getDocumentSequencePrefix("quotation")}${id}`,
       issuedDate: new Date().toISOString().slice(0, 10),
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         .toISOString()
@@ -366,7 +368,10 @@ const saveQuotation = () => {
   quotationData.value.quotation.balance = getQuotationOutstandingBalance(
     quotationData.value,
   );
-  quotationData.value.paymentDetails.totalDue = `$${quotationData.value.quotation.balance.toLocaleString()}`;
+  quotationData.value.paymentDetails.totalDue = formatCurrencyAmount(
+    quotationData.value.quotation.balance,
+    configStore.financial,
+  );
   quotationData.value.paymentLink =
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
@@ -414,7 +419,10 @@ const openPreview = async () => {
     configStore.financial,
   );
   previewDraft.quotation.balance = getQuotationOutstandingBalance(previewDraft);
-  previewDraft.paymentDetails.totalDue = `$${previewDraft.quotation.balance.toLocaleString()}`;
+  previewDraft.paymentDetails.totalDue = formatCurrencyAmount(
+    previewDraft.quotation.balance,
+    configStore.financial,
+  );
   previewDraft.paymentLink =
     previewDraft.paymentMethod === "Credit Card"
       ? previewDraft.paymentLink?.trim() || null

@@ -15,8 +15,10 @@ import {
 } from "@/utils/proformaPreviewDraft";
 import {
   buildQuotationPaymentDetails,
+  formatCurrencyAmount,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
+  getVatSummary,
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
@@ -128,6 +130,7 @@ const companyAddressLines = computed(() =>
 const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(legalConfiguration.value),
 );
+const vatSummary = computed(() => getVatSummary(financialConfiguration.value));
 
 const isAddPaymentSidebarVisible = ref(false);
 const isSendPaymentSidebarVisible = ref(false);
@@ -203,7 +206,10 @@ const quotationEmailDraft = computed(() => {
   const to = currentQuotation?.client.companyEmail?.trim() || "";
   const clientName = currentQuotation?.client.name?.trim() || "there";
   const quoteNumber = currentQuotation?.quoteNumber?.trim() || "quotation";
-  const total = Number(currentQuotation?.total || 0).toLocaleString();
+  const total = formatCurrencyAmount(
+    currentQuotation?.total,
+    financialConfiguration.value,
+  );
   const expiryDate = currentQuotation?.dueDate?.trim() || "";
 
   return {
@@ -213,7 +219,7 @@ const quotationEmailDraft = computed(() => {
 
 Please find proforma ${quoteNumber} attached.
 
-Proforma amount: $${total}
+Proforma amount: ${total}
 ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,
@@ -271,7 +277,7 @@ const recordQuotationPayment = (payment: ProformaPaymentInput) => {
     draftPreviewState.value = updatedDraft;
     saveProformaPreviewDraft(updatedDraft);
     notifications.push(
-      `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+      `Payment of ${formatCurrencyAmount(payment.amount, financialConfiguration.value)} added successfully.`,
       "success",
       3500,
     );
@@ -280,7 +286,7 @@ const recordQuotationPayment = (payment: ProformaPaymentInput) => {
 
   proformasStore.updateProforma(updatedRecord.quotation.id, updatedRecord);
   notifications.push(
-    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    `Payment of ${formatCurrencyAmount(payment.amount, financialConfiguration.value)} added successfully.`,
     "success",
     3500,
   );
@@ -513,8 +519,17 @@ if (!isEmbeddedActionFrame) {
                   {{ item.description }}
                 </td>
                 <td class="text-center">{{ item.hours }}</td>
-                <td class="text-center">${{ item.cost }}</td>
-                <td class="text-center">${{ getLineTotal(item) }}</td>
+                <td class="text-center">
+                  {{ formatCurrencyAmount(item.cost, financialConfiguration) }}
+                </td>
+                <td class="text-center">
+                  {{
+                    formatCurrencyAmount(
+                      getLineTotal(item),
+                      financialConfiguration,
+                    )
+                  }}
+                </td>
               </tr>
             </tbody>
           </VTable>
@@ -529,7 +544,9 @@ if (!isEmbeddedActionFrame) {
                       :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
                     >
                       <h6 class="text-base font-weight-medium">
-                        ${{ subtotal.toLocaleString() }}
+                        {{
+                          formatCurrencyAmount(subtotal, financialConfiguration)
+                        }}
                       </h6>
                     </td>
                   </tr>
@@ -539,16 +556,23 @@ if (!isEmbeddedActionFrame) {
                       :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
                     >
                       <h6 class="text-base font-weight-medium">
-                        ${{ discountTotal.toLocaleString() }}
+                        {{
+                          formatCurrencyAmount(
+                            discountTotal,
+                            financialConfiguration,
+                          )
+                        }}
                       </h6>
                     </td>
                   </tr>
                   <tr>
-                    <td class="pe-16">VAT:</td>
+                    <td class="pe-16">{{ vatSummary.label }}:</td>
                     <td
                       :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
                     >
-                      <h6 class="text-base font-weight-medium">Included</h6>
+                      <h6 class="text-base font-weight-medium">
+                        {{ vatSummary.value }}
+                      </h6>
                     </td>
                   </tr>
                 </tbody>
@@ -564,7 +588,12 @@ if (!isEmbeddedActionFrame) {
                       :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
                     >
                       <h6 class="text-base font-weight-medium">
-                        ${{ grandTotal.toLocaleString() }}
+                        {{
+                          formatCurrencyAmount(
+                            grandTotal,
+                            financialConfiguration,
+                          )
+                        }}
                       </h6>
                     </td>
                   </tr>

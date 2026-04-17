@@ -2,7 +2,9 @@
 import { requiredValidator } from "@/@core/utils/validators";
 import type {
   BankDetailsItem,
+  DealsConfig,
   FinancialConfig,
+  InvoicingSettings,
   VatSettings,
 } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
@@ -21,6 +23,12 @@ type FinancialUiState = Partial<FinancialConfig> & {
   currency: string;
   vat: VatSettings;
   bankDetails: BankDetailsItem[];
+  invoicing: InvoicingSettings & {
+    showNotes: boolean;
+    notesOnInvoice: string;
+    noteOnQuotation: string;
+    noteOnProforma: string;
+  };
   invoiceSequence: string;
   paymentReminders: {
     enabled: boolean;
@@ -29,11 +37,22 @@ type FinancialUiState = Partial<FinancialConfig> & {
   };
 };
 
+type DealsUiState = Partial<DealsConfig> & {
+  quotationStartsSeq: string;
+  proformaStartSeq: string;
+};
+
 // Initialize with safe defaults to avoid undefined access on first render
 const fin = ref<FinancialUiState>({
   currency: "US Dollar (USD $)",
   vat: { enabled: false, registrationNumber: "" },
   bankDetails: [{ enabled: false }],
+  invoicing: {
+    showNotes: true,
+    notesOnInvoice: "",
+    noteOnQuotation: "",
+    noteOnProforma: "",
+  },
   invoiceSequence: "",
   paymentReminders: {
     enabled: false,
@@ -42,21 +61,39 @@ const fin = ref<FinancialUiState>({
   },
 });
 
+const deals = ref<DealsUiState>({
+  quotationStartsSeq: "",
+  proformaStartSeq: "",
+});
+
 const ensureDefaults = () => {
   fin.value.currency ??= "US Dollar (USD $)";
   fin.value.vat ??= { enabled: false, registrationNumber: "" };
   fin.value.bankDetails ??= [{ enabled: false }];
   if (!fin.value.bankDetails[0]) fin.value.bankDetails[0] = { enabled: false };
+  fin.value.invoicing ??= {
+    showNotes: true,
+    notesOnInvoice: "",
+    noteOnQuotation: "",
+    noteOnProforma: "",
+  };
+  fin.value.invoicing.showNotes ??= true;
+  fin.value.invoicing.notesOnInvoice ??= "";
+  fin.value.invoicing.noteOnQuotation ??= "";
+  fin.value.invoicing.noteOnProforma ??= "";
   fin.value.invoiceSequence ??= "";
   fin.value.paymentReminders ??= {
     enabled: false,
     invoiceDaysBefore: 0,
     purchaseDaysBefore: 0,
   };
+  deals.value.quotationStartsSeq ??= "";
+  deals.value.proformaStartSeq ??= "";
 };
 
 const syncFromStore = () => {
   const cfg = (store.financial || {}) as FinancialConfig;
+  const dealsCfg = (store.all?.deals || {}) as DealsConfig;
   fin.value = {
     ...fin.value,
     ...cfg,
@@ -69,6 +106,15 @@ const syncFromStore = () => {
     bankDetails: cfg.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0], ...cfg.bankDetails[0] }]
       : fin.value.bankDetails,
+    invoicing: {
+      showNotes: cfg.invoicing?.showNotes ?? fin.value.invoicing.showNotes,
+      notesOnInvoice:
+        cfg.invoicing?.notesOnInvoice ?? fin.value.invoicing.notesOnInvoice,
+      noteOnQuotation:
+        cfg.invoicing?.noteOnQuotation ?? fin.value.invoicing.noteOnQuotation,
+      noteOnProforma:
+        cfg.invoicing?.noteOnProforma ?? fin.value.invoicing.noteOnProforma,
+    },
     paymentReminders: {
       enabled:
         cfg.paymentReminders?.enabled ?? fin.value.paymentReminders.enabled,
@@ -80,6 +126,16 @@ const syncFromStore = () => {
         fin.value.paymentReminders.purchaseDaysBefore,
     },
   } as FinancialUiState;
+
+  deals.value = {
+    ...deals.value,
+    ...dealsCfg,
+    quotationStartsSeq:
+      dealsCfg.quotationStartsSeq ?? deals.value.quotationStartsSeq,
+    proformaStartSeq: dealsCfg.proformaStartSeq ?? deals.value.proformaStartSeq,
+  };
+
+  ensureDefaults();
 };
 
 onMounted(syncFromStore);
@@ -94,7 +150,10 @@ const takeSnapshot = () => {
     bankDetails: fin.value.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0] }]
       : [],
+    invoicing: { ...fin.value.invoicing },
     invoiceSequence: fin.value.invoiceSequence,
+    quotationStartsSeq: deals.value.quotationStartsSeq,
+    proformaStartSeq: deals.value.proformaStartSeq,
     paymentReminders: { ...fin.value.paymentReminders },
   };
   return JSON.stringify(snap);
@@ -112,11 +171,11 @@ const nonEmpty = (v?: string | null) => !!String(v ?? "").trim().length;
 const bank0 = computed(
   () =>
     (fin.value.bankDetails && fin.value.bankDetails[0]) ||
-    ({ enabled: false } as BankDetailsItem)
+    ({ enabled: false } as BankDetailsItem),
 );
 
 const isVatValid = computed(
-  () => !fin.value.vat.enabled || nonEmpty(fin.value.vat.registrationNumber)
+  () => !fin.value.vat.enabled || nonEmpty(fin.value.vat.registrationNumber),
 );
 const isBankValid = computed(
   () =>
@@ -126,10 +185,15 @@ const isBankValid = computed(
       nonEmpty(bank0.value.iban) &&
       nonEmpty(bank0.value.accountNumber) &&
       nonEmpty(bank0.value.branch) &&
-      nonEmpty(bank0.value.swiftCode))
+      nonEmpty(bank0.value.swiftCode)),
 );
 const isCurrencyValid = computed(() => nonEmpty(fin.value.currency));
 const isInvoiceValid = computed(() => nonEmpty(fin.value.invoiceSequence));
+const isDealsValid = computed(
+  () =>
+    nonEmpty(deals.value.quotationStartsSeq) &&
+    nonEmpty(deals.value.proformaStartSeq),
+);
 const isRemindersValid = computed(() => {
   if (!fin.value.paymentReminders.enabled) return true;
   const inv = Number(fin.value.paymentReminders.invoiceDaysBefore ?? 0);
@@ -142,7 +206,8 @@ const isValid = computed(
     isBankValid.value &&
     isCurrencyValid.value &&
     isInvoiceValid.value &&
-    isRemindersValid.value
+    isDealsValid.value &&
+    isRemindersValid.value,
 );
 
 const toServerPayload = (): Partial<FinancialConfig> => {
@@ -152,9 +217,18 @@ const toServerPayload = (): Partial<FinancialConfig> => {
     bankDetails: fin.value.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0] }]
       : [],
+    invoicing: { ...fin.value.invoicing },
     invoiceSequence: fin.value.invoiceSequence,
     paymentReminders: { ...fin.value.paymentReminders },
   } as Partial<FinancialConfig>;
+};
+
+const toDealsPayload = (): Partial<DealsConfig> => {
+  return {
+    ...(store.all?.deals || {}),
+    quotationStartsSeq: deals.value.quotationStartsSeq,
+    proformaStartSeq: deals.value.proformaStartSeq,
+  };
 };
 
 const onDiscard = () => {
@@ -164,7 +238,10 @@ const onDiscard = () => {
 
 const onSave = async () => {
   const payload = toServerPayload();
-  const res = await store.saveRemote({ financial: payload } as any);
+  const res = await store.saveRemote({
+    financial: payload,
+    deals: toDealsPayload(),
+  } as any);
   if (res) {
     notifications.push("Financial settings saved", "success", 2500);
     syncFromStore();
@@ -351,9 +428,25 @@ const paymentRemindersEnabled = computed<boolean>({
         <VRow>
           <VCol cols="12" md="6">
             <AppTextField
+              v-model="deals.quotationStartsSeq"
+              :rules="[requiredValidator]"
+              label="Quotation Prefix"
+              placeholder="QTN-"
+            />
+          </VCol>
+          <VCol cols="12" md="6">
+            <AppTextField
+              v-model="deals.proformaStartSeq"
+              :rules="[requiredValidator]"
+              label="Proforma Prefix"
+              placeholder="PF-"
+            />
+          </VCol>
+          <VCol cols="12" md="6">
+            <AppTextField
               v-model="fin.invoiceSequence"
               :rules="[requiredValidator]"
-              label="Sequence starts with..."
+              label="Invoice Prefix / Sequence"
             />
           </VCol>
           <VCol cols="12" md="6">
@@ -381,6 +474,59 @@ const paymentRemindersEnabled = computed<boolean>({
       <VDivider class="mx-5" />
       <VCardText>
         <VRow>
+          <VCol cols="12">
+            <div
+              class="d-flex align-center justify-space-between flex-wrap gap-4"
+            >
+              <div>
+                <h6 class="text-h6">Client Notes On Documents</h6>
+                <p class="text-body-2 mb-0">
+                  Controls the default client note visibility for quotation,
+                  proforma, and invoice documents.
+                </p>
+              </div>
+
+              <VSwitch
+                v-model="fin.invoicing.showNotes"
+                inset
+                hide-details
+                density="compact"
+                class="ma-0"
+              />
+            </div>
+          </VCol>
+          <VCol cols="12" md="6">
+            <AppTextarea
+              v-model="fin.invoicing.noteOnQuotation"
+              label="Quotation Note"
+              placeholder="Prices valid for 14 days from issue date."
+              auto-grow
+              rows="3"
+            />
+          </VCol>
+          <VCol cols="12" md="6">
+            <AppTextarea
+              v-model="fin.invoicing.noteOnProforma"
+              label="Proforma Note"
+              placeholder="Prices valid for 14 days from issue date."
+              auto-grow
+              rows="3"
+            />
+          </VCol>
+          <VCol cols="12" md="6">
+            <AppTextarea
+              v-model="fin.invoicing.notesOnInvoice"
+              label="Invoice Note"
+              placeholder="Payment due within 30 days."
+              auto-grow
+              rows="3"
+            />
+          </VCol>
+        </VRow>
+      </VCardText>
+      <VDivider class="mx-5" />
+      <VCardText>
+        <VRow>
           <VCol cols="12" md="6" class="d-flex align-center flex-wrap">
             <span class="me-2">Remind After Invoice is not Paid after</span>
             <span class="inline-number-with-unit">
@@ -393,13 +539,25 @@ const paymentRemindersEnabled = computed<boolean>({
                 class="field-inline"
                 style="inline-size: 72px"
                 :rules="[requiredValidator]"
-                @keydown="(e: KeyboardEvent) => {
-                  if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
-                }"
-                @input="(e: Event) => {
-                  const val = parseFloat((e.target as HTMLInputElement).value);
-                  if (val < 0 || isNaN(val)) invoiceReminderDays = 0;
-                }"
+                @keydown="
+                  (e: KeyboardEvent) => {
+                    if (
+                      e.key === '-' ||
+                      e.key === 'e' ||
+                      e.key === 'E' ||
+                      e.key === '+'
+                    )
+                      e.preventDefault();
+                  }
+                "
+                @input="
+                  (e: Event) => {
+                    const val = parseFloat(
+                      (e.target as HTMLInputElement).value,
+                    );
+                    if (val < 0 || isNaN(val)) invoiceReminderDays = 0;
+                  }
+                "
               />
               <span>Days</span>
             </span>
@@ -416,13 +574,25 @@ const paymentRemindersEnabled = computed<boolean>({
                 class="field-inline"
                 style="inline-size: 72px"
                 :rules="[requiredValidator]"
-                @keydown="(e: KeyboardEvent) => {
-                  if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
-                }"
-                @input="(e: Event) => {
-                  const val = parseFloat((e.target as HTMLInputElement).value);
-                  if (val < 0 || isNaN(val)) purchaseReminderDays = 0;
-                }"
+                @keydown="
+                  (e: KeyboardEvent) => {
+                    if (
+                      e.key === '-' ||
+                      e.key === 'e' ||
+                      e.key === 'E' ||
+                      e.key === '+'
+                    )
+                      e.preventDefault();
+                  }
+                "
+                @input="
+                  (e: Event) => {
+                    const val = parseFloat(
+                      (e.target as HTMLInputElement).value,
+                    );
+                    if (val < 0 || isNaN(val)) purchaseReminderDays = 0;
+                  }
+                "
               />
               <span>Days</span>
             </span>

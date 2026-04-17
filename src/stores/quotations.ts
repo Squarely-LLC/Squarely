@@ -11,6 +11,7 @@ import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { defineStore } from "pinia";
@@ -114,7 +115,7 @@ function nextQuotationId(items: QuotationRecord[]) {
 }
 
 function formatQuoteNumber(id: number) {
-  return `QT-${id}`;
+  return `${getDocumentSequencePrefix("quotation")}${id}`;
 }
 
 function normaliseRevisionLabel(

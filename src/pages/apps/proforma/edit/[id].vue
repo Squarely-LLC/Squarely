@@ -17,6 +17,7 @@ import {
 } from "@/utils/proformaPreviewDraft";
 import {
   buildQuotationPaymentDetails,
+  formatCurrencyAmount,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
 } from "@/utils/quotationConfig";
@@ -107,7 +108,10 @@ const quotationEmailDraft = computed(() => {
   const to = currentQuotation?.client.companyEmail?.trim() || "";
   const clientName = currentQuotation?.client.name?.trim() || "there";
   const quoteNumber = currentQuotation?.quoteNumber?.trim() || "quotation";
-  const total = Number(currentQuotation?.total || 0).toLocaleString();
+  const total = formatCurrencyAmount(
+    currentQuotation?.total,
+    configStore.financial,
+  );
   const expiryDate = currentQuotation?.dueDate?.trim() || "";
 
   return {
@@ -117,7 +121,7 @@ const quotationEmailDraft = computed(() => {
 
 Please find proforma ${quoteNumber} attached.
 
-Proforma amount: $${total}
+Proforma amount: ${total}
 ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,
@@ -161,7 +165,10 @@ const buildPreviewQuotationDraft = () => {
       : null;
   previewQuotation.quotation.balance =
     getProformaOutstandingBalance(previewQuotation);
-  previewQuotation.paymentDetails.totalDue = `$${previewQuotation.quotation.balance.toLocaleString()}`;
+  previewQuotation.paymentDetails.totalDue = formatCurrencyAmount(
+    previewQuotation.quotation.balance,
+    configStore.financial,
+  );
 
   return previewQuotation;
 };
@@ -171,7 +178,7 @@ const recordQuotationPayment = (payment: ProformaPaymentInput) => {
 
   quotationData.value = applyProformaPayment(quotationData.value, payment);
   notifications.push(
-    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    `Payment of ${formatCurrencyAmount(payment.amount, configStore.financial)} added successfully.`,
     "success",
     3500,
   );
@@ -391,7 +398,10 @@ const saveQuotation = () => {
   quotationData.value.quotation.balance = getProformaOutstandingBalance(
     quotationData.value,
   );
-  quotationData.value.paymentDetails.totalDue = `$${quotationData.value.quotation.balance.toLocaleString()}`;
+  quotationData.value.paymentDetails.totalDue = formatCurrencyAmount(
+    quotationData.value.quotation.balance,
+    configStore.financial,
+  );
   quotationData.value.paymentLink =
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null

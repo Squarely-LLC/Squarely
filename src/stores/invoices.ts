@@ -9,10 +9,11 @@ import type {
   PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import {
-  buildQuotationNote,
+  buildDocumentNote,
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { defineStore } from "pinia";
@@ -124,12 +125,7 @@ function nextInvoiceId(items: InvoiceRecord[]) {
 }
 
 function formatQuoteNumber(id: number) {
-  const prefix =
-    loadActiveAppConfigurations()
-      .deals?.proformaStartSeq?.trim()
-      .replace(/^PF-?/i, "INV-") || "INV-";
-
-  return `${prefix}${id}`;
+  return `${getDocumentSequencePrefix("invoice")}${id}`;
 }
 
 function normaliseInvoiceStatus(
@@ -522,7 +518,8 @@ function normaliseInvoiceRecord(
       : defaultPaymentDetails(total),
     payments: ensurePayments(payload.payments),
     purchasedProducts: ensureProducts(payload.purchasedProducts),
-    note: payload.note?.trim() || buildQuotationNote(config.financial, 7),
+    note:
+      payload.note?.trim() || buildDocumentNote(config.financial, "invoice", 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     totalFx: payload.totalFx?.trim() || null,

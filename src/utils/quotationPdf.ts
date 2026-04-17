@@ -1,5 +1,10 @@
 import type { QuotationRecord } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import {
+  formatCurrencyAmount,
+  getVatSummary,
+  loadActiveAppConfigurations,
+} from "@/utils/quotationConfig";
+import {
   getLineTotal,
   getQuotationDiscountTotal,
   getQuotationGrandTotal,
@@ -78,6 +83,8 @@ const buildContentLines = ({
   documentLabel = "Quotation",
   recipientLabel = `${documentLabel} To`,
 }: CreateQuotationPdfFileOptions) => {
+  const financialConfig = loadActiveAppConfigurations().financial;
+  const vatSummary = getVatSummary(financialConfig);
   const subtotal = getQuotationSubtotal(quotationRecord.purchasedProducts);
   const discount = getQuotationDiscountTotal(quotationRecord.purchasedProducts);
   const total = getQuotationGrandTotal(quotationRecord.purchasedProducts);
@@ -114,15 +121,15 @@ const buildContentLines = ({
   pushWrapped("Items");
   for (const item of quotationRecord.purchasedProducts) {
     pushWrapped(
-      `${item.title || "Untitled item"} | ${item.description || "-"} | Qty ${item.hours} | Price $${Number(item.cost || 0).toLocaleString()} | Total $${getLineTotal(item).toLocaleString()}`,
+      `${item.title || "Untitled item"} | ${item.description || "-"} | Qty ${item.hours} | Price ${formatCurrencyAmount(item.cost, financialConfig)} | Total ${formatCurrencyAmount(getLineTotal(item), financialConfig)}`,
     );
   }
   lines.push("");
 
-  pushWrapped(`Subtotal: $${subtotal.toLocaleString()}`);
-  pushWrapped(`Discount: $${discount.toLocaleString()}`);
-  pushWrapped("VAT: Included");
-  pushWrapped(`Total: $${total.toLocaleString()}`);
+  pushWrapped(`Subtotal: ${formatCurrencyAmount(subtotal, financialConfig)}`);
+  pushWrapped(`Discount: ${formatCurrencyAmount(discount, financialConfig)}`);
+  pushWrapped(`${vatSummary.label}: ${vatSummary.value}`);
+  pushWrapped(`Total: ${formatCurrencyAmount(total, financialConfig)}`);
   if (quotationRecord.totalFx?.trim()) {
     pushWrapped(`Total FX: ${quotationRecord.totalFx}`);
   }
