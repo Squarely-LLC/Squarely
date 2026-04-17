@@ -2,7 +2,13 @@
 import { requiredValidator, urlValidator } from "@/@core/utils/validators";
 import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
-import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import {
+  applyQuotationPayment,
+  cloneQuotationRecord,
+  getQuotationOutstandingBalance,
+  useQuotationsStore,
+  type QuotationPaymentInput,
+} from "@/stores/quotations";
 import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
@@ -89,6 +95,9 @@ const companyAddressLines = computed(() =>
 const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(configStore.legal),
 );
+const currentQuotationBalance = computed(() =>
+  quotationData.value ? getQuotationOutstandingBalance(quotationData.value) : 0,
+);
 
 const quotationEmailDraft = computed(() => {
   const currentQuotation = quotationData.value?.quotation;
@@ -133,6 +142,9 @@ const buildPreviewQuotationDraft = () => {
     configStore.legal,
     configStore.financial,
   );
+  previewQuotation.paymentDetails.totalDue =
+    quotationData.value?.paymentDetails.totalDue ||
+    previewQuotation.paymentDetails.totalDue;
   previewQuotation.paymentLink =
     previewQuotation.paymentMethod === "Credit Card"
       ? previewQuotation.paymentLink?.trim() || null
@@ -145,8 +157,17 @@ const buildPreviewQuotationDraft = () => {
     previewQuotation.approvalMode === "Request Approval"
       ? (previewQuotation.approverEmployeeId ?? null)
       : null;
+  previewQuotation.quotation.balance =
+    getQuotationOutstandingBalance(previewQuotation);
+  previewQuotation.paymentDetails.totalDue = `$${previewQuotation.quotation.balance.toLocaleString()}`;
 
   return previewQuotation;
+};
+
+const recordQuotationPayment = (payment: QuotationPaymentInput) => {
+  if (!quotationData.value) return;
+
+  quotationData.value = applyQuotationPayment(quotationData.value, payment);
 };
 
 const createDraftQuotationPdfFile = (previewQuotation: QuotationData) =>
@@ -358,6 +379,10 @@ const saveQuotation = () => {
     configStore.legal,
     configStore.financial,
   );
+  quotationData.value.quotation.balance = getQuotationOutstandingBalance(
+    quotationData.value,
+  );
+  quotationData.value.paymentDetails.totalDue = `$${quotationData.value.quotation.balance.toLocaleString()}`;
   quotationData.value.paymentLink =
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
@@ -603,6 +628,9 @@ onBeforeUnmount(() => {
     />
     <QuotationAddPaymentDrawer
       v-model:is-drawer-open="isAddPaymentSidebarActive"
+      :current-balance="currentQuotationBalance"
+      :default-payment-method="quotationData?.paymentMethod"
+      @submit="recordQuotationPayment"
     />
   </VRow>
 

@@ -4,6 +4,7 @@ import type {
   PaymentDetails,
   PurchasedProduct,
   Quotation,
+  QuotationPaymentEntry,
   QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import {
@@ -58,6 +59,12 @@ function clonePaymentDetails(paymentDetails: PaymentDetails): PaymentDetails {
   return safeClone(paymentDetails, { ...paymentDetails });
 }
 
+function cloneQuotationPayment(
+  payment: QuotationPaymentEntry,
+): QuotationPaymentEntry {
+  return safeClone(payment, { ...payment });
+}
+
 function clonePurchasedProduct(product: PurchasedProduct): PurchasedProduct {
   return safeClone(product, { ...product });
 }
@@ -67,6 +74,9 @@ export function cloneQuotationRecord(record: QuotationRecord): QuotationRecord {
     ...record,
     quotation: cloneQuotation(record.quotation),
     paymentDetails: clonePaymentDetails(record.paymentDetails),
+    payments: (record.payments ?? []).map((payment) =>
+      cloneQuotationPayment(payment),
+    ),
     purchasedProducts: record.purchasedProducts.map((product) =>
       clonePurchasedProduct(product),
     ),
@@ -211,6 +221,7 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.paymentMethod === "Credit Card"
       ? cloned.paymentLink?.trim() || null
       : null;
+  cloned.payments = ensurePayments(cloned.payments);
   cloned.totalFx = cloned.totalFx?.trim() || null;
   cloned.showClientNote =
     cloned.showClientNote ?? config.financial?.invoicing?.showNotes ?? true;
@@ -222,6 +233,8 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.approvalMode === "Request Approval"
       ? (cloned.approverEmployeeId ?? null)
       : null;
+
+  syncQuotationPaymentState(cloned);
 
   return cloned;
 }
@@ -336,6 +349,100 @@ function ensureProducts(
   }));
 }
 
+function ensurePayments(
+  payments: QuotationPaymentEntry[] | undefined | null,
+): QuotationPaymentEntry[] {
+  if (!Array.isArray(payments) || !payments.length) return [];
+
+  return payments.map((payment, index) => ({
+    id: payment.id?.trim() || `payment-${payment.date || "undated"}-${index}`,
+    amount: Math.max(0, Number(payment.amount) || 0),
+    date: payment.date?.trim() || new Date().toISOString().slice(0, 10),
+    method: payment.method?.trim() || "Cash",
+    note: payment.note?.trim() || "",
+    createdAt: payment.createdAt?.trim() || new Date().toISOString(),
+    balanceBefore: Math.max(0, Number(payment.balanceBefore) || 0),
+    balanceAfter: Math.max(0, Number(payment.balanceAfter) || 0),
+  }));
+}
+
+function formatCurrencyAmount(value: number) {
+  return `$${Math.max(0, Number(value) || 0).toLocaleString()}`;
+}
+
+export type QuotationPaymentInput = {
+  amount: number;
+  date: string;
+  method: string;
+  note: string;
+};
+
+export function getQuotationOutstandingBalance(record: QuotationRecord) {
+  const total = Math.max(0, Number(record.quotation.total) || 0);
+  const payments = ensurePayments(record.payments);
+
+  if (payments.length) {
+    const paidAmount = payments.reduce(
+      (sum, payment) => sum + Math.max(0, Number(payment.amount) || 0),
+      0,
+    );
+
+    return Math.max(0, total - paidAmount);
+  }
+
+  const storedBalance = Math.max(0, Number(record.quotation.balance) || 0);
+
+  return storedBalance > 0 ? storedBalance : total;
+}
+
+function syncQuotationPaymentState(record: QuotationRecord) {
+  record.payments = ensurePayments(record.payments);
+  record.quotation.balance = getQuotationOutstandingBalance(record);
+  record.paymentDetails.totalDue = formatCurrencyAmount(
+    record.quotation.balance,
+  );
+
+  return record;
+}
+
+export function applyQuotationPayment(
+  record: QuotationRecord,
+  paymentInput: QuotationPaymentInput,
+) {
+  const nextRecord = cloneQuotationRecord(record);
+  const balanceBefore = getQuotationOutstandingBalance(nextRecord);
+  const amount = Math.min(
+    Math.max(0, Number(paymentInput.amount) || 0),
+    balanceBefore,
+  );
+  const paymentDate =
+    paymentInput.date?.trim() || new Date().toISOString().slice(0, 10);
+  const paymentMethod = paymentInput.method?.trim() || "Cash";
+  const paymentNote = paymentInput.note?.trim() || "";
+  const balanceAfter = Math.max(0, balanceBefore - amount);
+
+  nextRecord.payments = [
+    ...ensurePayments(nextRecord.payments),
+    {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `payment-${Date.now()}`,
+      amount,
+      date: paymentDate,
+      method: paymentMethod,
+      note: paymentNote,
+      createdAt: new Date().toISOString(),
+      balanceBefore,
+      balanceAfter,
+    },
+  ];
+  nextRecord.quotation.balance = balanceAfter;
+  nextRecord.paymentDetails.totalDue = formatCurrencyAmount(balanceAfter);
+
+  return nextRecord;
+}
+
 function normaliseQuotationRecord(
   payload: QuotationPayload,
   assignedId: number,
@@ -345,7 +452,7 @@ function normaliseQuotationRecord(
   const client = ensureClient(quotation.client);
   const total = Number(quotation.total) || 0;
 
-  return {
+  const record: QuotationRecord = {
     quotation: {
       id: assignedId,
       quoteNumber:
@@ -380,6 +487,7 @@ function normaliseQuotationRecord(
     paymentDetails: payload.paymentDetails
       ? clonePaymentDetails(payload.paymentDetails)
       : defaultPaymentDetails(total),
+    payments: ensurePayments(payload.payments),
     purchasedProducts: ensureProducts(payload.purchasedProducts),
     note: payload.note?.trim() || buildQuotationNote(config.financial, 7),
     showClientNote:
@@ -403,6 +511,8 @@ function normaliseQuotationRecord(
     thanksNote:
       payload.thanksNote?.trim() || buildQuotationThanksNote(config.legal),
   };
+
+  return syncQuotationPaymentState(record);
 }
 
 function mergeQuotationRecord(
@@ -454,6 +564,10 @@ function mergeQuotationRecord(
     paymentDetails: patch.paymentDetails
       ? clonePaymentDetails(patch.paymentDetails)
       : clonePaymentDetails(original.paymentDetails),
+    payments:
+      patch.payments === undefined
+        ? ensurePayments(original.payments)
+        : ensurePayments(patch.payments),
     purchasedProducts: ensureProducts(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
@@ -491,11 +605,7 @@ function mergeQuotationRecord(
         : (patch.approverEmployeeId ?? null)
       : null;
 
-  merged.paymentDetails.totalDue = `$${Number(
-    merged.quotation.total || 0,
-  ).toLocaleString()}`;
-
-  return cloneQuotationRecord(merged);
+  return cloneQuotationRecord(syncQuotationPaymentState(merged));
 }
 
 const seedQuotations = () => cloneQuotationArray(database);
@@ -606,6 +716,14 @@ export const useQuotationsStore = defineStore("quotations", {
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
       return this.byId(id);
+    },
+
+    recordPayment(id: number | string, payment: QuotationPaymentInput) {
+      const current = this.byId(id);
+      if (!current) return null;
+
+      const updated = applyQuotationPayment(current, payment);
+      return this.updateQuotation(id, updated);
     },
 
     removeQuotation(id: number | string) {

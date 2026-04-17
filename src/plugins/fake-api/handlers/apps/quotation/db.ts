@@ -69,6 +69,7 @@ const buildRecord = (
     iban: "LB12345678901234567890123456",
     swiftCode: "BYBALBBX",
   },
+  payments: [],
   purchasedProducts: [
     {
       catalogueItemId: null,

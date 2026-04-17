@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
-import { useQuotationsStore } from "@/stores/quotations";
+import {
+  applyQuotationPayment,
+  getQuotationOutstandingBalance,
+  useQuotationsStore,
+  type QuotationPaymentInput,
+} from "@/stores/quotations";
 import { createPdfFileFromElement } from "@/utils/domPdf";
 import {
   buildQuotationPaymentDetails,
@@ -10,7 +15,10 @@ import {
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
-import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
+import {
+  loadQuotationPreviewDraft,
+  saveQuotationPreviewDraft,
+} from "@/utils/quotationPreviewDraft";
 import {
   getLineTotal,
   getQuotationDiscountTotal,
@@ -43,12 +51,13 @@ type EmbeddedPreviewPayload = {
 };
 
 const embeddedPreviewPayload = ref<EmbeddedPreviewPayload | null>(null);
+const draftPreviewState = ref(loadQuotationPreviewDraft());
 
 const draftPreview = computed(() => {
   if (isEmbeddedActionFrame) return null;
   if (route.query.draft !== "1") return null;
 
-  const previewDraft = loadQuotationPreviewDraft();
+  const previewDraft = draftPreviewState.value;
   if (!previewDraft) return null;
   if (String(previewDraft.quotation.quotation.id) !== String(route.params.id)) {
     return null;
@@ -96,12 +105,12 @@ const paymentDetails = computed(() => {
   if (!quotationRecord.value) return null;
 
   return {
-    ...quotationRecord.value.paymentDetails,
     ...buildQuotationPaymentDetails(
       quotationRecord.value.quotation.total,
       legalConfiguration.value,
       financialConfiguration.value,
     ),
+    ...quotationRecord.value.paymentDetails,
   };
 });
 const purchasedProducts = computed(
@@ -123,6 +132,11 @@ const isSendPaymentSidebarVisible = ref(false);
 const hasExecutedAutoAction = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const quotationPdfTarget = ref<any | null>(null);
+const currentQuotationBalance = computed(() =>
+  quotationRecord.value
+    ? getQuotationOutstandingBalance(quotationRecord.value)
+    : 0,
+);
 
 const printQuotation = () => {
   window.print();
@@ -236,6 +250,26 @@ const shareQuotationWithOthers = async () => {
     title: pdfFile.name,
     text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
   });
+};
+
+const recordQuotationPayment = (payment: QuotationPaymentInput) => {
+  const currentRecord = quotationRecord.value;
+  if (!currentRecord) return;
+
+  const updatedRecord = applyQuotationPayment(currentRecord, payment);
+
+  if (draftPreview.value) {
+    const updatedDraft = {
+      source: draftPreview.value.source,
+      quotation: updatedRecord,
+    };
+
+    draftPreviewState.value = updatedDraft;
+    saveQuotationPreviewDraft(updatedDraft);
+    return;
+  }
+
+  quotationsStore.updateQuotation(updatedRecord.quotation.id, updatedRecord);
 };
 
 const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
@@ -660,6 +694,9 @@ if (!isEmbeddedActionFrame) {
 
     <QuotationAddPaymentDrawer
       v-model:is-drawer-open="isAddPaymentSidebarVisible"
+      :current-balance="currentQuotationBalance"
+      :default-payment-method="quotationRecord?.paymentMethod"
+      @submit="recordQuotationPayment"
     />
 
     <EmailDialog

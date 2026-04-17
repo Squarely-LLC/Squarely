@@ -1,44 +1,90 @@
 <script setup lang="ts">
-import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
+import type { QuotationPaymentInput } from "@/stores/quotations";
+import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
-interface SubmitData {
-  quotationBalance: string
-  paymentAmount: string
-  paymentDate: string
-  paymentMethod: string
-  paymentNote: string
-}
 interface Emit {
-  (e: 'update:isDrawerOpen', value: boolean): void
-  (e: 'submit', value: SubmitData): void
+  (e: "update:isDrawerOpen", value: boolean): void;
+  (e: "submit", value: QuotationPaymentInput): void;
 }
 
 interface Props {
-  isDrawerOpen: boolean
+  isDrawerOpen: boolean;
+  currentBalance: number;
+  defaultPaymentMethod?: string | null;
 }
-const props = defineProps<Props>()
-const emit = defineEmits<Emit>()
+const props = defineProps<Props>();
+const emit = defineEmits<Emit>();
 
-const quotationBalance = ref()
-const paymentAmount = ref()
-const paymentDate = ref('')
-const paymentMethod = ref()
-const paymentNote = ref('')
+const quotationBalance = ref("");
+const paymentAmount = ref<string | number>("");
+const paymentDate = ref("");
+const paymentMethod = ref("");
+const paymentNote = ref("");
+const paymentAmountError = ref<string | null>(null);
+const paymentDateError = ref<string | null>(null);
+const paymentMethodError = ref<string | null>(null);
+
+const resetForm = () => {
+  quotationBalance.value = props.currentBalance.toLocaleString();
+  paymentAmount.value = "";
+  paymentDate.value = new Date().toISOString().slice(0, 10);
+  paymentMethod.value = props.defaultPaymentMethod?.trim() || "Cash";
+  paymentNote.value = "";
+  paymentAmountError.value = null;
+  paymentDateError.value = null;
+  paymentMethodError.value = null;
+};
+
+watch(
+  () =>
+    [
+      props.isDrawerOpen,
+      props.currentBalance,
+      props.defaultPaymentMethod,
+    ] as const,
+  ([isDrawerOpen]) => {
+    if (!isDrawerOpen) return;
+    resetForm();
+  },
+  { immediate: true },
+);
 
 const onSubmit = () => {
-  emit('update:isDrawerOpen', false)
-  emit('submit', {
-    quotationBalance: quotationBalance.value,
-    paymentAmount: paymentAmount.value,
-    paymentDate: paymentDate.value,
-    paymentMethod: paymentMethod.value,
-    paymentNote: paymentNote.value,
-  })
-}
+  const amount = Math.max(0, Number(paymentAmount.value) || 0);
+
+  paymentAmountError.value =
+    amount > 0
+      ? amount > props.currentBalance
+        ? "Payment cannot exceed the remaining balance"
+        : null
+      : "Enter a payment amount greater than 0";
+  paymentDateError.value = paymentDate.value?.trim()
+    ? null
+    : "Select a payment date";
+  paymentMethodError.value = paymentMethod.value?.trim()
+    ? null
+    : "Select a payment method";
+
+  if (
+    paymentAmountError.value ||
+    paymentDateError.value ||
+    paymentMethodError.value
+  ) {
+    return;
+  }
+
+  emit("update:isDrawerOpen", false);
+  emit("submit", {
+    amount,
+    date: paymentDate.value,
+    method: paymentMethod.value,
+    note: paymentNote.value,
+  });
+};
 
 const handleDrawerModelValueUpdate = (val: boolean) => {
-  emit('update:isDrawerOpen', val)
-}
+  emit("update:isDrawerOpen", val);
+};
 </script>
 
 <template>
@@ -68,7 +114,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   id="Quotation-balance"
                   v-model="quotationBalance"
                   label="Quotation Balance"
-                  type="number"
+                  readonly
                   placeholder="$99"
                 />
               </VCol>
@@ -80,6 +126,9 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   label="Payment Amount"
                   type="number"
                   placeholder="$99"
+                  :error-messages="
+                    paymentAmountError ? [paymentAmountError] : []
+                  "
                 />
               </VCol>
 
@@ -89,6 +138,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   v-model="paymentDate"
                   label="Payment Date"
                   placeholder="Select Date"
+                  :error-messages="paymentDateError ? [paymentDateError] : []"
                 />
               </VCol>
 
@@ -98,7 +148,16 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   v-model="paymentMethod"
                   label="Select Payment Method"
                   placeholder="Select Payment Method"
-                  :items="['Cash', 'Bank Transfer', 'Debit', 'Credit', 'PayPal']"
+                  :items="[
+                    'Cash',
+                    'Bank Transfer',
+                    'Debit',
+                    'Credit',
+                    'PayPal',
+                  ]"
+                  :error-messages="
+                    paymentMethodError ? [paymentMethodError] : []
+                  "
                 />
               </VCol>
 
@@ -112,12 +171,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
               </VCol>
 
               <VCol cols="12">
-                <VBtn
-                  type="submit"
-                  class="me-3"
-                >
-                  Send
-                </VBtn>
+                <VBtn type="submit" class="me-3"> Save Payment </VBtn>
 
                 <VBtn
                   type="reset"

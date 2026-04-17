@@ -117,12 +117,12 @@ const showClientCompany = computed(() => {
   return Boolean(clientCompany) && clientCompany !== clientName;
 });
 const displayPaymentDetails = computed(() => ({
-  ...props.data.paymentDetails,
   ...buildQuotationPaymentDetails(
     total.value,
     configStore.legal,
     configStore.financial,
   ),
+  ...props.data.paymentDetails,
 }));
 const companyLogoUrl = ref("");
 const companyName = computed(

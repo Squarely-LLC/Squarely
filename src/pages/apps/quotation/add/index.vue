@@ -6,7 +6,11 @@ import type { Client } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
-import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import {
+  cloneQuotationRecord,
+  getQuotationOutstandingBalance,
+  useQuotationsStore,
+} from "@/stores/quotations";
 import {
   buildQuotationNote,
   buildQuotationPaymentDetails,
@@ -93,6 +97,7 @@ const buildBlankQuotation = (): QuotationData => {
       configStore.legal,
       configStore.financial,
     ),
+    payments: [],
     purchasedProducts: [
       {
         catalogueItemId: null,
@@ -356,6 +361,10 @@ const saveQuotation = () => {
     configStore.legal,
     configStore.financial,
   );
+  quotationData.value.quotation.balance = getQuotationOutstandingBalance(
+    quotationData.value,
+  );
+  quotationData.value.paymentDetails.totalDue = `$${quotationData.value.quotation.balance.toLocaleString()}`;
   quotationData.value.paymentLink =
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
@@ -396,6 +405,8 @@ const openPreview = async () => {
     configStore.legal,
     configStore.financial,
   );
+  previewDraft.quotation.balance = getQuotationOutstandingBalance(previewDraft);
+  previewDraft.paymentDetails.totalDue = `$${previewDraft.quotation.balance.toLocaleString()}`;
   previewDraft.paymentLink =
     previewDraft.paymentMethod === "Credit Card"
       ? previewDraft.paymentLink?.trim() || null

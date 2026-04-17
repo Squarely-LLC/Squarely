@@ -56,11 +56,23 @@ export interface PurchasedProduct {
   description: string;
 }
 
+export interface QuotationPaymentEntry {
+  id: string;
+  amount: number;
+  date: string;
+  method: string;
+  note: string;
+  createdAt: string;
+  balanceBefore: number;
+  balanceAfter: number;
+}
+
 export type QuotationApprovalMode = "Automatic" | "Request Approval";
 
 export interface QuotationRecord {
   quotation: Quotation;
   paymentDetails: PaymentDetails;
+  payments: QuotationPaymentEntry[];
   purchasedProducts: PurchasedProduct[];
   note: string;
   showClientNote: boolean;
