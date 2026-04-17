@@ -1,12 +1,7 @@
 <script setup lang="ts">
+import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useQuotationsStore } from "@/stores/quotations";
-import {
-  getLineTotal,
-  getQuotationDiscountTotal,
-  getQuotationGrandTotal,
-  getQuotationSubtotal,
-} from "@/utils/quotationPricing";
 import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
@@ -14,32 +9,54 @@ import {
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
+import {
+  getLineTotal,
+  getQuotationDiscountTotal,
+  getQuotationGrandTotal,
+  getQuotationSubtotal,
+} from "@/utils/quotationPricing";
 import { formatSystemDate } from "@core/utils/formatters";
 
 import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
 import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
+import type { QuotationRecord } from "@db/apps/quotation/types";
 
 const route = useRoute("apps-quotation-preview-id");
+const isEmbeddedActionFrame = route.query.embedded === "1";
 const configStore = useConfigStore();
-configStore.init();
 const quotationsStore = useQuotationsStore();
-quotationsStore.init();
+
+if (!isEmbeddedActionFrame) {
+  configStore.init();
+  quotationsStore.init();
+}
+
+type EmbeddedPreviewPayload = {
+  action: "print" | "download";
+  quotation: QuotationRecord;
+  legal: AppConfigurations["legal"];
+  financial: AppConfigurations["financial"];
+};
+
+const embeddedPreviewPayload = ref<EmbeddedPreviewPayload | null>(null);
 
 const draftPreview = computed(() => {
+  if (isEmbeddedActionFrame) return null;
   if (route.query.draft !== "1") return null;
 
   const previewDraft = loadQuotationPreviewDraft();
   if (!previewDraft) return null;
-  if (
-    String(previewDraft.quotation.quotation.id) !== String(route.params.id)
-  ) {
+  if (String(previewDraft.quotation.quotation.id) !== String(route.params.id)) {
     return null;
   }
 
   return previewDraft;
 });
 const quotationRecord = computed(
-  () => draftPreview.value?.quotation ?? quotationsStore.byId(route.params.id),
+  () =>
+    embeddedPreviewPayload.value?.quotation ??
+    draftPreview.value?.quotation ??
+    quotationsStore.byId(route.params.id),
 );
 const canReturnToEditor = computed(() => Boolean(draftPreview.value));
 const editRoute = computed(() => {
@@ -53,6 +70,12 @@ const editRoute = computed(() => {
   };
 });
 const quotation = computed(() => quotationRecord.value?.quotation ?? null);
+const legalConfiguration = computed(
+  () => embeddedPreviewPayload.value?.legal ?? configStore.legal,
+);
+const financialConfiguration = computed(
+  () => embeddedPreviewPayload.value?.financial ?? configStore.financial,
+);
 const paymentMethod = computed(
   () => quotationRecord.value?.paymentMethod || "Bank Transfer",
 );
@@ -72,8 +95,8 @@ const paymentDetails = computed(() => {
     ...quotationRecord.value.paymentDetails,
     ...buildQuotationPaymentDetails(
       quotationRecord.value.quotation.total,
-      configStore.legal,
-      configStore.financial,
+      legalConfiguration.value,
+      financialConfiguration.value,
     ),
   };
 });
@@ -82,13 +105,13 @@ const purchasedProducts = computed(
 );
 const companyLogoUrl = ref("");
 const companyName = computed(
-  () => configStore.legal?.companyName?.trim() || "Squarely",
+  () => legalConfiguration.value?.companyName?.trim() || "Squarely",
 );
 const companyAddressLines = computed(() =>
-  getQuotationCompanyAddressLines(configStore.legal),
+  getQuotationCompanyAddressLines(legalConfiguration.value),
 );
 const companyContactLines = computed(() =>
-  getQuotationCompanyContactLines(configStore.legal),
+  getQuotationCompanyContactLines(legalConfiguration.value),
 );
 
 const isAddPaymentSidebarVisible = ref(false);
@@ -99,7 +122,10 @@ const printQuotation = () => {
   window.print();
 };
 
-const withTemporaryDocumentTitle = async (title: string, callback: () => void) => {
+const withTemporaryDocumentTitle = async (
+  title: string,
+  callback: () => void,
+) => {
   const previousTitle = document.title;
   document.title = title;
 
@@ -126,46 +152,86 @@ const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
 const discountTotal = computed(() =>
   getQuotationDiscountTotal(purchasedProducts.value),
 );
-const grandTotal = computed(() => getQuotationGrandTotal(purchasedProducts.value));
+const grandTotal = computed(() =>
+  getQuotationGrandTotal(purchasedProducts.value),
+);
 
 watch(
-  () => configStore.legal?.logo,
+  () => legalConfiguration.value?.logo,
   async (logo) => {
     companyLogoUrl.value = await resolveQuotationLogoUrl(logo);
   },
   { immediate: true },
 );
 
-watch(
-  () => [
-    route.query.print,
-    route.query.download,
-    route.query.email,
-    quotation.value?.id,
-  ] as const,
-  async ([print, download, email, quotationId]) => {
-    if (!quotationId || hasExecutedAutoAction.value) return;
+const handleEmbeddedPreviewMessage = async (event: MessageEvent) => {
+  if (!isEmbeddedActionFrame) return;
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "quotation-preview-action") return;
 
-    if (email === "1") {
-      hasExecutedAutoAction.value = true;
-      openSendQuotationDrawer();
-      return;
-    }
+  const payload = event.data.payload as EmbeddedPreviewPayload | undefined;
+  if (!payload?.quotation) return;
 
-    if (download === "1") {
-      hasExecutedAutoAction.value = true;
-      await downloadQuotation();
-      return;
-    }
+  embeddedPreviewPayload.value = payload;
+  await nextTick();
 
-    if (print === "1") {
-      hasExecutedAutoAction.value = true;
-      await nextTick();
-      window.print();
-    }
-  },
-  { immediate: true },
-);
+  if (payload.action === "download") {
+    await downloadQuotation();
+    return;
+  }
+
+  window.print();
+};
+
+onMounted(() => {
+  if (!isEmbeddedActionFrame) return;
+
+  window.addEventListener("message", handleEmbeddedPreviewMessage);
+  window.parent?.postMessage(
+    { type: "quotation-preview-ready" },
+    window.location.origin,
+  );
+});
+
+onBeforeUnmount(() => {
+  if (!isEmbeddedActionFrame) return;
+
+  window.removeEventListener("message", handleEmbeddedPreviewMessage);
+});
+
+if (!isEmbeddedActionFrame) {
+  watch(
+    () =>
+      [
+        route.query.print,
+        route.query.download,
+        route.query.email,
+        quotation.value?.id,
+      ] as const,
+    async ([print, download, email, quotationId]) => {
+      if (!quotationId || hasExecutedAutoAction.value) return;
+
+      if (email === "1") {
+        hasExecutedAutoAction.value = true;
+        openSendQuotationDrawer();
+        return;
+      }
+
+      if (download === "1") {
+        hasExecutedAutoAction.value = true;
+        await downloadQuotation();
+        return;
+      }
+
+      if (print === "1") {
+        hasExecutedAutoAction.value = true;
+        await nextTick();
+        window.print();
+      }
+    },
+    { immediate: true },
+  );
+}
 </script>
 
 <template>
@@ -310,7 +376,9 @@ watch(
             </tbody>
           </VTable>
 
-          <div class="d-flex justify-space-between flex-column flex-sm-row print-row">
+          <div
+            class="d-flex justify-space-between flex-column flex-sm-row print-row"
+          >
             <div class="mb-2">
               <div class="d-flex align-center mb-1">
                 <h6 class="text-h6 me-2">Salesperson:</h6>
@@ -324,7 +392,9 @@ watch(
                 <tbody>
                   <tr>
                     <td class="pe-16">Subtotal:</td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">
                         ${{ subtotal.toLocaleString() }}
                       </h6>
@@ -332,7 +402,9 @@ watch(
                   </tr>
                   <tr>
                     <td class="pe-16">Discount:</td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">
                         ${{ discountTotal.toLocaleString() }}
                       </h6>
@@ -340,7 +412,9 @@ watch(
                   </tr>
                   <tr>
                     <td class="pe-16">VAT:</td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">Included</h6>
                     </td>
                   </tr>
@@ -353,7 +427,9 @@ watch(
                 <tbody>
                   <tr>
                     <td class="pe-16">Total:</td>
-                    <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
                       <h6 class="text-base font-weight-medium">
                         ${{ grandTotal.toLocaleString() }}
                       </h6>
@@ -475,8 +551,8 @@ watch(
 }
 
 .quotation-company-title {
-  line-height: 1.2;
   margin: 0;
+  line-height: 1.2;
 }
 
 .quotation-preview-table {

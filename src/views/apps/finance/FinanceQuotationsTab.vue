@@ -3,7 +3,7 @@ import { emailValidator, requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
-import { useQuotationsStore } from "@/stores/quotations";
+import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
@@ -29,6 +29,12 @@ const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
 const isSendQuotationDialogOpen = ref(false);
 const expanded = ref<number[]>([]);
+const previewActionFrame = ref<HTMLIFrameElement | null>(null);
+const isPreviewActionFrameReady = ref(false);
+const pendingPreviewAction = ref<{
+  quotationId: number;
+  action: "print" | "download";
+} | null>(null);
 const router = useRouter();
 const pendingEmailQuotationId = ref<number | null>(null);
 
@@ -92,6 +98,108 @@ const allQuotations = computed(() =>
   allQuotationRecords.value
     .map((record) => record.quotation)
     .filter((quotation) => !quotation.parentQuotationId),
+);
+
+const ensurePreviewActionFrame = () => {
+  if (!previewActionFrame.value) {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.tabIndex = -1;
+    iframe.style.position = "fixed";
+    iframe.style.inlineSize = "0";
+    iframe.style.blockSize = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+    previewActionFrame.value = iframe;
+  }
+
+  if (!previewActionFrame.value.src) {
+    const preloadQuotationId = allQuotations.value[0]?.id;
+    if (!preloadQuotationId) return;
+
+    const routeLocation = router.resolve({
+      name: "apps-quotation-preview-id",
+      params: { id: preloadQuotationId },
+      query: { embedded: "1" },
+    });
+
+    previewActionFrame.value.src = routeLocation.href;
+  }
+};
+
+const clonePreviewPayloadSection = <T,>(value: T): T => {
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(value);
+    } catch {
+      // Fall through to JSON cloning for reactive proxies.
+    }
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T;
+};
+
+const sendPreviewAction = (
+  quotationId: number,
+  action: "print" | "download",
+) => {
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (!quotationRecord || !previewActionFrame.value?.contentWindow) return;
+
+  previewActionFrame.value.contentWindow.postMessage(
+    {
+      type: "quotation-preview-action",
+      payload: {
+        action,
+        quotation: cloneQuotationRecord(quotationRecord),
+        legal: clonePreviewPayloadSection(configStore.legal),
+        financial: clonePreviewPayloadSection(configStore.financial),
+      },
+    },
+    window.location.origin,
+  );
+};
+
+const flushPendingPreviewAction = () => {
+  const pendingAction = pendingPreviewAction.value;
+  if (!pendingAction || !isPreviewActionFrameReady.value) return;
+
+  sendPreviewAction(pendingAction.quotationId, pendingAction.action);
+  pendingPreviewAction.value = null;
+};
+
+const handlePreviewActionFrameMessage = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "quotation-preview-ready") return;
+
+  isPreviewActionFrameReady.value = true;
+  flushPendingPreviewAction();
+};
+
+onMounted(() => {
+  window.addEventListener("message", handlePreviewActionFrameMessage);
+  ensurePreviewActionFrame();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("message", handlePreviewActionFrameMessage);
+
+  if (previewActionFrame.value?.parentNode) {
+    previewActionFrame.value.parentNode.removeChild(previewActionFrame.value);
+  }
+
+  previewActionFrame.value = null;
+  isPreviewActionFrameReady.value = false;
+});
+
+watch(
+  () => allQuotations.value[0]?.id,
+  () => {
+    ensurePreviewActionFrame();
+  },
+  { immediate: true },
 );
 const revisionMap = computed(() => {
   const map = new Map<number, Quotation[]>();
@@ -329,7 +437,9 @@ const positiveAmountValidator = (value: unknown) => {
 };
 
 const uniqueQuotationNumberValidator = (value: unknown) => {
-  const quoteNumber = String(value ?? "").trim().toLowerCase();
+  const quoteNumber = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (!quoteNumber) return true;
 
   const exists = quotationsStore.all.some(
@@ -357,7 +467,8 @@ const contactEmailRules = computed(() => {
   const rules = [emailValidator];
 
   if (shouldAutoSelectContact.value) return rules;
-  if (externalQuotationForm.value.contactName.trim()) rules.unshift(requiredValidator);
+  if (externalQuotationForm.value.contactName.trim())
+    rules.unshift(requiredValidator);
 
   return rules;
 });
@@ -450,8 +561,7 @@ const saveExternalQuotation = async () => {
   };
 
   if (!valid) {
-    externalQuotationError.value =
-      "Fix the highlighted fields before saving.";
+    externalQuotationError.value = "Fix the highlighted fields before saving.";
     return;
   }
 
@@ -578,9 +688,7 @@ const confirmDeleteQuotation = () => {
   }
 
   quotationsStore.removeQuotation(quotation.id);
-  expanded.value = expanded.value.filter(
-    (value) => value !== quotation.id,
-  );
+  expanded.value = expanded.value.filter((value) => value !== quotation.id);
   closeDeleteQuotationDialog();
 };
 
@@ -593,13 +701,12 @@ const openQuotationPreviewWindow = (
   quotationId: number,
   action: "print" | "download",
 ) => {
-  const routeLocation = router.resolve({
-    name: "apps-quotation-preview-id",
-    params: { id: quotationId },
-    query: { [action]: "1" },
-  });
+  ensurePreviewActionFrame();
+  pendingPreviewAction.value = { quotationId, action };
 
-  window.open(routeLocation.href, "_blank", "noopener");
+  if (!isPreviewActionFrameReady.value) return;
+
+  flushPendingPreviewAction();
 };
 
 const openQuotationEmailDialog = (quotationId: number) => {
@@ -1023,12 +1130,12 @@ watch(totalQuotations, (value) => {
           </VCol>
 
           <VCol cols="12" md="6">
-          <AppTextField
-            v-model="externalQuotationForm.quoteNumber"
-            label="Quote #"
-            placeholder="Enter quote number"
-            :rules="[requiredValidator, uniqueQuotationNumberValidator]"
-          />
+            <AppTextField
+              v-model="externalQuotationForm.quoteNumber"
+              label="Quote #"
+              placeholder="Enter quote number"
+              :rules="[requiredValidator, uniqueQuotationNumberValidator]"
+            />
           </VCol>
 
           <VCol cols="12" md="6">
@@ -1058,115 +1165,115 @@ watch(totalQuotations, (value) => {
             />
           </VCol>
 
-        <VCol cols="12">
-          <VAlert
-            v-if="!hasLinkedDealOrContract"
-            color="warning"
-            variant="tonal"
-            border="start"
-          >
-            This quotation is not linked to a deal or contract.
-          </VAlert>
-        </VCol>
+          <VCol cols="12">
+            <VAlert
+              v-if="!hasLinkedDealOrContract"
+              color="warning"
+              variant="tonal"
+              border="start"
+            >
+              This quotation is not linked to a deal or contract.
+            </VAlert>
+          </VCol>
 
-        <VCol cols="12" md="6">
-          <AppTextField
-            v-model="externalQuotationForm.contactName"
-            label="Contact"
-            :placeholder="
-              shouldAutoSelectContact
-                ? 'Auto-selected from linked deal'
-                : 'Enter contact name'
-            "
-            :readonly="shouldAutoSelectContact"
-            :rules="[contactNameValidator]"
-          />
-        </VCol>
-
-        <VCol cols="12" md="6">
-          <AppTextField
-            v-model="externalQuotationForm.contactEmail"
-            label="Contact Email"
-            :placeholder="
-              shouldAutoSelectContact
-                ? 'Auto-selected from linked deal'
-                : 'Enter contact email'
-            "
-            :readonly="shouldAutoSelectContact"
-            :rules="contactEmailRules"
-          />
-        </VCol>
-
-        <VCol cols="12">
-          <VAlert
-            v-if="shouldAutoSelectContact"
-            color="info"
-            variant="tonal"
-            border="start"
-          >
-            Contact information was auto-selected from the linked deal and
-            cannot be edited.
-          </VAlert>
-        </VCol>
-
-        <VCol cols="12" md="6" class="quotation-form-field">
-          <div class="quotation-form-control">
-            <div class="quotation-form-label">Status</div>
-            <AppSelect
-              v-model="externalQuotationForm.status"
-              placeholder="Select status"
-              :rules="[requiredValidator]"
-              :items="[
-                'Pending',
-                'Approved',
-                'Lost',
-                'Converted to Invoice',
-                'Converted to Proforma',
-              ]"
+          <VCol cols="12" md="6">
+            <AppTextField
+              v-model="externalQuotationForm.contactName"
+              label="Contact"
+              :placeholder="
+                shouldAutoSelectContact
+                  ? 'Auto-selected from linked deal'
+                  : 'Enter contact name'
+              "
+              :readonly="shouldAutoSelectContact"
+              :rules="[contactNameValidator]"
             />
-          </div>
-        </VCol>
+          </VCol>
 
-        <VCol cols="12" md="6" class="quotation-form-field">
-          <div
-            class="quotation-form-control quotation-form-control--attachment"
-          >
-            <div class="quotation-form-label">Attachment</div>
-            <VFileInput
-              v-model="externalQuotationForm.attachment"
-              class="quotation-attachment-input"
-              placeholder="Upload quotation file"
-              :accept="attachmentAccept"
-              :rules="[attachmentValidator]"
-              show-size
-              clearable
+          <VCol cols="12" md="6">
+            <AppTextField
+              v-model="externalQuotationForm.contactEmail"
+              label="Contact Email"
+              :placeholder="
+                shouldAutoSelectContact
+                  ? 'Auto-selected from linked deal'
+                  : 'Enter contact email'
+              "
+              :readonly="shouldAutoSelectContact"
+              :rules="contactEmailRules"
             />
-            <div class="quotation-form-help">
-              Maximum file size: 10MB. Allowed types: PDF, DOC, DOCX, XLS, XLSX,
-              PNG, JPG.
+          </VCol>
+
+          <VCol cols="12">
+            <VAlert
+              v-if="shouldAutoSelectContact"
+              color="info"
+              variant="tonal"
+              border="start"
+            >
+              Contact information was auto-selected from the linked deal and
+              cannot be edited.
+            </VAlert>
+          </VCol>
+
+          <VCol cols="12" md="6" class="quotation-form-field">
+            <div class="quotation-form-control">
+              <div class="quotation-form-label">Status</div>
+              <AppSelect
+                v-model="externalQuotationForm.status"
+                placeholder="Select status"
+                :rules="[requiredValidator]"
+                :items="[
+                  'Pending',
+                  'Approved',
+                  'Lost',
+                  'Converted to Invoice',
+                  'Converted to Proforma',
+                ]"
+              />
             </div>
-          </div>
-        </VCol>
+          </VCol>
 
-        <VCol cols="12">
-          <VAlert
-            v-if="externalQuotationError"
-            color="error"
-            variant="tonal"
-            border="start"
-          >
-            {{ externalQuotationError }}
-          </VAlert>
+          <VCol cols="12" md="6" class="quotation-form-field">
+            <div
+              class="quotation-form-control quotation-form-control--attachment"
+            >
+              <div class="quotation-form-label">Attachment</div>
+              <VFileInput
+                v-model="externalQuotationForm.attachment"
+                class="quotation-attachment-input"
+                placeholder="Upload quotation file"
+                :accept="attachmentAccept"
+                :rules="[attachmentValidator]"
+                show-size
+                clearable
+              />
+              <div class="quotation-form-help">
+                Maximum file size: 10MB. Allowed types: PDF, DOC, DOCX, XLS,
+                XLSX, PNG, JPG.
+              </div>
+            </div>
+          </VCol>
 
-          <VAlert
-            v-else-if="externalQuotationSuccess"
-            color="success"
-            variant="tonal"
-            border="start"
-          >
-            {{ externalQuotationSuccess }}
-          </VAlert>
-        </VCol>
+          <VCol cols="12">
+            <VAlert
+              v-if="externalQuotationError"
+              color="error"
+              variant="tonal"
+              border="start"
+            >
+              {{ externalQuotationError }}
+            </VAlert>
+
+            <VAlert
+              v-else-if="externalQuotationSuccess"
+              color="success"
+              variant="tonal"
+              border="start"
+            >
+              {{ externalQuotationSuccess }}
+            </VAlert>
+          </VCol>
         </VRow>
       </VForm>
 
