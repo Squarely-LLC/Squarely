@@ -130,13 +130,6 @@ const buildContentLines = ({
   pushWrapped(`IBAN: ${quotationRecord.paymentDetails.iban}`);
   pushWrapped(`SWIFT Code: ${quotationRecord.paymentDetails.swiftCode}`);
   lines.push("");
-
-  if (quotationRecord.salesperson.trim()) {
-    pushWrapped(`Salesperson: ${quotationRecord.salesperson}`);
-  }
-  if (quotationRecord.thanksNote.trim()) {
-    pushWrapped(quotationRecord.thanksNote);
-  }
   if (quotationRecord.showClientNote && quotationRecord.note.trim()) {
     lines.push("");
     pushWrapped(`Client Note: ${quotationRecord.note}`);

@@ -471,17 +471,7 @@ if (!isEmbeddedActionFrame) {
             </tbody>
           </VTable>
 
-          <div
-            class="d-flex justify-space-between flex-column flex-sm-row print-row"
-          >
-            <div class="mb-2">
-              <div class="d-flex align-center mb-1">
-                <h6 class="text-h6 me-2">Salesperson:</h6>
-                <span>{{ quotationRecord?.salesperson }}</span>
-              </div>
-              <p>{{ quotationRecord?.thanksNote }}</p>
-            </div>
-
+          <div class="d-flex justify-end flex-column flex-sm-row print-row">
             <div>
               <table class="w-100">
                 <tbody>
