@@ -3,13 +3,14 @@ import { emailValidator, requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useNotificationsStore } from "@/stores/notifications";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
 } from "@/utils/quotationConfig";
-import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
   Quotation,
@@ -37,6 +38,7 @@ const pendingPreviewAction = ref<{
 } | null>(null);
 const router = useRouter();
 const pendingEmailQuotationId = ref<number | null>(null);
+const emailDialogRef = ref<any | null>(null);
 
 type DealContractOption = {
   title: string;
@@ -65,6 +67,7 @@ configStore.init();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
+const notifications = useNotificationsStore();
 
 const itemsPerPage = ref(10);
 const page = ref(1);
@@ -697,6 +700,35 @@ const emailQuotationRecord = computed<QuotationRecord | null>(() => {
   return quotationsStore.byId(pendingEmailQuotationId.value) ?? null;
 });
 
+const quotationEmailDraft = computed(() => {
+  const quotation = emailQuotationRecord.value?.quotation;
+  const companyName = configStore.legal?.companyName?.trim() || "Squarely";
+  const to = quotation?.client.companyEmail?.trim() || "";
+  const clientName = quotation?.client.name?.trim() || "there";
+  const quoteNumber = quotation?.quoteNumber?.trim() || "quotation";
+  const total = Number(quotation?.total || 0).toLocaleString();
+  const expiryDate = quotation?.dueDate?.trim() || "";
+
+  return {
+    to,
+    subject: `Quotation ${quoteNumber} from ${companyName}`,
+    message: `Dear ${clientName},
+
+Please find ${quoteNumber} attached.
+
+Quotation amount: $${total}
+${expiryDate ? `Expiry date: ${expiryDate}` : ""}
+
+Thank you,
+${companyName}`.trim(),
+    attachments: [
+      {
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
+      },
+    ],
+  };
+});
+
 const openQuotationPreviewWindow = (
   quotationId: number,
   action: "print" | "download",
@@ -712,11 +744,33 @@ const openQuotationPreviewWindow = (
 const openQuotationEmailDialog = (quotationId: number) => {
   pendingEmailQuotationId.value = quotationId;
   isSendQuotationDialogOpen.value = true;
+
+  nextTick(() => {
+    emailDialogRef.value?.openWith?.(quotationEmailDraft.value);
+  });
 };
 
 const closeQuotationEmailDialog = () => {
   isSendQuotationDialogOpen.value = false;
   pendingEmailQuotationId.value = null;
+};
+
+const onQuotationEmailSend = (payload: any) => {
+  const recipients = Array.isArray(payload?.to)
+    ? payload.to.filter(Boolean)
+    : payload?.to
+      ? [String(payload.to)]
+      : [];
+  const subject = String(payload?.subject || "(no subject)");
+  const count = recipients.length;
+
+  notifications.push(
+    `Email sent${count ? ` to ${count} recipient${count > 1 ? "s" : ""}` : ""}: ${subject}`,
+    "success",
+    3500,
+  );
+
+  closeQuotationEmailDialog();
 };
 
 const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
@@ -1288,10 +1342,11 @@ watch(totalQuotations, (value) => {
     </VCard>
   </VDialog>
 
-  <QuotationSendQuotationDrawer
-    v-model:is-drawer-open="isSendQuotationDialogOpen"
-    :quotation-record="emailQuotationRecord"
-    @submit="closeQuotationEmailDialog"
+  <EmailDialog
+    ref="emailDialogRef"
+    v-model:is-dialog-visible="isSendQuotationDialogOpen"
+    @close="closeQuotationEmailDialog"
+    @send="onQuotationEmailSend"
   />
 
   <VDialog v-model="isDeleteQuotationDialogOpen" max-width="440" persistent>

@@ -32,8 +32,8 @@ const recipients = computed(() =>
   Array.isArray(to.value)
     ? to.value.filter(Boolean).map((s) => String(s))
     : to.value
-    ? [String(to.value)]
-    : []
+      ? [String(to.value)]
+      : [],
 );
 
 // search input for the autocomplete (we watch this to support comma/semicolon separated entries)
@@ -130,7 +130,7 @@ function attachInputHandlers() {
     input.addEventListener(
       "keydown",
       onAutocompleteKeydown as EventListener,
-      true
+      true,
     );
     input.addEventListener("paste", onAutocompletePaste as EventListener, true);
     input.addEventListener("blur", onAutocompleteBlur as EventListener, true);
@@ -146,17 +146,17 @@ function detachInputHandlers() {
     _attachedInput.removeEventListener(
       "keydown",
       onAutocompleteKeydown as EventListener,
-      true
+      true,
     );
     _attachedInput.removeEventListener(
       "paste",
       onAutocompletePaste as EventListener,
-      true
+      true,
     );
     _attachedInput.removeEventListener(
       "blur",
       onAutocompleteBlur as EventListener,
-      true
+      true,
     );
     _attachedInput = null;
   } catch (e) {
@@ -266,6 +266,7 @@ function openWith(initial?: {
   }
   subject.value = initial.subject ?? subject.value;
   message.value = initial.message ?? message.value;
+  content.value = initial.message ?? content.value;
   cc.value = initial.cc ?? cc.value;
   bcc.value = initial.bcc ?? bcc.value;
   isEmailCc.value = !!initial.showCc;
@@ -308,7 +309,7 @@ function onFileInput(e: Event) {
 function openFilePicker() {
   try {
     const el = document.getElementById(
-      "email-attach-input"
+      "email-attach-input",
     ) as HTMLInputElement | null;
     el?.click();
   } catch {}
