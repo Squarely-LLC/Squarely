@@ -2,6 +2,41 @@ import { useNotificationsStore } from "@/stores/notifications";
 
 type ShareResult = { success: boolean; reason?: string };
 
+async function openWhatsAppIntent({
+  url,
+  text,
+}: {
+  url?: string;
+  text?: string;
+}): Promise<ShareResult> {
+  const notifications = useNotificationsStore();
+
+  try {
+    const messageParts: string[] = [];
+    if (text) messageParts.push(text);
+    if (url) messageParts.push(url);
+    const message = encodeURIComponent(messageParts.join("\n"));
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(
+      navigator.userAgent || "",
+    );
+    const target = isMobile
+      ? `whatsapp://send?text=${message}`
+      : `https://web.whatsapp.com/send?text=${message}`;
+
+    window.open(target, "_blank", "noopener");
+    notifications.push("Opened WhatsApp", "success", 3000);
+    return { success: true };
+  } catch (err: any) {
+    notifications.push(
+      "Failed to open WhatsApp: " + String(err ?? "unknown"),
+      "error",
+      4500,
+    );
+    return { success: false, reason: String(err ?? "unknown") };
+  }
+}
+
 async function shareToWhatsApp({
   file,
   url,
@@ -15,12 +50,16 @@ async function shareToWhatsApp({
 
   // Try Web Share API with files when available (mobile / modern browsers)
   try {
-    if (
-      navigator.share &&
-      file &&
-      (navigator as any).canShare?.({ files: [file] })
-    ) {
-      await navigator.share({ files: [file], text: text ?? "", title: "" });
+    if (navigator.share && file) {
+      const canShareFiles = (navigator as any).canShare?.({ files: [file] });
+      if (canShareFiles === false)
+        throw new Error("File sharing is not supported in this browser");
+
+      await navigator.share({
+        files: [file],
+        text: text ?? "",
+        title: file.name,
+      });
       notifications.push(
         "Shared to WhatsApp (via OS share sheet)",
         "success",
@@ -60,5 +99,5 @@ async function shareToWhatsApp({
   }
 }
 
-export { shareToWhatsApp };
+export { openWhatsAppIntent, shareToWhatsApp };
 export type { ShareResult };

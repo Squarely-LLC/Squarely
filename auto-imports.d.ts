@@ -20,6 +20,7 @@ declare global {
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
+  const clearQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
   const computedEager: typeof import('@vueuse/core')['computedEager']
@@ -33,8 +34,10 @@ declare global {
   const createGenericProjection: typeof import('@vueuse/math')['createGenericProjection']
   const createGlobalState: typeof import('@vueuse/core')['createGlobalState']
   const createInjectionState: typeof import('@vueuse/core')['createInjectionState']
+  const createPdfFileFromElement: typeof import('./src/utils/domPdf')['createPdfFileFromElement']
   const createPinia: typeof import('pinia')['createPinia']
   const createProjection: typeof import('@vueuse/math')['createProjection']
+  const createQuotationPdfFile: typeof import('./src/utils/quotationPdf')['createQuotationPdfFile']
   const createReactiveFn: typeof import('@vueuse/core')['createReactiveFn']
   const createReusableTemplate: typeof import('@vueuse/core')['createReusableTemplate']
   const createSharedComposable: typeof import('@vueuse/core')['createSharedComposable']
@@ -65,9 +68,15 @@ declare global {
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
   const getFileObjectUrl: typeof import('./src/utils/fileStore')['getFileObjectUrl']
   const getFileRecord: typeof import('./src/utils/fileStore')['getFileRecord']
+  const getLineBaseTotal: typeof import('./src/utils/quotationPricing')['getLineBaseTotal']
+  const getLineDiscountAmount: typeof import('./src/utils/quotationPricing')['getLineDiscountAmount']
+  const getLineTotal: typeof import('./src/utils/quotationPricing')['getLineTotal']
   const getPrimaryBankDetails: typeof import('./src/utils/quotationConfig')['getPrimaryBankDetails']
   const getQuotationCompanyAddressLines: typeof import('./src/utils/quotationConfig')['getQuotationCompanyAddressLines']
   const getQuotationCompanyContactLines: typeof import('./src/utils/quotationConfig')['getQuotationCompanyContactLines']
+  const getQuotationDiscountTotal: typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']
+  const getQuotationGrandTotal: typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']
+  const getQuotationSubtotal: typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -87,6 +96,7 @@ declare global {
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
   const loadActiveAppConfigurations: typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']
+  const loadQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['loadQuotationPreviewDraft']
   const logicAnd: typeof import('@vueuse/math')['logicAnd']
   const logicNot: typeof import('@vueuse/math')['logicNot']
   const logicOr: typeof import('@vueuse/math')['logicOr']
@@ -118,6 +128,7 @@ declare global {
   const onUnmounted: typeof import('vue')['onUnmounted']
   const onUpdated: typeof import('vue')['onUpdated']
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
+  const openWhatsAppIntent: typeof import('./src/utils/shareToWhatsApp')['openWhatsAppIntent']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
@@ -147,12 +158,14 @@ declare global {
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
   const saveFile: typeof import('./src/utils/fileStore')['saveFile']
+  const saveQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
   const shallowReactive: typeof import('vue')['shallowReactive']
   const shallowReadonly: typeof import('vue')['shallowReadonly']
   const shallowRef: typeof import('vue')['shallowRef']
   const shareToWhatsApp: typeof import('./src/utils/shareToWhatsApp')['shareToWhatsApp']
+  const shareWithSystem: typeof import('./src/utils/shareWithSystem')['shareWithSystem']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const syncRef: typeof import('@vueuse/core')['syncRef']
   const syncRefs: typeof import('@vueuse/core')['syncRefs']
@@ -399,6 +412,7 @@ declare module 'vue' {
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
+    readonly clearQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -412,8 +426,10 @@ declare module 'vue' {
     readonly createGenericProjection: UnwrapRef<typeof import('@vueuse/math')['createGenericProjection']>
     readonly createGlobalState: UnwrapRef<typeof import('@vueuse/core')['createGlobalState']>
     readonly createInjectionState: UnwrapRef<typeof import('@vueuse/core')['createInjectionState']>
+    readonly createPdfFileFromElement: UnwrapRef<typeof import('./src/utils/domPdf')['createPdfFileFromElement']>
     readonly createPinia: UnwrapRef<typeof import('pinia')['createPinia']>
     readonly createProjection: UnwrapRef<typeof import('@vueuse/math')['createProjection']>
+    readonly createQuotationPdfFile: UnwrapRef<typeof import('./src/utils/quotationPdf')['createQuotationPdfFile']>
     readonly createReactiveFn: UnwrapRef<typeof import('@vueuse/core')['createReactiveFn']>
     readonly createReusableTemplate: UnwrapRef<typeof import('@vueuse/core')['createReusableTemplate']>
     readonly createSharedComposable: UnwrapRef<typeof import('@vueuse/core')['createSharedComposable']>
@@ -444,9 +460,15 @@ declare module 'vue' {
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>
     readonly getFileObjectUrl: UnwrapRef<typeof import('./src/utils/fileStore')['getFileObjectUrl']>
     readonly getFileRecord: UnwrapRef<typeof import('./src/utils/fileStore')['getFileRecord']>
+    readonly getLineBaseTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getLineBaseTotal']>
+    readonly getLineDiscountAmount: UnwrapRef<typeof import('./src/utils/quotationPricing')['getLineDiscountAmount']>
+    readonly getLineTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getLineTotal']>
     readonly getPrimaryBankDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['getPrimaryBankDetails']>
     readonly getQuotationCompanyAddressLines: UnwrapRef<typeof import('./src/utils/quotationConfig')['getQuotationCompanyAddressLines']>
     readonly getQuotationCompanyContactLines: UnwrapRef<typeof import('./src/utils/quotationConfig')['getQuotationCompanyContactLines']>
+    readonly getQuotationDiscountTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']>
+    readonly getQuotationGrandTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']>
+    readonly getQuotationSubtotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
@@ -466,6 +488,7 @@ declare module 'vue' {
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
     readonly loadActiveAppConfigurations: UnwrapRef<typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']>
+    readonly loadQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['loadQuotationPreviewDraft']>
     readonly logicAnd: UnwrapRef<typeof import('@vueuse/math')['logicAnd']>
     readonly logicNot: UnwrapRef<typeof import('@vueuse/math')['logicNot']>
     readonly logicOr: UnwrapRef<typeof import('@vueuse/math')['logicOr']>
@@ -497,6 +520,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openWhatsAppIntent: UnwrapRef<typeof import('./src/utils/shareToWhatsApp')['openWhatsAppIntent']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
@@ -526,12 +550,14 @@ declare module 'vue' {
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
     readonly saveFile: UnwrapRef<typeof import('./src/utils/fileStore')['saveFile']>
+    readonly saveQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly shareToWhatsApp: UnwrapRef<typeof import('./src/utils/shareToWhatsApp')['shareToWhatsApp']>
+    readonly shareWithSystem: UnwrapRef<typeof import('./src/utils/shareWithSystem')['shareWithSystem']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>

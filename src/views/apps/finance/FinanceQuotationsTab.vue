@@ -109,8 +109,10 @@ const ensurePreviewActionFrame = () => {
     iframe.setAttribute("aria-hidden", "true");
     iframe.tabIndex = -1;
     iframe.style.position = "fixed";
-    iframe.style.inlineSize = "0";
-    iframe.style.blockSize = "0";
+    iframe.style.insetInlineStart = "-2000px";
+    iframe.style.insetBlockStart = "0";
+    iframe.style.inlineSize = "1280px";
+    iframe.style.blockSize = "1800px";
     iframe.style.border = "0";
     iframe.style.opacity = "0";
     iframe.style.pointerEvents = "none";

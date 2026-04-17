@@ -3,14 +3,20 @@ import { requiredValidator, urlValidator } from "@/@core/utils/validators";
 import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
-import { buildQuotationPaymentDetails } from "@/utils/quotationConfig";
+import {
+  buildQuotationPaymentDetails,
+  getQuotationCompanyAddressLines,
+  getQuotationCompanyContactLines,
+} from "@/utils/quotationConfig";
+import { createQuotationPdfFile } from "@/utils/quotationPdf";
 import {
   clearQuotationPreviewDraft,
   loadQuotationPreviewDraft,
   saveQuotationPreviewDraft,
 } from "@/utils/quotationPreviewDraft";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
-import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
+import { openWhatsAppIntent } from "@/utils/shareToWhatsApp";
+import { shareWithSystem } from "@/utils/shareWithSystem";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
@@ -77,6 +83,12 @@ const employeeOptions = computed(() =>
     value: employee.id,
   })),
 );
+const companyAddressLines = computed(() =>
+  getQuotationCompanyAddressLines(configStore.legal),
+);
+const companyContactLines = computed(() =>
+  getQuotationCompanyContactLines(configStore.legal),
+);
 
 const quotationEmailDraft = computed(() => {
   const currentQuotation = quotationData.value?.quotation;
@@ -137,6 +149,14 @@ const buildPreviewQuotationDraft = () => {
   return previewQuotation;
 };
 
+const createDraftQuotationPdfFile = (previewQuotation: QuotationData) =>
+  createQuotationPdfFile({
+    quotationRecord: previewQuotation,
+    companyName: configStore.legal?.companyName?.trim() || "Squarely",
+    companyAddressLines: companyAddressLines.value,
+    companyContactLines: companyContactLines.value,
+  });
+
 const ensurePreviewActionFrame = () => {
   if (previewActionFrame.value) return previewActionFrame.value;
 
@@ -144,8 +164,10 @@ const ensurePreviewActionFrame = () => {
   iframe.setAttribute("aria-hidden", "true");
   iframe.tabIndex = -1;
   iframe.style.position = "fixed";
-  iframe.style.inlineSize = "0";
-  iframe.style.blockSize = "0";
+  iframe.style.insetInlineStart = "-2000px";
+  iframe.style.insetBlockStart = "0";
+  iframe.style.inlineSize = "1280px";
+  iframe.style.blockSize = "1800px";
   iframe.style.border = "0";
   iframe.style.opacity = "0";
   iframe.style.pointerEvents = "none";
@@ -209,8 +231,26 @@ const shareQuotationOnWhatsApp = async () => {
     query: { draft: "1", source: "edit" },
   });
 
-  await shareToWhatsApp({
+  await openWhatsAppIntent({
     url: `${window.location.origin}${routeLocation.href}`,
+    text: `Quotation ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
+  });
+};
+
+const shareQuotationWithOthers = async () => {
+  const previewQuotation = buildPreviewQuotationDraft();
+  if (!previewQuotation) return;
+
+  saveQuotationPreviewDraft({
+    source: "edit",
+    quotation: previewQuotation,
+  });
+
+  const pdfFile = createDraftQuotationPdfFile(previewQuotation);
+
+  await shareWithSystem({
+    file: pdfFile,
+    title: pdfFile.name,
     text: `Quotation ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
   });
 };
@@ -381,42 +421,76 @@ onBeforeUnmount(() => {
     <VCol cols="12" md="3">
       <VCard class="mb-8">
         <VCardText>
-          <div class="d-flex align-center justify-space-between gap-2 mb-4">
-            <VBtn
-              variant="tonal"
-              color="secondary"
-              class="quotation-action-btn"
-              @click="openQuotationEmailDialog"
-            >
-              <VIcon icon="tabler-mail" />
-            </VBtn>
+          <div class="d-flex flex-nowrap gap-2 mb-4">
+            <VTooltip text="Email" location="top">
+              <template #activator="{ props: tooltipProps }">
+                <VBtn
+                  v-bind="tooltipProps"
+                  variant="tonal"
+                  color="secondary"
+                  class="quotation-action-btn"
+                  @click="openQuotationEmailDialog"
+                >
+                  <VIcon icon="tabler-mail" />
+                </VBtn>
+              </template>
+            </VTooltip>
 
-            <VBtn
-              variant="tonal"
-              color="secondary"
-              class="quotation-action-btn"
-              @click="triggerDraftPreviewAction('download')"
-            >
-              <VIcon icon="tabler-download" />
-            </VBtn>
+            <VTooltip text="Download PDF" location="top">
+              <template #activator="{ props: tooltipProps }">
+                <VBtn
+                  v-bind="tooltipProps"
+                  variant="tonal"
+                  color="secondary"
+                  class="quotation-action-btn"
+                  @click="triggerDraftPreviewAction('download')"
+                >
+                  <VIcon icon="tabler-download" />
+                </VBtn>
+              </template>
+            </VTooltip>
 
-            <VBtn
-              variant="tonal"
-              color="success"
-              class="quotation-action-btn"
-              @click="shareQuotationOnWhatsApp"
-            >
-              <VIcon icon="tabler-brand-whatsapp" />
-            </VBtn>
+            <VTooltip text="Share on WhatsApp" location="top">
+              <template #activator="{ props: tooltipProps }">
+                <VBtn
+                  v-bind="tooltipProps"
+                  variant="tonal"
+                  color="secondary"
+                  class="quotation-action-btn"
+                  @click="shareQuotationOnWhatsApp"
+                >
+                  <VIcon icon="tabler-brand-whatsapp" />
+                </VBtn>
+              </template>
+            </VTooltip>
 
-            <VBtn
-              variant="tonal"
-              color="secondary"
-              class="quotation-action-btn"
-              @click="triggerDraftPreviewAction('print')"
-            >
-              <VIcon icon="tabler-printer" />
-            </VBtn>
+            <VTooltip text="Others" location="top">
+              <template #activator="{ props: tooltipProps }">
+                <VBtn
+                  v-bind="tooltipProps"
+                  variant="tonal"
+                  color="secondary"
+                  class="quotation-action-btn"
+                  @click="shareQuotationWithOthers"
+                >
+                  <VIcon icon="tabler-dots" />
+                </VBtn>
+              </template>
+            </VTooltip>
+
+            <VTooltip text="Print" location="top">
+              <template #activator="{ props: tooltipProps }">
+                <VBtn
+                  v-bind="tooltipProps"
+                  variant="tonal"
+                  color="secondary"
+                  class="quotation-action-btn"
+                  @click="triggerDraftPreviewAction('print')"
+                >
+                  <VIcon icon="tabler-printer" />
+                </VBtn>
+              </template>
+            </VTooltip>
           </div>
 
           <div class="d-flex flex-wrap gap-4">

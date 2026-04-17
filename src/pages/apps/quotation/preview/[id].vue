@@ -2,12 +2,14 @@
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useQuotationsStore } from "@/stores/quotations";
+import { createPdfFileFromElement } from "@/utils/domPdf";
 import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
+import { createQuotationPdfFile } from "@/utils/quotationPdf";
 import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
 import {
   getLineTotal,
@@ -15,7 +17,8 @@ import {
   getQuotationGrandTotal,
   getQuotationSubtotal,
 } from "@/utils/quotationPricing";
-import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
+import { openWhatsAppIntent } from "@/utils/shareToWhatsApp";
+import { shareWithSystem } from "@/utils/shareWithSystem";
 import { formatSystemDate } from "@core/utils/formatters";
 
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -119,35 +122,62 @@ const isAddPaymentSidebarVisible = ref(false);
 const isSendPaymentSidebarVisible = ref(false);
 const hasExecutedAutoAction = ref(false);
 const emailDialogRef = ref<any | null>(null);
+const quotationPdfTarget = ref<any | null>(null);
 
 const printQuotation = () => {
   window.print();
 };
 
-const withTemporaryDocumentTitle = async (
-  title: string,
-  callback: () => void,
-) => {
-  const previousTitle = document.title;
-  document.title = title;
+const createCurrentQuotationPdfFile = () => {
+  const currentRecord = quotationRecord.value;
+  if (!currentRecord) return null;
 
-  await nextTick();
-  callback();
-
-  window.setTimeout(() => {
-    document.title = previousTitle;
-  }, 250);
-};
-
-const downloadQuotation = async () => {
-  const quoteNumber = quotation.value?.quoteNumber?.trim() || "quotation";
-  await withTemporaryDocumentTitle(`${quoteNumber}.pdf`, () => {
-    window.print();
+  return createQuotationPdfFile({
+    quotationRecord: currentRecord,
+    companyName: companyName.value,
+    companyAddressLines: companyAddressLines.value,
+    companyContactLines: companyContactLines.value,
   });
 };
 
-const openSendQuotationDrawer = () => {
-  isSendPaymentSidebarVisible.value = true;
+const downloadFile = (file: File) => {
+  const objectUrl = URL.createObjectURL(file);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = file.name;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 0);
+};
+
+const downloadQuotation = async () => {
+  await nextTick();
+
+  const quoteNumber = quotation.value?.quoteNumber?.trim() || "quotation";
+  const targetElement = (quotationPdfTarget.value?.$el ??
+    quotationPdfTarget.value) as HTMLElement | null;
+
+  if (targetElement) {
+    try {
+      const pdfFile = await createPdfFileFromElement(
+        targetElement,
+        `${quoteNumber}.pdf`,
+      );
+      downloadFile(pdfFile);
+      return;
+    } catch {
+      // Fall back to the text-based PDF renderer if DOM capture fails.
+    }
+  }
+
+  const fallbackPdfFile = createCurrentQuotationPdfFile();
+  if (!fallbackPdfFile) return;
+  downloadFile(fallbackPdfFile);
 };
 
 const quotationEmailDraft = computed(() => {
@@ -190,13 +220,21 @@ const shareQuotationOnWhatsApp = async () => {
   const currentQuotation = quotation.value;
   if (!currentQuotation) return;
 
-  const shareUrl = window.location.href;
-  const quoteNumber = currentQuotation.quoteNumber?.trim() || "quotation";
-  const clientName = currentQuotation.client.name?.trim() || "client";
+  await openWhatsAppIntent({
+    url: window.location.href,
+    text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+  });
+};
 
-  await shareToWhatsApp({
-    url: shareUrl,
-    text: `Quotation ${quoteNumber} for ${clientName}`,
+const shareQuotationWithOthers = async () => {
+  const currentQuotation = quotation.value;
+  const pdfFile = createCurrentQuotationPdfFile();
+  if (!currentQuotation || !pdfFile) return;
+
+  await shareWithSystem({
+    file: pdfFile,
+    title: pdfFile.name,
+    text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
   });
 };
 
@@ -265,7 +303,7 @@ if (!isEmbeddedActionFrame) {
 
       if (email === "1") {
         hasExecutedAutoAction.value = true;
-        openSendQuotationDrawer();
+        openQuotationEmailDialog();
         return;
       }
 
@@ -290,7 +328,10 @@ if (!isEmbeddedActionFrame) {
   <section v-if="quotation && paymentDetails">
     <VRow>
       <VCol cols="12" md="9">
-        <VCard class="quotation-preview-wrapper pa-6 pa-sm-12">
+        <VCard
+          ref="quotationPdfTarget"
+          class="quotation-preview-wrapper pa-6 pa-sm-12"
+        >
           <div
             class="quotation-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6"
           >
@@ -420,7 +461,9 @@ if (!isEmbeddedActionFrame) {
                 :key="`${item.title}-${index}`"
               >
                 <td class="text-no-wrap">{{ item.title }}</td>
-                <td class="text-no-wrap">{{ item.description }}</td>
+                <td class="quotation-description-cell">
+                  {{ item.description }}
+                </td>
                 <td class="text-center">{{ item.hours }}</td>
                 <td class="text-center">${{ item.cost }}</td>
                 <td class="text-center">${{ getLineTotal(item) }}</td>
@@ -508,42 +551,76 @@ if (!isEmbeddedActionFrame) {
       <VCol cols="12" md="3" class="d-print-none">
         <VCard>
           <VCardText>
-            <div class="d-flex align-center justify-space-between gap-2 mb-4">
-              <VBtn
-                variant="tonal"
-                color="secondary"
-                class="quotation-action-btn"
-                @click="openQuotationEmailDialog"
-              >
-                <VIcon icon="tabler-mail" />
-              </VBtn>
+            <div class="d-flex flex-nowrap gap-2 mb-4">
+              <VTooltip text="Email" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="openQuotationEmailDialog"
+                  >
+                    <VIcon icon="tabler-mail" />
+                  </VBtn>
+                </template>
+              </VTooltip>
 
-              <VBtn
-                variant="tonal"
-                color="secondary"
-                class="quotation-action-btn"
-                @click="downloadQuotation"
-              >
-                <VIcon icon="tabler-download" />
-              </VBtn>
+              <VTooltip text="Download PDF" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="downloadQuotation"
+                  >
+                    <VIcon icon="tabler-download" />
+                  </VBtn>
+                </template>
+              </VTooltip>
 
-              <VBtn
-                variant="tonal"
-                color="success"
-                class="quotation-action-btn"
-                @click="shareQuotationOnWhatsApp"
-              >
-                <VIcon icon="tabler-brand-whatsapp" />
-              </VBtn>
+              <VTooltip text="Share on WhatsApp" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="shareQuotationOnWhatsApp"
+                  >
+                    <VIcon icon="tabler-brand-whatsapp" />
+                  </VBtn>
+                </template>
+              </VTooltip>
 
-              <VBtn
-                variant="tonal"
-                color="secondary"
-                class="quotation-action-btn"
-                @click="printQuotation"
-              >
-                <VIcon icon="tabler-printer" />
-              </VBtn>
+              <VTooltip text="Others" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="shareQuotationWithOthers"
+                  >
+                    <VIcon icon="tabler-dots" />
+                  </VBtn>
+                </template>
+              </VTooltip>
+
+              <VTooltip text="Print" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    variant="tonal"
+                    color="secondary"
+                    class="quotation-action-btn"
+                    @click="printQuotation"
+                  >
+                    <VIcon icon="tabler-printer" />
+                  </VBtn>
+                </template>
+              </VTooltip>
             </div>
 
             <VBtn
@@ -627,10 +704,39 @@ if (!isEmbeddedActionFrame) {
 .quotation-preview-table {
   --v-table-header-color: var(--v-theme-surface);
 
+  table {
+    table-layout: fixed;
+  }
+
+  th:nth-child(1),
+  td:nth-child(1) {
+    inline-size: 24%;
+  }
+
+  th:nth-child(2),
+  td:nth-child(2) {
+    inline-size: 40%;
+  }
+
+  th:nth-child(3),
+  td:nth-child(3),
+  th:nth-child(4),
+  td:nth-child(4),
+  th:nth-child(5),
+  td:nth-child(5) {
+    inline-size: 12%;
+  }
+
   &.v-table .v-table__wrapper table thead tr th {
     border-block-end: 1px solid
       rgba(var(--v-border-color), var(--v-border-opacity)) !important;
   }
+}
+
+.quotation-description-cell {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
 }
 
 @media print {
