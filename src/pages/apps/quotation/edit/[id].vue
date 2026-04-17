@@ -3,20 +3,21 @@ import { requiredValidator, urlValidator } from "@/@core/utils/validators";
 import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
-import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import { buildQuotationPaymentDetails } from "@/utils/quotationConfig";
 import {
   clearQuotationPreviewDraft,
   loadQuotationPreviewDraft,
   saveQuotationPreviewDraft,
 } from "@/utils/quotationPreviewDraft";
-import { buildQuotationPaymentDetails } from "@/utils/quotationConfig";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
+import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import type {
   PurchasedProduct,
   QuotationData,
 } from "@/views/apps/quotation/types";
-import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
-import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
-import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
 
 const route = useRoute("apps-quotation-edit-id");
 const router = useRouter();
@@ -45,8 +46,10 @@ const removeProduct = (id: number) => {
   quotationData.value?.purchasedProducts.splice(id, 1);
 };
 
-const isSendSidebarActive = ref(false);
 const isAddPaymentSidebarActive = ref(false);
+const isEmailDialogVisible = ref(false);
+const emailDialogRef = ref<any | null>(null);
+const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const paymentTerms = ref(true);
 const paymentStub = ref(false);
 const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
@@ -75,6 +78,143 @@ const employeeOptions = computed(() =>
   })),
 );
 
+const quotationEmailDraft = computed(() => {
+  const currentQuotation = quotationData.value?.quotation;
+  const companyName = configStore.legal?.companyName?.trim() || "Squarely";
+  const to = currentQuotation?.client.companyEmail?.trim() || "";
+  const clientName = currentQuotation?.client.name?.trim() || "there";
+  const quoteNumber = currentQuotation?.quoteNumber?.trim() || "quotation";
+  const total = Number(currentQuotation?.total || 0).toLocaleString();
+  const expiryDate = currentQuotation?.dueDate?.trim() || "";
+
+  return {
+    to,
+    subject: `Quotation ${quoteNumber} from ${companyName}`,
+    message: `Dear ${clientName},
+
+Please find ${quoteNumber} attached.
+
+Quotation amount: $${total}
+${expiryDate ? `Expiry date: ${expiryDate}` : ""}
+
+Thank you,
+${companyName}`.trim(),
+    attachments: [
+      {
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
+      },
+    ],
+  };
+});
+
+const buildPreviewQuotationDraft = () => {
+  if (!quotationData.value) return null;
+  if (!validateCreditCardPaymentLink()) return null;
+  if (!validateApprovalSelection()) return null;
+
+  const previewQuotation = cloneQuotationRecord(quotationData.value);
+  const total = getQuotationGrandTotal(previewQuotation.purchasedProducts);
+
+  previewQuotation.quotation.total = total;
+  previewQuotation.paymentDetails = buildQuotationPaymentDetails(
+    total,
+    configStore.legal,
+    configStore.financial,
+  );
+  previewQuotation.paymentLink =
+    previewQuotation.paymentMethod === "Credit Card"
+      ? previewQuotation.paymentLink?.trim() || null
+      : null;
+  previewQuotation.quotation.linkedRecordType = previewQuotation.quotation
+    .dealId
+    ? "deal"
+    : null;
+  previewQuotation.approverEmployeeId =
+    previewQuotation.approvalMode === "Request Approval"
+      ? (previewQuotation.approverEmployeeId ?? null)
+      : null;
+
+  return previewQuotation;
+};
+
+const ensurePreviewActionFrame = () => {
+  if (previewActionFrame.value) return previewActionFrame.value;
+
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.tabIndex = -1;
+  iframe.style.position = "fixed";
+  iframe.style.inlineSize = "0";
+  iframe.style.blockSize = "0";
+  iframe.style.border = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  document.body.appendChild(iframe);
+  previewActionFrame.value = iframe;
+
+  return iframe;
+};
+
+const triggerDraftPreviewAction = (action: "print" | "download") => {
+  const previewQuotation = buildPreviewQuotationDraft();
+  if (!previewQuotation) return;
+
+  saveQuotationPreviewDraft({
+    source: "edit",
+    quotation: previewQuotation,
+  });
+
+  const iframe = ensurePreviewActionFrame();
+  const routeLocation = router.resolve({
+    name: "apps-quotation-preview-id",
+    params: { id: previewQuotation.quotation.id },
+    query: {
+      draft: "1",
+      source: "edit",
+      [action]: "1",
+      trigger: `${Date.now()}`,
+    },
+  });
+
+  iframe.src = routeLocation.href;
+};
+
+const openQuotationEmailDialog = () => {
+  const previewQuotation = buildPreviewQuotationDraft();
+  if (!previewQuotation) return;
+
+  saveQuotationPreviewDraft({
+    source: "edit",
+    quotation: previewQuotation,
+  });
+  isEmailDialogVisible.value = true;
+
+  nextTick(() => {
+    emailDialogRef.value?.openWith?.(quotationEmailDraft.value);
+  });
+};
+
+const shareQuotationOnWhatsApp = async () => {
+  const previewQuotation = buildPreviewQuotationDraft();
+  if (!previewQuotation) return;
+
+  saveQuotationPreviewDraft({
+    source: "edit",
+    quotation: previewQuotation,
+  });
+
+  const routeLocation = router.resolve({
+    name: "apps-quotation-preview-id",
+    params: { id: previewQuotation.quotation.id },
+    query: { draft: "1", source: "edit" },
+  });
+
+  await shareToWhatsApp({
+    url: `${window.location.origin}${routeLocation.href}`,
+    text: `Quotation ${previewQuotation.quotation.quoteNumber} for ${previewQuotation.quotation.client.name}`,
+  });
+};
+
 watch(
   () => quotationData.value?.paymentMethod,
   (paymentMethod) => {
@@ -98,7 +238,10 @@ watch(
 watch(
   () => quotationData.value?.paymentLink,
   (paymentLink) => {
-    if (!quotationData.value || quotationData.value.paymentMethod !== "Credit Card") {
+    if (
+      !quotationData.value ||
+      quotationData.value.paymentMethod !== "Credit Card"
+    ) {
       creditCardPaymentLinkError.value = null;
       return;
     }
@@ -116,7 +259,10 @@ watch(
 );
 
 const validateCreditCardPaymentLink = () => {
-  if (!quotationData.value || quotationData.value.paymentMethod !== "Credit Card") {
+  if (
+    !quotationData.value ||
+    quotationData.value.paymentMethod !== "Credit Card"
+  ) {
     creditCardPaymentLinkError.value = null;
     return true;
   }
@@ -138,7 +284,10 @@ const validateCreditCardPaymentLink = () => {
 };
 
 const validateApprovalSelection = () => {
-  if (!quotationData.value || quotationData.value.approvalMode !== "Request Approval") {
+  if (
+    !quotationData.value ||
+    quotationData.value.approvalMode !== "Request Approval"
+  ) {
     approvalError.value = null;
     return true;
   }
@@ -173,12 +322,13 @@ const saveQuotation = () => {
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
       : null;
-  quotationData.value.quotation.linkedRecordType = quotationData.value.quotation.dealId
+  quotationData.value.quotation.linkedRecordType = quotationData.value.quotation
+    .dealId
     ? "deal"
     : null;
   quotationData.value.approverEmployeeId =
     quotationData.value.approvalMode === "Request Approval"
-      ? quotationData.value.approverEmployeeId ?? null
+      ? (quotationData.value.approverEmployeeId ?? null)
       : null;
 
   quotationsStore.updateQuotation(
@@ -194,30 +344,8 @@ const saveQuotation = () => {
 };
 
 const openPreview = async () => {
-  if (!quotationData.value) return;
-  if (!validateCreditCardPaymentLink()) return;
-  if (!validateApprovalSelection()) return;
-
-  const previewQuotation = cloneQuotationRecord(quotationData.value);
-  const total = getQuotationGrandTotal(previewQuotation.purchasedProducts);
-
-  previewQuotation.quotation.total = total;
-  previewQuotation.paymentDetails = buildQuotationPaymentDetails(
-    total,
-    configStore.legal,
-    configStore.financial,
-  );
-  previewQuotation.paymentLink =
-    previewQuotation.paymentMethod === "Credit Card"
-      ? previewQuotation.paymentLink?.trim() || null
-      : null;
-  previewQuotation.quotation.linkedRecordType = previewQuotation.quotation.dealId
-    ? "deal"
-    : null;
-  previewQuotation.approverEmployeeId =
-    previewQuotation.approvalMode === "Request Approval"
-      ? previewQuotation.approverEmployeeId ?? null
-      : null;
+  const previewQuotation = buildPreviewQuotationDraft();
+  if (!previewQuotation) return;
 
   saveQuotationPreviewDraft({
     source: "edit",
@@ -230,6 +358,14 @@ const openPreview = async () => {
     query: { draft: "1", source: "edit" },
   });
 };
+
+onBeforeUnmount(() => {
+  if (previewActionFrame.value?.parentNode) {
+    previewActionFrame.value.parentNode.removeChild(previewActionFrame.value);
+  }
+
+  previewActionFrame.value = null;
+});
 </script>
 
 <template>
@@ -245,14 +381,43 @@ const openPreview = async () => {
     <VCol cols="12" md="3">
       <VCard class="mb-8">
         <VCardText>
-          <VBtn
-            block
-            prepend-icon="tabler-send"
-            class="mb-4"
-            @click="isSendSidebarActive = true"
-          >
-            Send Quotation
-          </VBtn>
+          <div class="d-flex align-center justify-space-between gap-2 mb-4">
+            <VBtn
+              variant="tonal"
+              color="secondary"
+              class="quotation-action-btn"
+              @click="openQuotationEmailDialog"
+            >
+              <VIcon icon="tabler-mail" />
+            </VBtn>
+
+            <VBtn
+              variant="tonal"
+              color="secondary"
+              class="quotation-action-btn"
+              @click="triggerDraftPreviewAction('download')"
+            >
+              <VIcon icon="tabler-download" />
+            </VBtn>
+
+            <VBtn
+              variant="tonal"
+              color="success"
+              class="quotation-action-btn"
+              @click="shareQuotationOnWhatsApp"
+            >
+              <VIcon icon="tabler-brand-whatsapp" />
+            </VBtn>
+
+            <VBtn
+              variant="tonal"
+              color="secondary"
+              class="quotation-action-btn"
+              @click="triggerDraftPreviewAction('print')"
+            >
+              <VIcon icon="tabler-printer" />
+            </VBtn>
+          </div>
 
           <div class="d-flex flex-wrap gap-4">
             <VBtn
@@ -293,7 +458,9 @@ const openPreview = async () => {
         label="Credit Card Payment Link"
         placeholder="https://"
         :rules="[requiredValidator, urlValidator]"
-        :error-messages="creditCardPaymentLinkError ? [creditCardPaymentLinkError] : []"
+        :error-messages="
+          creditCardPaymentLinkError ? [creditCardPaymentLinkError] : []
+        "
         class="mb-4"
       />
 
@@ -348,9 +515,9 @@ const openPreview = async () => {
       />
     </VCol>
 
-    <QuotationSendQuotationDrawer
-      v-model:is-drawer-open="isSendSidebarActive"
-      :quotation-record="quotationData"
+    <EmailDialog
+      ref="emailDialogRef"
+      v-model:is-dialog-visible="isEmailDialogVisible"
     />
     <QuotationAddPaymentDrawer
       v-model:is-drawer-open="isAddPaymentSidebarActive"
@@ -363,3 +530,12 @@ const openPreview = async () => {
     </VAlert>
   </section>
 </template>
+
+<style scoped>
+.quotation-action-btn {
+  padding: 0;
+  block-size: 48px;
+  inline-size: 48px;
+  min-inline-size: 48px;
+}
+</style>

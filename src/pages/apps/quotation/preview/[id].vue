@@ -15,10 +15,11 @@ import {
   getQuotationGrandTotal,
   getQuotationSubtotal,
 } from "@/utils/quotationPricing";
+import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
 import { formatSystemDate } from "@core/utils/formatters";
 
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
-import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
 import type { QuotationRecord } from "@db/apps/quotation/types";
 
 const route = useRoute("apps-quotation-preview-id");
@@ -117,6 +118,7 @@ const companyContactLines = computed(() =>
 const isAddPaymentSidebarVisible = ref(false);
 const isSendPaymentSidebarVisible = ref(false);
 const hasExecutedAutoAction = ref(false);
+const emailDialogRef = ref<any | null>(null);
 
 const printQuotation = () => {
   window.print();
@@ -146,6 +148,56 @@ const downloadQuotation = async () => {
 
 const openSendQuotationDrawer = () => {
   isSendPaymentSidebarVisible.value = true;
+};
+
+const quotationEmailDraft = computed(() => {
+  const currentQuotation = quotation.value;
+  const to = currentQuotation?.client.companyEmail?.trim() || "";
+  const clientName = currentQuotation?.client.name?.trim() || "there";
+  const quoteNumber = currentQuotation?.quoteNumber?.trim() || "quotation";
+  const total = Number(currentQuotation?.total || 0).toLocaleString();
+  const expiryDate = currentQuotation?.dueDate?.trim() || "";
+
+  return {
+    to,
+    subject: `Quotation ${quoteNumber} from ${companyName.value}`,
+    message: `Dear ${clientName},
+
+Please find ${quoteNumber} attached.
+
+Quotation amount: $${total}
+${expiryDate ? `Expiry date: ${expiryDate}` : ""}
+
+Thank you,
+${companyName.value}`.trim(),
+    attachments: [
+      {
+        name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
+      },
+    ],
+  };
+});
+
+const openQuotationEmailDialog = () => {
+  isSendPaymentSidebarVisible.value = true;
+
+  nextTick(() => {
+    emailDialogRef.value?.openWith?.(quotationEmailDraft.value);
+  });
+};
+
+const shareQuotationOnWhatsApp = async () => {
+  const currentQuotation = quotation.value;
+  if (!currentQuotation) return;
+
+  const shareUrl = window.location.href;
+  const quoteNumber = currentQuotation.quoteNumber?.trim() || "quotation";
+  const clientName = currentQuotation.client.name?.trim() || "client";
+
+  await shareToWhatsApp({
+    url: shareUrl,
+    text: `Quotation ${quoteNumber} for ${clientName}`,
+  });
 };
 
 const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
@@ -456,14 +508,43 @@ if (!isEmbeddedActionFrame) {
       <VCol cols="12" md="3" class="d-print-none">
         <VCard>
           <VCardText>
-            <VBtn
-              block
-              prepend-icon="tabler-send"
-              class="mb-4"
-              @click="openSendQuotationDrawer"
-            >
-              Send Quotation
-            </VBtn>
+            <div class="d-flex align-center justify-space-between gap-2 mb-4">
+              <VBtn
+                variant="tonal"
+                color="secondary"
+                class="quotation-action-btn"
+                @click="openQuotationEmailDialog"
+              >
+                <VIcon icon="tabler-mail" />
+              </VBtn>
+
+              <VBtn
+                variant="tonal"
+                color="secondary"
+                class="quotation-action-btn"
+                @click="downloadQuotation"
+              >
+                <VIcon icon="tabler-download" />
+              </VBtn>
+
+              <VBtn
+                variant="tonal"
+                color="success"
+                class="quotation-action-btn"
+                @click="shareQuotationOnWhatsApp"
+              >
+                <VIcon icon="tabler-brand-whatsapp" />
+              </VBtn>
+
+              <VBtn
+                variant="tonal"
+                color="secondary"
+                class="quotation-action-btn"
+                @click="printQuotation"
+              >
+                <VIcon icon="tabler-printer" />
+              </VBtn>
+            </div>
 
             <VBtn
               v-if="canReturnToEditor"
@@ -476,26 +557,7 @@ if (!isEmbeddedActionFrame) {
               Back
             </VBtn>
 
-            <VBtn
-              block
-              color="secondary"
-              variant="tonal"
-              class="mb-4"
-              @click="downloadQuotation"
-            >
-              Download
-            </VBtn>
-
             <div class="d-flex flex-wrap gap-4">
-              <VBtn
-                variant="tonal"
-                color="secondary"
-                class="flex-grow-1"
-                @click="printQuotation"
-              >
-                Print
-              </VBtn>
-
               <VBtn
                 color="secondary"
                 variant="tonal"
@@ -523,9 +585,9 @@ if (!isEmbeddedActionFrame) {
       v-model:is-drawer-open="isAddPaymentSidebarVisible"
     />
 
-    <QuotationSendQuotationDrawer
-      v-model:is-drawer-open="isSendPaymentSidebarVisible"
-      :quotation-record="quotationRecord"
+    <EmailDialog
+      ref="emailDialogRef"
+      v-model:is-dialog-visible="isSendPaymentSidebarVisible"
     />
   </section>
 
@@ -553,6 +615,13 @@ if (!isEmbeddedActionFrame) {
 .quotation-company-title {
   margin: 0;
   line-height: 1.2;
+}
+
+.quotation-action-btn {
+  padding: 0;
+  block-size: 48px;
+  inline-size: 48px;
+  min-inline-size: 48px;
 }
 
 .quotation-preview-table {

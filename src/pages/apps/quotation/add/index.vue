@@ -7,20 +7,19 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
-import { getQuotationGrandTotal } from "@/utils/quotationPricing";
-import {
-  clearQuotationPreviewDraft,
-  loadQuotationPreviewDraft,
-  saveQuotationPreviewDraft,
-} from "@/utils/quotationPreviewDraft";
 import {
   buildQuotationNote,
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
 } from "@/utils/quotationConfig";
+import {
+  clearQuotationPreviewDraft,
+  loadQuotationPreviewDraft,
+  saveQuotationPreviewDraft,
+} from "@/utils/quotationPreviewDraft";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
-import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
 import type {
   PurchasedProduct,
   QuotationData,
@@ -185,7 +184,6 @@ const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
 const approvalModes = ["Automatic", "Request Approval"] as const;
 const creditCardPaymentLinkError = ref<string | null>(null);
 const approvalError = ref<string | null>(null);
-const isSendQuotationSidebarVisible = ref(false);
 const isLeaveDialogVisible = ref(false);
 const pendingNavigationTarget = ref<Parameters<typeof router.push>[0] | null>(
   null,
@@ -361,12 +359,13 @@ const saveQuotation = () => {
     quotationData.value.paymentMethod === "Credit Card"
       ? quotationData.value.paymentLink?.trim() || null
       : null;
-  quotationData.value.quotation.linkedRecordType = quotationData.value.quotation.dealId
+  quotationData.value.quotation.linkedRecordType = quotationData.value.quotation
+    .dealId
     ? "deal"
     : null;
   quotationData.value.approverEmployeeId =
     quotationData.value.approvalMode === "Request Approval"
-      ? quotationData.value.approverEmployeeId ?? null
+      ? (quotationData.value.approverEmployeeId ?? null)
       : null;
 
   const created = quotationsStore.addQuotation(
@@ -405,7 +404,7 @@ const openPreview = async () => {
     : null;
   previewDraft.approverEmployeeId =
     previewDraft.approvalMode === "Request Approval"
-      ? previewDraft.approverEmployeeId ?? null
+      ? (previewDraft.approverEmployeeId ?? null)
       : null;
 
   saveQuotationPreviewDraft({
@@ -465,15 +464,6 @@ onBeforeUnmount(() => {
         <VCardText>
           <VBtn
             block
-            prepend-icon="tabler-send"
-            class="mb-4"
-            @click="isSendQuotationSidebarVisible = true"
-          >
-            Send Quotation
-          </VBtn>
-
-          <VBtn
-            block
             color="secondary"
             variant="tonal"
             class="mb-4"
@@ -482,7 +472,14 @@ onBeforeUnmount(() => {
             Preview
           </VBtn>
 
-          <VBtn block color="secondary" variant="tonal" class="mb-4" @click="requestLeave({ name: 'apps-quotation-list' })">Back to List</VBtn>
+          <VBtn
+            block
+            color="secondary"
+            variant="tonal"
+            class="mb-4"
+            @click="requestLeave({ name: 'apps-quotation-list' })"
+            >Back to List</VBtn
+          >
 
           <VBtn block @click="saveQuotation">Save</VBtn>
         </VCardText>
@@ -503,7 +500,9 @@ onBeforeUnmount(() => {
         label="Credit Card Payment Link"
         placeholder="https://"
         :rules="[requiredValidator, urlValidator]"
-        :error-messages="creditCardPaymentLinkError ? [creditCardPaymentLinkError] : []"
+        :error-messages="
+          creditCardPaymentLinkError ? [creditCardPaymentLinkError] : []
+        "
         class="mb-6"
       />
 
@@ -558,11 +557,6 @@ onBeforeUnmount(() => {
       />
     </VCol>
   </VRow>
-
-  <QuotationSendQuotationDrawer
-    v-model:is-drawer-open="isSendQuotationSidebarVisible"
-    :quotation-record="quotationData"
-  />
 
   <VDialog v-model="isLeaveDialogVisible" max-width="440" persistent>
     <VCard>
