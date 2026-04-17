@@ -4,16 +4,16 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
-  getQuotationDiscountTotal,
-  getQuotationGrandTotal,
-  getQuotationSubtotal,
-} from "@/utils/quotationPricing";
-import {
   buildQuotationPaymentDetails,
   getQuotationCompanyAddressLines,
   getQuotationCompanyContactLines,
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
+import {
+  getQuotationDiscountTotal,
+  getQuotationGrandTotal,
+  getQuotationSubtotal,
+} from "@/utils/quotationPricing";
 import type { Client } from "@db/apps/quotation/types";
 
 import QuotationProductEdit from "./QuotationProductEdit.vue";
@@ -95,11 +95,15 @@ const removeProduct = (id: number) => {
   emit("remove", id);
 };
 
-const subtotal = computed(() => getQuotationSubtotal(props.data.purchasedProducts));
+const subtotal = computed(() =>
+  getQuotationSubtotal(props.data.purchasedProducts),
+);
 const discountTotal = computed(() =>
   getQuotationDiscountTotal(props.data.purchasedProducts),
 );
-const total = computed(() => getQuotationGrandTotal(props.data.purchasedProducts));
+const total = computed(() =>
+  getQuotationGrandTotal(props.data.purchasedProducts),
+);
 const paymentMethod = computed(
   () => props.data.paymentMethod || "Bank Transfer",
 );
@@ -367,6 +371,12 @@ watch(
               <td class="pe-16">Total:</td>
               <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
                 <h6 class="text-h6">${{ total.toLocaleString() }}</h6>
+              </td>
+            </tr>
+            <tr v-if="props.data.totalFx?.trim()">
+              <td class="pe-16">Total FX:</td>
+              <td :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'">
+                <h6 class="text-h6">{{ props.data.totalFx }}</h6>
               </td>
             </tr>
           </tbody>

@@ -421,7 +421,7 @@ onBeforeUnmount(() => {
     <VCol cols="12" md="3">
       <VCard class="mb-8">
         <VCardText>
-          <div class="d-flex flex-nowrap gap-2 mb-4">
+          <div class="quotation-action-row mb-4">
             <VTooltip text="Email" location="top">
               <template #activator="{ props: tooltipProps }">
                 <VBtn
@@ -526,6 +526,14 @@ onBeforeUnmount(() => {
       />
 
       <AppTextField
+        id="total-fx"
+        v-model="quotationData.totalFx"
+        label="Total FX"
+        placeholder="Enter total FX"
+        class="mb-4"
+      />
+
+      <AppTextField
         v-if="quotationData.paymentMethod === 'Credit Card'"
         id="payment-link"
         v-model="quotationData.paymentLink"
@@ -608,8 +616,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .quotation-action-btn {
   padding: 0;
-  block-size: 48px;
-  inline-size: 48px;
-  min-inline-size: 48px;
+  block-size: 44px;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.quotation-action-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 </style>

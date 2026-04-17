@@ -64,6 +64,7 @@ export interface QuotationRecord {
   purchasedProducts: PurchasedProduct[];
   note: string;
   showClientNote: boolean;
+  totalFx: string | null;
   paymentMethod: string;
   paymentLink: string | null;
   approvalMode: QuotationApprovalMode;

@@ -211,6 +211,7 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.paymentMethod === "Credit Card"
       ? cloned.paymentLink?.trim() || null
       : null;
+  cloned.totalFx = cloned.totalFx?.trim() || null;
   cloned.showClientNote =
     cloned.showClientNote ?? config.financial?.invoicing?.showNotes ?? true;
   cloned.approvalMode =
@@ -219,7 +220,7 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
       : "Automatic";
   cloned.approverEmployeeId =
     cloned.approvalMode === "Request Approval"
-      ? cloned.approverEmployeeId ?? null
+      ? (cloned.approverEmployeeId ?? null)
       : null;
 
   return cloned;
@@ -290,11 +291,7 @@ function resequenceRevisions(records: QuotationRecord[]): QuotationRecord[] {
 
 function defaultPaymentDetails(total: number): PaymentDetails {
   const config = loadActiveAppConfigurations();
-  return buildQuotationPaymentDetails(
-    total,
-    config.legal,
-    config.financial,
-  );
+  return buildQuotationPaymentDetails(total, config.legal, config.financial);
 }
 
 function ensureClient(client: Partial<Client> | undefined): Client {
@@ -384,11 +381,10 @@ function normaliseQuotationRecord(
       ? clonePaymentDetails(payload.paymentDetails)
       : defaultPaymentDetails(total),
     purchasedProducts: ensureProducts(payload.purchasedProducts),
-    note:
-      payload.note?.trim() ||
-      buildQuotationNote(config.financial, 7),
+    note: payload.note?.trim() || buildQuotationNote(config.financial, 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
+    totalFx: payload.totalFx?.trim() || null,
     paymentMethod: normalisePaymentMethod(payload.paymentMethod),
     paymentLink:
       normalisePaymentMethod(payload.paymentMethod) === "Credit Card"
@@ -400,7 +396,7 @@ function normaliseQuotationRecord(
         : "Automatic",
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
-        ? payload.approverEmployeeId ?? null
+        ? (payload.approverEmployeeId ?? null)
         : null,
     salesperson:
       payload.salesperson?.trim() || buildQuotationSalesperson(config.legal),
@@ -463,6 +459,10 @@ function mergeQuotationRecord(
     ),
     note: patch.note ?? original.note,
     showClientNote: patch.showClientNote ?? original.showClientNote,
+    totalFx:
+      patch.totalFx === undefined
+        ? original.totalFx
+        : patch.totalFx?.trim() || null,
     paymentMethod: normalisePaymentMethod(
       patch.paymentMethod ?? original.paymentMethod,
     ),
@@ -487,8 +487,8 @@ function mergeQuotationRecord(
   merged.approverEmployeeId =
     merged.approvalMode === "Request Approval"
       ? patch.approverEmployeeId === undefined
-        ? original.approverEmployeeId ?? null
-        : patch.approverEmployeeId ?? null
+        ? (original.approverEmployeeId ?? null)
+        : (patch.approverEmployeeId ?? null)
       : null;
 
   merged.paymentDetails.totalDue = `$${Number(

@@ -91,6 +91,7 @@ const buildRecord = (
   ],
   note: "Pricing is valid for 14 days from the issue date.",
   showClientNote: true,
+  totalFx: null,
   paymentMethod: "Bank Transfer",
   paymentLink: null,
   approvalMode: "Automatic",

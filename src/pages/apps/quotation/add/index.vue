@@ -106,6 +106,7 @@ const buildBlankQuotation = (): QuotationData => {
     ],
     note: buildQuotationNote(configStore.financial, 7),
     showClientNote: configStore.financial?.invoicing?.showNotes ?? true,
+    totalFx: null,
     paymentMethod: "Bank Transfer",
     paymentLink: null,
     approvalMode: "Automatic",
@@ -490,6 +491,14 @@ onBeforeUnmount(() => {
         v-model="quotationData.paymentMethod"
         :items="paymentMethods"
         label="Accept Payment Via"
+        class="mb-6"
+      />
+
+      <AppTextField
+        id="total-fx"
+        v-model="quotationData.totalFx"
+        label="Total FX"
+        placeholder="Enter total FX"
         class="mb-6"
       />
 

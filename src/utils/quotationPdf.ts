@@ -119,6 +119,9 @@ const buildContentLines = ({
   pushWrapped(`Discount: $${discount.toLocaleString()}`);
   pushWrapped("VAT: Included");
   pushWrapped(`Total: $${total.toLocaleString()}`);
+  if (quotationRecord.totalFx?.trim()) {
+    pushWrapped(`Total FX: ${quotationRecord.totalFx}`);
+  }
   lines.push("");
 
   pushWrapped(`Payment Method: ${quotationRecord.paymentMethod}`);

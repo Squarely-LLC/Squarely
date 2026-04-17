@@ -460,7 +460,7 @@ if (!isEmbeddedActionFrame) {
                 v-for="(item, index) in purchasedProducts"
                 :key="`${item.title}-${index}`"
               >
-                <td class="text-no-wrap">{{ item.title }}</td>
+                <td class="quotation-item-cell">{{ item.title }}</td>
                 <td class="quotation-description-cell">
                   {{ item.description }}
                 </td>
@@ -530,6 +530,16 @@ if (!isEmbeddedActionFrame) {
                       </h6>
                     </td>
                   </tr>
+                  <tr v-if="quotationRecord?.totalFx?.trim()">
+                    <td class="pe-16">Total FX:</td>
+                    <td
+                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
+                    >
+                      <h6 class="text-base font-weight-medium">
+                        {{ quotationRecord.totalFx }}
+                      </h6>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -551,7 +561,7 @@ if (!isEmbeddedActionFrame) {
       <VCol cols="12" md="3" class="d-print-none">
         <VCard>
           <VCardText>
-            <div class="d-flex flex-nowrap gap-2 mb-4">
+            <div class="quotation-action-row mb-4">
               <VTooltip text="Email" location="top">
                 <template #activator="{ props: tooltipProps }">
                   <VBtn
@@ -696,9 +706,15 @@ if (!isEmbeddedActionFrame) {
 
 .quotation-action-btn {
   padding: 0;
-  block-size: 48px;
-  inline-size: 48px;
-  min-inline-size: 48px;
+  block-size: 44px;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.quotation-action-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .quotation-preview-table {
@@ -710,12 +726,12 @@ if (!isEmbeddedActionFrame) {
 
   th:nth-child(1),
   td:nth-child(1) {
-    inline-size: 24%;
+    inline-size: 30%;
   }
 
   th:nth-child(2),
   td:nth-child(2) {
-    inline-size: 40%;
+    inline-size: 34%;
   }
 
   th:nth-child(3),
@@ -733,6 +749,7 @@ if (!isEmbeddedActionFrame) {
   }
 }
 
+.quotation-item-cell,
 .quotation-description-cell {
   overflow-wrap: anywhere;
   white-space: normal;
