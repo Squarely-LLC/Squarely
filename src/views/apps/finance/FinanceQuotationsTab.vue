@@ -82,6 +82,17 @@ const currentUserRole = computed(() =>
 
 const canSelectRows = computed(() => currentUserRole.value === "auditor");
 
+const pushFinanceSuccess = (message: string) => {
+  notifications.push(message, "success", 3500);
+};
+
+const getQuotationLabel = (quotationId: number) => {
+  return (
+    quotationsStore.byId(quotationId)?.quotation.quoteNumber ||
+    `quotation #${quotationId}`
+  );
+};
+
 const updateOptions = (options: any) => {
   sortBy.value = options.sortBy[0]?.key;
   orderBy.value = options.sortBy[0]?.order;
@@ -172,6 +183,9 @@ const flushPendingPreviewAction = () => {
   if (!pendingAction || !isPreviewActionFrameReady.value) return;
 
   sendPreviewAction(pendingAction.quotationId, pendingAction.action);
+  pushFinanceSuccess(
+    `${pendingAction.action === "download" ? "Download" : "Print"} started for ${getQuotationLabel(pendingAction.quotationId)}.`,
+  );
   pendingPreviewAction.value = null;
 };
 
@@ -630,6 +644,8 @@ const saveExternalQuotation = async () => {
     ? "Quotation import draft captured and linked to the selected deal/contract."
     : "Quotation import draft captured. This quotation is flagged because it is not linked to a deal or contract.";
 
+  pushFinanceSuccess(externalQuotationSuccess.value);
+
   closeExternalQuotationDialog();
 };
 
@@ -638,6 +654,10 @@ const openRevisionDraft = async (quotationId: number) => {
     name: "apps-quotation-add",
     query: { revisionOf: String(quotationId) },
   });
+
+  pushFinanceSuccess(
+    `Revision draft opened for ${getQuotationLabel(quotationId)}.`,
+  );
 };
 
 const pendingDeleteQuotationId = ref<number | null>(null);
@@ -694,6 +714,7 @@ const confirmDeleteQuotation = () => {
 
   quotationsStore.removeQuotation(quotation.id);
   expanded.value = expanded.value.filter((value) => value !== quotation.id);
+  pushFinanceSuccess(`${quotation.quoteNumber} deleted successfully.`);
   closeDeleteQuotationDialog();
 };
 

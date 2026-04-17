@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
+import { useNotificationsStore } from "@/stores/notifications";
 import {
   applyQuotationPayment,
   getQuotationOutstandingBalance,
@@ -36,6 +37,7 @@ import type { QuotationRecord } from "@db/apps/quotation/types";
 const route = useRoute("apps-quotation-preview-id");
 const isEmbeddedActionFrame = route.query.embedded === "1";
 const configStore = useConfigStore();
+const notifications = useNotificationsStore();
 const quotationsStore = useQuotationsStore();
 
 if (!isEmbeddedActionFrame) {
@@ -266,10 +268,20 @@ const recordQuotationPayment = (payment: QuotationPaymentInput) => {
 
     draftPreviewState.value = updatedDraft;
     saveQuotationPreviewDraft(updatedDraft);
+    notifications.push(
+      `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+      "success",
+      3500,
+    );
     return;
   }
 
   quotationsStore.updateQuotation(updatedRecord.quotation.id, updatedRecord);
+  notifications.push(
+    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    "success",
+    3500,
+  );
 };
 
 const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));

@@ -2,6 +2,7 @@
 import { requiredValidator, urlValidator } from "@/@core/utils/validators";
 import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
+import { useNotificationsStore } from "@/stores/notifications";
 import {
   applyQuotationPayment,
   cloneQuotationRecord,
@@ -37,6 +38,7 @@ const configStore = useConfigStore();
 configStore.init();
 const employeesStore = useEmployeesStore();
 employeesStore.init();
+const notifications = useNotificationsStore();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
@@ -168,6 +170,11 @@ const recordQuotationPayment = (payment: QuotationPaymentInput) => {
   if (!quotationData.value) return;
 
   quotationData.value = applyQuotationPayment(quotationData.value, payment);
+  notifications.push(
+    `Payment of $${payment.amount.toLocaleString()} added successfully.`,
+    "success",
+    3500,
+  );
 };
 
 const createDraftQuotationPdfFile = (previewQuotation: QuotationData) =>
@@ -396,9 +403,16 @@ const saveQuotation = () => {
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
 
-  quotationsStore.updateQuotation(
+  const updatedQuotation = quotationsStore.updateQuotation(
     quotationData.value.quotation.id,
     cloneQuotationRecord(quotationData.value),
+  );
+  if (!updatedQuotation) return;
+
+  notifications.push(
+    `Quotation ${updatedQuotation.quotation.quoteNumber} updated successfully.`,
+    "success",
+    3500,
   );
 
   clearQuotationPreviewDraft();

@@ -6,6 +6,7 @@ import type { Client } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
+import { useNotificationsStore } from "@/stores/notifications";
 import {
   cloneQuotationRecord,
   getQuotationOutstandingBalance,
@@ -40,6 +41,7 @@ const employeesStore = useEmployeesStore();
 employeesStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
+const notifications = useNotificationsStore();
 
 const mapContactToClient = (contact: ContactProperties): Client => ({
   address: contact.address?.trim() || "",
@@ -382,6 +384,12 @@ const saveQuotation = () => {
     cloneQuotationRecord(quotationData.value),
   );
   if (!created) return;
+
+  notifications.push(
+    `Quotation ${created.quotation.quoteNumber} saved successfully.`,
+    "success",
+    3500,
+  );
 
   clearQuotationPreviewDraft();
   initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
