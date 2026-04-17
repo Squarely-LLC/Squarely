@@ -1,9 +1,17 @@
 <script setup lang="ts">
+import { emailValidator, requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useQuotationsStore } from "@/stores/quotations";
+import {
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+} from "@/utils/quotationConfig";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type { Quotation, QuotationStatus } from "@db/apps/quotation/types";
+import type { VForm } from "vuetify/components/VForm";
 
 const searchQuery = ref("");
 const selectedStatus = ref<QuotationStatus | null>(null);
@@ -14,7 +22,7 @@ const userData = useCookie<Record<string, unknown> | null | undefined>(
 const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
-const expanded = ref<string[]>([]);
+const expanded = ref<number[]>([]);
 const router = useRouter();
 
 type DealContractOption = {
@@ -38,6 +46,9 @@ type ExternalQuotationForm = {
 
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
+
+const configStore = useConfigStore();
+configStore.init();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
@@ -153,10 +164,10 @@ const getRevisionCount = (quotation: Quotation) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
 const isExpanded = (quotation: Quotation) =>
-  expanded.value.includes(quotation.quoteNumber);
+  expanded.value.includes(quotation.id);
 
 const toggleRow = (quotation: Quotation) => {
-  const id = quotation.quoteNumber;
+  const id = quotation.id;
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -256,6 +267,8 @@ const emptyExternalQuotationForm = (): ExternalQuotationForm => ({
 const externalQuotationForm = ref<ExternalQuotationForm>(
   emptyExternalQuotationForm(),
 );
+const externalQuotationFormRef = ref<VForm>();
+const isExternalQuotationFormValid = ref(false);
 const externalQuotationError = ref("");
 const externalQuotationSuccess = ref("");
 const allowedAttachmentTypes = [
@@ -300,14 +313,46 @@ const shouldAutoSelectContact = computed(
   () => selectedLinkedOption.value?.recordType === "deal",
 );
 
-const externalFormIsValid = computed(() => {
-  return Boolean(
-    externalQuotationForm.value.date &&
-    externalQuotationForm.value.quoteNumber.trim() &&
-    externalQuotationForm.value.amount !== null &&
-    externalQuotationForm.value.amount > 0 &&
-    externalQuotationForm.value.status,
+const positiveAmountValidator = (value: unknown) => {
+  if (value === null || value === undefined || value === "") {
+    return "This field is required";
+  }
+
+  return Number(value) > 0 || "Amount must be greater than 0";
+};
+
+const uniqueQuotationNumberValidator = (value: unknown) => {
+  const quoteNumber = String(value ?? "").trim().toLowerCase();
+  if (!quoteNumber) return true;
+
+  const exists = quotationsStore.all.some(
+    (record) =>
+      record.quotation.quoteNumber.trim().toLowerCase() === quoteNumber,
   );
+
+  return exists ? "Quotation number already exists" : true;
+};
+
+const attachmentValidator = () => {
+  return validateExternalAttachment() || true;
+};
+
+const contactNameValidator = (value: unknown) => {
+  if (shouldAutoSelectContact.value) return true;
+
+  const email = externalQuotationForm.value.contactEmail.trim();
+  if (!email) return true;
+
+  return requiredValidator(value);
+};
+
+const contactEmailRules = computed(() => {
+  const rules = [emailValidator];
+
+  if (shouldAutoSelectContact.value) return rules;
+  if (externalQuotationForm.value.contactName.trim()) rules.unshift(requiredValidator);
+
+  return rules;
 });
 
 const resolveStatusVariantAndIcon = (status: string) => {
@@ -326,10 +371,25 @@ const resolveStatusVariantAndIcon = (status: string) => {
 
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
+  isExternalQuotationFormValid.value = false;
   externalQuotationError.value = "";
   externalQuotationSuccess.value = "";
   externalQuotationForm.value = emptyExternalQuotationForm();
   isExternalQuotationDialogOpen.value = true;
+  nextTick(() => {
+    externalQuotationFormRef.value?.resetValidation();
+  });
+};
+
+const closeExternalQuotationDialog = () => {
+  isExternalQuotationDialogOpen.value = false;
+  isExternalQuotationFormValid.value = false;
+  externalQuotationError.value = "";
+  externalQuotationSuccess.value = "";
+  externalQuotationForm.value = emptyExternalQuotationForm();
+  nextTick(() => {
+    externalQuotationFormRef.value?.resetValidation();
+  });
 };
 
 const handleLinkedRecordChange = (value: string | null) => {
@@ -374,13 +434,17 @@ const validateExternalAttachment = () => {
   return "";
 };
 
-const saveExternalQuotation = () => {
+const saveExternalQuotation = async () => {
   externalQuotationError.value = "";
   externalQuotationSuccess.value = "";
 
-  if (!externalFormIsValid.value) {
+  const { valid } = (await externalQuotationFormRef.value?.validate()) ?? {
+    valid: true,
+  };
+
+  if (!valid) {
     externalQuotationError.value =
-      "Complete the required fields: Date, Quote #, Amount, and Status.";
+      "Fix the highlighted fields before saving.";
     return;
   }
 
@@ -427,26 +491,24 @@ const saveExternalQuotation = () => {
         description: "Imported from another system.",
       },
     ],
-    paymentDetails: {
-      totalDue: `$${Number(
-        externalQuotationForm.value.amount || 0,
-      ).toLocaleString()}`,
-      bankName: "Byblos Bank",
-      country: "Lebanon",
-      iban: "LB12345678901234567890123456",
-      swiftCode: "BYBALBBX",
-    },
+    paymentDetails: buildQuotationPaymentDetails(
+      Number(externalQuotationForm.value.amount || 0),
+      configStore.legal,
+      configStore.financial,
+    ),
     note: selectedLinkedOption.value
       ? "Imported quotation linked to an existing record."
       : "Imported quotation without linked deal or contract.",
     paymentMethod: "Bank Transfer",
-    salesperson: "Squarely Team",
-    thanksNote: "Imported into Squarely.",
+    salesperson: buildQuotationSalesperson(configStore.legal),
+    thanksNote: buildQuotationThanksNote(configStore.legal),
   });
 
   externalQuotationSuccess.value = hasLinkedDealOrContract.value
     ? "Quotation import draft captured and linked to the selected deal/contract."
     : "Quotation import draft captured. This quotation is flagged because it is not linked to a deal or contract.";
+
+  closeExternalQuotationDialog();
 };
 
 const openRevisionDraft = async (quotationId: number) => {
@@ -510,7 +572,7 @@ const confirmDeleteQuotation = () => {
 
   quotationsStore.removeQuotation(quotation.id);
   expanded.value = expanded.value.filter(
-    (value) => value !== quotation.quoteNumber,
+    (value) => value !== quotation.id,
   );
   closeDeleteQuotationDialog();
 };
@@ -690,7 +752,7 @@ watch(totalQuotations, (value) => {
         :items-length="totalQuotations"
         :headers="headers"
         :items="paginatedQuotations"
-        item-value="quoteNumber"
+        item-value="id"
         class="text-no-wrap"
         @update:options="updateOptions"
       >
@@ -903,48 +965,56 @@ watch(totalQuotations, (value) => {
         Add the external quotation details and upload the source attachment.
       </VCardText>
 
-      <VRow>
-        <VCol cols="12" md="6">
-          <AppDateTimePicker
-            v-model="externalQuotationForm.date"
-            label="Date"
-            placeholder="Select date"
-          />
-        </VCol>
+      <VForm
+        ref="externalQuotationFormRef"
+        v-model="isExternalQuotationFormValid"
+        @submit.prevent="saveExternalQuotation"
+      >
+        <VRow>
+          <VCol cols="12" md="6">
+            <AppDateTimePicker
+              v-model="externalQuotationForm.date"
+              label="Date"
+              placeholder="Select date"
+              :rules="[requiredValidator]"
+            />
+          </VCol>
 
-        <VCol cols="12" md="6">
+          <VCol cols="12" md="6">
           <AppTextField
             v-model="externalQuotationForm.quoteNumber"
             label="Quote #"
             placeholder="Enter quote number"
+            :rules="[requiredValidator, uniqueQuotationNumberValidator]"
           />
-        </VCol>
+          </VCol>
 
-        <VCol cols="12" md="6">
-          <AppTextField
-            :model-value="externalQuotationForm.amount"
-            label="Amount"
-            placeholder="Total amount including VAT"
-            type="number"
-            min="0"
-            step="0.01"
-            @update:model-value="
-              externalQuotationForm.amount = $event ? Number($event) : null
-            "
-          />
-        </VCol>
+          <VCol cols="12" md="6">
+            <AppTextField
+              :model-value="externalQuotationForm.amount"
+              label="Amount"
+              placeholder="Total amount including VAT"
+              type="number"
+              min="0"
+              step="0.01"
+              :rules="[positiveAmountValidator]"
+              @update:model-value="
+                externalQuotationForm.amount = $event ? Number($event) : null
+              "
+            />
+          </VCol>
 
-        <VCol cols="12" md="6">
-          <AppSelect
-            :model-value="externalQuotationForm.linkedRecord"
-            label="Deal or Contract"
-            placeholder="Select deal or contract"
-            :items="dealContractOptions"
-            clearable
-            clear-icon="tabler-x"
-            @update:model-value="handleLinkedRecordChange"
-          />
-        </VCol>
+          <VCol cols="12" md="6">
+            <AppSelect
+              :model-value="externalQuotationForm.linkedRecord"
+              label="Deal or Contract"
+              placeholder="Select deal or contract"
+              :items="dealContractOptions"
+              clearable
+              clear-icon="tabler-x"
+              @update:model-value="handleLinkedRecordChange"
+            />
+          </VCol>
 
         <VCol cols="12">
           <VAlert
@@ -967,6 +1037,7 @@ watch(totalQuotations, (value) => {
                 : 'Enter contact name'
             "
             :readonly="shouldAutoSelectContact"
+            :rules="[contactNameValidator]"
           />
         </VCol>
 
@@ -980,6 +1051,7 @@ watch(totalQuotations, (value) => {
                 : 'Enter contact email'
             "
             :readonly="shouldAutoSelectContact"
+            :rules="contactEmailRules"
           />
         </VCol>
 
@@ -1001,6 +1073,7 @@ watch(totalQuotations, (value) => {
             <AppSelect
               v-model="externalQuotationForm.status"
               placeholder="Select status"
+              :rules="[requiredValidator]"
               :items="[
                 'Pending',
                 'Approved',
@@ -1022,9 +1095,9 @@ watch(totalQuotations, (value) => {
               class="quotation-attachment-input"
               placeholder="Upload quotation file"
               :accept="attachmentAccept"
+              :rules="[attachmentValidator]"
               show-size
               clearable
-              hide-details
             />
             <div class="quotation-form-help">
               Maximum file size: 10MB. Allowed types: PDF, DOC, DOCX, XLS, XLSX,
@@ -1052,15 +1125,15 @@ watch(totalQuotations, (value) => {
             {{ externalQuotationSuccess }}
           </VAlert>
         </VCol>
-      </VRow>
+        </VRow>
+      </VForm>
 
       <VCardActions class="pt-6 px-0">
         <DialogActionBar
           save-text="Save Import"
-          :save-disabled="!externalFormIsValid"
           cancel-text="Cancel"
           @save="saveExternalQuotation"
-          @cancel="isExternalQuotationDialogOpen = false"
+          @cancel="closeExternalQuotationDialog"
         />
       </VCardActions>
     </VCard>

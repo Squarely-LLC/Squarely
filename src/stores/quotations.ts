@@ -6,6 +6,13 @@ import type {
   Quotation,
   QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
+import {
+  buildQuotationNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  loadActiveAppConfigurations,
+} from "@/utils/quotationConfig";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
@@ -141,6 +148,26 @@ function getBaseQuoteNumber(quoteNumber: string | null | undefined) {
   return trimmed.replace(/(?:-R\d+)+$/i, "");
 }
 
+function normalisePaymentMethod(
+  paymentMethod: string | null | undefined,
+): "Bank Transfer" | "Cash" | "Credit Card" {
+  const trimmed = paymentMethod?.trim().toLowerCase();
+
+  if (
+    trimmed === "credit card" ||
+    trimmed === "credit" ||
+    trimmed === "debit" ||
+    trimmed === "paypal" ||
+    trimmed === "upi transfer"
+  ) {
+    return "Credit Card";
+  }
+
+  if (trimmed === "cash") return "Cash";
+
+  return "Bank Transfer";
+}
+
 function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
   const cloned = cloneQuotationRecord(record);
   const parentQuotationId =
@@ -177,6 +204,12 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
   } else if (baseQuoteNumber) {
     cloned.quotation.quoteNumber = baseQuoteNumber;
   }
+
+  cloned.paymentMethod = normalisePaymentMethod(cloned.paymentMethod);
+  cloned.paymentLink =
+    cloned.paymentMethod === "Credit Card"
+      ? cloned.paymentLink?.trim() || null
+      : null;
 
   return cloned;
 }
@@ -245,13 +278,12 @@ function resequenceRevisions(records: QuotationRecord[]): QuotationRecord[] {
 }
 
 function defaultPaymentDetails(total: number): PaymentDetails {
-  return {
-    totalDue: `$${Number(total || 0).toLocaleString()}`,
-    bankName: "Byblos Bank",
-    country: "Lebanon",
-    iban: "LB12345678901234567890123456",
-    swiftCode: "BYBALBBX",
-  };
+  const config = loadActiveAppConfigurations();
+  return buildQuotationPaymentDetails(
+    total,
+    config.legal,
+    config.financial,
+  );
 }
 
 function ensureClient(client: Partial<Client> | undefined): Client {
@@ -291,6 +323,7 @@ function normaliseQuotationRecord(
   payload: QuotationPayload,
   assignedId: number,
 ): QuotationRecord {
+  const config = loadActiveAppConfigurations();
   const quotation: Partial<Quotation> = payload.quotation ?? {};
   const client = ensureClient(quotation.client);
   const total = Number(quotation.total) || 0;
@@ -303,7 +336,7 @@ function normaliseQuotationRecord(
       issuedDate: quotation.issuedDate || new Date().toISOString().slice(0, 10),
       dueDate:
         quotation.dueDate ||
-        new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
           .toISOString()
           .slice(0, 10),
       client,
@@ -333,11 +366,16 @@ function normaliseQuotationRecord(
     purchasedProducts: ensureProducts(payload.purchasedProducts),
     note:
       payload.note?.trim() ||
-      "Pricing is valid for 14 days from the issue date.",
-    paymentMethod: payload.paymentMethod?.trim() || "Bank Transfer",
-    salesperson: payload.salesperson?.trim() || "Squarely Team",
+      buildQuotationNote(config.financial, 7),
+    paymentMethod: normalisePaymentMethod(payload.paymentMethod),
+    paymentLink:
+      normalisePaymentMethod(payload.paymentMethod) === "Credit Card"
+        ? payload.paymentLink?.trim() || null
+        : null,
+    salesperson:
+      payload.salesperson?.trim() || buildQuotationSalesperson(config.legal),
     thanksNote:
-      payload.thanksNote?.trim() || "Thank you for considering Squarely.",
+      payload.thanksNote?.trim() || buildQuotationThanksNote(config.legal),
   };
 }
 
@@ -394,10 +432,20 @@ function mergeQuotationRecord(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
     note: patch.note ?? original.note,
-    paymentMethod: patch.paymentMethod ?? original.paymentMethod,
+    paymentMethod: normalisePaymentMethod(
+      patch.paymentMethod ?? original.paymentMethod,
+    ),
+    paymentLink: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
   };
+
+  merged.paymentLink =
+    merged.paymentMethod === "Credit Card"
+      ? patch.paymentLink === undefined
+        ? original.paymentLink?.trim() || null
+        : patch.paymentLink?.trim() || null
+      : null;
 
   merged.paymentDetails.totalDue = `$${Number(
     merged.quotation.total || 0,

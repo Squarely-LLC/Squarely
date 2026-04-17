@@ -1,21 +1,55 @@
 <script setup lang="ts">
+import { useConfigStore } from "@/stores/config";
 import { useQuotationsStore } from "@/stores/quotations";
+import {
+  buildQuotationPaymentDetails,
+  getQuotationCompanyAddressLines,
+  getQuotationCompanyContactLines,
+  resolveQuotationLogoUrl,
+} from "@/utils/quotationConfig";
 import { formatSystemDate } from "@core/utils/formatters";
-import { VNodeRenderer } from "@layouts/components/VNodeRenderer";
-import { themeConfig } from "@themeConfig";
 
 import QuotationAddPaymentDrawer from "@/views/apps/quotation/QuotationAddPaymentDrawer.vue";
 import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
 
 const route = useRoute("apps-quotation-preview-id");
+const configStore = useConfigStore();
+configStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
 const quotationRecord = computed(() => quotationsStore.byId(route.params.id));
 const quotation = computed(() => quotationRecord.value?.quotation ?? null);
-const paymentDetails = computed(() => quotationRecord.value?.paymentDetails ?? null);
+const paymentMethod = computed(
+  () => quotationRecord.value?.paymentMethod || "Bank Transfer",
+);
+const creditCardPaymentLink = computed(
+  () => quotationRecord.value?.paymentLink?.trim() || "",
+);
+const paymentDetails = computed(() => {
+  if (!quotationRecord.value) return null;
+
+  return {
+    ...quotationRecord.value.paymentDetails,
+    ...buildQuotationPaymentDetails(
+      quotationRecord.value.quotation.total,
+      configStore.legal,
+      configStore.financial,
+    ),
+  };
+});
 const purchasedProducts = computed(
   () => quotationRecord.value?.purchasedProducts ?? [],
+);
+const companyLogoUrl = ref("");
+const companyName = computed(
+  () => configStore.legal?.companyName?.trim() || "Squarely",
+);
+const companyAddressLines = computed(() =>
+  getQuotationCompanyAddressLines(configStore.legal),
+);
+const companyContactLines = computed(() =>
+  getQuotationCompanyContactLines(configStore.legal),
 );
 
 const isAddPaymentSidebarVisible = ref(false);
@@ -31,6 +65,14 @@ const subtotal = computed(() =>
     0,
   ),
 );
+
+watch(
+  () => configStore.legal?.logo,
+  async (logo) => {
+    companyLogoUrl.value = await resolveQuotationLogoUrl(logo);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -42,19 +84,31 @@ const subtotal = computed(() =>
             class="quotation-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6"
           >
             <div>
-              <div class="d-flex align-center app-logo mb-6">
-                <VNodeRenderer :nodes="themeConfig.app.logo" />
-                <h6 class="app-logo-title">{{ themeConfig.app.title }}</h6>
+              <div class="quotation-company-brand mb-6">
+                <img
+                  v-if="companyLogoUrl"
+                  :src="companyLogoUrl"
+                  :alt="companyName"
+                  class="quotation-company-logo"
+                />
+                <h6 class="app-logo-title quotation-company-title">
+                  {{ companyName }}
+                </h6>
               </div>
 
-              <h6 class="text-h6 font-weight-regular">
-                Office 149, 450 South Brand Brooklyn
+              <h6
+                v-for="(line, index) in companyAddressLines"
+                :key="`address-${index}`"
+                class="text-h6 font-weight-regular"
+              >
+                {{ line }}
               </h6>
-              <h6 class="text-h6 font-weight-regular">
-                San Diego County, CA 91905, USA
-              </h6>
-              <h6 class="text-h6 font-weight-regular">
-                +1 (123) 456 7891, +44 (876) 543 2198
+              <h6
+                v-for="(line, index) in companyContactLines"
+                :key="`contact-${index}`"
+                class="text-h6 font-weight-regular"
+              >
+                {{ line }}
               </h6>
             </div>
 
@@ -69,7 +123,7 @@ const subtotal = computed(() =>
               </h6>
 
               <h6 class="text-h6 font-weight-regular">
-                <span>Due Date: </span>
+                <span>Expiry Date: </span>
                 <span>{{ formatSystemDate(quotation.dueDate) }}</span>
               </h6>
             </div>
@@ -90,30 +144,51 @@ const subtotal = computed(() =>
 
             <VCol class="text-no-wrap">
               <h6 class="text-h6 mb-4">Payment Details:</h6>
-              <table>
-                <tbody>
-                  <tr>
-                    <td class="pe-4">Total Due:</td>
-                    <td>{{ paymentDetails.totalDue }}</td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">Bank Name:</td>
-                    <td>{{ paymentDetails.bankName }}</td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">Country:</td>
-                    <td>{{ paymentDetails.country }}</td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">IBAN:</td>
-                    <td>{{ paymentDetails.iban }}</td>
-                  </tr>
-                  <tr>
-                    <td class="pe-4">SWIFT Code:</td>
-                    <td>{{ paymentDetails.swiftCode }}</td>
-                  </tr>
-                </tbody>
-              </table>
+              <template v-if="paymentMethod === 'Bank Transfer'">
+                <table>
+                  <tbody>
+                    <tr>
+                      <td class="pe-4">Payment Method:</td>
+                      <td>{{ paymentMethod }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">Bank Name:</td>
+                      <td>{{ paymentDetails.bankName }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">Country:</td>
+                      <td>{{ paymentDetails.country }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">IBAN:</td>
+                      <td>{{ paymentDetails.iban }}</td>
+                    </tr>
+                    <tr>
+                      <td class="pe-4">SWIFT Code:</td>
+                      <td>{{ paymentDetails.swiftCode }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+
+              <template v-else-if="paymentMethod === 'Cash'">
+                <p class="mb-0">Payment Method: Cash</p>
+              </template>
+
+              <template v-else>
+                <p class="mb-2">Payment Method: Credit Card</p>
+                <p class="mb-0 text-wrap">
+                  <a
+                    v-if="creditCardPaymentLink"
+                    :href="creditCardPaymentLink"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {{ creditCardPaymentLink }}
+                  </a>
+                  <span v-else>No payment link added yet.</span>
+                </p>
+              </template>
             </VCol>
           </VRow>
 
@@ -271,6 +346,24 @@ const subtotal = computed(() =>
 </template>
 
 <style lang="scss">
+.quotation-company-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.quotation-company-logo {
+  max-block-size: 72px;
+  max-inline-size: 160px;
+  object-fit: contain;
+}
+
+.quotation-company-title {
+  line-height: 1.2;
+  margin: 0;
+}
+
 .quotation-preview-table {
   --v-table-header-color: var(--v-theme-surface);
 

@@ -1,17 +1,29 @@
 <script lang="ts" setup>
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type { Client } from "@/plugins/fake-api/handlers/apps/quotation/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import {
+  buildQuotationNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+} from "@/utils/quotationConfig";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
 import type {
   PurchasedProduct,
   QuotationData,
 } from "@/views/apps/quotation/types";
+import type { RouteLocationRaw } from "vue-router";
+import { onBeforeRouteLeave } from "vue-router";
 
 const route = useRoute();
 const router = useRouter();
+const configStore = useConfigStore();
+configStore.init();
 const contactsStore = useContactsStore();
 contactsStore.init();
 const quotationsStore = useQuotationsStore();
@@ -51,7 +63,7 @@ const buildBlankQuotation = (): QuotationData => {
       id,
       quoteNumber: `QT-${id}`,
       issuedDate: new Date().toISOString().slice(0, 10),
-      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10),
       client: buildDefaultClient(),
@@ -68,13 +80,11 @@ const buildBlankQuotation = (): QuotationData => {
       isRevision: false,
       revisionLabel: null,
     },
-    paymentDetails: {
-      totalDue: "$0",
-      bankName: "Byblos Bank",
-      country: "Lebanon",
-      iban: "LB12345678901234567890123456",
-      swiftCode: "BYBALBBX",
-    },
+    paymentDetails: buildQuotationPaymentDetails(
+      0,
+      configStore.legal,
+      configStore.financial,
+    ),
     purchasedProducts: [
       {
         title: "New line item",
@@ -83,10 +93,11 @@ const buildBlankQuotation = (): QuotationData => {
         description: "",
       },
     ],
-    note: "Pricing is valid for 14 days from the issue date.",
+    note: buildQuotationNote(configStore.financial, 7),
     paymentMethod: "Bank Transfer",
-    salesperson: "Squarely Team",
-    thanksNote: "Thank you for considering Squarely.",
+    paymentLink: null,
+    salesperson: buildQuotationSalesperson(configStore.legal),
+    thanksNote: buildQuotationThanksNote(configStore.legal),
   };
 };
 
@@ -126,7 +137,7 @@ const buildRevisionDraft = (parentId: number): QuotationData => {
   revisionDraft.quotation.revisionLabel = revisionLabel;
   revisionDraft.quotation.issuedDate = new Date().toISOString().slice(0, 10);
   revisionDraft.quotation.dueDate = new Date(
-    Date.now() + 14 * 24 * 60 * 60 * 1000,
+    Date.now() + 7 * 24 * 60 * 60 * 1000,
   )
     .toISOString()
     .slice(0, 10);
@@ -147,17 +158,39 @@ const buildInitialQuotation = (): QuotationData => {
 };
 
 const quotationData = ref<QuotationData>(buildInitialQuotation());
+const initialDraftSnapshot = ref("");
 const paymentTerms = ref(true);
 const clientNotes = ref(false);
 const paymentStub = ref(false);
-const selectedPaymentMethod = ref("Bank Account");
-const paymentMethods = ["Bank Account", "PayPal", "UPI Transfer"];
+const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
 const isSendQuotationSidebarVisible = ref(false);
+const isLeaveDialogVisible = ref(false);
+const pendingNavigationTarget = ref<RouteLocationRaw | null>(null);
+const bypassUnsavedWarning = ref(false);
+
+const buildDraftSnapshot = (draft: QuotationData) =>
+  JSON.stringify(cloneQuotationRecord(draft));
+
+initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
+
+const hasUnsavedChanges = computed(
+  () => buildDraftSnapshot(quotationData.value) !== initialDraftSnapshot.value,
+);
 
 watch(
   () => route.query.revisionOf,
   () => {
     quotationData.value = buildInitialQuotation();
+    initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
+  },
+);
+
+watch(
+  () => quotationData.value.paymentMethod,
+  (paymentMethod) => {
+    if (paymentMethod !== "Credit Card") {
+      quotationData.value.paymentLink = null;
+    }
   },
 );
 
@@ -169,6 +202,32 @@ const removeProduct = (id: number) => {
   quotationData.value.purchasedProducts.splice(id, 1);
 };
 
+const requestLeave = (target: RouteLocationRaw) => {
+  if (!hasUnsavedChanges.value) {
+    router.push(target);
+    return;
+  }
+
+  pendingNavigationTarget.value = target;
+  isLeaveDialogVisible.value = true;
+};
+
+const cancelLeave = () => {
+  pendingNavigationTarget.value = null;
+  isLeaveDialogVisible.value = false;
+};
+
+const confirmLeave = async () => {
+  const target = pendingNavigationTarget.value;
+
+  pendingNavigationTarget.value = null;
+  isLeaveDialogVisible.value = false;
+  if (!target) return;
+
+  bypassUnsavedWarning.value = true;
+  await router.push(target);
+};
+
 const saveQuotation = () => {
   const total = quotationData.value.purchasedProducts.reduce(
     (sum, product) =>
@@ -177,18 +236,59 @@ const saveQuotation = () => {
   );
 
   quotationData.value.quotation.total = total;
-  quotationData.value.paymentDetails.totalDue = `$${total.toLocaleString()}`;
+  quotationData.value.paymentDetails = buildQuotationPaymentDetails(
+    total,
+    configStore.legal,
+    configStore.financial,
+  );
+  quotationData.value.note = buildQuotationNote(configStore.financial, 7);
+  quotationData.value.salesperson = buildQuotationSalesperson(configStore.legal);
+  quotationData.value.thanksNote = buildQuotationThanksNote(configStore.legal);
+  quotationData.value.paymentLink =
+    quotationData.value.paymentMethod === "Credit Card"
+      ? quotationData.value.paymentLink?.trim() || null
+      : null;
 
   const created = quotationsStore.addQuotation(
     cloneQuotationRecord(quotationData.value),
   );
   if (!created) return;
 
+  initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
+  bypassUnsavedWarning.value = true;
   router.push({
     name: "apps-quotation-preview-id",
     params: { id: created.quotation.id },
   });
 };
+
+onBeforeRouteLeave((to) => {
+  if (bypassUnsavedWarning.value) {
+    bypassUnsavedWarning.value = false;
+    return true;
+  }
+
+  if (!hasUnsavedChanges.value) return true;
+
+  pendingNavigationTarget.value = to.fullPath;
+  isLeaveDialogVisible.value = true;
+  return false;
+});
+
+const onBeforeWindowUnload = (event: BeforeUnloadEvent) => {
+  if (!hasUnsavedChanges.value) return;
+
+  event.preventDefault();
+  event.returnValue = "";
+};
+
+onMounted(() => {
+  window.addEventListener("beforeunload", onBeforeWindowUnload);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("beforeunload", onBeforeWindowUnload);
+});
 </script>
 
 <template>
@@ -218,7 +318,7 @@ const saveQuotation = () => {
             color="secondary"
             variant="tonal"
             class="mb-4"
-            :to="{ name: 'apps-quotation-list' }"
+            @click="requestLeave({ name: 'apps-quotation-list' })"
           >
             Back to List
           </VBtn>
@@ -229,9 +329,18 @@ const saveQuotation = () => {
 
       <AppSelect
         id="payment-method"
-        v-model="selectedPaymentMethod"
+        v-model="quotationData.paymentMethod"
         :items="paymentMethods"
         label="Accept Payment Via"
+        class="mb-6"
+      />
+
+      <AppTextField
+        v-if="quotationData.paymentMethod === 'Credit Card'"
+        id="payment-link"
+        v-model="quotationData.paymentLink"
+        label="Credit Card Payment Link"
+        placeholder="https://"
         class="mb-6"
       />
 
@@ -261,4 +370,24 @@ const saveQuotation = () => {
   <QuotationSendQuotationDrawer
     v-model:is-drawer-open="isSendQuotationSidebarVisible"
   />
+
+  <VDialog v-model="isLeaveDialogVisible" max-width="440" persistent>
+    <VCard>
+      <VCardText class="pt-6">
+        You have unsaved changes in this quotation. Leave this page without
+        saving?
+      </VCardText>
+
+      <VCardActions class="pt-2 px-6 pb-6">
+        <DialogActionBar
+          save-text="Leave"
+          save-color="error"
+          save-variant="tonal"
+          cancel-text="Stay"
+          @save="confirmLeave"
+          @cancel="cancelLeave"
+        />
+      </VCardActions>
+    </VCard>
+  </VDialog>
 </template>

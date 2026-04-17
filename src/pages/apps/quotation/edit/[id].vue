@@ -1,5 +1,12 @@
 <script lang="ts" setup>
+import { useConfigStore } from "@/stores/config";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import {
+  buildQuotationNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+} from "@/utils/quotationConfig";
 import type {
   PurchasedProduct,
   QuotationData,
@@ -10,6 +17,8 @@ import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQu
 
 const route = useRoute("apps-quotation-edit-id");
 const router = useRouter();
+const configStore = useConfigStore();
+configStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 
@@ -31,8 +40,16 @@ const isAddPaymentSidebarActive = ref(false);
 const paymentTerms = ref(true);
 const clientNotes = ref(false);
 const paymentStub = ref(false);
-const selectedPaymentMethod = ref("Bank Account");
-const paymentMethods = ["Bank Account", "PayPal", "UPI Transfer"];
+const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
+
+watch(
+  () => quotationData.value?.paymentMethod,
+  (paymentMethod) => {
+    if (quotationData.value && paymentMethod !== "Credit Card") {
+      quotationData.value.paymentLink = null;
+    }
+  },
+);
 
 const saveQuotation = () => {
   if (!quotationData.value) return;
@@ -43,7 +60,18 @@ const saveQuotation = () => {
   );
 
   quotationData.value.quotation.total = total;
-  quotationData.value.paymentDetails.totalDue = `$${total.toLocaleString()}`;
+  quotationData.value.paymentDetails = buildQuotationPaymentDetails(
+    total,
+    configStore.legal,
+    configStore.financial,
+  );
+  quotationData.value.note = buildQuotationNote(configStore.financial, 7);
+  quotationData.value.salesperson = buildQuotationSalesperson(configStore.legal);
+  quotationData.value.thanksNote = buildQuotationThanksNote(configStore.legal);
+  quotationData.value.paymentLink =
+    quotationData.value.paymentMethod === "Credit Card"
+      ? quotationData.value.paymentLink?.trim() || null
+      : null;
 
   quotationsStore.updateQuotation(
     quotationData.value.quotation.id,
@@ -108,9 +136,18 @@ const saveQuotation = () => {
 
       <AppSelect
         id="payment-method"
-        v-model="selectedPaymentMethod"
+        v-model="quotationData.paymentMethod"
         :items="paymentMethods"
         label="Accept Payment Via"
+        class="mb-4"
+      />
+
+      <AppTextField
+        v-if="quotationData.paymentMethod === 'Credit Card'"
+        id="payment-link"
+        v-model="quotationData.paymentLink"
+        label="Credit Card Payment Link"
+        placeholder="https://"
         class="mb-4"
       />
 

@@ -40,7 +40,7 @@ import type { App } from "vue";
  * ```
  */
 
-export const registerPlugins = (app: App) => {
+export const registerPlugins = async (app: App) => {
   const imports = import.meta.glob<{ default: (app: App) => void }>(
     ["../../plugins/*.{ts,js}", "../../plugins/*/index.{ts,js}"],
     { eager: true },
@@ -65,17 +65,17 @@ export const registerPlugins = (app: App) => {
 
   const seen = new Set<string>();
 
-  importPaths.forEach((path) => {
+  for (const path of importPaths) {
     const normalizedPath = path
       .replace(/\/index\.(ts|js)$/, "")
       .replace(/\.(ts|js)$/, "");
 
-    if (seen.has(normalizedPath)) return;
+    if (seen.has(normalizedPath)) continue;
 
     seen.add(normalizedPath);
 
     const pluginImportModule = imports[path];
 
-    pluginImportModule.default?.(app);
-  });
+    await pluginImportModule.default?.(app);
+  }
 };

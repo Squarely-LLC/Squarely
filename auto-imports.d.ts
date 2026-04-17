@@ -16,6 +16,10 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const buildQuotationNote: typeof import('./src/utils/quotationConfig')['buildQuotationNote']
+  const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
+  const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
+  const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
   const computedEager: typeof import('@vueuse/core')['computedEager']
@@ -61,6 +65,9 @@ declare global {
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
   const getFileObjectUrl: typeof import('./src/utils/fileStore')['getFileObjectUrl']
   const getFileRecord: typeof import('./src/utils/fileStore')['getFileRecord']
+  const getPrimaryBankDetails: typeof import('./src/utils/quotationConfig')['getPrimaryBankDetails']
+  const getQuotationCompanyAddressLines: typeof import('./src/utils/quotationConfig')['getQuotationCompanyAddressLines']
+  const getQuotationCompanyContactLines: typeof import('./src/utils/quotationConfig')['getQuotationCompanyContactLines']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -79,6 +86,7 @@ declare global {
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
+  const loadActiveAppConfigurations: typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']
   const logicAnd: typeof import('@vueuse/math')['logicAnd']
   const logicNot: typeof import('@vueuse/math')['logicNot']
   const logicOr: typeof import('@vueuse/math')['logicOr']
@@ -133,6 +141,7 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
+  const resolveQuotationLogoUrl: typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
@@ -386,6 +395,10 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly buildQuotationNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationNote']>
+    readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
+    readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
+    readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -431,6 +444,9 @@ declare module 'vue' {
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>
     readonly getFileObjectUrl: UnwrapRef<typeof import('./src/utils/fileStore')['getFileObjectUrl']>
     readonly getFileRecord: UnwrapRef<typeof import('./src/utils/fileStore')['getFileRecord']>
+    readonly getPrimaryBankDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['getPrimaryBankDetails']>
+    readonly getQuotationCompanyAddressLines: UnwrapRef<typeof import('./src/utils/quotationConfig')['getQuotationCompanyAddressLines']>
+    readonly getQuotationCompanyContactLines: UnwrapRef<typeof import('./src/utils/quotationConfig')['getQuotationCompanyContactLines']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
@@ -449,6 +465,7 @@ declare module 'vue' {
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
+    readonly loadActiveAppConfigurations: UnwrapRef<typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']>
     readonly logicAnd: UnwrapRef<typeof import('@vueuse/math')['logicAnd']>
     readonly logicNot: UnwrapRef<typeof import('@vueuse/math')['logicNot']>
     readonly logicOr: UnwrapRef<typeof import('@vueuse/math')['logicOr']>
@@ -503,6 +520,7 @@ declare module 'vue' {
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
+    readonly resolveQuotationLogoUrl: UnwrapRef<typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>

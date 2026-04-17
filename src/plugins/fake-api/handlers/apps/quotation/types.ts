@@ -59,6 +59,7 @@ export interface QuotationRecord {
   purchasedProducts: PurchasedProduct[];
   note: string;
   paymentMethod: string;
+  paymentLink: string | null;
   salesperson: string;
   thanksNote: string;
 }

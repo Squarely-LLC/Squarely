@@ -85,6 +85,7 @@ const buildRecord = (
   ],
   note: "Pricing is valid for 14 days from the issue date.",
   paymentMethod: "Bank Transfer",
+  paymentLink: null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
 });

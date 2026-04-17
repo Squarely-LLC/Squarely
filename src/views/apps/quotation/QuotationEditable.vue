@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useQuotationsStore } from "@/stores/quotations";
+import {
+  buildQuotationPaymentDetails,
+  getQuotationCompanyAddressLines,
+  getQuotationCompanyContactLines,
+  resolveQuotationLogoUrl,
+} from "@/utils/quotationConfig";
 import type { Client } from "@db/apps/quotation/types";
-import { VNodeRenderer } from "@layouts/components/VNodeRenderer";
-import { themeConfig } from "@themeConfig";
 
 import QuotationProductEdit from "./QuotationProductEdit.vue";
 import type { PurchasedProduct, QuotationData } from "./types";
@@ -22,6 +27,9 @@ const emit = defineEmits<{
 
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
+
+const configStore = useConfigStore();
+configStore.init();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
@@ -90,6 +98,34 @@ const subtotal = computed(() =>
 );
 
 const total = computed(() => Number(quotation.value.total || 0));
+const paymentMethod = computed(() => props.data.paymentMethod || "Bank Transfer");
+const creditCardPaymentLink = computed(() => props.data.paymentLink?.trim() || "");
+const displayPaymentDetails = computed(() => ({
+  ...props.data.paymentDetails,
+  ...buildQuotationPaymentDetails(
+    total.value,
+    configStore.legal,
+    configStore.financial,
+  ),
+}));
+const companyLogoUrl = ref("");
+const companyName = computed(
+  () => configStore.legal?.companyName?.trim() || "Squarely",
+);
+const companyAddressLines = computed(() =>
+  getQuotationCompanyAddressLines(configStore.legal),
+);
+const companyContactLines = computed(() =>
+  getQuotationCompanyContactLines(configStore.legal),
+);
+
+watch(
+  () => configStore.legal?.logo,
+  async (logo) => {
+    companyLogoUrl.value = await resolveQuotationLogoUrl(logo);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -98,19 +134,31 @@ const total = computed(() => Number(quotation.value.total || 0));
       class="d-flex flex-wrap justify-space-between flex-column rounded bg-var-theme-background flex-sm-row gap-6 pa-6 mb-6"
     >
       <div>
-        <div class="d-flex align-center app-logo mb-6">
-          <VNodeRenderer :nodes="themeConfig.app.logo" />
-          <h6 class="app-logo-title">
-            {{ themeConfig.app.title }}
+        <div class="quotation-company-brand mb-6">
+          <img
+            v-if="companyLogoUrl"
+            :src="companyLogoUrl"
+            :alt="companyName"
+            class="quotation-company-logo"
+          />
+          <h6 class="app-logo-title quotation-company-title">
+            {{ companyName }}
           </h6>
         </div>
 
-        <p class="text-high-emphasis mb-0">
-          Office 149, 450 South Brand Brooklyn
+        <p
+          v-for="(line, index) in companyAddressLines"
+          :key="`address-${index}`"
+          class="text-high-emphasis mb-0"
+        >
+          {{ line }}
         </p>
-        <p class="text-high-emphasis mb-0">San Diego County, CA 91905, USA</p>
-        <p class="text-high-emphasis mb-0">
-          +1 (123) 456 7891, +44 (876) 543 2198
+        <p
+          v-for="(line, index) in companyContactLines"
+          :key="`contact-${index}`"
+          class="text-high-emphasis mb-0"
+        >
+          {{ line }}
         </p>
       </div>
 
@@ -161,7 +209,7 @@ const total = computed(() => Number(quotation.value.total || 0));
             class="text-high-emphasis text-sm-end"
             style="inline-size: 5.625rem"
           >
-            Due Date:
+            Expiry Date:
           </span>
           <span style="min-inline-size: 9.5rem">
             <AppDateTimePicker
@@ -202,34 +250,55 @@ const total = computed(() => Number(quotation.value.total || 0));
       <VCol class="text-no-wrap">
         <h6 class="text-h6 mb-4">Payment Details:</h6>
 
-        <table>
-          <tbody>
-            <tr>
-              <td class="pe-4">Total Due:</td>
-              <td>{{ props.data.paymentDetails.totalDue }}</td>
-            </tr>
-            <tr>
-              <td class="pe-4">Bank Name:</td>
-              <td>{{ props.data.paymentDetails.bankName }}</td>
-            </tr>
-            <tr>
-              <td class="pe-4">Country:</td>
-              <td>{{ props.data.paymentDetails.country }}</td>
-            </tr>
-            <tr>
-              <td class="pe-4">IBAN:</td>
-              <td>
-                <p class="text-wrap me-4">
-                  {{ props.data.paymentDetails.iban }}
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td class="pe-4">SWIFT Code:</td>
-              <td>{{ props.data.paymentDetails.swiftCode }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-if="paymentMethod === 'Bank Transfer'">
+          <table>
+            <tbody>
+              <tr>
+                <td class="pe-4">Payment Method:</td>
+                <td>{{ paymentMethod }}</td>
+              </tr>
+              <tr>
+                <td class="pe-4">Bank Name:</td>
+                <td>{{ displayPaymentDetails.bankName }}</td>
+              </tr>
+              <tr>
+                <td class="pe-4">Country:</td>
+                <td>{{ displayPaymentDetails.country }}</td>
+              </tr>
+              <tr>
+                <td class="pe-4">IBAN:</td>
+                <td>
+                  <p class="text-wrap me-4">
+                    {{ displayPaymentDetails.iban }}
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td class="pe-4">SWIFT Code:</td>
+                <td>{{ displayPaymentDetails.swiftCode }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+
+        <template v-else-if="paymentMethod === 'Cash'">
+          <p class="mb-0">Payment Method: Cash</p>
+        </template>
+
+        <template v-else>
+          <p class="mb-2">Payment Method: Credit Card</p>
+          <p class="mb-0 text-wrap">
+            <a
+              v-if="creditCardPaymentLink"
+              :href="creditCardPaymentLink"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {{ creditCardPaymentLink }}
+            </a>
+            <span v-else>No payment link added yet.</span>
+          </p>
+        </template>
       </VCol>
     </VRow>
 
@@ -326,3 +395,23 @@ const total = computed(() => Number(quotation.value.total || 0));
     </div>
   </VCard>
 </template>
+
+<style scoped>
+.quotation-company-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.quotation-company-logo {
+  max-block-size: 72px;
+  max-inline-size: 160px;
+  object-fit: contain;
+}
+
+.quotation-company-title {
+  line-height: 1.2;
+  margin: 0;
+}
+</style>
