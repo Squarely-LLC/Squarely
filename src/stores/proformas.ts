@@ -390,6 +390,18 @@ function formatCurrencyAmount(value: number) {
   return `$${Math.max(0, Number(value) || 0).toLocaleString()}`;
 }
 
+function resolveProformaStatusFromBalance(
+  record: ProformaRecord,
+): ProformaStatus {
+  const total = Math.max(0, Number(record.quotation.total) || 0);
+  const balance = Math.max(0, Number(record.quotation.balance) || 0);
+
+  if (balance <= 0) return "Paid";
+  if (balance < total) return "Partially Paid";
+
+  return "Not Paid";
+}
+
 export type ProformaPaymentInput = {
   amount: number;
   date: string;
@@ -418,6 +430,7 @@ export function getProformaOutstandingBalance(record: ProformaRecord) {
 function syncProformaPaymentState(record: ProformaRecord) {
   record.payments = ensurePayments(record.payments);
   record.quotation.balance = getProformaOutstandingBalance(record);
+  record.quotation.quotationStatus = resolveProformaStatusFromBalance(record);
   record.paymentDetails.totalDue = formatCurrencyAmount(
     record.quotation.balance,
   );
