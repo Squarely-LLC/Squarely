@@ -1001,36 +1001,41 @@ watch(totalQuotations, (value) => {
               />
             </div>
 
-            <VAvatar
-              size="34"
-              :color="
-                !getQuotationAvatar(item).length
-                  ? resolveStatusVariantAndIcon(item.quotationStatus).variant
-                  : undefined
-              "
-              :variant="!getQuotationAvatar(item).length ? 'tonal' : undefined"
+            <RouterLink
+              :to="{
+                name: 'apps-proforma-preview-id',
+                params: { id: item.id },
+              }"
               class="me-3"
             >
-              <VImg
-                v-if="getQuotationAvatar(item).length"
-                :src="getQuotationAvatar(item)"
-              />
-              <span v-else>{{ avatarText(item.client.name) }}</span>
-            </VAvatar>
+              <VAvatar
+                size="34"
+                :color="
+                  !getQuotationAvatar(item).length
+                    ? resolveStatusVariantAndIcon(item.quotationStatus).variant
+                    : undefined
+                "
+                :variant="
+                  !getQuotationAvatar(item).length ? 'tonal' : undefined
+                "
+              >
+                <VImg
+                  v-if="getQuotationAvatar(item).length"
+                  :src="getQuotationAvatar(item)"
+                />
+                <span v-else>{{ avatarText(item.client.name) }}</span>
+              </VAvatar>
+            </RouterLink>
             <div class="d-flex flex-column">
               <RouterLink
-                v-if="getContactId(item)"
                 :to="{
-                  name: 'apps-contact-view-id',
-                  params: { id: getContactRouteId(item) },
+                  name: 'apps-proforma-preview-id',
+                  params: { id: item.id },
                 }"
                 class="text-link font-weight-medium"
               >
                 {{ item.client.name }}
               </RouterLink>
-              <span v-else class="font-weight-medium">
-                {{ item.client.name }}
-              </span>
               <RouterLink
                 v-if="item.dealId"
                 :to="{ name: 'wizard-examples-create-deal' }"
@@ -1038,15 +1043,15 @@ watch(totalQuotations, (value) => {
               >
                 Deal #{{ item.dealId }}
               </RouterLink>
+              <span v-else class="text-sm text-medium-emphasis"
+                >No linked deal</span
+              >
               <span
                 v-if="hasRevisions(item)"
                 class="text-sm text-medium-emphasis"
               >
                 Revisions: {{ getRevisionCount(item) }}
               </span>
-              <span v-else class="text-sm text-medium-emphasis"
-                >No linked deal</span
-              >
             </div>
           </div>
         </template>
