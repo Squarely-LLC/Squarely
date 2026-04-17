@@ -348,7 +348,10 @@ const openPreview = async () => {
       />
     </VCol>
 
-    <QuotationSendQuotationDrawer v-model:is-drawer-open="isSendSidebarActive" />
+    <QuotationSendQuotationDrawer
+      v-model:is-drawer-open="isSendSidebarActive"
+      :quotation-record="quotationData"
+    />
     <QuotationAddPaymentDrawer
       v-model:is-drawer-open="isAddPaymentSidebarActive"
     />

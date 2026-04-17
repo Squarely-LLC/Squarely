@@ -9,8 +9,13 @@ import {
   buildQuotationSalesperson,
   buildQuotationThanksNote,
 } from "@/utils/quotationConfig";
+import QuotationSendQuotationDrawer from "@/views/apps/quotation/QuotationSendQuotationDrawer.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
-import type { Quotation, QuotationStatus } from "@db/apps/quotation/types";
+import type {
+  Quotation,
+  QuotationRecord,
+  QuotationStatus,
+} from "@db/apps/quotation/types";
 import type { VForm } from "vuetify/components/VForm";
 
 const searchQuery = ref("");
@@ -22,8 +27,10 @@ const userData = useCookie<Record<string, unknown> | null | undefined>(
 const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
+const isSendQuotationDialogOpen = ref(false);
 const expanded = ref<number[]>([]);
 const router = useRouter();
+const pendingEmailQuotationId = ref<number | null>(null);
 
 type DealContractOption = {
   title: string;
@@ -577,6 +584,34 @@ const confirmDeleteQuotation = () => {
   closeDeleteQuotationDialog();
 };
 
+const emailQuotationRecord = computed<QuotationRecord | null>(() => {
+  if (pendingEmailQuotationId.value === null) return null;
+  return quotationsStore.byId(pendingEmailQuotationId.value) ?? null;
+});
+
+const openQuotationPreviewWindow = (
+  quotationId: number,
+  action: "print" | "download",
+) => {
+  const routeLocation = router.resolve({
+    name: "apps-quotation-preview-id",
+    params: { id: quotationId },
+    query: { [action]: "1" },
+  });
+
+  window.open(routeLocation.href, "_blank", "noopener");
+};
+
+const openQuotationEmailDialog = (quotationId: number) => {
+  pendingEmailQuotationId.value = quotationId;
+  isSendQuotationDialogOpen.value = true;
+};
+
+const closeQuotationEmailDialog = () => {
+  isSendQuotationDialogOpen.value = false;
+  pendingEmailQuotationId.value = null;
+};
+
 const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
   if (revision.revisionLabel?.trim()) return revision.revisionLabel.trim();
 
@@ -614,16 +649,19 @@ const computedMoreList = computed(() => {
       title: "Download",
       value: "download",
       prependIcon: "tabler-download",
+      onClick: () => openQuotationPreviewWindow(paramId, "download"),
     },
     {
       title: "Print",
       value: "print",
       prependIcon: "tabler-printer",
+      onClick: () => openQuotationPreviewWindow(paramId, "print"),
     },
     {
       title: "Email",
       value: "email",
       prependIcon: "tabler-mail",
+      onClick: () => openQuotationEmailDialog(paramId),
     },
     {
       title: "Delete",
@@ -655,6 +693,10 @@ const revisionMenuList = computed(() => {
 
 watch(canSelectRows, (value) => {
   if (!value) selectedRows.value = [];
+});
+
+watch(isSendQuotationDialogOpen, (isOpen) => {
+  if (!isOpen) pendingEmailQuotationId.value = null;
 });
 
 watch([searchQuery, selectedStatus, itemsPerPage], () => {
@@ -1138,6 +1180,12 @@ watch(totalQuotations, (value) => {
       </VCardActions>
     </VCard>
   </VDialog>
+
+  <QuotationSendQuotationDrawer
+    v-model:is-drawer-open="isSendQuotationDialogOpen"
+    :quotation-record="emailQuotationRecord"
+    @submit="closeQuotationEmailDialog"
+  />
 
   <VDialog v-model="isDeleteQuotationDialogOpen" max-width="440" persistent>
     <VCard>

@@ -93,9 +93,33 @@ const companyContactLines = computed(() =>
 
 const isAddPaymentSidebarVisible = ref(false);
 const isSendPaymentSidebarVisible = ref(false);
+const hasExecutedAutoAction = ref(false);
 
 const printQuotation = () => {
   window.print();
+};
+
+const withTemporaryDocumentTitle = async (title: string, callback: () => void) => {
+  const previousTitle = document.title;
+  document.title = title;
+
+  await nextTick();
+  callback();
+
+  window.setTimeout(() => {
+    document.title = previousTitle;
+  }, 250);
+};
+
+const downloadQuotation = async () => {
+  const quoteNumber = quotation.value?.quoteNumber?.trim() || "quotation";
+  await withTemporaryDocumentTitle(`${quoteNumber}.pdf`, () => {
+    window.print();
+  });
+};
+
+const openSendQuotationDrawer = () => {
+  isSendPaymentSidebarVisible.value = true;
 };
 
 const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
@@ -108,6 +132,37 @@ watch(
   () => configStore.legal?.logo,
   async (logo) => {
     companyLogoUrl.value = await resolveQuotationLogoUrl(logo);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [
+    route.query.print,
+    route.query.download,
+    route.query.email,
+    quotation.value?.id,
+  ] as const,
+  async ([print, download, email, quotationId]) => {
+    if (!quotationId || hasExecutedAutoAction.value) return;
+
+    if (email === "1") {
+      hasExecutedAutoAction.value = true;
+      openSendQuotationDrawer();
+      return;
+    }
+
+    if (download === "1") {
+      hasExecutedAutoAction.value = true;
+      await downloadQuotation();
+      return;
+    }
+
+    if (print === "1") {
+      hasExecutedAutoAction.value = true;
+      await nextTick();
+      window.print();
+    }
   },
   { immediate: true },
 );
@@ -329,7 +384,7 @@ watch(
               block
               prepend-icon="tabler-send"
               class="mb-4"
-              @click="isSendPaymentSidebarVisible = true"
+              @click="openSendQuotationDrawer"
             >
               Send Quotation
             </VBtn>
@@ -345,7 +400,13 @@ watch(
               Back
             </VBtn>
 
-            <VBtn block color="secondary" variant="tonal" class="mb-4">
+            <VBtn
+              block
+              color="secondary"
+              variant="tonal"
+              class="mb-4"
+              @click="downloadQuotation"
+            >
               Download
             </VBtn>
 
@@ -388,6 +449,7 @@ watch(
 
     <QuotationSendQuotationDrawer
       v-model:is-drawer-open="isSendPaymentSidebarVisible"
+      :quotation-record="quotationRecord"
     />
   </section>
 

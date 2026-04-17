@@ -1,50 +1,89 @@
 <script setup lang="ts">
-import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
+import { useConfigStore } from "@/stores/config";
+import type { QuotationRecord } from "@db/apps/quotation/types";
+import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
 interface SubmitData {
-  emailFrom: string
-  emailTo: string
-  quotationSubject: string
-  paymentMessage: string
+  emailFrom: string;
+  emailTo: string;
+  quotationSubject: string;
+  paymentMessage: string;
+  attachmentName: string | null;
 }
+
 interface Emit {
-  (e: 'update:isDrawerOpen', value: boolean): void
-  (e: 'submit', value: SubmitData): void
+  (e: "update:isDrawerOpen", value: boolean): void;
+  (e: "submit", value: SubmitData): void;
 }
 
 interface Props {
-  isDrawerOpen: boolean
+  isDrawerOpen: boolean;
+  quotationRecord?: QuotationRecord | null;
 }
 
-const props = defineProps<Props>()
+const props = defineProps<Props>();
+const emit = defineEmits<Emit>();
 
-const emit = defineEmits<Emit>()
+const configStore = useConfigStore();
+configStore.init();
 
-const emailFrom = ref('shelbyComapny@email.com')
-const emailTo = ref('qConsolidated@email.com')
-const quotationSubject = ref('Quotation of purchased Admin Templates')
+const emailFrom = ref("");
+const emailTo = ref("");
+const quotationSubject = ref("");
+const paymentMessage = ref("");
 
-const paymentMessage = ref(`Dear Queen Consolidated,
+const attachmentName = computed(() =>
+  props.quotationRecord?.quotation.quoteNumber
+    ? `${props.quotationRecord.quotation.quoteNumber}.pdf`
+    : "Quotation Attached",
+);
 
-Thank you for your business, always a pleasure to work with you!
+const resetForm = () => {
+  const quotation = props.quotationRecord?.quotation;
+  const companyName = configStore.legal?.companyName?.trim() || "Squarely";
+  const fromEmail = configStore.legal?.email?.trim() || "";
+  const toEmail = quotation?.client.companyEmail?.trim() || "";
+  const clientName = quotation?.client.name?.trim() || "there";
+  const quoteNumber = quotation?.quoteNumber?.trim() || "quotation";
+  const total = Number(quotation?.total || 0).toLocaleString();
+  const expiryDate = quotation?.dueDate?.trim() || "";
 
-We have generated a new Quotation in the amount of $95.59
+  emailFrom.value = fromEmail;
+  emailTo.value = toEmail;
+  quotationSubject.value = `Quotation ${quoteNumber} from ${companyName}`;
+  paymentMessage.value = `Dear ${clientName},
 
-We would appreciate payment of this Quotation by 05/11/2019`)
+Please find ${quoteNumber} attached.
+
+Quotation amount: $${total}
+${expiryDate ? `Expiry date: ${expiryDate}` : ""}
+
+Thank you,
+${companyName}`.trim();
+};
+
+watch(
+  () => [props.isDrawerOpen, props.quotationRecord?.quotation.id] as const,
+  ([isDrawerOpen]) => {
+    if (isDrawerOpen) resetForm();
+  },
+  { immediate: true },
+);
 
 const onSubmit = () => {
-  emit('update:isDrawerOpen', false)
-  emit('submit', {
+  emit("update:isDrawerOpen", false);
+  emit("submit", {
     emailFrom: emailFrom.value,
     emailTo: emailTo.value,
     quotationSubject: quotationSubject.value,
     paymentMessage: paymentMessage.value,
-  })
-}
+    attachmentName: attachmentName.value,
+  });
+};
 
-const handleDrawerModelValueUpdate = (val: boolean) => {
-  emit('update:isDrawerOpen', val)
-}
+const handleDrawerModelValueUpdate = (value: boolean) => {
+  emit("update:isDrawerOpen", value);
+};
 </script>
 
 <template>
@@ -57,12 +96,12 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
     class="scrollable-content"
     @update:model-value="handleDrawerModelValueUpdate"
   >
-    <!-- 👉 Header -->
     <AppDrawerHeaderSection
       title="Send Quotation"
       @cancel="$emit('update:isDrawerOpen', false)"
     />
     <VDivider />
+
     <PerfectScrollbar :options="{ wheelPropagation: false }">
       <VCard flat>
         <VCardText>
@@ -71,7 +110,6 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
               <VCol cols="12">
                 <AppTextField
                   id="sender-email"
-
                   v-model="emailFrom"
                   label="From"
                   placeholder="sender@email.com"
@@ -80,9 +118,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
 
               <VCol cols="12">
                 <AppTextField
-
                   id="receiver-email"
-
                   v-model="emailTo"
                   label="To"
                   placeholder="receiver@email.com"
@@ -91,45 +127,32 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
 
               <VCol cols="12">
                 <AppTextField
-                  id="Quotation-subject"
-
+                  id="quotation-subject"
                   v-model="quotationSubject"
                   label="Subject"
-                  placeholder="Quotation of purchased Admin Templates"
+                  placeholder="Quotation subject"
                 />
               </VCol>
 
               <VCol cols="12">
                 <AppTextarea
                   id="payment-message"
-
                   v-model="paymentMessage"
                   rows="10"
                   label="Message"
-                  placeholder="Thank you for your business, always a pleasure to work with you!"
+                  placeholder="Quotation message"
                 />
               </VCol>
 
               <VCol cols="12">
                 <div class="mb-6">
-                  <VChip
-                    label
-                    color="primary"
-                    size="small"
-                  >
-                    <VIcon
-                      start
-                      icon="tabler-link"
-                    />
-                    Quotation Attached
+                  <VChip label color="primary" size="small">
+                    <VIcon start icon="tabler-link" />
+                    {{ attachmentName }}
                   </VChip>
                 </div>
-                <VBtn
-                  type="submit"
-                  class="me-3"
-                >
-                  Send
-                </VBtn>
+
+                <VBtn type="submit" class="me-3">Send</VBtn>
 
                 <VBtn
                   color="secondary"

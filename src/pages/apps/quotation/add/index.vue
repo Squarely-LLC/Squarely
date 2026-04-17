@@ -561,6 +561,7 @@ onBeforeUnmount(() => {
 
   <QuotationSendQuotationDrawer
     v-model:is-drawer-open="isSendQuotationSidebarVisible"
+    :quotation-record="quotationData"
   />
 
   <VDialog v-model="isLeaveDialogVisible" max-width="440" persistent>
