@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { useContactsStore } from "@/stores/contacts";
+import { useConfigStore } from "@/stores/config";
+import { useExpensesStore } from "@/stores/expenses";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useReceiptsStore } from "@/stores/receipts";
 import { saveFile } from "@/utils/fileStore";
+import type {
+  ExpenseDrawerSubmitPayload,
+  ExpenseSupplierOption,
+} from "@/views/apps/expense/ExpenseUpsertDrawer.vue";
+import ExpenseUpsertDrawer from "@/views/apps/expense/ExpenseUpsertDrawer.vue";
 import type {
   ReceiptClientOption,
   ReceiptDocumentOption,
@@ -14,6 +21,7 @@ import ReceiptUpsertDrawer from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import FinanceExpensesTab from "@/views/apps/finance/FinanceExpensesTab.vue";
 import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
 import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
 import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
@@ -22,12 +30,16 @@ import FinanceReceiptsTab from "@/views/apps/finance/FinanceReceiptsTab.vue";
 const route = useRoute();
 const router = useRouter();
 const contactsStore = useContactsStore();
+const configStore = useConfigStore();
+const expensesStore = useExpensesStore();
 const invoicesStore = useInvoicesStore();
 const proformasStore = useProformasStore();
 const receiptsStore = useReceiptsStore();
 const notifications = useNotificationsStore();
 
 contactsStore.init();
+configStore.init();
+expensesStore.init();
 invoicesStore.init();
 proformasStore.init();
 receiptsStore.init();
@@ -96,7 +108,9 @@ const tabsData = [
 ] as const;
 
 const activeTab = ref<number | null>(null);
+const isExpenseDrawerOpen = ref(false);
 const isReceiptDrawerOpen = ref(false);
+const editingExpenseId = ref<number | null>(null);
 const editingReceiptId = ref<number | null>(null);
 const receiptCreationMode = ref<"squarely" | "attachment">("squarely");
 
@@ -153,6 +167,11 @@ const editingReceipt = computed(() =>
     ? null
     : receiptsStore.byId(editingReceiptId.value),
 );
+const editingExpense = computed(() =>
+  editingExpenseId.value === null
+    ? null
+    : expensesStore.byId(editingExpenseId.value),
+);
 
 const invoiceOptions = computed<ReceiptDocumentOption[]>(() =>
   invoicesStore.all
@@ -191,6 +210,34 @@ const clientOptions = computed<ReceiptClientOption[]>(() => {
   return mergeClientOptions([...contactOptions, ...documentClients]);
 });
 
+const expenseSupplierOptions = computed<ExpenseSupplierOption[]>(() =>
+  contactsStore.all.map((contact) => ({
+    title: contact.fullName,
+    value: String(contact.id),
+    supplier: {
+      id: Number(contact.id) || null,
+      name: contact.fullName || "",
+      email: contact.email || "",
+      phone: contact.number || "",
+      address: contact.address || "",
+    },
+  })),
+);
+
+const expenseCategoryOptions = computed(
+  () => configStore.financial?.expenseCategories ?? [],
+);
+
+const openCreateExpenseDrawer = () => {
+  editingExpenseId.value = null;
+  isExpenseDrawerOpen.value = true;
+};
+
+const openEditExpenseDrawer = (expenseId: number) => {
+  editingExpenseId.value = expenseId;
+  isExpenseDrawerOpen.value = true;
+};
+
 const openCreateReceiptDrawer = (mode: "squarely" | "attachment") => {
   editingReceiptId.value = null;
   receiptCreationMode.value = mode;
@@ -207,6 +254,49 @@ const closeReceiptDrawer = () => {
   isReceiptDrawerOpen.value = false;
   editingReceiptId.value = null;
   receiptCreationMode.value = "squarely";
+};
+
+const closeExpenseDrawer = () => {
+  isExpenseDrawerOpen.value = false;
+  editingExpenseId.value = null;
+};
+
+const saveExpense = async (payload: ExpenseDrawerSubmitPayload) => {
+  let attachmentFileKey = payload.expense.attachmentFileKey;
+
+  if (payload.attachment) {
+    attachmentFileKey = await saveFile(payload.attachment);
+  }
+
+  const nextPayload = {
+    expense: {
+      ...payload.expense,
+      attachmentName:
+        payload.attachment?.name ?? payload.expense.attachmentName ?? null,
+      attachmentFileKey: attachmentFileKey ?? null,
+      paidAt:
+        payload.action === "pay"
+          ? new Date().toISOString()
+          : payload.expense.paidAt ?? null,
+    },
+    note: payload.note,
+  };
+
+  if (payload.id) {
+    expensesStore.updateExpense(payload.id, nextPayload);
+    notifications.push("Bill updated successfully.", "success", 3500);
+  } else {
+    expensesStore.addExpense(nextPayload);
+    notifications.push(
+      payload.action === "pay"
+        ? "Bill created and marked as paid."
+        : "Bill created successfully.",
+      "success",
+      3500,
+    );
+  }
+
+  closeExpenseDrawer();
 };
 
 const saveReceipt = async (payload: ReceiptDrawerSubmitPayload) => {
@@ -313,6 +403,11 @@ watch(
           <FinanceQuotationsTab v-if="tabItem.key === 'quotations'" />
           <FinanceProformasTab v-else-if="tabItem.key === 'pro-forma'" />
           <FinanceInvoicesTab v-else-if="tabItem.key === 'invoice'" />
+          <FinanceExpensesTab
+            v-else-if="tabItem.key === 'expenses'"
+            @create-expense="openCreateExpenseDrawer"
+            @edit-expense="openEditExpenseDrawer"
+          />
           <FinanceReceiptsTab
             v-else-if="tabItem.key === 'receipt'"
             @create-receipt="openCreateReceiptDrawer"
@@ -346,6 +441,14 @@ watch(
     :invoice-options="invoiceOptions"
     :proforma-options="proformaOptions"
     @submit="saveReceipt"
+  />
+
+  <ExpenseUpsertDrawer
+    v-model:is-drawer-open="isExpenseDrawerOpen"
+    :editing-expense="editingExpense"
+    :supplier-options="expenseSupplierOptions"
+    :category-options="expenseCategoryOptions"
+    @submit="saveExpense"
   />
 </template>
 

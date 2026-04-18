@@ -1,0 +1,51 @@
+import type { ExpenseRecord } from "./types";
+
+export const database: ExpenseRecord[] = [
+  {
+    expense: {
+      id: 1,
+      billNumber: "BILL-1",
+      billDate: "2026-04-12",
+      supplier: {
+        id: 15,
+        name: "Office Depot",
+        email: "orders@officedepot.example",
+        phone: "+961 1 555 120",
+        address: "Beirut Digital District, Lebanon",
+      },
+      category: "Office Supplies",
+      supplierInvoiceNumber: "OD-4821",
+      amount: 185,
+      status: "Open",
+      attachmentName: "office-supplies-apr.pdf",
+      attachmentFileKey: null,
+      paidAt: null,
+      avatar: null,
+    },
+    note: "Office Depot | Office Supplies | INV OD-4821 | 2026-04-12",
+  },
+  {
+    expense: {
+      id: 2,
+      billNumber: "BILL-2",
+      billDate: "2026-04-10",
+      supplier: {
+        id: 22,
+        name: "City Fuel",
+        email: "billing@cityfuel.example",
+        phone: "+961 3 900 112",
+        address: "Sin El Fil, Lebanon",
+      },
+      category: "Transport",
+      supplierInvoiceNumber: "",
+      amount: 74,
+      status: "Flagged",
+      attachmentName: null,
+      attachmentFileKey: null,
+      paidAt: null,
+      avatar: null,
+    },
+    note: "City Fuel | Transport | 2026-04-10",
+  },
+];
+

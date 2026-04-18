@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
+import EditableChipList from "@/components/EditableChipList.vue";
 import type {
   BankDetailsItem,
   DealsConfig,
@@ -24,6 +25,7 @@ type FinancialUiState = Partial<FinancialConfig> & {
   currency: string;
   vat: VatSettings;
   bankDetails: BankDetailsItem[];
+  expenseCategories: string[];
   invoicing: InvoicingSettings & {
     showNotes: boolean;
     termsAndNotes: string;
@@ -46,6 +48,7 @@ const fin = ref<FinancialUiState>({
   currency: "US Dollar (USD $)",
   vat: { enabled: false, registrationNumber: "" },
   bankDetails: [{ enabled: false }],
+  expenseCategories: [],
   invoicing: {
     showNotes: true,
     termsAndNotes: "",
@@ -68,6 +71,7 @@ const ensureDefaults = () => {
   fin.value.vat ??= { enabled: false, registrationNumber: "" };
   fin.value.bankDetails ??= [{ enabled: false }];
   if (!fin.value.bankDetails[0]) fin.value.bankDetails[0] = { enabled: false };
+  fin.value.expenseCategories ??= [];
   fin.value.invoicing ??= {
     showNotes: true,
     termsAndNotes: "",
@@ -105,6 +109,9 @@ const syncFromStore = () => {
     bankDetails: cfg.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0], ...cfg.bankDetails[0] }]
       : fin.value.bankDetails,
+    expenseCategories: Array.isArray(cfg.expenseCategories)
+      ? [...cfg.expenseCategories]
+      : fin.value.expenseCategories,
     invoicing: {
       showNotes: cfg.invoicing?.showNotes ?? fin.value.invoicing.showNotes,
       termsAndNotes: normalizeRichText(termsAndNotes),
@@ -144,6 +151,7 @@ const takeSnapshot = () => {
     bankDetails: fin.value.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0] }]
       : [],
+    expenseCategories: [...(fin.value.expenseCategories || [])],
     invoicing: {
       showNotes: fin.value.invoicing.showNotes,
       noteOnQuotation: normalizeRichText(fin.value.invoicing.termsAndNotes),
@@ -216,6 +224,7 @@ const toServerPayload = (): Partial<FinancialConfig> => {
     bankDetails: fin.value.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0] }]
       : [],
+    expenseCategories: [...(fin.value.expenseCategories || [])],
     invoicing: {
       showNotes: fin.value.invoicing.showNotes,
       noteOnQuotation: normalizeRichText(fin.value.invoicing.termsAndNotes),
@@ -305,6 +314,24 @@ const paymentRemindersEnabled = computed<boolean>({
     else fin.value.paymentReminders.enabled = v;
   },
 });
+
+const notifyWarn = (message: string) =>
+  notifications.push(message, "warning", 3000);
+const notifyError = (message: string) =>
+  notifications.push(message, "error", 3000);
+const updateExpenseCategories = (payload: {
+  values: string[];
+  action: "update" | "delete";
+}) => {
+  fin.value.expenseCategories = [...payload.values];
+  notifications.push(
+    payload.action === "delete"
+      ? "Expense categories updated"
+      : "Expense categories saved",
+    "success",
+    2500,
+  );
+};
 </script>
 
 <template>
@@ -582,6 +609,19 @@ const paymentRemindersEnabled = computed<boolean>({
             </span>
           </VCol>
         </VRow>
+      </VCardText>
+    </VCard>
+
+    <VCard title="Expense Categories" class="mb-6">
+      <VCardText>
+        <EditableChipList
+          label="Expense Category"
+          :items="fin.expenseCategories"
+          placeholder="Add expense category"
+          @save="updateExpenseCategories"
+          @warn="notifyWarn"
+          @error="notifyError"
+        />
       </VCardText>
     </VCard>
 

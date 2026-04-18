@@ -40,6 +40,7 @@ export interface FinancialConfig {
   vat?: VatSettings;
   bankDetails?: BankDetailsItem[];
   invoicing?: InvoicingSettings;
+  expenseCategories?: string[];
   documentTypes?: string[];
   invoiceSequence?: string; // pattern or prefix
   referenceFormat?: string;
