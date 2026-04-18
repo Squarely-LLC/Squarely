@@ -208,10 +208,11 @@ const inferredSourceType = computed<ReceiptSourceType>(() => {
   return "manual";
 });
 
-const editingReceiptAdjustment = computed(() => {
+const getEditingReceiptAdjustment = (
+  relatedDocument: ReceiptDocumentOption,
+) => {
   const currentReceipt = props.editingReceipt?.receipt;
-  const relatedDocument = selectedRelatedDocument.value;
-  if (!currentReceipt || !relatedDocument) return 0;
+  if (!currentReceipt) return 0;
 
   const matchesInvoice =
     relatedDocument.documentType === "invoice" &&
@@ -220,34 +221,61 @@ const editingReceiptAdjustment = computed(() => {
     relatedDocument.documentType === "proforma" &&
     currentReceipt.linkedProformaId === relatedDocument.documentId;
 
-  return matchesInvoice || matchesProforma ? currentReceipt.amount : 0;
-});
+  return matchesInvoice || matchesProforma
+    ? Number(currentReceipt.amount || 0)
+    : 0;
+};
+
+const getAvailableAmountForDocument = (
+  relatedDocument: ReceiptDocumentOption,
+) => {
+  const documentBalance = relatedDocument.balance ?? relatedDocument.amount;
+
+  return Math.max(
+    0,
+    Number(documentBalance || 0) - Number(relatedDocument.allocatedAmount || 0),
+  );
+};
+
+const getEditableAmountForDocument = (
+  relatedDocument: ReceiptDocumentOption,
+) => {
+  const persistedRemainingAmount =
+    getAvailableAmountForDocument(relatedDocument);
+
+  return Math.max(
+    0,
+    persistedRemainingAmount + getEditingReceiptAdjustment(relatedDocument),
+  );
+};
 
 const currentAvailableAmount = computed(() => {
   const relatedDocument = selectedRelatedDocument.value;
   if (!relatedDocument) return null;
 
-  const documentBalance = relatedDocument.balance ?? relatedDocument.amount;
-
-  return Math.max(
-    0,
-    Number(documentBalance || 0) -
-      Number(relatedDocument.allocatedAmount || 0) +
-      editingReceiptAdjustment.value,
-  );
+  return getEditableAmountForDocument(relatedDocument);
 });
 
-const selectedBalanceText = computed(() => {
+const drawerRemainingBalanceText = computed(() => {
   const relatedDocument = selectedRelatedDocument.value;
   if (!relatedDocument) {
     return isAttachmentCreateMode.value
-      ? "Total Balance: optionally link a related invoice or proforma."
-      : "Total Balance: select a related invoice or proforma.";
+      ? "Remaining balance will appear here when you link an invoice or proforma."
+      : "Select an invoice or proforma to view its remaining balance.";
   }
 
-  const balance = currentAvailableAmount.value ?? 0;
-  return `Total Balance: Credit Amount: $${Number(balance || 0).toLocaleString()}`;
+  const documentTypeLabel =
+    relatedDocument.documentType === "invoice" ? "Invoice" : "Proforma";
+
+  return `${documentTypeLabel} ${relatedDocument.documentNumber} remaining balance: $${Number(getAvailableAmountForDocument(relatedDocument) || 0).toLocaleString()}`;
 });
+
+const relatedDocumentOptions = computed(() =>
+  availableRelatedOptions.value.map((option) => ({
+    ...option,
+    title: `${option.documentNumber} | ${option.documentType === "invoice" ? "Invoice" : "Proforma"} | Remaining: $${getAvailableAmountForDocument(option).toLocaleString()}`,
+  })),
+);
 
 const isFlaggedState = computed(
   () =>
@@ -449,6 +477,7 @@ const onSubmit = () => {
       receiptNumber: props.editingReceipt?.receipt.receiptNumber ?? "",
       issuedDate: receivedDate.value,
       receivedDate: receivedDate.value,
+      linkedPaymentId: props.editingReceipt?.receipt.linkedPaymentId ?? null,
       client: {
         address: clientAddress.value.trim(),
         company: clientName.value.trim(),
@@ -535,7 +564,7 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
 
               <VCol v-if="showRelatedDocumentFields" cols="12">
                 <div class="text-body-2 text-medium-emphasis">
-                  {{ selectedBalanceText }}
+                  {{ drawerRemainingBalanceText }}
                 </div>
               </VCol>
 
@@ -548,7 +577,7 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
                       ? 'Optionally link invoice or proforma'
                       : 'Select invoice or proforma'
                   "
-                  :items="availableRelatedOptions"
+                  :items="relatedDocumentOptions"
                   clearable
                   clear-icon="tabler-x"
                   :disabled="!selectedClientKey"
@@ -572,6 +601,8 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
                   v-model="note"
                   label="Note"
                   placeholder="Receipt note"
+                  auto-grow
+                  rows="1"
                 />
               </VCol>
 

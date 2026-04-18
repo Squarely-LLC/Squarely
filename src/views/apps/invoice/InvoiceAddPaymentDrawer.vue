@@ -122,7 +122,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
   >
     <!-- 👉 Header -->
     <AppDrawerHeaderSection
-      title="Add Payment"
+      title="Add Receipt"
       @cancel="$emit('update:isDrawerOpen', false)"
     />
     <VDivider />

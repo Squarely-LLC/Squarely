@@ -1056,7 +1056,7 @@ if (!isEmbeddedActionFrame) {
               color="success"
               @click="isAddPaymentSidebarVisible = true"
             >
-              Add Payment
+              Add Receipt
             </VBtn>
           </VCardText>
         </VCard>

@@ -44,6 +44,22 @@ const router = useRouter();
 const pendingEmailQuotationId = ref<number | null>(null);
 const emailDialogRef = ref<any | null>(null);
 
+type LinkedDocumentRef = {
+  id: number;
+  number: string;
+};
+
+type ConvertedDocumentLookup = {
+  note: string;
+  quotation: {
+    quoteNumber: string;
+    total: number;
+    client: {
+      name: string;
+    };
+  };
+};
+
 type DealContractOption = {
   title: string;
   value: string;
@@ -242,6 +258,83 @@ const revisionMap = computed(() => {
 
   return map;
 });
+
+const resolveConvertedDocumentSourceQuotationId = (
+  record: ConvertedDocumentLookup,
+  convertedTo: "invoice" | "proforma",
+) => {
+  const noteMatch = record.note?.match(/Converted from quotation\s+QT-(\d+)/i);
+  if (noteMatch?.[1]) return Number(noteMatch[1]);
+
+  const quoteMatch = record.quotation.quoteNumber
+    ?.trim()
+    .match(/^(?:INV|PF)-(\d+)$/i);
+  if (!quoteMatch?.[1]) return null;
+
+  const quotationId = Number(quoteMatch[1]);
+  const sourceQuotation = quotationsStore.byId(quotationId)?.quotation;
+  if (!sourceQuotation) return null;
+
+  const expectedStatus =
+    convertedTo === "invoice"
+      ? "Converted to Invoice"
+      : "Converted to Proforma";
+
+  const matchesSourceQuotation =
+    sourceQuotation.quotationStatus === expectedStatus &&
+    sourceQuotation.client.name === record.quotation.client.name &&
+    Number(sourceQuotation.total || 0) === Number(record.quotation.total || 0);
+
+  return matchesSourceQuotation ? quotationId : null;
+};
+
+const linkedInvoicesMap = computed(() => {
+  const map = new Map<number, LinkedDocumentRef[]>();
+
+  for (const record of invoicesStore.all) {
+    const sourceQuotationId = resolveConvertedDocumentSourceQuotationId(
+      record,
+      "invoice",
+    );
+    if (!sourceQuotationId) continue;
+
+    const existing = map.get(sourceQuotationId) ?? [];
+    existing.push({
+      id: record.quotation.id,
+      number: record.quotation.quoteNumber,
+    });
+    map.set(sourceQuotationId, existing);
+  }
+
+  return map;
+});
+
+const linkedProformasMap = computed(() => {
+  const map = new Map<number, LinkedDocumentRef[]>();
+
+  for (const record of proformasStore.all) {
+    const sourceQuotationId = resolveConvertedDocumentSourceQuotationId(
+      record,
+      "proforma",
+    );
+    if (!sourceQuotationId) continue;
+
+    const existing = map.get(sourceQuotationId) ?? [];
+    existing.push({
+      id: record.quotation.id,
+      number: record.quotation.quoteNumber,
+    });
+    map.set(sourceQuotationId, existing);
+  }
+
+  return map;
+});
+
+const getLinkedInvoices = (quotationId: number) =>
+  linkedInvoicesMap.value.get(quotationId) ?? [];
+
+const getLinkedProformas = (quotationId: number) =>
+  linkedProformasMap.value.get(quotationId) ?? [];
 
 const filteredQuotations = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
@@ -516,6 +609,13 @@ const resolveStatusVariantAndIcon = (status: string) => {
   return { variant: "secondary", icon: "tabler-x" };
 };
 
+const resolveStatusLabel = (status: string) => {
+  if (status === "Converted to Invoice") return "Invoice";
+  if (status === "Converted to Proforma") return "Proforma";
+
+  return status;
+};
+
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
   isExternalQuotationFormValid.value = false;
@@ -716,7 +816,12 @@ const convertQuotationToProforma = (quotationId: number) => {
     },
     paymentDetails: quotationRecord.paymentDetails,
     purchasedProducts: quotationRecord.purchasedProducts,
-    note: quotationRecord.note,
+    note: [
+      quotationRecord.note?.trim(),
+      `Converted from quotation ${quotationRecord.quotation.quoteNumber}.`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
     showClientNote: quotationRecord.showClientNote,
     totalFx: quotationRecord.totalFx,
     paymentMethod: quotationRecord.paymentMethod,
@@ -1206,9 +1311,33 @@ watch(totalQuotations, (value) => {
               >
                 Deal #{{ item.dealId }}
               </RouterLink>
-              <span v-else class="text-sm text-medium-emphasis"
-                >No linked deal</span
-              >
+              <div class="d-flex flex-wrap align-center gap-2 text-sm">
+                <span v-if="!item.dealId" class="text-medium-emphasis">
+                  No linked deal
+                </span>
+                <RouterLink
+                  v-for="invoice in getLinkedInvoices(item.id)"
+                  :key="`invoice-${item.id}-${invoice.id}`"
+                  :to="{
+                    name: 'apps-invoice-preview-id',
+                    params: { id: invoice.id },
+                  }"
+                  class="text-link"
+                >
+                  INV {{ invoice.number }}
+                </RouterLink>
+                <RouterLink
+                  v-for="proforma in getLinkedProformas(item.id)"
+                  :key="`proforma-${item.id}-${proforma.id}`"
+                  :to="{
+                    name: 'apps-proforma-preview-id',
+                    params: { id: proforma.id },
+                  }"
+                  class="text-link"
+                >
+                  Proforma {{ proforma.number }}
+                </RouterLink>
+              </div>
               <span
                 v-if="hasRevisions(item)"
                 class="text-sm text-medium-emphasis"
@@ -1234,7 +1363,7 @@ watch(totalQuotations, (value) => {
             size="x-small"
             variant="tonal"
           >
-            {{ item.quotationStatus }}
+            {{ resolveStatusLabel(item.quotationStatus) }}
           </VChip>
         </template>
 
@@ -1298,7 +1427,7 @@ watch(totalQuotations, (value) => {
                           size="x-small"
                           variant="tonal"
                         >
-                          {{ revision.quotationStatus }}
+                          {{ resolveStatusLabel(revision.quotationStatus) }}
                         </VChip>
                       </div>
 
