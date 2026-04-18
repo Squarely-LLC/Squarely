@@ -14,7 +14,6 @@ import type {
   VerticalNavItems,
 } from "@layouts/types";
 import type { Component } from "vue";
-import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import { VNodeRenderer } from "./VNodeRenderer";
 
 interface Props {
@@ -140,12 +139,9 @@ const hideTitleAndIcon = configStore.isVerticalNavMini(isHovered);
       name="nav-items"
       :update-is-vertical-nav-scrolled="updateIsVerticalNavScrolled"
     >
-      <PerfectScrollbar
-        :key="configStore.isAppRTL"
-        tag="ul"
+      <ul
         class="nav-items"
-        :options="{ wheelPropagation: false }"
-        @ps-scroll-y="handleNavScroll"
+        @scroll="handleNavScroll"
       >
         <Component
           :is="resolveNavItemComponent(item)"
@@ -153,7 +149,7 @@ const hideTitleAndIcon = configStore.isVerticalNavMini(isHovered);
           :key="index"
           :item="item"
         />
-      </PerfectScrollbar>
+      </ul>
     </slot>
     <slot name="after-nav-items" />
   </Component>
@@ -216,12 +212,28 @@ const hideTitleAndIcon = configStore.isVerticalNavMini(isHovered);
 
   .nav-items {
     block-size: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-inline-end: 0.25rem;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
+  }
 
-    // ℹ️ We no loner needs this overflow styles as perfect scrollbar applies it
-    // overflow-x: hidden;
+  .nav-items::-webkit-scrollbar {
+    width: 0.5rem;
+  }
 
-    // // ℹ️ We used `overflow-y` instead of `overflow` to mitigate overflow x. Revert back if any issue found.
-    // overflow-y: auto;
+  .nav-items::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .nav-items::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: rgb(var(--v-theme-perfect-scrollbar-thumb));
   }
 
   .nav-item-title {

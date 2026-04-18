@@ -18,7 +18,6 @@ import { AppContentLayoutNav, ContentWidth } from "@layouts/enums";
 import { cookieRef, namespaceConfig } from "@layouts/stores/config";
 import { themeConfig } from "@themeConfig";
 import { useStorage } from "@vueuse/core";
-import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import { useTheme } from "vuetify";
 
 const ui = useUiStore();
@@ -361,7 +360,7 @@ const resetCustomizer = async () => {
 
       <VDivider />
 
-      <PerfectScrollbar tag="ul" :options="{ wheelPropagation: false }">
+      <div class="customizer-scroll">
         <!-- SECTION Theming -->
         <CustomizerSection title="Theming" :divider="false">
           <!-- 👉 Primary Color -->
@@ -551,7 +550,7 @@ const resetCustomizer = async () => {
         <!-- SECTION LAYOUT -->
 
         <!-- !SECTION -->
-      </PerfectScrollbar>
+      </div>
     </VNavigationDrawer>
   </div>
 </template>
@@ -595,6 +594,27 @@ const resetCustomizer = async () => {
   .v-navigation-drawer__content {
     display: flex;
     flex-direction: column;
+  }
+
+  .customizer-scroll {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
+  }
+
+  .customizer-scroll::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+
+  .customizer-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .customizer-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: rgb(var(--v-theme-perfect-scrollbar-thumb));
   }
 
   .v-label.custom-input.active {

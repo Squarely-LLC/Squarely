@@ -1,5 +1,4 @@
 <script lang="ts" setup>
-import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
 import type { Notification } from '@layouts/types'
 
 interface Props {
@@ -106,10 +105,7 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
         <VDivider />
 
         <!-- 👉 Notifications list -->
-        <PerfectScrollbar
-          :options="{ wheelPropagation: false }"
-          style="max-block-size: 23.75rem;"
-        >
+        <div class="notifications-scroll">
           <VList class="notification-list rounded-0 py-0">
             <template
               v-for="(notification, index) in props.notifications"
@@ -189,7 +185,7 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
               <VListItemTitle>No Notification Found!</VListItemTitle>
             </VListItem>
           </VList>
-        </PerfectScrollbar>
+        </div>
 
         <VDivider />
 
@@ -234,6 +230,28 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
     margin: 0 !important;
     padding-block: 0.75rem !important;
   }
+}
+
+.notifications-scroll {
+  max-block-size: 23.75rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
+}
+
+.notifications-scroll::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.notifications-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notifications-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgb(var(--v-theme-perfect-scrollbar-thumb));
 }
 
 // Badge Style Override for Notification Badge

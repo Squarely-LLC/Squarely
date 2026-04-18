@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
-
 interface Shortcut {
   icon: string
   title: string
@@ -54,7 +52,7 @@ const router = useRouter()
 
         <VDivider />
 
-        <PerfectScrollbar :options="{ wheelPropagation: false }">
+        <div class="shortcuts-scroll">
           <VRow class="ma-0 mt-n1">
             <VCol
               v-for="(shortcut, index) in props.shortcuts"
@@ -83,13 +81,34 @@ const router = useRouter()
               </p>
             </VCol>
           </VRow>
-        </PerfectScrollbar>
+        </div>
       </VCard>
     </VMenu>
   </IconBtn>
 </template>
 
 <style lang="scss">
+.shortcuts-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
+}
+
+.shortcuts-scroll::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.shortcuts-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shortcuts-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgb(var(--v-theme-perfect-scrollbar-thumb));
+}
+
 .shortcut-icon:hover {
   background-color: rgba(var(--v-theme-on-surface), var(--v-hover-opacity));
 }

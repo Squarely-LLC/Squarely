@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useUiStore } from "@core/stores/ui";
-import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 const router = useRouter();
 const ability = useAbility();
 const ui = useUiStore();
@@ -121,7 +120,7 @@ const handleNavItemClick = (item: any) => {
             </div>
           </VListItem>
 
-          <PerfectScrollbar :options="{ wheelPropagation: false }">
+          <div class="user-profile-scroll">
             <template v-for="item in userProfileList" :key="item.title">
               <VListItem
                 v-if="item.type === 'navItem'"
@@ -153,10 +152,33 @@ const handleNavItemClick = (item: any) => {
                 Logout
               </VBtn>
             </div>
-          </PerfectScrollbar>
+          </div>
         </VList>
       </VMenu>
       <!-- !SECTION -->
     </VAvatar>
   </VBadge>
 </template>
+
+<style lang="scss">
+.user-profile-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
+}
+
+.user-profile-scroll::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.user-profile-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.user-profile-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgb(var(--v-theme-perfect-scrollbar-thumb));
+}
+</style>
