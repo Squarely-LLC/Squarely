@@ -83,7 +83,10 @@ const quotationRecord = computed(
 const canReturnToEditor = computed(() => Boolean(draftPreview.value));
 const editRoute = computed(() => {
   if (draftPreview.value?.source === "add") {
-    return { name: "apps-invoice-add" as const };
+    return {
+      name: "apps-invoice-add" as const,
+      query: { restoreDraft: "1" },
+    };
   }
 
   return {

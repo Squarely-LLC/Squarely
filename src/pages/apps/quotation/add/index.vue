@@ -170,15 +170,15 @@ const buildRevisionDraft = (parentId: number): QuotationData => {
 };
 
 const buildInitialQuotation = (): QuotationData => {
-  const previewDraft = loadQuotationPreviewDraft();
-  if (previewDraft?.source === "add") {
-    return cloneQuotationRecord(previewDraft.quotation);
-  }
-
   const revisionOf = Number(route.query.revisionOf);
 
   if (Number.isFinite(revisionOf) && revisionOf > 0) {
     return buildRevisionDraft(revisionOf);
+  }
+
+  const previewDraft = loadQuotationPreviewDraft();
+  if (route.query.restoreDraft === "1" && previewDraft?.source === "add") {
+    return cloneQuotationRecord(previewDraft.quotation);
   }
 
   return buildBlankQuotation();
@@ -190,6 +190,9 @@ const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
 const approvalModes = ["Automatic", "Request Approval"] as const;
 const creditCardPaymentLinkError = ref<string | null>(null);
 const approvalError = ref<string | null>(null);
+const configuredCurrencyLabel = computed(
+  () => configStore.financial?.currency?.trim() || "Configured Currency",
+);
 const isLeaveDialogVisible = ref(false);
 const pendingNavigationTarget = ref<Parameters<typeof router.push>[0] | null>(
   null,
@@ -227,7 +230,7 @@ const employeeOptions = computed(() =>
 );
 
 watch(
-  () => route.query.revisionOf,
+  () => [route.query.revisionOf, route.query.restoreDraft],
   () => {
     quotationData.value = buildInitialQuotation();
     initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
@@ -523,14 +526,6 @@ onBeforeUnmount(() => {
       />
 
       <AppTextField
-        id="total-fx"
-        v-model="quotationData.totalFx"
-        label="Total FX"
-        placeholder="Enter total FX"
-        class="mb-6"
-      />
-
-      <AppTextField
         v-if="quotationData.paymentMethod === 'Credit Card'"
         id="payment-link"
         v-model="quotationData.paymentLink"
@@ -540,6 +535,14 @@ onBeforeUnmount(() => {
         :error-messages="
           creditCardPaymentLinkError ? [creditCardPaymentLinkError] : []
         "
+        class="mb-6"
+      />
+
+      <AppTextField
+        id="total-fx"
+        v-model="quotationData.totalFx"
+        :label="`Total FX (${configuredCurrencyLabel})`"
+        :placeholder="`Enter total FX in ${configuredCurrencyLabel}`"
         class="mb-6"
       />
 
