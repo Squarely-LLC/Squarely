@@ -47,6 +47,7 @@ const note = toRef(props.data, "note");
 const documentLabel = computed(() => props.documentLabel?.trim() || "Proforma");
 const recipientLabel = computed(() => `${documentLabel.value} To`);
 const vatSummary = computed(() => getVatSummary(configStore.financial));
+const clientValidationMessage = "Client is required";
 
 const mapContactToClient = (contact: ContactProperties): Client => ({
   address: contact.address?.trim() || "",
@@ -122,6 +123,7 @@ const showClientCompany = computed(() => {
 
   return Boolean(clientCompany) && clientCompany !== clientName;
 });
+const isClientMissing = computed(() => !quotation.value.client.name.trim());
 const displayPaymentDetails = computed(() => ({
   ...buildQuotationPaymentDetails(
     total.value,
@@ -259,6 +261,8 @@ watch(
           return-object
           class="mb-4"
           style="inline-size: 11.875rem"
+          :error="isClientMissing"
+          :error-messages="isClientMissing ? [clientValidationMessage] : []"
         />
         <p class="mb-0">{{ quotation.client.name }}</p>
         <p v-if="showClientCompany" class="mb-0">

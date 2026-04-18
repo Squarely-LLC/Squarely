@@ -55,12 +55,6 @@ const mapContactToClient = (contact: ContactProperties): Client => ({
 });
 
 const buildDefaultClient = (): Client => {
-  const firstContact = contactsStore.all.find((contact) =>
-    contact.fullName?.trim(),
-  );
-
-  if (firstContact) return mapContactToClient(firstContact);
-
   return {
     address: "",
     company: "",
@@ -70,6 +64,9 @@ const buildDefaultClient = (): Client => {
     name: "",
   };
 };
+
+const hasSelectedClient = (client: Client | null | undefined) =>
+  Boolean(client?.name?.trim());
 
 const buildBlankQuotation = (): ProformaData => {
   const id = proformasStore.nextId();
@@ -352,6 +349,11 @@ const confirmLeave = async () => {
 };
 
 const saveQuotation = () => {
+  if (!hasSelectedClient(quotationData.value.quotation.client)) {
+    notifications.push("Client is required before saving.", "error", 3500);
+    return;
+  }
+
   if (!validateCreditCardPaymentLink()) return;
   if (!validateApprovalSelection()) return;
 
