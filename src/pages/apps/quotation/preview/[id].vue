@@ -21,6 +21,7 @@ import {
   getQuotationGrandTotal,
   getQuotationSubtotal,
 } from "@/utils/quotationPricing";
+import { normalizeRichText } from "@/utils/richText";
 import { openWhatsAppIntent, shareToWhatsApp } from "@/utils/shareToWhatsApp";
 import { shareWithSystem } from "@/utils/shareWithSystem";
 import { formatSystemDate } from "@core/utils/formatters";
@@ -178,6 +179,7 @@ const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(legalConfiguration.value),
 );
 const vatSummary = computed(() => getVatSummary(financialConfiguration.value));
+const renderedNote = computed(() => normalizeRichText(quotationRecord.value?.note));
 
 const isSendPaymentSidebarVisible = ref(false);
 const hasExecutedAutoAction = ref(false);
@@ -879,15 +881,15 @@ if (!isEmbeddedActionFrame) {
             </div>
           </template>
 
-          <template v-if="quotationRecord?.showClientNote">
+          <template v-if="quotationRecord?.showClientNote && renderedNote">
             <VDivider class="my-6 border-dashed" />
 
-            <p class="mb-0">
+            <div class="terms-preview">
               <span class="text-high-emphasis font-weight-medium me-1">
-                Client Note:
+                Terms and Notes:
               </span>
-              <span>{{ quotationRecord?.note }}</span>
-            </p>
+              <div class="terms-preview__content" v-html="renderedNote" />
+            </div>
           </template>
         </VCard>
       </VCol>
@@ -1075,6 +1077,10 @@ if (!isEmbeddedActionFrame) {
   overflow-wrap: anywhere;
   white-space: normal;
   word-break: break-word;
+}
+
+.terms-preview__content p:last-child {
+  margin-block-end: 0;
 }
 
 .external-document-summary {

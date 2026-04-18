@@ -4,17 +4,17 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useProformasStore } from "@/stores/proformas";
 import {
-  buildQuotationPaymentDetails,
-  formatCurrencyAmount,
-  getQuotationCompanyAddressLines,
-  getQuotationCompanyContactLines,
-  getVatSummary,
-  resolveQuotationLogoUrl,
+    buildQuotationPaymentDetails,
+    formatCurrencyAmount,
+    getQuotationCompanyAddressLines,
+    getQuotationCompanyContactLines,
+    getVatSummary,
+    resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import {
-  getQuotationDiscountTotal,
-  getQuotationGrandTotal,
-  getQuotationSubtotal,
+    getQuotationDiscountTotal,
+    getQuotationGrandTotal,
+    getQuotationSubtotal,
 } from "@/utils/quotationPricing";
 import type { Client } from "@db/apps/proforma/types";
 
@@ -148,6 +148,7 @@ watch(
   },
   { immediate: true },
 );
+
 </script>
 
 <template>
@@ -171,7 +172,6 @@ watch(
         <p
           v-for="(line, index) in companyAddressLines"
           :key="`address-${index}`"
-          class="text-high-emphasis mb-0"
         >
           {{ line }}
         </p>
@@ -245,8 +245,8 @@ watch(
       </div>
     </div>
 
-    <VRow>
-      <VCol class="text-no-wrap">
+    <VRow class="recipient-payment-row">
+      <VCol cols="6" class="recipient-payment-col">
         <h6 class="text-h6 mb-4">{{ recipientLabel }}:</h6>
 
         <VSelect
@@ -271,7 +271,7 @@ watch(
         <p class="mb-0">{{ quotation.client.companyEmail }}</p>
       </VCol>
 
-      <VCol class="text-no-wrap">
+      <VCol cols="6" class="recipient-payment-col">
         <h6 class="text-h6 mb-4">Payment Details:</h6>
 
         <template v-if="paymentMethod === 'Bank Transfer'">
@@ -402,12 +402,11 @@ watch(
       <VDivider class="my-6 border-dashed" />
 
       <div>
-        <h6 class="text-h6 mb-2">Client Note:</h6>
-        <VTextarea
-          id="note"
+        <h6 class="text-h6 mb-2">Terms and Notes:</h6>
+        <TiptapEditor
           v-model="note"
-          placeholder="Write note here..."
-          :rows="2"
+          class="terms-editor"
+          placeholder="Write terms and notes here..."
         />
       </div>
     </template>
@@ -431,5 +430,31 @@ watch(
 .quotation-company-title {
   margin: 0;
   line-height: 1.2;
+}
+
+.recipient-payment-row {
+  flex-wrap: nowrap;
+}
+
+.recipient-payment-col {
+  min-inline-size: 0;
+}
+
+.recipient-payment-col p,
+.recipient-payment-col td {
+  overflow-wrap: anywhere;
+}
+
+.terms-editor {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+  min-block-size: 150px;
+}
+
+.terms-editor :deep(.ProseMirror) {
+  min-block-size: 150px;
+  outline: none;
+  overflow-y: auto;
+  padding: 0.875rem 1rem;
 }
 </style>

@@ -95,8 +95,6 @@ const isAddPaymentSidebarActive = ref(false);
 const isEmailDialogVisible = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
-const paymentTerms = ref(true);
-const paymentStub = ref(false);
 const paymentMethods = ["Bank Transfer", "Cash", "Credit Card"];
 const approvalModes = ["Automatic", "Request Approval"] as const;
 const creditCardPaymentLinkError = ref<string | null>(null);
@@ -980,23 +978,12 @@ onBeforeUnmount(() => {
       />
 
       <div class="d-flex align-center justify-space-between">
-        <VLabel for="payment-terms">Payment Terms</VLabel>
+        <VLabel for="terms-and-notes">Terms and Notes</VLabel>
         <div>
-          <VSwitch id="payment-terms" v-model="paymentTerms" />
-        </div>
-      </div>
-
-      <div class="d-flex align-center justify-space-between">
-        <VLabel for="client-notes">Client Notes</VLabel>
-        <div>
-          <VSwitch id="client-notes" v-model="quotationData.showClientNote" />
-        </div>
-      </div>
-
-      <div class="d-flex align-center justify-space-between">
-        <VLabel for="payment-stub">Payment Stub</VLabel>
-        <div>
-          <VSwitch id="payment-stub" v-model="paymentStub" />
+          <VSwitch
+            id="terms-and-notes"
+            v-model="quotationData.showClientNote"
+          />
         </div>
       </div>
 

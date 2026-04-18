@@ -6,6 +6,7 @@ import type {
   LegalConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import { getFileObjectUrl } from "@/utils/fileStore";
+import { normalizeRichText } from "@/utils/richText";
 
 const CONFIG_STORAGE_KEY = "app.configurations.v1";
 type DocumentConfigKind = "quotation" | "proforma" | "invoice";
@@ -112,10 +113,10 @@ export function buildDocumentNote(
 ) {
   const configuredNote =
     documentKind === "invoice"
-      ? financial?.invoicing?.notesOnInvoice?.trim()
+      ? normalizeRichText(financial?.invoicing?.notesOnInvoice)
       : documentKind === "proforma"
-        ? financial?.invoicing?.noteOnProforma?.trim()
-        : financial?.invoicing?.noteOnQuotation?.trim();
+        ? normalizeRichText(financial?.invoicing?.noteOnProforma)
+        : normalizeRichText(financial?.invoicing?.noteOnQuotation);
 
   if (configuredNote) return configuredNote;
 

@@ -4,6 +4,7 @@ import {
   getVatSummary,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import { normalizeRichText, richTextToPlainText } from "@/utils/richText";
 import {
   getLineTotal,
   getQuotationDiscountTotal,
@@ -141,9 +142,9 @@ const buildContentLines = ({
   pushWrapped(`IBAN: ${quotationRecord.paymentDetails.iban}`);
   pushWrapped(`SWIFT Code: ${quotationRecord.paymentDetails.swiftCode}`);
   lines.push("");
-  if (quotationRecord.showClientNote && quotationRecord.note.trim()) {
+  if (quotationRecord.showClientNote && normalizeRichText(quotationRecord.note)) {
     lines.push("");
-    pushWrapped(`Client Note: ${quotationRecord.note}`);
+    pushWrapped(`Terms and Notes: ${richTextToPlainText(quotationRecord.note)}`);
   }
 
   return lines;

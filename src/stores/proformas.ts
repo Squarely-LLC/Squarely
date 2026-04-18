@@ -16,6 +16,7 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
@@ -531,7 +532,7 @@ function normaliseProformaRecord(
       payload.convertedInvoiceId === undefined
         ? null
         : Number(payload.convertedInvoiceId),
-    note: payload.note?.trim() || buildProformaNote(config.financial, 7),
+    note: normalizeRichText(payload.note) || buildProformaNote(config.financial, 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     totalFx: payload.totalFx?.trim() || null,
@@ -619,7 +620,7 @@ function mergeProformaRecord(
         : patch.convertedInvoiceId === null
           ? null
           : Number(patch.convertedInvoiceId),
-    note: patch.note ?? original.note,
+    note: patch.note === undefined ? original.note : normalizeRichText(patch.note),
     showClientNote: patch.showClientNote ?? original.showClientNote,
     totalFx:
       patch.totalFx === undefined

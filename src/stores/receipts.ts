@@ -5,6 +5,7 @@ import type {
   ReceiptSourceType,
   ReceiptStatus,
 } from "@/plugins/fake-api/handlers/apps/receipt/types";
+import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
@@ -174,7 +175,7 @@ function sanitizeStoredRecord(record: ReceiptRecord): ReceiptRecord {
   cloned.receipt.attachmentFileKey =
     cloned.receipt.attachmentFileKey?.trim() || null;
   cloned.paymentMethod = cloned.paymentMethod?.trim() || "Cash";
-  cloned.note = cloned.note?.trim() || "";
+  cloned.note = normalizeRichText(cloned.note);
 
   return cloned;
 }
@@ -216,7 +217,7 @@ function normaliseReceiptRecord(
       attachmentFileKey: receipt.attachmentFileKey?.trim() || null,
     },
     paymentMethod: payload.paymentMethod?.trim() || "Cash",
-    note: payload.note?.trim() || "",
+    note: normalizeRichText(payload.note),
   });
 }
 
@@ -250,7 +251,8 @@ function mergeReceiptRecord(
       patch.paymentMethod === undefined
         ? original.paymentMethod
         : patch.paymentMethod?.trim() || "Cash",
-    note: patch.note === undefined ? original.note : patch.note?.trim() || "",
+    note:
+      patch.note === undefined ? original.note : normalizeRichText(patch.note),
   });
 }
 
@@ -342,7 +344,7 @@ export const useReceiptsStore = defineStore("receipts", {
           attachmentFileKey: null,
         },
         paymentMethod: input.payment.method?.trim() || "Cash",
-        note: input.payment.note?.trim() || "",
+        note: normalizeRichText(input.payment.note),
       });
     },
 

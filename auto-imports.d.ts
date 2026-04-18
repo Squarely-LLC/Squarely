@@ -100,6 +100,7 @@ declare global {
   const isReactive: typeof import('vue')['isReactive']
   const isReadonly: typeof import('vue')['isReadonly']
   const isRef: typeof import('vue')['isRef']
+  const isRichTextEmpty: typeof import('./src/utils/richText')['isRichTextEmpty']
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
@@ -118,6 +119,7 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const nextTick: typeof import('vue')['nextTick']
+  const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
   const onBeforeRouteLeave: typeof import('vue-router/auto')['onBeforeRouteLeave']
@@ -167,6 +169,7 @@ declare global {
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
+  const richTextToPlainText: typeof import('./src/utils/richText')['richTextToPlainText']
   const saveFile: typeof import('./src/utils/fileStore')['saveFile']
   const saveInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']
   const saveProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']
@@ -504,6 +507,7 @@ declare module 'vue' {
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
+    readonly isRichTextEmpty: UnwrapRef<typeof import('./src/utils/richText')['isRichTextEmpty']>
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
@@ -522,6 +526,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
+    readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
     readonly onBeforeRouteLeave: UnwrapRef<typeof import('vue-router/auto')['onBeforeRouteLeave']>
@@ -571,6 +576,7 @@ declare module 'vue' {
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
+    readonly richTextToPlainText: UnwrapRef<typeof import('./src/utils/richText')['richTextToPlainText']>
     readonly saveFile: UnwrapRef<typeof import('./src/utils/fileStore')['saveFile']>
     readonly saveInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']>
     readonly saveProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']>

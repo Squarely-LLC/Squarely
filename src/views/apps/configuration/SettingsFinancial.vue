@@ -9,6 +9,7 @@ import type {
 } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
+import { normalizeRichText } from "@/utils/richText";
 import { computed, onMounted, ref } from "vue";
 const isAddPaymentMethodsDialogVisible = ref(false);
 const isPaymentProvidersDialogVisible = ref(false);
@@ -25,9 +26,7 @@ type FinancialUiState = Partial<FinancialConfig> & {
   bankDetails: BankDetailsItem[];
   invoicing: InvoicingSettings & {
     showNotes: boolean;
-    notesOnInvoice: string;
-    noteOnQuotation: string;
-    noteOnProforma: string;
+    termsAndNotes: string;
   };
   invoiceSequence: string;
   paymentReminders: {
@@ -49,9 +48,7 @@ const fin = ref<FinancialUiState>({
   bankDetails: [{ enabled: false }],
   invoicing: {
     showNotes: true,
-    notesOnInvoice: "",
-    noteOnQuotation: "",
-    noteOnProforma: "",
+    termsAndNotes: "",
   },
   invoiceSequence: "",
   paymentReminders: {
@@ -73,14 +70,10 @@ const ensureDefaults = () => {
   if (!fin.value.bankDetails[0]) fin.value.bankDetails[0] = { enabled: false };
   fin.value.invoicing ??= {
     showNotes: true,
-    notesOnInvoice: "",
-    noteOnQuotation: "",
-    noteOnProforma: "",
+    termsAndNotes: "",
   };
   fin.value.invoicing.showNotes ??= true;
-  fin.value.invoicing.notesOnInvoice ??= "";
-  fin.value.invoicing.noteOnQuotation ??= "";
-  fin.value.invoicing.noteOnProforma ??= "";
+  fin.value.invoicing.termsAndNotes ??= "";
   fin.value.invoiceSequence ??= "";
   fin.value.paymentReminders ??= {
     enabled: false,
@@ -94,6 +87,12 @@ const ensureDefaults = () => {
 const syncFromStore = () => {
   const cfg = (store.financial || {}) as FinancialConfig;
   const dealsCfg = (store.all?.deals || {}) as DealsConfig;
+  const termsAndNotes =
+    normalizeRichText(cfg.invoicing?.noteOnQuotation) ||
+    normalizeRichText(cfg.invoicing?.noteOnProforma) ||
+    normalizeRichText(cfg.invoicing?.notesOnInvoice) ||
+    fin.value.invoicing.termsAndNotes;
+
   fin.value = {
     ...fin.value,
     ...cfg,
@@ -108,12 +107,7 @@ const syncFromStore = () => {
       : fin.value.bankDetails,
     invoicing: {
       showNotes: cfg.invoicing?.showNotes ?? fin.value.invoicing.showNotes,
-      notesOnInvoice:
-        cfg.invoicing?.notesOnInvoice ?? fin.value.invoicing.notesOnInvoice,
-      noteOnQuotation:
-        cfg.invoicing?.noteOnQuotation ?? fin.value.invoicing.noteOnQuotation,
-      noteOnProforma:
-        cfg.invoicing?.noteOnProforma ?? fin.value.invoicing.noteOnProforma,
+      termsAndNotes: normalizeRichText(termsAndNotes),
     },
     paymentReminders: {
       enabled:
@@ -150,7 +144,12 @@ const takeSnapshot = () => {
     bankDetails: fin.value.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0] }]
       : [],
-    invoicing: { ...fin.value.invoicing },
+    invoicing: {
+      showNotes: fin.value.invoicing.showNotes,
+      noteOnQuotation: normalizeRichText(fin.value.invoicing.termsAndNotes),
+      noteOnProforma: normalizeRichText(fin.value.invoicing.termsAndNotes),
+      notesOnInvoice: normalizeRichText(fin.value.invoicing.termsAndNotes),
+    },
     invoiceSequence: fin.value.invoiceSequence,
     quotationStartsSeq: deals.value.quotationStartsSeq,
     proformaStartSeq: deals.value.proformaStartSeq,
@@ -217,7 +216,12 @@ const toServerPayload = (): Partial<FinancialConfig> => {
     bankDetails: fin.value.bankDetails?.length
       ? [{ ...fin.value.bankDetails[0] }]
       : [],
-    invoicing: { ...fin.value.invoicing },
+    invoicing: {
+      showNotes: fin.value.invoicing.showNotes,
+      noteOnQuotation: normalizeRichText(fin.value.invoicing.termsAndNotes),
+      noteOnProforma: normalizeRichText(fin.value.invoicing.termsAndNotes),
+      notesOnInvoice: normalizeRichText(fin.value.invoicing.termsAndNotes),
+    },
     invoiceSequence: fin.value.invoiceSequence,
     paymentReminders: { ...fin.value.paymentReminders },
   } as Partial<FinancialConfig>;
@@ -479,9 +483,9 @@ const paymentRemindersEnabled = computed<boolean>({
               class="d-flex align-center justify-space-between flex-wrap gap-4"
             >
               <div>
-                <h6 class="text-h6">Client Notes On Documents</h6>
+                <h6 class="text-h6">Terms and Notes</h6>
                 <p class="text-body-2 mb-0">
-                  Controls the default client note visibility for quotation,
+                  Controls the default terms and notes visibility for quotation,
                   proforma, and invoice documents.
                 </p>
               </div>
@@ -495,31 +499,11 @@ const paymentRemindersEnabled = computed<boolean>({
               />
             </div>
           </VCol>
-          <VCol cols="12" md="6">
-            <AppTextarea
-              v-model="fin.invoicing.noteOnQuotation"
-              label="Quotation Note"
+          <VCol cols="12">
+            <TiptapEditor
+              v-model="fin.invoicing.termsAndNotes"
+              class="terms-editor"
               placeholder="Prices valid for 14 days from issue date."
-              auto-grow
-              rows="3"
-            />
-          </VCol>
-          <VCol cols="12" md="6">
-            <AppTextarea
-              v-model="fin.invoicing.noteOnProforma"
-              label="Proforma Note"
-              placeholder="Prices valid for 14 days from issue date."
-              auto-grow
-              rows="3"
-            />
-          </VCol>
-          <VCol cols="12" md="6">
-            <AppTextarea
-              v-model="fin.invoicing.notesOnInvoice"
-              label="Invoice Note"
-              placeholder="Payment due within 30 days."
-              auto-grow
-              rows="3"
             />
           </VCol>
         </VRow>
@@ -623,6 +607,21 @@ const paymentRemindersEnabled = computed<boolean>({
     v-model:is-dialog-visible="isPaymentProvidersDialogVisible"
   />
 </template>
+
+<style scoped>
+.terms-editor {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+  min-block-size: 180px;
+}
+
+.terms-editor :deep(.ProseMirror) {
+  min-block-size: 180px;
+  outline: none;
+  overflow-y: auto;
+  padding: 0.875rem 1rem;
+}
+</style>
 
 <style lang="scss" scoped>
 .paypal-logo {

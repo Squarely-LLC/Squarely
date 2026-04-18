@@ -14,6 +14,7 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
@@ -416,7 +417,7 @@ function normaliseQuotationRecord(
       : defaultPaymentDetails(total),
     payments: [],
     purchasedProducts: ensureProducts(payload.purchasedProducts),
-    note: payload.note?.trim() || buildQuotationNote(config.financial, 7),
+    note: normalizeRichText(payload.note) || buildQuotationNote(config.financial, 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     totalFx: payload.totalFx?.trim() || null,
@@ -495,7 +496,7 @@ function mergeQuotationRecord(
     purchasedProducts: ensureProducts(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
-    note: patch.note ?? original.note,
+    note: patch.note === undefined ? original.note : normalizeRichText(patch.note),
     showClientNote: patch.showClientNote ?? original.showClientNote,
     totalFx:
       patch.totalFx === undefined
