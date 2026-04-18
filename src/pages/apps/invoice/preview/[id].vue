@@ -8,6 +8,7 @@ import {
   type InvoicePaymentInput,
 } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useReceiptsStore } from "@/stores/receipts";
 import { createPdfFileFromElement } from "@/utils/domPdf";
 import { getFileObjectUrl, getFileRecord } from "@/utils/fileStore";
 import {
@@ -42,10 +43,12 @@ const isEmbeddedActionFrame = route.query.embedded === "1";
 const configStore = useConfigStore();
 const notifications = useNotificationsStore();
 const invoicesStore = useInvoicesStore();
+const receiptsStore = useReceiptsStore();
 
 if (!isEmbeddedActionFrame) {
   configStore.init();
   invoicesStore.init();
+  receiptsStore.init();
 }
 
 type EmbeddedPreviewPayload = {
@@ -498,6 +501,17 @@ const recordQuotationPayment = (payment: InvoicePaymentInput) => {
   }
 
   invoicesStore.updateInvoice(updatedRecord.quotation.id, updatedRecord);
+  const recordedPayment = updatedRecord.payments.at(-1);
+  if (recordedPayment) {
+    receiptsStore.addReceiptFromLinkedPayment({
+      documentType: "invoice",
+      documentId: updatedRecord.quotation.id,
+      documentNumber: updatedRecord.quotation.quoteNumber,
+      client: updatedRecord.quotation.client,
+      avatar: updatedRecord.quotation.avatar,
+      payment: recordedPayment,
+    });
+  }
   notifications.push(
     `Payment of ${formatCurrencyAmount(payment.amount, financialConfiguration.value)} added successfully.`,
     "success",

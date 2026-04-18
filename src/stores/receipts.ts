@@ -14,6 +14,21 @@ type ReceiptPayload = Omit<Partial<ReceiptRecord>, "receipt"> & {
   receipt?: Partial<Receipt>;
 };
 
+type LinkedPaymentReceiptInput = {
+  documentType: "invoice" | "proforma";
+  documentId: number | string;
+  documentNumber: string;
+  client: Partial<Receipt["client"]>;
+  avatar?: string | null;
+  payment: {
+    id: string;
+    amount: number;
+    date: string;
+    method?: string | null;
+    note?: string | null;
+  };
+};
+
 function safeClone<T>(value: T, fallback: T): T {
   const raw = toRaw(value) as T;
 
@@ -136,6 +151,8 @@ function sanitizeStoredRecord(record: ReceiptRecord): ReceiptRecord {
     cloned.receipt.issuedDate?.trim() || new Date().toISOString().slice(0, 10);
   cloned.receipt.receivedDate =
     cloned.receipt.receivedDate?.trim() || cloned.receipt.issuedDate;
+  cloned.receipt.linkedPaymentId =
+    cloned.receipt.linkedPaymentId?.trim() || null;
   cloned.receipt.client = ensureClient(cloned.receipt.client);
   cloned.receipt.amount = Math.max(0, Number(cloned.receipt.amount) || 0);
   cloned.receipt.avatar = cloned.receipt.avatar?.trim() || "";
@@ -177,6 +194,7 @@ function normaliseReceiptRecord(
       issuedDate: receipt.issuedDate || new Date().toISOString().slice(0, 10),
       receivedDate:
         receipt.receivedDate || new Date().toISOString().slice(0, 10),
+      linkedPaymentId: receipt.linkedPaymentId?.trim() || null,
       client: ensureClient(receipt.client),
       amount: Number(receipt.amount) || 0,
       avatar: receipt.avatar?.trim() || "",
@@ -221,6 +239,10 @@ function mergeReceiptRecord(
         ...original.receipt.client,
         ...receiptPatch.client,
       }),
+      linkedPaymentId:
+        receiptPatch.linkedPaymentId === undefined
+          ? original.receipt.linkedPaymentId
+          : receiptPatch.linkedPaymentId?.trim() || null,
       status: resolveReceiptStatus(sourceType),
       sourceType,
     },
@@ -282,6 +304,46 @@ export const useReceiptsStore = defineStore("receipts", {
       const normalised = normaliseReceiptRecord(payload, id);
       this.items.unshift(normalised);
       return this.byId(id);
+    },
+
+    addReceiptFromLinkedPayment(input: LinkedPaymentReceiptInput) {
+      const paymentId = input.payment.id?.trim();
+      const amount = Math.max(0, Number(input.payment.amount) || 0);
+      if (!paymentId || amount <= 0) return null;
+
+      const existing = this.items.find((record) => {
+        if (record.receipt.linkedPaymentId !== paymentId) return false;
+
+        return input.documentType === "invoice"
+          ? String(record.receipt.linkedInvoiceId) === String(input.documentId)
+          : String(record.receipt.linkedProformaId) ===
+              String(input.documentId);
+      });
+      if (existing) return cloneReceiptRecord(existing);
+
+      return this.addReceipt({
+        receipt: {
+          issuedDate: input.payment.date,
+          receivedDate: input.payment.date,
+          linkedPaymentId: paymentId,
+          client: ensureClient(input.client),
+          amount,
+          avatar: input.avatar?.trim() || "",
+          sourceType: input.documentType,
+          linkedInvoiceId:
+            input.documentType === "invoice" ? Number(input.documentId) : null,
+          linkedInvoiceNumber:
+            input.documentType === "invoice" ? input.documentNumber : null,
+          linkedProformaId:
+            input.documentType === "proforma" ? Number(input.documentId) : null,
+          linkedProformaNumber:
+            input.documentType === "proforma" ? input.documentNumber : null,
+          attachmentName: null,
+          attachmentFileKey: null,
+        },
+        paymentMethod: input.payment.method?.trim() || "Cash",
+        note: input.payment.note?.trim() || "",
+      });
     },
 
     updateReceipt(id: number | string, patch: ReceiptPayload) {

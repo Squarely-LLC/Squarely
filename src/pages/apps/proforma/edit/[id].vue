@@ -10,6 +10,7 @@ import {
   useProformasStore,
   type ProformaPaymentInput,
 } from "@/stores/proformas";
+import { useReceiptsStore } from "@/stores/receipts";
 import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
   clearProformaPreviewDraft,
@@ -42,7 +43,9 @@ const employeesStore = useEmployeesStore();
 employeesStore.init();
 const notifications = useNotificationsStore();
 const proformasStore = useProformasStore();
+const receiptsStore = useReceiptsStore();
 proformasStore.init();
+receiptsStore.init();
 
 const previewDraft = loadProformaPreviewDraft();
 const sourceRecord =
@@ -630,6 +633,22 @@ const saveQuotation = () => {
     cloneProformaRecord(quotationData.value),
   );
   if (!updatedQuotation) return;
+
+  const originalPaymentIds = new Set(
+    (sourceRecord?.payments ?? []).map((payment) => payment.id),
+  );
+  updatedQuotation.payments
+    .filter((payment) => !originalPaymentIds.has(payment.id))
+    .forEach((payment) => {
+      receiptsStore.addReceiptFromLinkedPayment({
+        documentType: "proforma",
+        documentId: updatedQuotation.quotation.id,
+        documentNumber: updatedQuotation.quotation.quoteNumber,
+        client: updatedQuotation.quotation.client,
+        avatar: updatedQuotation.quotation.avatar,
+        payment,
+      });
+    });
 
   notifications.push(
     `Proforma ${updatedQuotation.quotation.quoteNumber} updated successfully.`,

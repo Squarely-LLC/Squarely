@@ -10,6 +10,7 @@ import {
   type InvoicePaymentInput,
 } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useReceiptsStore } from "@/stores/receipts";
 import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
   clearInvoicePreviewDraft,
@@ -39,7 +40,9 @@ const employeesStore = useEmployeesStore();
 employeesStore.init();
 const notifications = useNotificationsStore();
 const invoicesStore = useInvoicesStore();
+const receiptsStore = useReceiptsStore();
 invoicesStore.init();
+receiptsStore.init();
 
 const previewDraft = loadInvoicePreviewDraft();
 const sourceRecord =
@@ -627,6 +630,22 @@ const saveQuotation = () => {
     cloneInvoiceRecord(quotationData.value),
   );
   if (!updatedQuotation) return;
+
+  const originalPaymentIds = new Set(
+    (sourceRecord?.payments ?? []).map((payment) => payment.id),
+  );
+  updatedQuotation.payments
+    .filter((payment) => !originalPaymentIds.has(payment.id))
+    .forEach((payment) => {
+      receiptsStore.addReceiptFromLinkedPayment({
+        documentType: "invoice",
+        documentId: updatedQuotation.quotation.id,
+        documentNumber: updatedQuotation.quotation.quoteNumber,
+        client: updatedQuotation.quotation.client,
+        avatar: updatedQuotation.quotation.avatar,
+        payment,
+      });
+    });
 
   notifications.push(
     `Invoice ${updatedQuotation.quotation.quoteNumber} updated successfully.`,

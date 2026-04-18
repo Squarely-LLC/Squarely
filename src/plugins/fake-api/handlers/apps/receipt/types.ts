@@ -13,6 +13,7 @@ export interface Receipt {
   receiptNumber: string;
   issuedDate: string;
   receivedDate: string;
+  linkedPaymentId: string | null;
   client: Client;
   amount: number;
   avatar: string;
