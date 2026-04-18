@@ -80,6 +80,14 @@ export interface CatalogueProducedProductMaterial {
   qty: number | null;
 }
 
+export interface CatalogueProducedProductSubItem {
+  id: number;
+  name: string;
+  options: CatalogueProducedProductField[];
+  rawMaterials: CatalogueProducedProductMaterial[];
+  measurements: CatalogueProducedProductField[];
+}
+
 export interface CataloguePhase {
   id: number;
   name: string;
@@ -169,6 +177,7 @@ export interface CatalogueProducedProductRecord extends CatalogueBaseRecord {
   options: CatalogueProducedProductField[];
   rawMaterials: CatalogueProducedProductMaterial[];
   measurements: CatalogueProducedProductField[];
+  subItems: CatalogueProducedProductSubItem[];
   salesTasks: CatalogueSalesTask[];
   jobConfiguration: CatalogueJobConfiguration;
 }
@@ -241,6 +250,7 @@ export interface CatalogueRecordInput extends Partial<CatalogueItem> {
   options?: CatalogueProducedProductField[];
   rawMaterials?: CatalogueProducedProductMaterial[];
   measurements?: CatalogueProducedProductField[];
+  subItems?: CatalogueProducedProductSubItem[];
   salesTasks?: CatalogueSalesTask[];
   jobConfiguration?: CatalogueJobConfiguration;
 }

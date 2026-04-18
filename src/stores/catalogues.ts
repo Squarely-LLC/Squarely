@@ -537,6 +537,7 @@ function normalizeRecord(
     const measurements = Array.isArray(payload.measurements)
       ? payload.measurements
       : [];
+    const subItems = Array.isArray(payload.subItems) ? payload.subItems : [];
     const salesTasks = Array.isArray(payload.salesTasks)
       ? payload.salesTasks
       : [];
@@ -544,57 +545,58 @@ function normalizeRecord(
       ? payload.jobConfiguration.milestones
       : [];
 
+    const normalizeProducedField = (field: any, index: number) => ({
+      id: Number.isFinite(Number(field.id)) ? Number(field.id) : index + 1,
+      name: String(field.name ?? "").trim(),
+      type:
+        field.type === "Number" ||
+        field.type === "Pictures" ||
+        field.type === "Select Buttons" ||
+        field.type === "Note" ||
+        field.type === "Dropdown"
+          ? field.type
+          : "Text",
+      description: String(field.description ?? "").trim(),
+      values:
+        field.type === "Dropdown" && Array.isArray(field.values)
+          ? field.values
+              .map((value: unknown) => String(value ?? "").trim())
+              .filter(Boolean)
+          : [],
+    });
+
+    const normalizeRawMaterial = (material: any, index: number) => ({
+      id: Number.isFinite(Number(material.id))
+        ? Number(material.id)
+        : index + 1,
+      name: String(material.name ?? "").trim(),
+      qty:
+        material.qty === null || material.qty === undefined
+          ? null
+          : Number.isFinite(Number(material.qty))
+            ? Number(material.qty)
+            : null,
+    });
+
     return {
       ...base,
-      options: options.map((field, index) => ({
-        id: Number.isFinite(Number(field.id)) ? Number(field.id) : index + 1,
-        name: String(field.name ?? "").trim(),
-        type:
-          field.type === "Number" ||
-          field.type === "Pictures" ||
-          field.type === "Select Buttons" ||
-          field.type === "Note" ||
-          field.type === "Dropdown"
-            ? field.type
-            : "Text",
-        description: String(field.description ?? "").trim(),
-        values:
-          field.type === "Dropdown" && Array.isArray(field.values)
-            ? field.values
-                .map((value) => String(value ?? "").trim())
-                .filter(Boolean)
-            : [],
-      })),
-      rawMaterials: rawMaterials.map((material, index) => ({
-        id: Number.isFinite(Number(material.id))
-          ? Number(material.id)
+      options: options.map(normalizeProducedField),
+      rawMaterials: rawMaterials.map(normalizeRawMaterial),
+      measurements: measurements.map(normalizeProducedField),
+      subItems: subItems.map((subItem, index) => ({
+        id: Number.isFinite(Number(subItem.id))
+          ? Number(subItem.id)
           : index + 1,
-        name: String(material.name ?? "").trim(),
-        qty:
-          material.qty === null || material.qty === undefined
-            ? null
-            : Number.isFinite(Number(material.qty))
-              ? Number(material.qty)
-              : null,
-      })),
-      measurements: measurements.map((field, index) => ({
-        id: Number.isFinite(Number(field.id)) ? Number(field.id) : index + 1,
-        name: String(field.name ?? "").trim(),
-        type:
-          field.type === "Number" ||
-          field.type === "Pictures" ||
-          field.type === "Select Buttons" ||
-          field.type === "Note" ||
-          field.type === "Dropdown"
-            ? field.type
-            : "Text",
-        description: String(field.description ?? "").trim(),
-        values:
-          field.type === "Dropdown" && Array.isArray(field.values)
-            ? field.values
-                .map((value) => String(value ?? "").trim())
-                .filter(Boolean)
-            : [],
+        name: String(subItem.name ?? "").trim(),
+        options: Array.isArray(subItem.options)
+          ? subItem.options.map(normalizeProducedField)
+          : [],
+        rawMaterials: Array.isArray(subItem.rawMaterials)
+          ? subItem.rawMaterials.map(normalizeRawMaterial)
+          : [],
+        measurements: Array.isArray(subItem.measurements)
+          ? subItem.measurements.map(normalizeProducedField)
+          : [],
       })),
       salesTasks: salesTasks.map((task, index) => ({
         ...normalizeSalesTask(task, index + 1),

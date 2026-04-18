@@ -9,6 +9,7 @@ import type {
   CatalogueOnetimeServiceRecord,
   CatalogueProducedProductFieldType,
   CatalogueProducedProductRecord,
+  CatalogueProducedProductSubItem,
   CatalogueReccurentServiceRecord,
   CatalogueRecord,
   CatalogueRetainerServiceRecord,
@@ -60,6 +61,14 @@ type RawMaterialDraft = {
   id: number;
   name: string;
   qty: number | null;
+};
+
+type ProducedSubItemDraft = {
+  id: number;
+  name: string;
+  options: ProducedFieldDraft[];
+  rawMaterials: RawMaterialDraft[];
+  measurements: ProducedFieldDraft[];
 };
 
 type JobConfigPriority = "Low" | "Normal" | "High";
@@ -215,11 +224,24 @@ const producedMeasurements = ref<ProducedFieldDraft[]>([]);
 const rawMaterialId = ref(1);
 const rawMaterials = ref<RawMaterialDraft[]>([]);
 const producedProductTab = ref<ProducedProductTab>("options");
+const producedSubItemId = ref(1);
+const producedSubItems = ref<ProducedSubItemDraft[]>([]);
+const producedSubItemTabs = ref<Record<number, ProducedProductTab>>({});
+const producedSubItemComposer = ref({
+  visible: false,
+  mode: "create" as "create" | "edit",
+  editId: null as number | null,
+});
+const producedSubItemName = ref("");
+const producedSubItemErrors = ref({
+  name: "",
+});
 const producedFieldComposer = ref({
   visible: false,
   mode: "create" as "create" | "edit",
   section: "options" as ProducedFieldSection,
   editId: null as number | null,
+  subItemId: null as number | null,
 });
 const producedFieldName = ref("");
 const producedFieldType = ref<CatalogueProducedProductFieldType>("Text");
@@ -231,6 +253,7 @@ const rawMaterialComposer = ref({
   visible: false,
   mode: "create" as "create" | "edit",
   editId: null as number | null,
+  subItemId: null as number | null,
 });
 const rawMaterialName = ref("");
 const rawMaterialQty = ref<number | null>(null);
@@ -443,6 +466,101 @@ const shouldShowProducedFieldValues = computed(
   () => producedFieldType.value === "Dropdown",
 );
 
+const hasProducedSubItems = computed(() => producedSubItems.value.length > 0);
+
+const cloneProducedFieldDraft = (
+  field: ProducedFieldDraft,
+): ProducedFieldDraft => ({
+  id: field.id,
+  name: field.name,
+  type: field.type,
+  description: field.description,
+  values: [...field.values],
+});
+
+const cloneRawMaterialDraft = (
+  material: RawMaterialDraft,
+): RawMaterialDraft => ({
+  id: material.id,
+  name: material.name,
+  qty: material.qty,
+});
+
+const cloneProducedSubItemDraft = (
+  subItem: ProducedSubItemDraft,
+): ProducedSubItemDraft => ({
+  id: subItem.id,
+  name: subItem.name,
+  options: subItem.options.map(cloneProducedFieldDraft),
+  rawMaterials: subItem.rawMaterials.map(cloneRawMaterialDraft),
+  measurements: subItem.measurements.map(cloneProducedFieldDraft),
+});
+
+const serializeProducedField = (field: ProducedFieldDraft) => ({
+  id: field.id,
+  name: field.name.trim(),
+  type: field.type,
+  description: field.description.trim(),
+  values:
+    field.type === "Dropdown"
+      ? field.values.map((value) => value.trim()).filter(Boolean)
+      : [],
+});
+
+const serializeRawMaterial = (material: RawMaterialDraft) => ({
+  id: material.id,
+  name: material.name.trim(),
+  qty:
+    material.qty === null || material.qty === undefined
+      ? null
+      : Number.isFinite(Number(material.qty))
+        ? Number(material.qty)
+        : null,
+});
+
+const setProducedSubItemTab = (
+  subItemId: number,
+  tab: ProducedProductTab = "options",
+) => {
+  producedSubItemTabs.value[subItemId] = tab;
+};
+
+const clearProducedSubItemTab = (subItemId: number) => {
+  delete producedSubItemTabs.value[subItemId];
+};
+
+const toProducedSubItemDraft = (
+  subItem: CatalogueProducedProductSubItem,
+): ProducedSubItemDraft => ({
+  id: subItem.id,
+  name: subItem.name,
+  options: (subItem.options || []).map((field) => ({
+    id: field.id,
+    name: field.name,
+    type: field.type,
+    description: field.description,
+    values:
+      field.type === "Dropdown" && Array.isArray(field.values)
+        ? [...field.values]
+        : [],
+  })),
+  rawMaterials: (subItem.rawMaterials || []).map((material) => ({
+    id: material.id,
+    name: material.name,
+    qty: material.qty ?? null,
+  })),
+  measurements: (subItem.measurements || []).map((field) => ({
+    id: field.id,
+    name: field.name,
+    type: field.type,
+    description: field.description,
+    values:
+      field.type === "Dropdown" && Array.isArray(field.values)
+        ? [...field.values]
+        : [],
+  })),
+});
+
 const goalTriggerOptions = computed<TaskTriggerOption[]>(() =>
   jobConfigMilestones.value.flatMap((milestone) =>
     milestone.goals.map((goal) => ({
@@ -638,8 +756,33 @@ const removeSalesTask = (taskId: number) => {
   salesTasks.value = salesTasks.value.filter((task) => task.id !== taskId);
 };
 
-const getProducedFields = (section: ProducedFieldSection) =>
-  section === "options" ? producedOptions.value : producedMeasurements.value;
+const findProducedSubItem = (subItemId: number | null) =>
+  subItemId === null
+    ? null
+    : (producedSubItems.value.find((item) => item.id === subItemId) ?? null);
+
+const getProducedFields = (
+  section: ProducedFieldSection,
+  subItemId: number | null = null,
+) => {
+  const subItem = findProducedSubItem(subItemId);
+
+  if (subItem) {
+    return section === "options" ? subItem.options : subItem.measurements;
+  }
+
+  return section === "options"
+    ? producedOptions.value
+    : producedMeasurements.value;
+};
+
+const getRawMaterialCollection = (subItemId: number | null = null) => {
+  const subItem = findProducedSubItem(subItemId);
+
+  if (subItem) return subItem.rawMaterials;
+
+  return rawMaterials.value;
+};
 
 const producedFieldSectionLabel = (section: ProducedFieldSection) =>
   section === "options" ? "Option" : "Measurement";
@@ -654,6 +797,7 @@ const formatProducedFieldValues = (field: ProducedFieldDraft) =>
 const resetProducedFieldDraft = () => {
   producedFieldComposer.value.mode = "create";
   producedFieldComposer.value.editId = null;
+  producedFieldComposer.value.subItemId = null;
   producedFieldName.value = "";
   producedFieldType.value = "Text";
   producedFieldValuesDraft.value = [];
@@ -662,20 +806,26 @@ const resetProducedFieldDraft = () => {
   };
 };
 
-const openProducedFieldComposer = (section: ProducedFieldSection) => {
+const openProducedFieldComposer = (
+  section: ProducedFieldSection,
+  subItemId: number | null = null,
+) => {
   resetProducedFieldDraft();
   producedFieldComposer.value.section = section;
+  producedFieldComposer.value.subItemId = subItemId;
   producedFieldComposer.value.visible = true;
 };
 
 const openEditProducedField = (
   section: ProducedFieldSection,
   field: ProducedFieldDraft,
+  subItemId: number | null = null,
 ) => {
   producedFieldComposer.value.visible = true;
   producedFieldComposer.value.mode = "edit";
   producedFieldComposer.value.section = section;
   producedFieldComposer.value.editId = field.id;
+  producedFieldComposer.value.subItemId = subItemId;
   producedFieldName.value = field.name;
   producedFieldType.value = field.type;
   producedFieldValuesDraft.value = [...field.values];
@@ -715,7 +865,10 @@ const saveProducedField = () => {
         : [],
   } satisfies ProducedFieldDraft;
 
-  const collection = getProducedFields(producedFieldComposer.value.section);
+  const collection = getProducedFields(
+    producedFieldComposer.value.section,
+    producedFieldComposer.value.subItemId,
+  );
 
   if (
     producedFieldComposer.value.mode === "edit" &&
@@ -738,22 +891,20 @@ const saveProducedField = () => {
 const removeProducedField = (
   section: ProducedFieldSection,
   fieldId: number,
+  subItemId: number | null = null,
 ) => {
-  if (section === "options") {
-    producedOptions.value = producedOptions.value.filter(
-      (field) => field.id !== fieldId,
-    );
-    return;
-  }
+  const collection = getProducedFields(section, subItemId);
+  const fieldIndex = collection.findIndex((field) => field.id === fieldId);
 
-  producedMeasurements.value = producedMeasurements.value.filter(
-    (field) => field.id !== fieldId,
-  );
+  if (fieldIndex === -1) return;
+
+  collection.splice(fieldIndex, 1);
 };
 
 const resetRawMaterialDraft = () => {
   rawMaterialComposer.value.mode = "create";
   rawMaterialComposer.value.editId = null;
+  rawMaterialComposer.value.subItemId = null;
   rawMaterialName.value = "";
   rawMaterialQty.value = null;
   rawMaterialErrors.value = {
@@ -761,15 +912,20 @@ const resetRawMaterialDraft = () => {
   };
 };
 
-const openRawMaterialComposer = () => {
+const openRawMaterialComposer = (subItemId: number | null = null) => {
   resetRawMaterialDraft();
+  rawMaterialComposer.value.subItemId = subItemId;
   rawMaterialComposer.value.visible = true;
 };
 
-const openEditRawMaterial = (material: RawMaterialDraft) => {
+const openEditRawMaterial = (
+  material: RawMaterialDraft,
+  subItemId: number | null = null,
+) => {
   rawMaterialComposer.value.visible = true;
   rawMaterialComposer.value.mode = "edit";
   rawMaterialComposer.value.editId = material.id;
+  rawMaterialComposer.value.subItemId = subItemId;
   rawMaterialName.value = material.name;
   rawMaterialQty.value = material.qty;
   rawMaterialErrors.value = {
@@ -802,11 +958,15 @@ const saveRawMaterial = () => {
           : null,
   } satisfies RawMaterialDraft;
 
+  const collection = getRawMaterialCollection(
+    rawMaterialComposer.value.subItemId,
+  );
+
   if (
     rawMaterialComposer.value.mode === "edit" &&
     rawMaterialComposer.value.editId !== null
   ) {
-    const existingMaterial = rawMaterials.value.find(
+    const existingMaterial = collection.find(
       (material) => material.id === rawMaterialComposer.value.editId,
     );
 
@@ -814,16 +974,146 @@ const saveRawMaterial = () => {
 
     Object.assign(existingMaterial, nextMaterial);
   } else {
-    rawMaterials.value.push(nextMaterial);
+    collection.push(nextMaterial);
   }
 
   hideRawMaterialComposer();
 };
 
-const removeRawMaterial = (materialId: number) => {
-  rawMaterials.value = rawMaterials.value.filter(
-    (material) => material.id !== materialId,
+const removeRawMaterial = (
+  materialId: number,
+  subItemId: number | null = null,
+) => {
+  const collection = getRawMaterialCollection(subItemId);
+  const materialIndex = collection.findIndex(
+    (material) => material.id === materialId,
   );
+
+  if (materialIndex === -1) return;
+
+  collection.splice(materialIndex, 1);
+};
+
+const resetProducedSubItemDraft = () => {
+  producedSubItemComposer.value.mode = "create";
+  producedSubItemComposer.value.editId = null;
+  producedSubItemName.value = "";
+  producedSubItemErrors.value = {
+    name: "",
+  };
+};
+
+const openProducedSubItemComposer = () => {
+  resetProducedSubItemDraft();
+  producedSubItemComposer.value.visible = true;
+};
+
+const openEditProducedSubItem = (subItem: ProducedSubItemDraft) => {
+  producedSubItemComposer.value.visible = true;
+  producedSubItemComposer.value.mode = "edit";
+  producedSubItemComposer.value.editId = subItem.id;
+  producedSubItemName.value = subItem.name;
+  producedSubItemErrors.value = {
+    name: "",
+  };
+};
+
+const hideProducedSubItemComposer = () => {
+  resetProducedSubItemDraft();
+  producedSubItemComposer.value.visible = false;
+};
+
+const saveProducedSubItem = () => {
+  const trimmedName = producedSubItemName.value.trim();
+
+  producedSubItemErrors.value = {
+    name: trimmedName ? "" : "Name is required",
+  };
+
+  if (!trimmedName) return;
+
+  const nextSubItem = {
+    id: producedSubItemComposer.value.editId ?? producedSubItemId.value++,
+    name: trimmedName,
+    options: [] as ProducedFieldDraft[],
+    rawMaterials: [] as RawMaterialDraft[],
+    measurements: [] as ProducedFieldDraft[],
+  } satisfies ProducedSubItemDraft;
+
+  if (
+    producedSubItemComposer.value.mode === "edit" &&
+    producedSubItemComposer.value.editId !== null
+  ) {
+    const existingSubItem = producedSubItems.value.find(
+      (subItem) => subItem.id === producedSubItemComposer.value.editId,
+    );
+
+    if (!existingSubItem) return;
+
+    existingSubItem.name = nextSubItem.name;
+    hideProducedSubItemComposer();
+    return;
+  }
+
+  if (!producedSubItems.value.length) {
+    nextSubItem.options = producedOptions.value.map(cloneProducedFieldDraft);
+    nextSubItem.rawMaterials = rawMaterials.value.map(cloneRawMaterialDraft);
+    nextSubItem.measurements = producedMeasurements.value.map(
+      cloneProducedFieldDraft,
+    );
+    producedOptions.value = [];
+    producedMeasurements.value = [];
+    rawMaterials.value = [];
+
+    if (
+      producedFieldComposer.value.visible &&
+      producedFieldComposer.value.subItemId === null
+    ) {
+      hideProducedFieldComposer();
+    }
+
+    if (
+      rawMaterialComposer.value.visible &&
+      rawMaterialComposer.value.subItemId === null
+    ) {
+      hideRawMaterialComposer();
+    }
+  }
+
+  producedSubItems.value.push(nextSubItem);
+  setProducedSubItemTab(nextSubItem.id);
+  hideProducedSubItemComposer();
+};
+
+const removeProducedSubItem = (subItemId: number) => {
+  const subItemIndex = producedSubItems.value.findIndex(
+    (subItem) => subItem.id === subItemId,
+  );
+
+  if (subItemIndex === -1) return;
+
+  const [removedSubItem] = producedSubItems.value.splice(subItemIndex, 1);
+  clearProducedSubItemTab(subItemId);
+
+  if (!producedSubItems.value.length && removedSubItem) {
+    producedOptions.value = removedSubItem.options.map(cloneProducedFieldDraft);
+    producedMeasurements.value = removedSubItem.measurements.map(
+      cloneProducedFieldDraft,
+    );
+    rawMaterials.value = removedSubItem.rawMaterials.map(cloneRawMaterialDraft);
+  }
+
+  if (producedFieldComposer.value.subItemId === subItemId) {
+    hideProducedFieldComposer();
+  }
+
+  if (rawMaterialComposer.value.subItemId === subItemId) {
+    hideRawMaterialComposer();
+  }
+
+  if (producedSubItemComposer.value.editId === subItemId) {
+    hideProducedSubItemComposer();
+  }
 };
 
 const resetRelatedItemDraft = () => {
@@ -1799,6 +2089,13 @@ const applySharedRecord = (record: CatalogueRecord) => {
   producedMeasurementId.value = 1;
   rawMaterials.value = [];
   rawMaterialId.value = 1;
+  producedProductTab.value = "options";
+  producedSubItems.value = [];
+  producedSubItemId.value = 1;
+  producedSubItemTabs.value = {};
+  hideProducedSubItemComposer();
+  hideProducedFieldComposer();
+  hideRawMaterialComposer();
   salesTasks.value = [];
   salesTaskId.value = 1;
   hasCustomMilestoneName.value = false;
@@ -1992,43 +2289,71 @@ const applyServiceTemplateRecord = (
 
 const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
   applySharedRecord(record);
-  producedOptions.value = (record.options || []).map((field) => ({
-    id: field.id,
-    name: field.name,
-    type: field.type,
-    description: field.description,
-    values:
-      field.type === "Dropdown" && Array.isArray(field.values)
-        ? [...field.values]
-        : [],
-  }));
-  producedOptionId.value =
-    producedOptions.value.reduce((max, field) => Math.max(max, field.id), 0) +
-    1;
-  rawMaterials.value = (record.rawMaterials || []).map((material) => ({
-    id: material.id,
-    name: material.name,
-    qty: material.qty ?? null,
-  }));
-  rawMaterialId.value =
-    rawMaterials.value.reduce(
-      (max, material) => Math.max(max, material.id),
+  producedSubItems.value = (record.subItems || []).map(toProducedSubItemDraft);
+  producedSubItemTabs.value = Object.fromEntries(
+    producedSubItems.value.map((subItem) => [subItem.id, "options"]),
+  );
+  producedSubItemId.value =
+    producedSubItems.value.reduce(
+      (max, subItem) => Math.max(max, subItem.id),
       0,
     ) + 1;
-  producedMeasurements.value = (record.measurements || []).map((field) => ({
-    id: field.id,
-    name: field.name,
-    type: field.type,
-    description: field.description,
-    values:
-      field.type === "Dropdown" && Array.isArray(field.values)
-        ? [...field.values]
-        : [],
-  }));
-  producedMeasurementId.value =
-    producedMeasurements.value.reduce(
-      (max, field) => Math.max(max, field.id),
+
+  if (producedSubItems.value.length) {
+    producedOptions.value = [];
+    rawMaterials.value = [];
+    producedMeasurements.value = [];
+  } else {
+    producedOptions.value = (record.options || []).map((field) => ({
+      id: field.id,
+      name: field.name,
+      type: field.type,
+      description: field.description,
+      values:
+        field.type === "Dropdown" && Array.isArray(field.values)
+          ? [...field.values]
+          : [],
+    }));
+    rawMaterials.value = (record.rawMaterials || []).map((material) => ({
+      id: material.id,
+      name: material.name,
+      qty: material.qty ?? null,
+    }));
+    producedMeasurements.value = (record.measurements || []).map((field) => ({
+      id: field.id,
+      name: field.name,
+      type: field.type,
+      description: field.description,
+      values:
+        field.type === "Dropdown" && Array.isArray(field.values)
+          ? [...field.values]
+          : [],
+    }));
+  }
+
+  producedOptionId.value =
+    Math.max(
       0,
+      ...producedOptions.value.map((field) => field.id),
+      ...producedSubItems.value.flatMap((subItem) =>
+        subItem.options.map((field) => field.id),
+      ),
+    ) + 1;
+  rawMaterialId.value =
+    Math.max(
+      0,
+      ...rawMaterials.value.map((material) => material.id),
+      ...producedSubItems.value.flatMap((subItem) =>
+        subItem.rawMaterials.map((material) => material.id),
+      ),
+    ) + 1;
+  producedMeasurementId.value =
+    Math.max(
+      0,
+      ...producedMeasurements.value.map((field) => field.id),
+      ...producedSubItems.value.flatMap((subItem) =>
+        subItem.measurements.map((field) => field.id),
+      ),
     ) + 1;
 
   salesTasks.value = (record.salesTasks || []).map((task) => ({
@@ -2155,6 +2480,13 @@ const resetOnetimeServiceForm = () => {
   producedMeasurementId.value = 1;
   rawMaterials.value = [];
   rawMaterialId.value = 1;
+  producedProductTab.value = "options";
+  producedSubItems.value = [];
+  producedSubItemId.value = 1;
+  producedSubItemTabs.value = {};
+  hideProducedSubItemComposer();
+  hideProducedFieldComposer();
+  hideRawMaterialComposer();
   phases.value = [];
   phaseId.value = 1;
   isPhaseComposerVisible.value = false;
@@ -2264,42 +2596,28 @@ const saveItem = async () => {
                 : null,
         }))
       : undefined,
-    options: isProducedProduct.value
-      ? producedOptions.value.map((field) => ({
-          id: field.id,
-          name: field.name.trim(),
-          type: field.type,
-          description: field.description.trim(),
-          values:
-            field.type === "Dropdown"
-              ? field.values.map((value) => value.trim()).filter(Boolean)
-              : [],
-        }))
-      : undefined,
-    rawMaterials: isProducedProduct.value
-      ? rawMaterials.value.map((material) => ({
-          id: material.id,
-          name: material.name.trim(),
-          qty:
-            material.qty === null || material.qty === undefined
-              ? null
-              : Number.isFinite(Number(material.qty))
-                ? Number(material.qty)
-                : null,
-        }))
-      : undefined,
-    measurements: isProducedProduct.value
-      ? producedMeasurements.value.map((field) => ({
-          id: field.id,
-          name: field.name.trim(),
-          type: field.type,
-          description: field.description.trim(),
-          values:
-            field.type === "Dropdown"
-              ? field.values.map((value) => value.trim()).filter(Boolean)
-              : [],
-        }))
-      : undefined,
+    options:
+      isProducedProduct.value && !hasProducedSubItems.value
+        ? producedOptions.value.map(serializeProducedField)
+        : undefined,
+    rawMaterials:
+      isProducedProduct.value && !hasProducedSubItems.value
+        ? rawMaterials.value.map(serializeRawMaterial)
+        : undefined,
+    measurements:
+      isProducedProduct.value && !hasProducedSubItems.value
+        ? producedMeasurements.value.map(serializeProducedField)
+        : undefined,
+    subItems:
+      isProducedProduct.value && hasProducedSubItems.value
+        ? producedSubItems.value.map((subItem) => ({
+            id: subItem.id,
+            name: subItem.name.trim(),
+            options: subItem.options.map(serializeProducedField),
+            rawMaterials: subItem.rawMaterials.map(serializeRawMaterial),
+            measurements: subItem.measurements.map(serializeProducedField),
+          }))
+        : undefined,
     salesTasks: salesTasks.value
       .map((task) => serializeTaskTemplate(task))
       .filter((task) => task.title),
@@ -2450,441 +2768,6 @@ watch(
                 </template>
               </VRow>
             </VForm>
-
-            <div v-if="isProducedProduct" class="mt-6">
-              <VTabs v-model="producedProductTab" class="mb-4">
-                <VTab value="options">Options</VTab>
-                <VTab value="raw-materials">Raw Materials</VTab>
-                <VTab value="measurements">Measurements</VTab>
-              </VTabs>
-
-              <VWindow v-model="producedProductTab">
-                <VWindowItem value="options">
-                  <div>
-                    <div class="text-body-2 text-medium-emphasis mb-4">
-                      Options
-                    </div>
-
-                    <div
-                      v-if="producedOptions.length"
-                      class="d-flex flex-column gap-4"
-                    >
-                      <div
-                        v-for="field in producedOptions"
-                        :key="field.id"
-                        class="related-item-card"
-                      >
-                        <div class="related-item-card__header">
-                          <div class="related-item-card__dot" />
-
-                          <div class="related-item-card__content">
-                            <div
-                              class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
-                            >
-                              <div class="text-h6 font-weight-medium">
-                                {{ field.name }}
-                              </div>
-                              <VChip
-                                color="primary"
-                                size="small"
-                                variant="text"
-                              >
-                                {{ field.type }}
-                              </VChip>
-                            </div>
-
-                            <div class="text-body-2 text-medium-emphasis">
-                              {{
-                                field.description ||
-                                producedFieldTypeDescription(field.type)
-                              }}
-                            </div>
-
-                            <div
-                              v-if="field.values.length"
-                              class="text-body-2 text-medium-emphasis mt-1"
-                            >
-                              Values: {{ formatProducedFieldValues(field) }}
-                            </div>
-                          </div>
-
-                          <div class="d-flex align-center">
-                            <VBtn
-                              icon
-                              variant="text"
-                              color="primary"
-                              @click.stop="
-                                openEditProducedField('options', field)
-                              "
-                            >
-                              <VIcon icon="tabler-edit" />
-                            </VBtn>
-                            <VBtn
-                              icon
-                              variant="text"
-                              color="error"
-                              @click.stop="
-                                removeProducedField('options', field.id)
-                              "
-                            >
-                              <VIcon icon="tabler-trash" />
-                            </VBtn>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      v-if="
-                        producedFieldComposer.visible &&
-                        producedFieldComposer.section === 'options'
-                      "
-                      class="mt-4"
-                    >
-                      <VRow>
-                        <VCol cols="12" md="6">
-                          <AppTextField
-                            v-model="producedFieldName"
-                            label="Option Name"
-                            placeholder="Finish"
-                            :error="Boolean(producedFieldErrors.name)"
-                            :error-messages="producedFieldErrors.name"
-                          />
-                        </VCol>
-                        <VCol cols="12" md="6">
-                          <AppSelect
-                            v-model="producedFieldType"
-                            label="Option Type"
-                            :items="producedFieldTypeOptions"
-                          />
-                          <div class="text-body-2 text-medium-emphasis mt-2">
-                            {{
-                              producedFieldTypeDescription(producedFieldType)
-                            }}
-                          </div>
-                        </VCol>
-                        <VCol v-if="shouldShowProducedFieldValues" cols="12">
-                          <AppCombobox
-                            v-model="producedFieldValuesDraft"
-                            label="Dropdown Items"
-                            placeholder="Type an item and press Enter"
-                            :items="producedFieldValuesDraft"
-                            hide-selected
-                            hide-no-data
-                            multiple
-                            chips
-                            closable-chips
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          class="d-flex justify-end gap-3 flex-wrap"
-                        >
-                          <VBtn
-                            variant="tonal"
-                            color="secondary"
-                            @click="hideProducedFieldComposer"
-                          >
-                            Cancel
-                          </VBtn>
-                          <VBtn
-                            variant="tonal"
-                            color="primary"
-                            @click="saveProducedField"
-                          >
-                            {{ producedFieldComposerTitle }}
-                          </VBtn>
-                        </VCol>
-                      </VRow>
-                    </div>
-
-                    <div v-else class="d-flex justify-end mt-4">
-                      <VBtn
-                        size="small"
-                        color="primary"
-                        variant="tonal"
-                        prepend-icon="tabler-plus"
-                        @click="openProducedFieldComposer('options')"
-                      >
-                        Add Option
-                      </VBtn>
-                    </div>
-                  </div>
-                </VWindowItem>
-
-                <VWindowItem value="raw-materials">
-                  <div>
-                    <div class="text-body-2 text-medium-emphasis mb-4">
-                      Raw Materials
-                    </div>
-
-                    <div
-                      v-if="rawMaterials.length"
-                      class="d-flex flex-column gap-4"
-                    >
-                      <div
-                        v-for="material in rawMaterials"
-                        :key="material.id"
-                        class="related-item-card"
-                      >
-                        <div class="related-item-card__header">
-                          <div class="related-item-card__dot" />
-
-                          <div class="related-item-card__content">
-                            <div
-                              class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
-                            >
-                              <div class="text-h6 font-weight-medium">
-                                {{ material.name }}
-                              </div>
-                              <VChip
-                                v-if="material.qty !== null"
-                                color="primary"
-                                size="small"
-                                variant="text"
-                              >
-                                Qty {{ material.qty }}
-                              </VChip>
-                            </div>
-                          </div>
-
-                          <div class="d-flex align-center">
-                            <VBtn
-                              icon
-                              variant="text"
-                              color="primary"
-                              @click.stop="openEditRawMaterial(material)"
-                            >
-                              <VIcon icon="tabler-edit" />
-                            </VBtn>
-                            <VBtn
-                              icon
-                              variant="text"
-                              color="error"
-                              @click.stop="removeRawMaterial(material.id)"
-                            >
-                              <VIcon icon="tabler-trash" />
-                            </VBtn>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div v-if="rawMaterialComposer.visible" class="mt-4">
-                      <VRow>
-                        <VCol cols="12" md="6">
-                          <AppTextField
-                            v-model="rawMaterialName"
-                            label="Material Name"
-                            placeholder="MDF Board"
-                            :error="Boolean(rawMaterialErrors.name)"
-                            :error-messages="rawMaterialErrors.name"
-                          />
-                        </VCol>
-                        <VCol cols="12" md="6">
-                          <AppTextField
-                            v-model.number="rawMaterialQty"
-                            label="Quantity"
-                            placeholder="2"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          class="d-flex justify-end gap-3 flex-wrap"
-                        >
-                          <VBtn
-                            variant="tonal"
-                            color="secondary"
-                            @click="hideRawMaterialComposer"
-                          >
-                            Cancel
-                          </VBtn>
-                          <VBtn
-                            variant="tonal"
-                            color="primary"
-                            @click="saveRawMaterial"
-                          >
-                            {{
-                              rawMaterialComposer.mode === "edit"
-                                ? "Save Raw Material"
-                                : "Add Raw Material"
-                            }}
-                          </VBtn>
-                        </VCol>
-                      </VRow>
-                    </div>
-
-                    <div v-else class="d-flex justify-end mt-4">
-                      <VBtn
-                        size="small"
-                        color="primary"
-                        variant="tonal"
-                        prepend-icon="tabler-plus"
-                        @click="openRawMaterialComposer"
-                      >
-                        Add Raw Material
-                      </VBtn>
-                    </div>
-                  </div>
-                </VWindowItem>
-
-                <VWindowItem value="measurements">
-                  <div>
-                    <div class="text-body-2 text-medium-emphasis mb-4">
-                      Measurements
-                    </div>
-
-                    <div
-                      v-if="producedMeasurements.length"
-                      class="d-flex flex-column gap-4"
-                    >
-                      <div
-                        v-for="field in producedMeasurements"
-                        :key="field.id"
-                        class="related-item-card"
-                      >
-                        <div class="related-item-card__header">
-                          <div class="related-item-card__dot" />
-
-                          <div class="related-item-card__content">
-                            <div
-                              class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
-                            >
-                              <div class="text-h6 font-weight-medium">
-                                {{ field.name }}
-                              </div>
-                              <VChip
-                                color="primary"
-                                size="small"
-                                variant="text"
-                              >
-                                {{ field.type }}
-                              </VChip>
-                            </div>
-
-                            <div class="text-body-2 text-medium-emphasis">
-                              {{
-                                field.description ||
-                                producedFieldTypeDescription(field.type)
-                              }}
-                            </div>
-
-                            <div
-                              v-if="field.values.length"
-                              class="text-body-2 text-medium-emphasis mt-1"
-                            >
-                              Values: {{ formatProducedFieldValues(field) }}
-                            </div>
-                          </div>
-
-                          <div class="d-flex align-center">
-                            <VBtn
-                              icon
-                              variant="text"
-                              color="primary"
-                              @click.stop="
-                                openEditProducedField('measurements', field)
-                              "
-                            >
-                              <VIcon icon="tabler-edit" />
-                            </VBtn>
-                            <VBtn
-                              icon
-                              variant="text"
-                              color="error"
-                              @click.stop="
-                                removeProducedField('measurements', field.id)
-                              "
-                            >
-                              <VIcon icon="tabler-trash" />
-                            </VBtn>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      v-if="
-                        producedFieldComposer.visible &&
-                        producedFieldComposer.section === 'measurements'
-                      "
-                      class="mt-4"
-                    >
-                      <VRow>
-                        <VCol cols="12" md="6">
-                          <AppTextField
-                            v-model="producedFieldName"
-                            label="Measurement Name"
-                            placeholder="Width"
-                            :error="Boolean(producedFieldErrors.name)"
-                            :error-messages="producedFieldErrors.name"
-                          />
-                        </VCol>
-                        <VCol cols="12" md="6">
-                          <AppSelect
-                            v-model="producedFieldType"
-                            label="Measurement Type"
-                            :items="producedFieldTypeOptions"
-                          />
-                          <div class="text-body-2 text-medium-emphasis mt-2">
-                            {{
-                              producedFieldTypeDescription(producedFieldType)
-                            }}
-                          </div>
-                        </VCol>
-                        <VCol v-if="shouldShowProducedFieldValues" cols="12">
-                          <AppCombobox
-                            v-model="producedFieldValuesDraft"
-                            label="Dropdown Items"
-                            placeholder="Type an item and press Enter"
-                            :items="producedFieldValuesDraft"
-                            hide-selected
-                            hide-no-data
-                            multiple
-                            chips
-                            closable-chips
-                          />
-                        </VCol>
-                        <VCol
-                          cols="12"
-                          class="d-flex justify-end gap-3 flex-wrap"
-                        >
-                          <VBtn
-                            variant="tonal"
-                            color="secondary"
-                            @click="hideProducedFieldComposer"
-                          >
-                            Cancel
-                          </VBtn>
-                          <VBtn
-                            variant="tonal"
-                            color="primary"
-                            @click="saveProducedField"
-                          >
-                            {{ producedFieldComposerTitle }}
-                          </VBtn>
-                        </VCol>
-                      </VRow>
-                    </div>
-
-                    <div v-else class="d-flex justify-end mt-4">
-                      <VBtn
-                        size="small"
-                        color="primary"
-                        variant="tonal"
-                        prepend-icon="tabler-plus"
-                        @click="openProducedFieldComposer('measurements')"
-                      >
-                        Add Measurement
-                      </VBtn>
-                    </div>
-                  </div>
-                </VWindowItem>
-              </VWindow>
-            </div>
 
             <div
               v-if="
@@ -3120,6 +3003,986 @@ watch(
               {{ relatedButtonLabel }}
             </VBtn>
           </VCardActions>
+        </VCard>
+
+        <VCard v-if="isProducedProduct" class="mb-6">
+          <VCardItem>
+            <template #title> Sub Items </template>
+            <template #append>
+              <VBtn
+                size="small"
+                variant="tonal"
+                prepend-icon="tabler-plus"
+                @click="openProducedSubItemComposer"
+              >
+                Add Sub Item
+              </VBtn>
+            </template>
+          </VCardItem>
+
+          <VCardText>
+            <div
+              v-if="producedSubItems.length"
+              class="d-flex flex-column gap-4"
+            >
+              <VCard
+                v-for="subItem in producedSubItems"
+                :key="subItem.id"
+                variant="outlined"
+              >
+                <VCardItem>
+                  <template #title>
+                    {{ subItem.name }}
+                  </template>
+                  <template #append>
+                    <div class="d-flex align-center gap-1">
+                      <VBtn
+                        icon
+                        variant="text"
+                        color="primary"
+                        @click="openEditProducedSubItem(subItem)"
+                      >
+                        <VIcon icon="tabler-edit" />
+                      </VBtn>
+                      <VBtn
+                        icon
+                        variant="text"
+                        color="error"
+                        @click="removeProducedSubItem(subItem.id)"
+                      >
+                        <VIcon icon="tabler-trash" />
+                      </VBtn>
+                    </div>
+                  </template>
+                </VCardItem>
+
+                <VCardText>
+                  <VCard variant="outlined">
+                    <VCardItem>
+                      <template #title> Customisation </template>
+                    </VCardItem>
+
+                    <VCardText>
+                      <VTabs
+                        v-model="producedSubItemTabs[subItem.id]"
+                        class="mb-4"
+                      >
+                        <VTab value="options">Options</VTab>
+                        <VTab value="raw-materials">Raw Materials</VTab>
+                        <VTab value="measurements">Measurements</VTab>
+                      </VTabs>
+
+                      <VWindow v-model="producedSubItemTabs[subItem.id]">
+                        <VWindowItem value="options">
+                          <div class="d-flex justify-end mb-4">
+                            <VBtn
+                              size="small"
+                              color="primary"
+                              variant="tonal"
+                              prepend-icon="tabler-plus"
+                              @click="
+                                openProducedFieldComposer('options', subItem.id)
+                              "
+                            >
+                              Add Option
+                            </VBtn>
+                          </div>
+
+                          <div
+                            v-if="subItem.options.length"
+                            class="d-flex flex-column gap-4"
+                          >
+                            <div
+                              v-for="field in subItem.options"
+                              :key="field.id"
+                              class="related-item-card"
+                            >
+                              <div class="related-item-card__header">
+                                <div class="related-item-card__dot" />
+
+                                <div class="related-item-card__content">
+                                  <div
+                                    class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                                  >
+                                    <div class="text-h6 font-weight-medium">
+                                      {{ field.name }}
+                                    </div>
+                                    <VChip
+                                      color="primary"
+                                      size="small"
+                                      variant="text"
+                                    >
+                                      {{ field.type }}
+                                    </VChip>
+                                  </div>
+
+                                  <div class="text-body-2 text-medium-emphasis">
+                                    {{
+                                      field.description ||
+                                      producedFieldTypeDescription(field.type)
+                                    }}
+                                  </div>
+
+                                  <div
+                                    v-if="field.values.length"
+                                    class="text-body-2 text-medium-emphasis mt-1"
+                                  >
+                                    Values:
+                                    {{ formatProducedFieldValues(field) }}
+                                  </div>
+                                </div>
+
+                                <div class="d-flex align-center">
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    color="primary"
+                                    @click.stop="
+                                      openEditProducedField(
+                                        'options',
+                                        field,
+                                        subItem.id,
+                                      )
+                                    "
+                                  >
+                                    <VIcon icon="tabler-edit" />
+                                  </VBtn>
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    color="error"
+                                    @click.stop="
+                                      removeProducedField(
+                                        'options',
+                                        field.id,
+                                        subItem.id,
+                                      )
+                                    "
+                                  >
+                                    <VIcon icon="tabler-trash" />
+                                  </VBtn>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            v-if="
+                              producedFieldComposer.visible &&
+                              producedFieldComposer.section === 'options' &&
+                              producedFieldComposer.subItemId === subItem.id
+                            "
+                            class="mt-4"
+                          >
+                            <VRow>
+                              <VCol cols="12">
+                                <AppTextField
+                                  v-model="producedFieldName"
+                                  label="Option Name"
+                                  placeholder="Finish"
+                                  :error="Boolean(producedFieldErrors.name)"
+                                  :error-messages="producedFieldErrors.name"
+                                />
+                              </VCol>
+                              <VCol cols="12">
+                                <AppSelect
+                                  v-model="producedFieldType"
+                                  label="Option Type"
+                                  :items="producedFieldTypeOptions"
+                                />
+                                <div
+                                  class="text-body-2 text-medium-emphasis mt-2"
+                                >
+                                  {{
+                                    producedFieldTypeDescription(
+                                      producedFieldType,
+                                    )
+                                  }}
+                                </div>
+                              </VCol>
+                              <VCol
+                                v-if="shouldShowProducedFieldValues"
+                                cols="12"
+                              >
+                                <AppCombobox
+                                  v-model="producedFieldValuesDraft"
+                                  label="Dropdown Items"
+                                  placeholder="Type an item and press Enter"
+                                  :items="producedFieldValuesDraft"
+                                  hide-selected
+                                  hide-no-data
+                                  multiple
+                                  chips
+                                  closable-chips
+                                />
+                              </VCol>
+                              <VCol
+                                cols="12"
+                                class="d-flex justify-end gap-3 flex-wrap"
+                              >
+                                <VBtn
+                                  variant="tonal"
+                                  color="secondary"
+                                  @click="hideProducedFieldComposer"
+                                >
+                                  Cancel
+                                </VBtn>
+                                <VBtn
+                                  variant="tonal"
+                                  color="primary"
+                                  @click="saveProducedField"
+                                >
+                                  {{ producedFieldComposerTitle }}
+                                </VBtn>
+                              </VCol>
+                            </VRow>
+                          </div>
+                        </VWindowItem>
+
+                        <VWindowItem value="raw-materials">
+                          <div class="d-flex justify-end mb-4">
+                            <VBtn
+                              size="small"
+                              color="primary"
+                              variant="tonal"
+                              prepend-icon="tabler-plus"
+                              @click="openRawMaterialComposer(subItem.id)"
+                            >
+                              Add Raw Material
+                            </VBtn>
+                          </div>
+
+                          <div
+                            v-if="subItem.rawMaterials.length"
+                            class="d-flex flex-column gap-4"
+                          >
+                            <div
+                              v-for="material in subItem.rawMaterials"
+                              :key="material.id"
+                              class="related-item-card"
+                            >
+                              <div class="related-item-card__header">
+                                <div class="related-item-card__dot" />
+
+                                <div class="related-item-card__content">
+                                  <div
+                                    class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                                  >
+                                    <div class="text-h6 font-weight-medium">
+                                      {{ material.name }}
+                                    </div>
+                                    <VChip
+                                      v-if="material.qty !== null"
+                                      color="primary"
+                                      size="small"
+                                      variant="text"
+                                    >
+                                      Qty {{ material.qty }}
+                                    </VChip>
+                                  </div>
+                                </div>
+
+                                <div class="d-flex align-center">
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    color="primary"
+                                    @click.stop="
+                                      openEditRawMaterial(material, subItem.id)
+                                    "
+                                  >
+                                    <VIcon icon="tabler-edit" />
+                                  </VBtn>
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    color="error"
+                                    @click.stop="
+                                      removeRawMaterial(material.id, subItem.id)
+                                    "
+                                  >
+                                    <VIcon icon="tabler-trash" />
+                                  </VBtn>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            v-if="
+                              rawMaterialComposer.visible &&
+                              rawMaterialComposer.subItemId === subItem.id
+                            "
+                            class="mt-4"
+                          >
+                            <VRow>
+                              <VCol cols="12">
+                                <AppTextField
+                                  v-model="rawMaterialName"
+                                  label="Material Name"
+                                  placeholder="MDF Board"
+                                  :error="Boolean(rawMaterialErrors.name)"
+                                  :error-messages="rawMaterialErrors.name"
+                                />
+                              </VCol>
+                              <VCol cols="12">
+                                <AppTextField
+                                  v-model.number="rawMaterialQty"
+                                  label="Quantity"
+                                  placeholder="2"
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                />
+                              </VCol>
+                              <VCol
+                                cols="12"
+                                class="d-flex justify-end gap-3 flex-wrap"
+                              >
+                                <VBtn
+                                  variant="tonal"
+                                  color="secondary"
+                                  @click="hideRawMaterialComposer"
+                                >
+                                  Cancel
+                                </VBtn>
+                                <VBtn
+                                  variant="tonal"
+                                  color="primary"
+                                  @click="saveRawMaterial"
+                                >
+                                  {{
+                                    rawMaterialComposer.mode === "edit"
+                                      ? "Save Raw Material"
+                                      : "Add Raw Material"
+                                  }}
+                                </VBtn>
+                              </VCol>
+                            </VRow>
+                          </div>
+                        </VWindowItem>
+
+                        <VWindowItem value="measurements">
+                          <div class="d-flex justify-end mb-4">
+                            <VBtn
+                              size="small"
+                              color="primary"
+                              variant="tonal"
+                              prepend-icon="tabler-plus"
+                              @click="
+                                openProducedFieldComposer(
+                                  'measurements',
+                                  subItem.id,
+                                )
+                              "
+                            >
+                              Add Measurement
+                            </VBtn>
+                          </div>
+
+                          <div
+                            v-if="subItem.measurements.length"
+                            class="d-flex flex-column gap-4"
+                          >
+                            <div
+                              v-for="field in subItem.measurements"
+                              :key="field.id"
+                              class="related-item-card"
+                            >
+                              <div class="related-item-card__header">
+                                <div class="related-item-card__dot" />
+
+                                <div class="related-item-card__content">
+                                  <div
+                                    class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                                  >
+                                    <div class="text-h6 font-weight-medium">
+                                      {{ field.name }}
+                                    </div>
+                                    <VChip
+                                      color="primary"
+                                      size="small"
+                                      variant="text"
+                                    >
+                                      {{ field.type }}
+                                    </VChip>
+                                  </div>
+
+                                  <div class="text-body-2 text-medium-emphasis">
+                                    {{
+                                      field.description ||
+                                      producedFieldTypeDescription(field.type)
+                                    }}
+                                  </div>
+
+                                  <div
+                                    v-if="field.values.length"
+                                    class="text-body-2 text-medium-emphasis mt-1"
+                                  >
+                                    Values:
+                                    {{ formatProducedFieldValues(field) }}
+                                  </div>
+                                </div>
+
+                                <div class="d-flex align-center">
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    color="primary"
+                                    @click.stop="
+                                      openEditProducedField(
+                                        'measurements',
+                                        field,
+                                        subItem.id,
+                                      )
+                                    "
+                                  >
+                                    <VIcon icon="tabler-edit" />
+                                  </VBtn>
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    color="error"
+                                    @click.stop="
+                                      removeProducedField(
+                                        'measurements',
+                                        field.id,
+                                        subItem.id,
+                                      )
+                                    "
+                                  >
+                                    <VIcon icon="tabler-trash" />
+                                  </VBtn>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            v-if="
+                              producedFieldComposer.visible &&
+                              producedFieldComposer.section ===
+                                'measurements' &&
+                              producedFieldComposer.subItemId === subItem.id
+                            "
+                            class="mt-4"
+                          >
+                            <VRow>
+                              <VCol cols="12">
+                                <AppTextField
+                                  v-model="producedFieldName"
+                                  label="Measurement Name"
+                                  placeholder="Width"
+                                  :error="Boolean(producedFieldErrors.name)"
+                                  :error-messages="producedFieldErrors.name"
+                                />
+                              </VCol>
+                              <VCol cols="12">
+                                <AppSelect
+                                  v-model="producedFieldType"
+                                  label="Measurement Type"
+                                  :items="producedFieldTypeOptions"
+                                />
+                                <div
+                                  class="text-body-2 text-medium-emphasis mt-2"
+                                >
+                                  {{
+                                    producedFieldTypeDescription(
+                                      producedFieldType,
+                                    )
+                                  }}
+                                </div>
+                              </VCol>
+                              <VCol
+                                v-if="shouldShowProducedFieldValues"
+                                cols="12"
+                              >
+                                <AppCombobox
+                                  v-model="producedFieldValuesDraft"
+                                  label="Dropdown Items"
+                                  placeholder="Type an item and press Enter"
+                                  :items="producedFieldValuesDraft"
+                                  hide-selected
+                                  hide-no-data
+                                  multiple
+                                  chips
+                                  closable-chips
+                                />
+                              </VCol>
+                              <VCol
+                                cols="12"
+                                class="d-flex justify-end gap-3 flex-wrap"
+                              >
+                                <VBtn
+                                  variant="tonal"
+                                  color="secondary"
+                                  @click="hideProducedFieldComposer"
+                                >
+                                  Cancel
+                                </VBtn>
+                                <VBtn
+                                  variant="tonal"
+                                  color="primary"
+                                  @click="saveProducedField"
+                                >
+                                  {{ producedFieldComposerTitle }}
+                                </VBtn>
+                              </VCol>
+                            </VRow>
+                          </div>
+                        </VWindowItem>
+                      </VWindow>
+                    </VCardText>
+                  </VCard>
+                </VCardText>
+              </VCard>
+            </div>
+
+            <div v-else class="text-body-2 text-medium-emphasis">
+              No sub items added yet. Product-level options, raw materials, and
+              measurements will stay below until you add one.
+            </div>
+
+            <div v-if="producedSubItemComposer.visible" class="mt-4">
+              <VRow>
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="producedSubItemName"
+                    label="Sub Item Name"
+                    placeholder="Frame"
+                    :error="Boolean(producedSubItemErrors.name)"
+                    :error-messages="producedSubItemErrors.name"
+                  />
+                </VCol>
+                <VCol cols="12" class="d-flex justify-end gap-3 flex-wrap">
+                  <VBtn
+                    variant="tonal"
+                    color="secondary"
+                    @click="hideProducedSubItemComposer"
+                  >
+                    Cancel
+                  </VBtn>
+                  <VBtn
+                    variant="tonal"
+                    color="primary"
+                    @click="saveProducedSubItem"
+                  >
+                    {{
+                      producedSubItemComposer.mode === "edit"
+                        ? "Save Sub Item"
+                        : "Add Sub Item"
+                    }}
+                  </VBtn>
+                </VCol>
+              </VRow>
+            </div>
+          </VCardText>
+        </VCard>
+
+        <VCard v-if="isProducedProduct && !hasProducedSubItems" class="mb-6">
+          <VCardItem>
+            <template #title> Customisation </template>
+          </VCardItem>
+
+          <VCardText>
+            <VTabs v-model="producedProductTab" class="mb-4">
+              <VTab value="options">Options</VTab>
+              <VTab value="raw-materials">Raw Materials</VTab>
+              <VTab value="measurements">Measurements</VTab>
+            </VTabs>
+
+            <VWindow v-model="producedProductTab">
+              <VWindowItem value="options">
+                <div class="d-flex justify-end mb-4">
+                  <VBtn
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="tabler-plus"
+                    @click="openProducedFieldComposer('options')"
+                  >
+                    Add Option
+                  </VBtn>
+                </div>
+
+                <div
+                  v-if="producedOptions.length"
+                  class="d-flex flex-column gap-4"
+                >
+                  <div
+                    v-for="field in producedOptions"
+                    :key="field.id"
+                    class="related-item-card"
+                  >
+                    <div class="related-item-card__header">
+                      <div class="related-item-card__dot" />
+
+                      <div class="related-item-card__content">
+                        <div
+                          class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                        >
+                          <div class="text-h6 font-weight-medium">
+                            {{ field.name }}
+                          </div>
+                          <VChip color="primary" size="small" variant="text">
+                            {{ field.type }}
+                          </VChip>
+                        </div>
+
+                        <div class="text-body-2 text-medium-emphasis">
+                          {{
+                            field.description ||
+                            producedFieldTypeDescription(field.type)
+                          }}
+                        </div>
+
+                        <div
+                          v-if="field.values.length"
+                          class="text-body-2 text-medium-emphasis mt-1"
+                        >
+                          Values: {{ formatProducedFieldValues(field) }}
+                        </div>
+                      </div>
+
+                      <div class="d-flex align-center">
+                        <VBtn
+                          icon
+                          variant="text"
+                          color="primary"
+                          @click.stop="openEditProducedField('options', field)"
+                        >
+                          <VIcon icon="tabler-edit" />
+                        </VBtn>
+                        <VBtn
+                          icon
+                          variant="text"
+                          color="error"
+                          @click.stop="removeProducedField('options', field.id)"
+                        >
+                          <VIcon icon="tabler-trash" />
+                        </VBtn>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="
+                    producedFieldComposer.visible &&
+                    producedFieldComposer.section === 'options' &&
+                    producedFieldComposer.subItemId === null
+                  "
+                  class="mt-4"
+                >
+                  <VRow>
+                    <VCol cols="12" md="6">
+                      <AppTextField
+                        v-model="producedFieldName"
+                        label="Option Name"
+                        placeholder="Finish"
+                        :error="Boolean(producedFieldErrors.name)"
+                        :error-messages="producedFieldErrors.name"
+                      />
+                    </VCol>
+                    <VCol cols="12" md="6">
+                      <AppSelect
+                        v-model="producedFieldType"
+                        label="Option Type"
+                        :items="producedFieldTypeOptions"
+                      />
+                      <div class="text-body-2 text-medium-emphasis mt-2">
+                        {{ producedFieldTypeDescription(producedFieldType) }}
+                      </div>
+                    </VCol>
+                    <VCol v-if="shouldShowProducedFieldValues" cols="12">
+                      <AppCombobox
+                        v-model="producedFieldValuesDraft"
+                        label="Dropdown Items"
+                        placeholder="Type an item and press Enter"
+                        :items="producedFieldValuesDraft"
+                        hide-selected
+                        hide-no-data
+                        multiple
+                        chips
+                        closable-chips
+                      />
+                    </VCol>
+                    <VCol cols="12" class="d-flex justify-end gap-3 flex-wrap">
+                      <VBtn
+                        variant="tonal"
+                        color="secondary"
+                        @click="hideProducedFieldComposer"
+                      >
+                        Cancel
+                      </VBtn>
+                      <VBtn
+                        variant="tonal"
+                        color="primary"
+                        @click="saveProducedField"
+                      >
+                        {{ producedFieldComposerTitle }}
+                      </VBtn>
+                    </VCol>
+                  </VRow>
+                </div>
+              </VWindowItem>
+
+              <VWindowItem value="raw-materials">
+                <div class="d-flex justify-end mb-4">
+                  <VBtn
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="tabler-plus"
+                    @click="openRawMaterialComposer"
+                  >
+                    Add Raw Material
+                  </VBtn>
+                </div>
+
+                <div
+                  v-if="rawMaterials.length"
+                  class="d-flex flex-column gap-4"
+                >
+                  <div
+                    v-for="material in rawMaterials"
+                    :key="material.id"
+                    class="related-item-card"
+                  >
+                    <div class="related-item-card__header">
+                      <div class="related-item-card__dot" />
+
+                      <div class="related-item-card__content">
+                        <div
+                          class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                        >
+                          <div class="text-h6 font-weight-medium">
+                            {{ material.name }}
+                          </div>
+                          <VChip
+                            v-if="material.qty !== null"
+                            color="primary"
+                            size="small"
+                            variant="text"
+                          >
+                            Qty {{ material.qty }}
+                          </VChip>
+                        </div>
+                      </div>
+
+                      <div class="d-flex align-center">
+                        <VBtn
+                          icon
+                          variant="text"
+                          color="primary"
+                          @click.stop="openEditRawMaterial(material)"
+                        >
+                          <VIcon icon="tabler-edit" />
+                        </VBtn>
+                        <VBtn
+                          icon
+                          variant="text"
+                          color="error"
+                          @click.stop="removeRawMaterial(material.id)"
+                        >
+                          <VIcon icon="tabler-trash" />
+                        </VBtn>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="
+                    rawMaterialComposer.visible &&
+                    rawMaterialComposer.subItemId === null
+                  "
+                  class="mt-4"
+                >
+                  <VRow>
+                    <VCol cols="12" md="6">
+                      <AppTextField
+                        v-model="rawMaterialName"
+                        label="Material Name"
+                        placeholder="MDF Board"
+                        :error="Boolean(rawMaterialErrors.name)"
+                        :error-messages="rawMaterialErrors.name"
+                      />
+                    </VCol>
+                    <VCol cols="12" md="6">
+                      <AppTextField
+                        v-model.number="rawMaterialQty"
+                        label="Quantity"
+                        placeholder="2"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                      />
+                    </VCol>
+                    <VCol cols="12" class="d-flex justify-end gap-3 flex-wrap">
+                      <VBtn
+                        variant="tonal"
+                        color="secondary"
+                        @click="hideRawMaterialComposer"
+                      >
+                        Cancel
+                      </VBtn>
+                      <VBtn
+                        variant="tonal"
+                        color="primary"
+                        @click="saveRawMaterial"
+                      >
+                        {{
+                          rawMaterialComposer.mode === "edit"
+                            ? "Save Raw Material"
+                            : "Add Raw Material"
+                        }}
+                      </VBtn>
+                    </VCol>
+                  </VRow>
+                </div>
+              </VWindowItem>
+
+              <VWindowItem value="measurements">
+                <div class="d-flex justify-end mb-4">
+                  <VBtn
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="tabler-plus"
+                    @click="openProducedFieldComposer('measurements')"
+                  >
+                    Add Measurement
+                  </VBtn>
+                </div>
+
+                <div
+                  v-if="producedMeasurements.length"
+                  class="d-flex flex-column gap-4"
+                >
+                  <div
+                    v-for="field in producedMeasurements"
+                    :key="field.id"
+                    class="related-item-card"
+                  >
+                    <div class="related-item-card__header">
+                      <div class="related-item-card__dot" />
+
+                      <div class="related-item-card__content">
+                        <div
+                          class="d-flex flex-wrap align-center gap-x-3 gap-y-1"
+                        >
+                          <div class="text-h6 font-weight-medium">
+                            {{ field.name }}
+                          </div>
+                          <VChip color="primary" size="small" variant="text">
+                            {{ field.type }}
+                          </VChip>
+                        </div>
+
+                        <div class="text-body-2 text-medium-emphasis">
+                          {{
+                            field.description ||
+                            producedFieldTypeDescription(field.type)
+                          }}
+                        </div>
+
+                        <div
+                          v-if="field.values.length"
+                          class="text-body-2 text-medium-emphasis mt-1"
+                        >
+                          Values: {{ formatProducedFieldValues(field) }}
+                        </div>
+                      </div>
+
+                      <div class="d-flex align-center">
+                        <VBtn
+                          icon
+                          variant="text"
+                          color="primary"
+                          @click.stop="
+                            openEditProducedField('measurements', field)
+                          "
+                        >
+                          <VIcon icon="tabler-edit" />
+                        </VBtn>
+                        <VBtn
+                          icon
+                          variant="text"
+                          color="error"
+                          @click.stop="
+                            removeProducedField('measurements', field.id)
+                          "
+                        >
+                          <VIcon icon="tabler-trash" />
+                        </VBtn>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="
+                    producedFieldComposer.visible &&
+                    producedFieldComposer.section === 'measurements' &&
+                    producedFieldComposer.subItemId === null
+                  "
+                  class="mt-4"
+                >
+                  <VRow>
+                    <VCol cols="12" md="6">
+                      <AppTextField
+                        v-model="producedFieldName"
+                        label="Measurement Name"
+                        placeholder="Width"
+                        :error="Boolean(producedFieldErrors.name)"
+                        :error-messages="producedFieldErrors.name"
+                      />
+                    </VCol>
+                    <VCol cols="12" md="6">
+                      <AppSelect
+                        v-model="producedFieldType"
+                        label="Measurement Type"
+                        :items="producedFieldTypeOptions"
+                      />
+                      <div class="text-body-2 text-medium-emphasis mt-2">
+                        {{ producedFieldTypeDescription(producedFieldType) }}
+                      </div>
+                    </VCol>
+                    <VCol v-if="shouldShowProducedFieldValues" cols="12">
+                      <AppCombobox
+                        v-model="producedFieldValuesDraft"
+                        label="Dropdown Items"
+                        placeholder="Type an item and press Enter"
+                        :items="producedFieldValuesDraft"
+                        hide-selected
+                        hide-no-data
+                        multiple
+                        chips
+                        closable-chips
+                      />
+                    </VCol>
+                    <VCol cols="12" class="d-flex justify-end gap-3 flex-wrap">
+                      <VBtn
+                        variant="tonal"
+                        color="secondary"
+                        @click="hideProducedFieldComposer"
+                      >
+                        Cancel
+                      </VBtn>
+                      <VBtn
+                        variant="tonal"
+                        color="primary"
+                        @click="saveProducedField"
+                      >
+                        {{ producedFieldComposerTitle }}
+                      </VBtn>
+                    </VCol>
+                  </VRow>
+                </div>
+              </VWindowItem>
+            </VWindow>
+          </VCardText>
         </VCard>
 
         <!-- 👉 Sales Tasks -->
