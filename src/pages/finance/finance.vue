@@ -1,5 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { useContactsStore } from "@/stores/contacts";
+import { useInvoicesStore } from "@/stores/invoices";
+import { useNotificationsStore } from "@/stores/notifications";
+import { useProformasStore } from "@/stores/proformas";
+import { useReceiptsStore } from "@/stores/receipts";
+import { saveFile } from "@/utils/fileStore";
+import type {
+  ReceiptClientOption,
+  ReceiptDocumentOption,
+  ReceiptDrawerSubmitPayload,
+} from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
+import ReceiptUpsertDrawer from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
@@ -9,6 +21,16 @@ import FinanceReceiptsTab from "@/views/apps/finance/FinanceReceiptsTab.vue";
 
 const route = useRoute();
 const router = useRouter();
+const contactsStore = useContactsStore();
+const invoicesStore = useInvoicesStore();
+const proformasStore = useProformasStore();
+const receiptsStore = useReceiptsStore();
+const notifications = useNotificationsStore();
+
+contactsStore.init();
+invoicesStore.init();
+proformasStore.init();
+receiptsStore.init();
 
 const tabsData = [
   {
@@ -74,6 +96,143 @@ const tabsData = [
 ] as const;
 
 const activeTab = ref<number | null>(null);
+const isReceiptDrawerOpen = ref(false);
+const editingReceiptId = ref<number | null>(null);
+
+const createClientKey = (name: string, email: string) =>
+  `${name.trim().toLowerCase()}::${email.trim().toLowerCase()}`;
+
+const mergeClientOptions = (options: ReceiptClientOption[]) => {
+  const seen = new Set<string>();
+
+  return options.filter((option) => {
+    if (!option.value || seen.has(option.value)) return false;
+    seen.add(option.value);
+    return true;
+  });
+};
+
+const getAllocatedReceiptAmount = (
+  documentType: "invoice" | "proforma",
+  documentId: number,
+) =>
+  receiptsStore.all
+    .filter((record) =>
+      documentType === "invoice"
+        ? record.receipt.linkedInvoiceId === documentId
+        : record.receipt.linkedProformaId === documentId,
+    )
+    .reduce((sum, record) => sum + Number(record.receipt.amount || 0), 0);
+
+const mapDocumentOption = (
+  record: (typeof invoicesStore.all)[number],
+  documentType: "invoice" | "proforma",
+): ReceiptDocumentOption => ({
+  title: `${record.quotation.quoteNumber} | ${record.quotation.issuedDate} | $${Number(record.quotation.total || 0).toLocaleString()}`,
+  value: `${documentType}:${record.quotation.id}`,
+  documentId: record.quotation.id,
+  documentType,
+  documentNumber: record.quotation.quoteNumber,
+  clientKey: createClientKey(
+    record.quotation.client.name || record.quotation.client.company || "",
+    record.quotation.client.companyEmail || "",
+  ),
+  client: record.quotation.client,
+  amount: Number(record.quotation.total || 0),
+  balance:
+    record.quotation.balance === undefined || record.quotation.balance === null
+      ? null
+      : Number(record.quotation.balance),
+  allocatedAmount: getAllocatedReceiptAmount(documentType, record.quotation.id),
+  paymentMethod: record.paymentMethod || "Bank Transfer",
+});
+
+const editingReceipt = computed(() =>
+  editingReceiptId.value === null
+    ? null
+    : receiptsStore.byId(editingReceiptId.value),
+);
+
+const invoiceOptions = computed<ReceiptDocumentOption[]>(() =>
+  invoicesStore.all
+    .filter((record) => !record.quotation.parentQuotationId)
+    .map((record) => mapDocumentOption(record, "invoice")),
+);
+
+const proformaOptions = computed<ReceiptDocumentOption[]>(() =>
+  proformasStore.all
+    .filter((record) => !record.quotation.parentQuotationId)
+    .map((record) => mapDocumentOption(record, "proforma")),
+);
+
+const clientOptions = computed<ReceiptClientOption[]>(() => {
+  const contactOptions = contactsStore.all.map((contact) => ({
+    title: contact.fullName,
+    value: createClientKey(contact.fullName || "", contact.email || ""),
+    client: {
+      address: contact.address || "",
+      company: contact.fullName || "",
+      companyEmail: contact.email || "",
+      country: contact.country || "Lebanon",
+      contact: contact.number || "",
+      name: contact.fullName || "",
+    },
+  }));
+  const documentClients = [
+    ...invoiceOptions.value,
+    ...proformaOptions.value,
+  ].map((option) => ({
+    title: option.client.name || option.client.company || option.documentNumber,
+    value: option.clientKey,
+    client: option.client,
+  }));
+
+  return mergeClientOptions([...contactOptions, ...documentClients]);
+});
+
+const openCreateReceiptDrawer = () => {
+  editingReceiptId.value = null;
+  isReceiptDrawerOpen.value = true;
+};
+
+const openEditReceiptDrawer = (receiptId: number) => {
+  editingReceiptId.value = receiptId;
+  isReceiptDrawerOpen.value = true;
+};
+
+const closeReceiptDrawer = () => {
+  isReceiptDrawerOpen.value = false;
+  editingReceiptId.value = null;
+};
+
+const saveReceipt = async (payload: ReceiptDrawerSubmitPayload) => {
+  let attachmentFileKey = payload.receipt.attachmentFileKey;
+
+  if (payload.attachment) {
+    attachmentFileKey = await saveFile(payload.attachment);
+  }
+
+  const nextPayload = {
+    receipt: {
+      ...payload.receipt,
+      attachmentName:
+        payload.attachment?.name ?? payload.receipt.attachmentName ?? null,
+      attachmentFileKey: attachmentFileKey ?? null,
+    },
+    paymentMethod: payload.paymentMethod,
+    note: payload.note,
+  };
+
+  if (payload.id) {
+    receiptsStore.updateReceipt(payload.id, nextPayload);
+    notifications.push("Receipt updated successfully.", "success", 3500);
+  } else {
+    receiptsStore.addReceipt(nextPayload);
+    notifications.push("Receipt created successfully.", "success", 3500);
+  }
+
+  closeReceiptDrawer();
+};
 
 const setTabFromQuery = () => {
   try {
@@ -150,7 +309,11 @@ watch(
           <FinanceQuotationsTab v-if="tabItem.key === 'quotations'" />
           <FinanceProformasTab v-else-if="tabItem.key === 'pro-forma'" />
           <FinanceInvoicesTab v-else-if="tabItem.key === 'invoice'" />
-          <FinanceReceiptsTab v-else-if="tabItem.key === 'receipt'" />
+          <FinanceReceiptsTab
+            v-else-if="tabItem.key === 'receipt'"
+            @create-receipt="openCreateReceiptDrawer"
+            @edit-receipt="openEditReceiptDrawer"
+          />
 
           <VCard v-else>
             <VCardText class="pa-6">
@@ -170,6 +333,15 @@ watch(
       </VWindow>
     </VCol>
   </VRow>
+
+  <ReceiptUpsertDrawer
+    v-model:is-drawer-open="isReceiptDrawerOpen"
+    :editing-receipt="editingReceipt"
+    :client-options="clientOptions"
+    :invoice-options="invoiceOptions"
+    :proforma-options="proformaOptions"
+    @submit="saveReceipt"
+  />
 </template>
 
 <style lang="scss">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
+import { useContactsStore } from "@/stores/contacts";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
@@ -13,19 +14,25 @@ import {
   resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import type { ReceiptDrawerSubmitPayload } from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
+import type {
+  ReceiptClientOption,
+  ReceiptDocumentOption,
+  ReceiptDrawerSubmitPayload,
+} from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
 import ReceiptUpsertDrawer from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
 import { formatSystemDate } from "@core/utils/formatters";
 
 const route = useRoute();
 const router = useRouter();
 const configStore = useConfigStore();
+const contactsStore = useContactsStore();
 const invoicesStore = useInvoicesStore();
 const proformasStore = useProformasStore();
 const receiptsStore = useReceiptsStore();
 const notifications = useNotificationsStore();
 
 configStore.init();
+contactsStore.init();
 invoicesStore.init();
 proformasStore.init();
 receiptsStore.init();
@@ -40,6 +47,7 @@ const isEmailDialogOpen = ref(false);
 const isDeleteDialogOpen = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const hasExecutedAutoAction = ref(false);
+const isEmbeddedActionFrame = route.query.embedded === "1";
 
 const receiptRecord = computed(() =>
   receiptsStore.byId(String(route.params.id)),
@@ -108,27 +116,92 @@ const isPdfAttachment = computed(
     externalAttachmentMimeType.value === "application/pdf" ||
     externalAttachmentExtension.value === "pdf",
 );
-const invoiceOptions = computed(() =>
+const createClientKey = (name: string, email: string) =>
+  `${name.trim().toLowerCase()}::${email.trim().toLowerCase()}`;
+
+const mergeClientOptions = (options: ReceiptClientOption[]) => {
+  const seen = new Set<string>();
+
+  return options.filter((option) => {
+    if (!option.value || seen.has(option.value)) return false;
+    seen.add(option.value);
+    return true;
+  });
+};
+
+const getAllocatedReceiptAmount = (
+  documentType: "invoice" | "proforma",
+  documentId: number,
+) =>
+  receiptsStore.all
+    .filter((record) =>
+      documentType === "invoice"
+        ? record.receipt.linkedInvoiceId === documentId
+        : record.receipt.linkedProformaId === documentId,
+    )
+    .reduce((sum, record) => sum + Number(record.receipt.amount || 0), 0);
+
+const mapDocumentOption = (
+  record: (typeof invoicesStore.all)[number],
+  documentType: "invoice" | "proforma",
+): ReceiptDocumentOption => ({
+  title: `${record.quotation.quoteNumber} | ${record.quotation.issuedDate} | $${Number(record.quotation.total || 0).toLocaleString()}`,
+  value: `${documentType}:${record.quotation.id}`,
+  documentId: record.quotation.id,
+  documentType,
+  documentNumber: record.quotation.quoteNumber,
+  clientKey: createClientKey(
+    record.quotation.client.name || record.quotation.client.company || "",
+    record.quotation.client.companyEmail || "",
+  ),
+  client: record.quotation.client,
+  amount: Number(record.quotation.total || 0),
+  balance:
+    record.quotation.balance === undefined || record.quotation.balance === null
+      ? null
+      : Number(record.quotation.balance),
+  allocatedAmount: getAllocatedReceiptAmount(documentType, record.quotation.id),
+  paymentMethod: record.paymentMethod || "Bank Transfer",
+});
+
+const invoiceOptions = computed<ReceiptDocumentOption[]>(() =>
   invoicesStore.all
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId)
-    .map((quotation) => ({
-      title: `${quotation.quoteNumber} - ${quotation.client.name}`,
-      value: quotation.id,
-      documentNumber: quotation.quoteNumber,
-      client: quotation.client,
-    })),
+    .filter((record) => !record.quotation.parentQuotationId)
+    .map((record) => mapDocumentOption(record, "invoice")),
 );
-const proformaOptions = computed(() =>
+const proformaOptions = computed<ReceiptDocumentOption[]>(() =>
   proformasStore.all
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId)
-    .map((quotation) => ({
-      title: `${quotation.quoteNumber} - ${quotation.client.name}`,
-      value: quotation.id,
-      documentNumber: quotation.quoteNumber,
-      client: quotation.client,
+    .filter((record) => !record.quotation.parentQuotationId)
+    .map((record) => mapDocumentOption(record, "proforma")),
+);
+
+const clientOptions = computed<ReceiptClientOption[]>(() =>
+  mergeClientOptions([
+    ...contactsStore.all.map((contact) => ({
+      title: contact.fullName,
+      value: createClientKey(contact.fullName || "", contact.email || ""),
+      client: {
+        address: contact.address || "",
+        company: contact.fullName || "",
+        companyEmail: contact.email || "",
+        country: contact.country || "Lebanon",
+        contact: contact.number || "",
+        name: contact.fullName || "",
+      },
     })),
+    ...invoiceOptions.value.map((option) => ({
+      title:
+        option.client.name || option.client.company || option.documentNumber,
+      value: option.clientKey,
+      client: option.client,
+    })),
+    ...proformaOptions.value.map((option) => ({
+      title:
+        option.client.name || option.client.company || option.documentNumber,
+      value: option.clientKey,
+      client: option.client,
+    })),
+  ]),
 );
 
 const revokeExternalAttachmentPreview = () => {
@@ -175,10 +248,16 @@ const downloadAttachment = () => {
 };
 
 const downloadReceipt = async () => {
-  if (!receipt.value || !receiptPdfTarget.value) return;
+  if (!receipt.value) return;
+
+  await nextTick();
+
+  const targetElement = (receiptPdfTarget.value?.$el ??
+    receiptPdfTarget.value) as HTMLElement | null;
+  if (!targetElement) return;
 
   const pdfFile = await createPdfFileFromElement(
-    receiptPdfTarget.value,
+    targetElement,
     `${receipt.value.receiptNumber}.pdf`,
   );
   downloadFile(pdfFile);
@@ -187,6 +266,23 @@ const downloadReceipt = async () => {
 const printReceipt = async () => {
   await nextTick();
   window.print();
+};
+
+const handleEmbeddedPreviewMessage = async (event: MessageEvent) => {
+  if (!isEmbeddedActionFrame) return;
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "receipt-preview-action") return;
+
+  const action = event.data?.payload?.action;
+
+  if (action === "download") {
+    await downloadReceipt();
+    return;
+  }
+
+  if (action === "print") {
+    await printReceipt();
+  }
 };
 
 const openReceiptEmailDialog = () => {
@@ -327,8 +423,32 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => receipt.value?.id,
+  (receiptId) => {
+    if (!isEmbeddedActionFrame || !receiptId) return;
+
+    window.parent?.postMessage(
+      {
+        type: "receipt-preview-ready",
+        receiptId,
+      },
+      window.location.origin,
+    );
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  if (!isEmbeddedActionFrame) return;
+  window.addEventListener("message", handleEmbeddedPreviewMessage);
+});
+
 onBeforeUnmount(() => {
   revokeExternalAttachmentPreview();
+  if (isEmbeddedActionFrame) {
+    window.removeEventListener("message", handleEmbeddedPreviewMessage);
+  }
 });
 </script>
 
@@ -342,11 +462,11 @@ onBeforeUnmount(() => {
               class="d-flex justify-space-between align-start flex-wrap gap-6 mb-8"
             >
               <div class="d-flex align-start gap-4">
-                <VAvatar
+                <img
                   v-if="companyLogoUrl"
-                  rounded="0"
-                  size="72"
-                  :image="companyLogoUrl"
+                  :src="companyLogoUrl"
+                  :alt="companyName"
+                  class="receipt-company-logo"
                 />
 
                 <div>
@@ -566,6 +686,7 @@ onBeforeUnmount(() => {
     <ReceiptUpsertDrawer
       v-model:is-drawer-open="isReceiptDrawerOpen"
       :editing-receipt="receiptRecord"
+      :client-options="clientOptions"
       :invoice-options="invoiceOptions"
       :proforma-options="proformaOptions"
       @submit="saveReceipt"
@@ -606,6 +727,16 @@ onBeforeUnmount(() => {
 
 <style lang="scss">
 #receipt-preview {
+  .receipt-company-logo {
+    display: block;
+    flex: 0 0 auto;
+    inline-size: auto;
+    max-block-size: 4.5rem;
+    max-inline-size: 9rem;
+    object-fit: contain;
+    object-position: left center;
+  }
+
   .receipt-attachment-frame {
     border: 0;
     inline-size: 100%;

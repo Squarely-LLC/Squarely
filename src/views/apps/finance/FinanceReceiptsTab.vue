@@ -1,24 +1,30 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
-import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
-import { useProformasStore } from "@/stores/proformas";
 import { useReceiptsStore } from "@/stores/receipts";
-import { saveFile } from "@/utils/fileStore";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import type { ReceiptDrawerSubmitPayload } from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
-import ReceiptUpsertDrawer from "@/views/apps/receipt/ReceiptUpsertDrawer.vue";
 import { formatSystemDate } from "@core/utils/formatters";
+
+interface Emit {
+  (e: "create-receipt"): void;
+  (e: "edit-receipt", receiptId: number): void;
+}
+
+const emit = defineEmits<Emit>();
 
 const router = useRouter();
 const receiptsStore = useReceiptsStore();
-const invoicesStore = useInvoicesStore();
-const proformasStore = useProformasStore();
 const notifications = useNotificationsStore();
 
 receiptsStore.init();
-invoicesStore.init();
-proformasStore.init();
+
+const previewActionFrame = ref<HTMLIFrameElement | null>(null);
+const isPreviewActionFrameReady = ref(false);
+const loadedPreviewReceiptId = ref<number | null>(null);
+const pendingPreviewAction = ref<{
+  receiptId: number;
+  action: "print" | "download";
+} | null>(null);
 
 const searchQuery = ref("");
 const selectedStatus = ref<"Recorded" | "Flagged" | null>(null);
@@ -27,8 +33,6 @@ const page = ref(1);
 const sortBy = ref<string>();
 const orderBy = ref<string>();
 
-const isReceiptDrawerOpen = ref(false);
-const editingReceiptId = ref<number | null>(null);
 const isDeleteReceiptDialogOpen = ref(false);
 const pendingDeleteReceiptId = ref<number | null>(null);
 const isEmailDialogOpen = ref(false);
@@ -38,7 +42,6 @@ const emailDialogRef = ref<any | null>(null);
 const headers = [
   { title: "Client", key: "client" },
   { title: "#", key: "id" },
-  { title: "Source", key: "source" },
   { title: "Amount", key: "amount" },
   { title: "Received Date", key: "date" },
   { title: "Status", key: "status", sortable: false },
@@ -51,11 +54,6 @@ const updateOptions = (options: any) => {
 };
 
 const receiptRecords = computed(() => receiptsStore.all);
-const editingReceipt = computed(() =>
-  editingReceiptId.value === null
-    ? null
-    : receiptsStore.byId(editingReceiptId.value),
-);
 const pendingDeleteReceipt = computed(() =>
   pendingDeleteReceiptId.value === null
     ? null
@@ -66,43 +64,6 @@ const emailReceiptRecord = computed(() =>
     ? null
     : receiptsStore.byId(pendingEmailReceiptId.value),
 );
-
-const invoiceOptions = computed(() =>
-  invoicesStore.all
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId)
-    .map((quotation) => ({
-      title: `${quotation.quoteNumber} - ${quotation.client.name}`,
-      value: quotation.id,
-      documentNumber: quotation.quoteNumber,
-      client: quotation.client,
-    })),
-);
-
-const proformaOptions = computed(() =>
-  proformasStore.all
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId)
-    .map((quotation) => ({
-      title: `${quotation.quoteNumber} - ${quotation.client.name}`,
-      value: quotation.id,
-      documentNumber: quotation.quoteNumber,
-      client: quotation.client,
-    })),
-);
-
-const resolveSourceLabel = (sourceType: string) => {
-  if (sourceType === "invoice") return "Invoice";
-  if (sourceType === "proforma") return "Proforma";
-  if (sourceType === "attachment") return "Attachment only";
-  return "Unlinked";
-};
-
-const sourceChipColor = (sourceType: string) => {
-  if (sourceType === "invoice") return "primary";
-  if (sourceType === "proforma") return "info";
-  return "warning";
-};
 
 const statusChipColor = (status: string) =>
   status === "Flagged" ? "warning" : "success";
@@ -141,9 +102,6 @@ const filteredReceipts = computed(() => {
         date:
           new Date(leftReceipt.receivedDate).getTime() -
           new Date(rightReceipt.receivedDate).getTime(),
-        source: resolveSourceLabel(leftReceipt.sourceType).localeCompare(
-          resolveSourceLabel(rightReceipt.sourceType),
-        ),
       } as Record<string, number>;
 
       return (fieldMap[sortBy.value] || 0) * (isDescending ? -1 : 1);
@@ -166,63 +124,96 @@ const paginatedReceipts = computed(() => {
 });
 
 const openCreateReceiptDrawer = () => {
-  editingReceiptId.value = null;
-  isReceiptDrawerOpen.value = true;
+  emit("create-receipt");
 };
 
 const openEditReceiptDrawer = (receiptId: number) => {
-  editingReceiptId.value = receiptId;
-  isReceiptDrawerOpen.value = true;
+  emit("edit-receipt", receiptId);
 };
 
-const closeReceiptDrawer = () => {
-  isReceiptDrawerOpen.value = false;
-  editingReceiptId.value = null;
-};
-
-const saveReceipt = async (payload: ReceiptDrawerSubmitPayload) => {
-  let attachmentFileKey = payload.receipt.attachmentFileKey;
-
-  if (payload.attachment) {
-    attachmentFileKey = await saveFile(payload.attachment);
+const ensurePreviewActionFrame = () => {
+  if (!previewActionFrame.value) {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.tabIndex = -1;
+    iframe.style.position = "fixed";
+    iframe.style.insetInlineStart = "-2000px";
+    iframe.style.insetBlockStart = "0";
+    iframe.style.inlineSize = "1280px";
+    iframe.style.blockSize = "1800px";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+    previewActionFrame.value = iframe;
   }
+};
 
-  const nextPayload = {
-    receipt: {
-      ...payload.receipt,
-      attachmentName:
-        payload.attachment?.name ?? payload.receipt.attachmentName ?? null,
-      attachmentFileKey: attachmentFileKey ?? null,
+const sendPreviewAction = (receiptId: number, action: "print" | "download") => {
+  if (!previewActionFrame.value?.contentWindow) return;
+
+  previewActionFrame.value.contentWindow.postMessage(
+    {
+      type: "receipt-preview-action",
+      payload: { action },
     },
-    paymentMethod: payload.paymentMethod,
-    note: payload.note,
-  };
+    window.location.origin,
+  );
 
-  if (payload.id) {
-    receiptsStore.updateReceipt(payload.id, nextPayload);
-    notifications.push("Receipt updated successfully.", "success", 3500);
-  } else {
-    receiptsStore.addReceipt(nextPayload);
-    notifications.push("Receipt created successfully.", "success", 3500);
-  }
+  notifications.push(
+    `${action === "download" ? "Download" : "Print"} started for receipt ${receiptsStore.byId(receiptId)?.receipt.receiptNumber || receiptId}.`,
+    "success",
+    3500,
+  );
+};
 
-  closeReceiptDrawer();
+const flushPendingPreviewAction = () => {
+  const pendingAction = pendingPreviewAction.value;
+  if (!pendingAction || !isPreviewActionFrameReady.value) return;
+  if (loadedPreviewReceiptId.value !== pendingAction.receiptId) return;
+
+  sendPreviewAction(pendingAction.receiptId, pendingAction.action);
+  pendingPreviewAction.value = null;
+};
+
+const handlePreviewActionFrameMessage = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "receipt-preview-ready") return;
+
+  isPreviewActionFrameReady.value = true;
+  loadedPreviewReceiptId.value = Number(event.data?.receiptId || 0) || null;
+  flushPendingPreviewAction();
 };
 
 const openReceiptPreview = (
   receiptId: number,
   action?: "print" | "download" | "email",
 ) => {
+  if (action === "print" || action === "download") {
+    ensurePreviewActionFrame();
+    if (!previewActionFrame.value) return;
+
+    pendingPreviewAction.value = { receiptId, action };
+
+    const resolved = router.resolve({
+      path: `/apps/receipt/preview/${receiptId}`,
+      query: { embedded: "1" },
+    });
+
+    if (previewActionFrame.value.src !== resolved.href) {
+      isPreviewActionFrameReady.value = false;
+      loadedPreviewReceiptId.value = null;
+      previewActionFrame.value.src = resolved.href;
+      return;
+    }
+
+    flushPendingPreviewAction();
+    return;
+  }
+
   const resolved = router.resolve({
     path: `/apps/receipt/preview/${receiptId}`,
-    query:
-      action === "print"
-        ? { print: "1" }
-        : action === "download"
-          ? { download: "1" }
-          : action === "email"
-            ? { email: "1" }
-            : {},
+    query: action === "email" ? { email: "1" } : {},
   });
 
   window.open(resolved.href, "_blank", "noopener,noreferrer");
@@ -339,6 +330,19 @@ const computedMoreList = computed(() => {
   ];
 });
 
+onMounted(() => {
+  window.addEventListener("message", handlePreviewActionFrameMessage);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("message", handlePreviewActionFrameMessage);
+  previewActionFrame.value?.remove();
+  previewActionFrame.value = null;
+  isPreviewActionFrameReady.value = false;
+  loadedPreviewReceiptId.value = null;
+  pendingPreviewAction.value = null;
+});
+
 watch([searchQuery, selectedStatus, itemsPerPage], () => {
   page.value = 1;
 });
@@ -444,17 +448,6 @@ watch(totalReceipts, (value) => {
           </div>
         </template>
 
-        <template #item.source="{ item }">
-          <VChip
-            :color="sourceChipColor(item.sourceType)"
-            label
-            size="x-small"
-            variant="tonal"
-          >
-            {{ resolveSourceLabel(item.sourceType) }}
-          </VChip>
-        </template>
-
         <template #item.amount="{ item }">
           ${{ item.amount.toLocaleString() }}
         </template>
@@ -491,14 +484,6 @@ watch(totalReceipts, (value) => {
         </template>
       </VDataTableServer>
     </VCard>
-
-    <ReceiptUpsertDrawer
-      v-model:is-drawer-open="isReceiptDrawerOpen"
-      :editing-receipt="editingReceipt"
-      :invoice-options="invoiceOptions"
-      :proforma-options="proformaOptions"
-      @submit="saveReceipt"
-    />
 
     <EmailDialog
       ref="emailDialogRef"
