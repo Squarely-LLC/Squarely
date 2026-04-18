@@ -123,10 +123,10 @@ const updateOptions = (options: any) => {
 };
 
 const headers = [
-  { title: "Client", key: "client" },
   { title: "#", key: "id" },
-  { title: "Total", key: "total" },
+  { title: "Client", key: "client" },
   { title: "Issued Date", key: "date" },
+  { title: "Total", key: "total" },
   { title: "Status", key: "status", sortable: false },
   { title: "Actions", key: "actions", sortable: false },
 ];

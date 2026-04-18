@@ -43,6 +43,11 @@ const router = useRouter();
 const pendingEmailQuotationId = ref<number | null>(null);
 const emailDialogRef = ref<any | null>(null);
 
+type LinkedInvoiceRef = {
+  id: number;
+  number: string;
+};
+
 type DealContractOption = {
   title: string;
   value: string;
@@ -104,10 +109,10 @@ const updateOptions = (options: any) => {
 };
 
 const headers = [
-  { title: "Client", key: "client" },
   { title: "#", key: "id" },
-  { title: "Total", key: "total" },
+  { title: "Client", key: "client" },
   { title: "Issued Date", key: "date" },
+  { title: "Total", key: "total" },
   { title: "Status", key: "status", sortable: false },
   { title: "Actions", key: "actions", sortable: false },
 ];
@@ -239,6 +244,45 @@ const revisionMap = computed(() => {
 
   return map;
 });
+
+const linkedInvoiceMap = computed(() => {
+  const map = new Map<number, LinkedInvoiceRef>();
+
+  for (const proformaRecord of allQuotationRecords.value) {
+    const convertedInvoiceId = proformaRecord.convertedInvoiceId;
+    if (convertedInvoiceId) {
+      const invoiceRecord = invoicesStore.byId(convertedInvoiceId);
+      if (invoiceRecord) {
+        map.set(proformaRecord.quotation.id, {
+          id: invoiceRecord.quotation.id,
+          number: invoiceRecord.quotation.quoteNumber,
+        });
+        continue;
+      }
+    }
+
+    const matchingInvoice = invoicesStore.all.find(
+      (invoiceRecord) =>
+        invoiceRecord.note
+          ?.match(/Converted from proforma\s+(PF-\d+)/i)?.[1]
+          ?.trim()
+          ?.toLowerCase() ===
+        proformaRecord.quotation.quoteNumber.trim().toLowerCase(),
+    );
+
+    if (!matchingInvoice) continue;
+
+    map.set(proformaRecord.quotation.id, {
+      id: matchingInvoice.quotation.id,
+      number: matchingInvoice.quotation.quoteNumber,
+    });
+  }
+
+  return map;
+});
+
+const getLinkedInvoice = (proformaId: number) =>
+  linkedInvoiceMap.value.get(proformaId) ?? null;
 
 const filteredQuotations = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
@@ -1122,9 +1166,21 @@ watch(totalQuotations, (value) => {
               >
                 Deal #{{ item.dealId }}
               </RouterLink>
-              <span v-else class="text-sm text-medium-emphasis"
-                >No linked deal</span
-              >
+              <div class="d-flex flex-wrap align-center gap-2 text-sm">
+                <span v-if="!item.dealId" class="text-medium-emphasis">
+                  No linked deal
+                </span>
+                <RouterLink
+                  v-if="getLinkedInvoice(item.id)"
+                  :to="{
+                    name: 'apps-invoice-preview-id',
+                    params: { id: getLinkedInvoice(item.id)?.id },
+                  }"
+                  class="text-link"
+                >
+                  INV {{ getLinkedInvoice(item.id)?.number }}
+                </RouterLink>
+              </div>
               <span
                 v-if="hasRevisions(item)"
                 class="text-sm text-medium-emphasis"

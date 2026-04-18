@@ -41,10 +41,10 @@ const emailDialogRef = ref<any | null>(null);
 const isCreateMenuOpen = ref(false);
 
 const headers = [
-  { title: "Client", key: "client" },
   { title: "#", key: "id" },
-  { title: "Amount", key: "amount" },
+  { title: "Client", key: "client" },
   { title: "Received Date", key: "date" },
+  { title: "Amount", key: "amount" },
   { title: "Status", key: "status", sortable: false },
   { title: "Actions", key: "actions", sortable: false },
 ];
@@ -95,6 +95,7 @@ const filteredReceipts = computed(() => {
       const isDescending = orderBy.value === "desc";
       const leftReceipt = left.receipt;
       const rightReceipt = right.receipt;
+      const sortKey = sortBy.value ?? "";
 
       const fieldMap = {
         client: leftReceipt.client.name.localeCompare(rightReceipt.client.name),
@@ -105,7 +106,7 @@ const filteredReceipts = computed(() => {
           new Date(rightReceipt.receivedDate).getTime(),
       } as Record<string, number>;
 
-      return (fieldMap[sortBy.value] || 0) * (isDescending ? -1 : 1);
+      return (fieldMap[sortKey] || 0) * (isDescending ? -1 : 1);
     });
   }
 

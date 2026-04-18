@@ -10,6 +10,11 @@ import { getFileObjectUrl } from "@/utils/fileStore";
 const CONFIG_STORAGE_KEY = "app.configurations.v1";
 type DocumentConfigKind = "quotation" | "proforma" | "invoice";
 
+function resolveSequenceYearTokens(value: string) {
+  const currentYear = String(new Date().getFullYear());
+  return value.replace(/YYYY/g, currentYear);
+}
+
 export function loadActiveAppConfigurations(): AppConfigurations {
   if (typeof window === "undefined") return seedConfigDb.configurations;
 
@@ -38,14 +43,20 @@ export function getDocumentSequencePrefix(
   const activeConfig = config ?? loadActiveAppConfigurations();
 
   if (documentKind === "quotation") {
-    return activeConfig.deals?.quotationStartsSeq?.trim() || "QT-";
+    return resolveSequenceYearTokens(
+      activeConfig.deals?.quotationStartsSeq?.trim() || "QT-",
+    );
   }
 
   if (documentKind === "proforma") {
-    return activeConfig.deals?.proformaStartSeq?.trim() || "PF-";
+    return resolveSequenceYearTokens(
+      activeConfig.deals?.proformaStartSeq?.trim() || "PF-",
+    );
   }
 
-  return activeConfig.financial?.invoiceSequence?.trim() || "INV-";
+  return resolveSequenceYearTokens(
+    activeConfig.financial?.invoiceSequence?.trim() || "INV-",
+  );
 }
 
 export function getConfiguredCurrencySymbol(
