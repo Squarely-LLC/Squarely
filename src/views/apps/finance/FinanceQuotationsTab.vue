@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { emailValidator, requiredValidator } from "@/@core/utils/validators";
+import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
@@ -73,8 +73,6 @@ type ExternalQuotationForm = {
   quoteNumber: string;
   amount: number | null;
   linkedRecord: string | null;
-  contactName: string;
-  contactEmail: string;
   status: QuotationStatus | null;
   attachment: File | File[] | null;
 };
@@ -495,8 +493,6 @@ const emptyExternalQuotationForm = (): ExternalQuotationForm => ({
   quoteNumber: "",
   amount: null,
   linkedRecord: null,
-  contactName: "",
-  contactEmail: "",
   status: "Pending",
   attachment: null,
 });
@@ -546,9 +542,6 @@ const selectedLinkedOption = computed(
       (option) => option.value === externalQuotationForm.value.linkedRecord,
     ) || null,
 );
-const shouldAutoSelectContact = computed(
-  () => selectedLinkedOption.value?.recordType === "deal",
-);
 
 const positiveAmountValidator = (value: unknown) => {
   if (value === null || value === undefined || value === "") {
@@ -575,25 +568,6 @@ const uniqueQuotationNumberValidator = (value: unknown) => {
 const attachmentValidator = () => {
   return validateExternalAttachment() || true;
 };
-
-const contactNameValidator = (value: unknown) => {
-  if (shouldAutoSelectContact.value) return true;
-
-  const email = externalQuotationForm.value.contactEmail.trim();
-  if (!email) return true;
-
-  return requiredValidator(value);
-};
-
-const contactEmailRules = computed(() => {
-  const rules: Array<(value: unknown) => true | string> = [emailValidator];
-
-  if (shouldAutoSelectContact.value) return rules;
-  if (externalQuotationForm.value.contactName.trim())
-    rules.unshift(requiredValidator);
-
-  return rules;
-});
 
 const resolveStatusVariantAndIcon = (status: string) => {
   if (status === "Pending")
@@ -642,21 +616,6 @@ const closeExternalQuotationDialog = () => {
 const handleLinkedRecordChange = (value: string | null) => {
   const linkedRecord = value ? String(value) : null;
   externalQuotationForm.value.linkedRecord = linkedRecord;
-
-  const selectedOption =
-    dealContractOptions.value.find((option) => option.value === linkedRecord) ||
-    null;
-
-  if (!selectedOption) {
-    externalQuotationForm.value.contactName = "";
-    externalQuotationForm.value.contactEmail = "";
-    return;
-  }
-
-  if (selectedOption.recordType !== "deal") return;
-
-  externalQuotationForm.value.contactName = selectedOption.contactName;
-  externalQuotationForm.value.contactEmail = selectedOption.contactEmail;
 };
 
 const validateExternalAttachment = () => {
@@ -722,13 +681,13 @@ const saveExternalQuotation = async () => {
       client: {
         address: "",
         company:
-          externalQuotationForm.value.contactName.trim() ||
-          externalQuotationForm.value.contactEmail.trim() ||
+          selectedLinkedOption.value?.contactName.trim() ||
+          selectedLinkedOption.value?.contactEmail.trim() ||
           "",
-        companyEmail: externalQuotationForm.value.contactEmail.trim(),
+        companyEmail: selectedLinkedOption.value?.contactEmail.trim() || "",
         country: "Lebanon",
         contact: "",
-        name: externalQuotationForm.value.contactName.trim(),
+        name: selectedLinkedOption.value?.contactName.trim() || "",
       },
       service: "Imported quotation",
       total: Number(externalQuotationForm.value.amount),
@@ -1472,10 +1431,10 @@ watch(totalQuotations, (value) => {
 
   <VDialog v-model="isExternalQuotationDialogOpen" max-width="760">
     <VCard class="pa-sm-6 pa-4">
-      <VCardTitle class="text-h5 pb-2">
+      <VCardTitle class="text-h5 px-0 pt-0 pb-2">
         Import Quotation From Another System
       </VCardTitle>
-      <VCardText class="text-body-1 text-medium-emphasis pb-6">
+      <VCardText class="text-body-1 text-medium-emphasis px-0 pt-0 pb-6">
         Add the external quotation details and upload the source attachment.
       </VCardText>
 
@@ -1530,57 +1489,6 @@ watch(totalQuotations, (value) => {
             />
           </VCol>
 
-          <VCol cols="12">
-            <VAlert
-              v-if="!hasLinkedDealOrContract"
-              color="warning"
-              variant="tonal"
-              border="start"
-            >
-              This quotation is not linked to a deal or contract.
-            </VAlert>
-          </VCol>
-
-          <VCol cols="12" md="6">
-            <AppTextField
-              v-model="externalQuotationForm.contactName"
-              label="Contact"
-              :placeholder="
-                shouldAutoSelectContact
-                  ? 'Auto-selected from linked deal'
-                  : 'Enter contact name'
-              "
-              :readonly="shouldAutoSelectContact"
-              :rules="[contactNameValidator]"
-            />
-          </VCol>
-
-          <VCol cols="12" md="6">
-            <AppTextField
-              v-model="externalQuotationForm.contactEmail"
-              label="Contact Email"
-              :placeholder="
-                shouldAutoSelectContact
-                  ? 'Auto-selected from linked deal'
-                  : 'Enter contact email'
-              "
-              :readonly="shouldAutoSelectContact"
-              :rules="contactEmailRules"
-            />
-          </VCol>
-
-          <VCol cols="12">
-            <VAlert
-              v-if="shouldAutoSelectContact"
-              color="info"
-              variant="tonal"
-              border="start"
-            >
-              Contact information was auto-selected from the linked deal and
-              cannot be edited.
-            </VAlert>
-          </VCol>
-
           <VCol cols="12" md="6" class="quotation-form-field">
             <div class="quotation-form-control">
               <div class="quotation-form-label">Status</div>
@@ -1613,10 +1521,6 @@ watch(totalQuotations, (value) => {
                 show-size
                 clearable
               />
-              <div class="quotation-form-help">
-                Maximum file size: 10MB. Allowed types: PDF, DOC, DOCX, XLS,
-                XLSX, PNG, JPG.
-              </div>
             </div>
           </VCol>
 
@@ -1639,12 +1543,22 @@ watch(totalQuotations, (value) => {
               {{ externalQuotationSuccess }}
             </VAlert>
           </VCol>
+
         </VRow>
       </VForm>
 
-      <VCardActions class="pt-6 px-0">
+      <VCardActions class="pt-6 px-0 flex-column align-stretch">
+        <VAlert
+          v-if="!hasLinkedDealOrContract"
+          color="warning"
+          variant="tonal"
+          border="start"
+          class="mb-4"
+        >
+          This quotation is not linked to a deal or contract.
+        </VAlert>
         <DialogActionBar
-          save-text="Save Import"
+          save-text="Save"
           cancel-text="Cancel"
           @save="saveExternalQuotation"
           @cancel="closeExternalQuotationDialog"
@@ -1757,6 +1671,7 @@ watch(totalQuotations, (value) => {
   display: flex;
   align-items: flex-start;
 }
+
 
 .quotation-form-control {
   inline-size: 100%;
