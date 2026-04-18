@@ -346,7 +346,7 @@ watch(
     <VDivider class="my-6 border-dashed" />
 
     <div class="d-flex justify-space-between flex-wrap flex-column flex-sm-row">
-      <div>
+      <div class="totals-summary">
         <table class="w-100">
           <tbody>
             <tr>
@@ -457,5 +457,10 @@ watch(
   outline: none;
   overflow-y: auto;
   padding: 0.875rem 1rem;
+}
+
+.totals-summary {
+  inline-size: min(100%, 22rem);
+  margin-inline-start: auto;
 }
 </style>

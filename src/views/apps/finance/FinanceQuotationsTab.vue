@@ -1082,22 +1082,29 @@ const computedMoreList = computed(() => {
       ];
     })(),
     {
-      title: "Download",
-      value: "download",
-      prependIcon: "tabler-download",
-      onClick: () => openQuotationPreviewWindow(paramId, "download"),
-    },
-    {
-      title: "Print",
-      value: "print",
-      prependIcon: "tabler-printer",
-      onClick: () => openQuotationPreviewWindow(paramId, "print"),
-    },
-    {
-      title: "Email",
-      value: "email",
-      prependIcon: "tabler-mail",
-      onClick: () => openQuotationEmailDialog(paramId),
+      title: "Share",
+      value: "share",
+      prependIcon: "tabler-share",
+      children: [
+        {
+          title: "Download",
+          value: "download",
+          prependIcon: "tabler-download",
+          onClick: () => openQuotationPreviewWindow(paramId, "download"),
+        },
+        {
+          title: "Print",
+          value: "print",
+          prependIcon: "tabler-printer",
+          onClick: () => openQuotationPreviewWindow(paramId, "print"),
+        },
+        {
+          title: "Email",
+          value: "email",
+          prependIcon: "tabler-mail",
+          onClick: () => openQuotationEmailDialog(paramId),
+        },
+      ],
     },
     {
       title: "Delete",
