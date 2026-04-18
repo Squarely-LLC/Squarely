@@ -252,7 +252,7 @@ function openWith(initial?: {
   bcc?: string;
   showCc?: boolean;
   showBcc?: boolean;
-  attachments?: Array<{ name: string; url?: string; id?: string }>;
+  attachments?: Array<{ name: string; url?: string; id?: string; file?: File }>;
 }) {
   if (!initial) return;
   // normalize incoming 'to' to an array when provided
@@ -271,22 +271,30 @@ function openWith(initial?: {
   bcc.value = initial.bcc ?? bcc.value;
   isEmailCc.value = !!initial.showCc;
   isEmailBcc.value = !!initial.showBcc;
+
+  for (const url of createdObjectUrls) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+  createdObjectUrls.clear();
+
   if (Array.isArray(initial.attachments)) {
-    // convert incoming attachments to our Attachment shape; do not create object URLs here
     attachments.value = initial.attachments.map((a) => ({
       name: a.name as string,
-      url: a.url as string | undefined,
+      url:
+        (a.url as string | undefined) ||
+        (() => {
+          if (!a.file) return undefined;
+
+          const objectUrl = URL.createObjectURL(a.file);
+          createdObjectUrls.add(objectUrl);
+          return objectUrl;
+        })(),
       id: a.id as string | undefined,
+      file: a.file as File | undefined,
     }));
   } else {
-    // No attachments provided in the initial payload: clear any previous attachments
-    // Revoke any object URLs we created for local files
-    for (const url of createdObjectUrls) {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {}
-    }
-    createdObjectUrls.clear();
     attachments.value = [];
   }
 }

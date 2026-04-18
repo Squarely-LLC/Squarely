@@ -28,6 +28,7 @@ export interface Proforma {
   linkedRecordType: LinkedRecordType | null;
   source: ProformaSource;
   attachmentName: string | null;
+  attachmentFileKey: string | null;
   parentQuotationId: number | null;
   isRevision: boolean;
   revisionLabel: string | null;

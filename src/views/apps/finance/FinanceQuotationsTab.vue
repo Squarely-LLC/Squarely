@@ -7,6 +7,7 @@ import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
+import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
@@ -600,6 +601,19 @@ const saveExternalQuotation = async () => {
     return;
   }
 
+  const attachmentFile = selectedAttachment.value;
+  let attachmentFileKey: string | null = null;
+
+  if (attachmentFile) {
+    try {
+      attachmentFileKey = await saveFile(attachmentFile);
+    } catch {
+      externalQuotationError.value =
+        "Attachment could not be saved locally for preview.";
+      return;
+    }
+  }
+
   quotationsStore.addQuotation({
     quotation: {
       quoteNumber: externalQuotationForm.value.quoteNumber.trim(),
@@ -626,7 +640,8 @@ const saveExternalQuotation = async () => {
         : null,
       linkedRecordType: selectedLinkedOption.value?.recordType ?? null,
       source: "external",
-      attachmentName: selectedAttachment.value?.name ?? null,
+      attachmentName: attachmentFile?.name ?? null,
+      attachmentFileKey,
     },
     purchasedProducts: [
       {
@@ -694,6 +709,7 @@ const convertQuotationToProforma = (quotationId: number) => {
       linkedRecordType: quotationRecord.quotation.linkedRecordType,
       source: quotationRecord.quotation.source,
       attachmentName: quotationRecord.quotation.attachmentName,
+      attachmentFileKey: quotationRecord.quotation.attachmentFileKey,
       parentQuotationId: null,
       isRevision: false,
       revisionLabel: null,
@@ -745,6 +761,7 @@ const convertQuotationToInvoice = (quotationId: number) => {
       linkedRecordType: quotationRecord.quotation.linkedRecordType,
       source: quotationRecord.quotation.source,
       attachmentName: quotationRecord.quotation.attachmentName,
+      attachmentFileKey: quotationRecord.quotation.attachmentFileKey,
       parentQuotationId: null,
       isRevision: false,
       revisionLabel: null,
@@ -926,8 +943,9 @@ const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
 const computedMoreList = computed(() => {
   return (paramId: number) => [
     ...(() => {
+      const quotationRecord = quotationsStore.byId(paramId);
       const quotationStatus =
-        quotationsStore.byId(paramId)?.quotation.quotationStatus ?? null;
+        quotationRecord?.quotation.quotationStatus ?? null;
 
       return [
         {

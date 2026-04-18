@@ -28,6 +28,7 @@ export interface Invoice {
   linkedRecordType: LinkedRecordType | null;
   source: InvoiceSource;
   attachmentName: string | null;
+  attachmentFileKey: string | null;
   parentQuotationId: number | null;
   isRevision: boolean;
   revisionLabel: string | null;

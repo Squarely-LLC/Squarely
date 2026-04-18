@@ -5,6 +5,7 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
@@ -587,6 +588,19 @@ const saveExternalQuotation = async () => {
     return;
   }
 
+  const attachmentFile = selectedAttachment.value;
+  let attachmentFileKey: string | null = null;
+
+  if (attachmentFile) {
+    try {
+      attachmentFileKey = await saveFile(attachmentFile);
+    } catch {
+      externalQuotationError.value =
+        "Attachment could not be saved locally for preview.";
+      return;
+    }
+  }
+
   quotationsStore.addInvoice({
     quotation: {
       quoteNumber: externalQuotationForm.value.quoteNumber.trim(),
@@ -613,7 +627,8 @@ const saveExternalQuotation = async () => {
         : null,
       linkedRecordType: selectedLinkedOption.value?.recordType ?? null,
       source: "external",
-      attachmentName: selectedAttachment.value?.name ?? null,
+      attachmentName: attachmentFile?.name ?? null,
+      attachmentFileKey,
     },
     purchasedProducts: [
       {

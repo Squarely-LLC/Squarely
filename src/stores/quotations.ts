@@ -402,6 +402,7 @@ function normaliseQuotationRecord(
       linkedRecordType: quotation.linkedRecordType ?? null,
       source: quotation.source ?? "squarely",
       attachmentName: quotation.attachmentName ?? null,
+      attachmentFileKey: quotation.attachmentFileKey ?? null,
       parentQuotationId:
         quotation.parentQuotationId === null ||
         quotation.parentQuotationId === undefined

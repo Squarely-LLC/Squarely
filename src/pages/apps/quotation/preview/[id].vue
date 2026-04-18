@@ -4,6 +4,7 @@ import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useQuotationsStore } from "@/stores/quotations";
 import { createPdfFileFromElement } from "@/utils/domPdf";
+import { getFileObjectUrl, getFileRecord } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
   formatCurrencyAmount,
@@ -20,7 +21,7 @@ import {
   getQuotationGrandTotal,
   getQuotationSubtotal,
 } from "@/utils/quotationPricing";
-import { openWhatsAppIntent } from "@/utils/shareToWhatsApp";
+import { openWhatsAppIntent, shareToWhatsApp } from "@/utils/shareToWhatsApp";
 import { shareWithSystem } from "@/utils/shareWithSystem";
 import { formatSystemDate } from "@core/utils/formatters";
 
@@ -111,6 +112,61 @@ const paymentDetails = computed(() => {
 const purchasedProducts = computed(
   () => quotationRecord.value?.purchasedProducts ?? [],
 );
+const isExternalDocument = computed(
+  () => quotation.value?.source === "external",
+);
+const externalAttachmentBlob = ref<Blob | null>(null);
+const externalAttachmentUrl = ref("");
+const externalAttachmentMimeType = ref("");
+const externalAttachmentName = computed(
+  () => quotation.value?.attachmentName?.trim() || "",
+);
+const externalAttachmentExtension = computed(() => {
+  const match = externalAttachmentName.value
+    .toLowerCase()
+    .match(/\.([a-z0-9]+)$/i);
+  return match?.[1] || "";
+});
+const hasExternalAttachment = computed(() =>
+  Boolean(externalAttachmentUrl.value),
+);
+const isImageExternalAttachment = computed(
+  () =>
+    externalAttachmentMimeType.value.startsWith("image/") ||
+    ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(
+      externalAttachmentExtension.value,
+    ),
+);
+const isPdfExternalAttachment = computed(
+  () =>
+    externalAttachmentMimeType.value === "application/pdf" ||
+    externalAttachmentExtension.value === "pdf",
+);
+const canPreviewExternalAttachmentInline = computed(
+  () =>
+    hasExternalAttachment.value &&
+    (isImageExternalAttachment.value || isPdfExternalAttachment.value),
+);
+const externalAttachmentSummary = computed(() => {
+  if (!quotation.value) return [];
+
+  return [
+    { label: "Status", value: quotation.value.quotationStatus },
+    {
+      label: "Imported file",
+      value: externalAttachmentName.value || "No file attached",
+    },
+    {
+      label: "Amount",
+      value: formatCurrencyAmount(
+        quotation.value.total,
+        financialConfiguration.value,
+      ),
+    },
+    { label: "Client", value: quotation.value.client.name || "-" },
+    { label: "Email", value: quotation.value.client.companyEmail || "-" },
+  ];
+});
 const companyLogoUrl = ref("");
 const companyName = computed(
   () => legalConfiguration.value?.companyName?.trim() || "Squarely",
@@ -128,8 +184,131 @@ const hasExecutedAutoAction = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const quotationPdfTarget = ref<any | null>(null);
 
-const printQuotation = () => {
+const buildExternalAttachmentFile = () => {
+  if (!isExternalDocument.value || !externalAttachmentBlob.value) return null;
+
+  return new File(
+    [externalAttachmentBlob.value],
+    externalAttachmentName.value || "attachment",
+    {
+      type:
+        externalAttachmentMimeType.value ||
+        externalAttachmentBlob.value.type ||
+        "application/octet-stream",
+    },
+  );
+};
+
+const printExternalAttachment = async () => {
+  if (!externalAttachmentUrl.value) return false;
+
+  if (!isImageExternalAttachment.value && !isPdfExternalAttachment.value) {
+    notifications.push(
+      "This attachment cannot be printed here. Download the original file instead.",
+      "error",
+      4000,
+    );
+    return false;
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.src = externalAttachmentUrl.value;
+  iframe.style.position = "fixed";
+  iframe.style.inlineSize = "0";
+  iframe.style.blockSize = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error("Failed to load attachment"));
+    });
+
+    const iframeWindow = iframe.contentWindow;
+    if (!iframeWindow) throw new Error("No print window available");
+
+    iframeWindow.focus();
+    iframeWindow.print();
+    return true;
+  } catch {
+    iframe.remove();
+    const printWindow = window.open(
+      externalAttachmentUrl.value,
+      "_blank",
+      "noopener",
+    );
+    if (!printWindow) {
+      notifications.push(
+        "Unable to open the attached file for printing.",
+        "error",
+        4000,
+      );
+      return false;
+    }
+
+    notifications.push(
+      "Opened the original attachment in a new tab for printing.",
+      "info",
+      3500,
+    );
+    return true;
+  } finally {
+    window.setTimeout(() => {
+      iframe.remove();
+    }, 1000);
+  }
+};
+
+const printQuotation = async () => {
+  if (isExternalDocument.value && hasExternalAttachment.value) {
+    await printExternalAttachment();
+    return;
+  }
+
   window.print();
+};
+
+const waitForAttachmentAvailability = (timeoutMs: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, timeoutMs);
+  });
+
+const resolveExternalAttachmentUrl = async (fileKey: string) => {
+  const attempts = [0, 150, 400];
+
+  for (const delay of attempts) {
+    if (delay) await waitForAttachmentAvailability(delay);
+
+    const objectUrl = await getFileObjectUrl(fileKey).catch(() => null);
+    if (objectUrl) return objectUrl;
+  }
+
+  return null;
+};
+
+const revokeExternalAttachmentPreview = () => {
+  if (externalAttachmentUrl.value) {
+    URL.revokeObjectURL(externalAttachmentUrl.value);
+    externalAttachmentUrl.value = "";
+  }
+
+  externalAttachmentBlob.value = null;
+  externalAttachmentMimeType.value = "";
+};
+
+const downloadExternalAttachment = () => {
+  if (!externalAttachmentUrl.value) return;
+
+  const anchor = document.createElement("a");
+  anchor.href = externalAttachmentUrl.value;
+  anchor.download = externalAttachmentName.value || "attachment";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
 };
 
 const createCurrentQuotationPdfFile = () => {
@@ -160,6 +339,11 @@ const downloadFile = (file: File) => {
 };
 
 const downloadQuotation = async () => {
+  if (isExternalDocument.value && hasExternalAttachment.value) {
+    downloadExternalAttachment();
+    return;
+  }
+
   await nextTick();
 
   const quoteNumber = quotation.value?.quoteNumber?.trim() || "quotation";
@@ -194,6 +378,7 @@ const quotationEmailDraft = computed(() => {
     financialConfiguration.value,
   );
   const expiryDate = currentQuotation?.dueDate?.trim() || "";
+  const externalAttachmentFile = buildExternalAttachmentFile();
 
   return {
     to,
@@ -207,11 +392,18 @@ ${expiryDate ? `Expiry date: ${expiryDate}` : ""}
 
 Thank you,
 ${companyName.value}`.trim(),
-    attachments: [
-      {
-        name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
-      },
-    ],
+    attachments: externalAttachmentFile
+      ? [
+          {
+            name: externalAttachmentFile.name,
+            file: externalAttachmentFile,
+          },
+        ]
+      : [
+          {
+            name: quoteNumber ? `${quoteNumber}.pdf` : "Quotation Attached",
+          },
+        ],
   };
 });
 
@@ -227,6 +419,15 @@ const shareQuotationOnWhatsApp = async () => {
   const currentQuotation = quotation.value;
   if (!currentQuotation) return;
 
+  const externalAttachmentFile = buildExternalAttachmentFile();
+  if (isExternalDocument.value && externalAttachmentFile) {
+    await shareToWhatsApp({
+      file: externalAttachmentFile,
+      text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+    });
+    return;
+  }
+
   await openWhatsAppIntent({
     url: window.location.href,
     text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
@@ -235,6 +436,18 @@ const shareQuotationOnWhatsApp = async () => {
 
 const shareQuotationWithOthers = async () => {
   const currentQuotation = quotation.value;
+  const externalAttachmentFile = buildExternalAttachmentFile();
+  if (currentQuotation && isExternalDocument.value && externalAttachmentFile) {
+    const file = externalAttachmentFile;
+
+    await shareWithSystem({
+      file,
+      title: file.name,
+      text: `Quotation ${currentQuotation.quoteNumber} for ${currentQuotation.client.name}`,
+    });
+    return;
+  }
+
   const pdfFile = createCurrentQuotationPdfFile();
   if (!currentQuotation || !pdfFile) return;
 
@@ -251,6 +464,26 @@ const discountTotal = computed(() =>
 );
 const grandTotal = computed(() =>
   getQuotationGrandTotal(purchasedProducts.value),
+);
+
+watch(
+  () => [isExternalDocument.value, quotation.value?.attachmentFileKey] as const,
+  async ([isExternal, fileKey]) => {
+    revokeExternalAttachmentPreview();
+    if (!isExternal || !fileKey) return;
+
+    const [objectUrl, record] = await Promise.all([
+      resolveExternalAttachmentUrl(fileKey),
+      getFileRecord(fileKey).catch(() => null),
+    ]);
+
+    if (!objectUrl && !record) return;
+
+    externalAttachmentUrl.value = objectUrl || "";
+    externalAttachmentBlob.value = record?.blob ?? null;
+    externalAttachmentMimeType.value = record?.blob.type || "";
+  },
+  { immediate: true },
 );
 
 watch(
@@ -277,7 +510,7 @@ const handleEmbeddedPreviewMessage = async (event: MessageEvent) => {
     return;
   }
 
-  window.print();
+  await printQuotation();
 };
 
 onMounted(() => {
@@ -291,6 +524,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  revokeExternalAttachmentPreview();
   if (!isEmbeddedActionFrame) return;
 
   window.removeEventListener("message", handleEmbeddedPreviewMessage);
@@ -323,7 +557,7 @@ if (!isEmbeddedActionFrame) {
       if (print === "1") {
         hasExecutedAutoAction.value = true;
         await nextTick();
-        window.print();
+        await printQuotation();
       }
     },
     { immediate: true },
@@ -388,182 +622,262 @@ if (!isEmbeddedActionFrame) {
             </div>
           </div>
 
-          <VRow class="print-row mb-6">
-            <VCol class="text-no-wrap">
-              <h6 class="text-h6 mb-4">Quotation To:</h6>
+          <template v-if="isExternalDocument">
+            <VSheet border rounded class="external-document-summary mb-6 pa-4">
+              <div
+                class="d-flex align-center justify-space-between flex-wrap gap-3 mb-4"
+              >
+                <div>
+                  <p class="text-overline mb-1">Imported Attachment</p>
+                  <h6 class="text-h6 mb-0">Preview from another system</h6>
+                </div>
 
-              <p class="mb-0">{{ quotation.client.name }}</p>
-              <p v-if="showClientCompany" class="mb-0">
-                {{ quotation.client.company }}
-              </p>
-              <p class="mb-0">
-                {{ quotation.client.address }}, {{ quotation.client.country }}
-              </p>
-              <p class="mb-0">{{ quotation.client.contact }}</p>
-              <p class="mb-0">{{ quotation.client.companyEmail }}</p>
-            </VCol>
+                <VBtn
+                  v-if="hasExternalAttachment"
+                  variant="tonal"
+                  color="secondary"
+                  @click="downloadExternalAttachment"
+                >
+                  Download attachment
+                </VBtn>
+              </div>
 
-            <VCol class="text-no-wrap">
-              <h6 class="text-h6 mb-4">Payment Details:</h6>
-              <template v-if="paymentMethod === 'Bank Transfer'">
-                <table>
+              <div class="external-document-grid">
+                <div
+                  v-for="item in externalAttachmentSummary"
+                  :key="item.label"
+                  class="external-document-item"
+                >
+                  <p class="external-document-label">{{ item.label }}</p>
+                  <p class="external-document-value mb-0">{{ item.value }}</p>
+                </div>
+              </div>
+            </VSheet>
+
+            <div class="external-document-preview mb-6">
+              <img
+                v-if="isImageExternalAttachment && externalAttachmentUrl"
+                :src="externalAttachmentUrl"
+                :alt="externalAttachmentName || quotation.quoteNumber"
+                class="external-document-image"
+              />
+
+              <iframe
+                v-else-if="isPdfExternalAttachment && externalAttachmentUrl"
+                :src="externalAttachmentUrl"
+                class="external-document-frame"
+                title="Imported attachment preview"
+              />
+
+              <VAlert
+                v-else-if="hasExternalAttachment"
+                type="info"
+                variant="tonal"
+                class="ma-4"
+              >
+                This file type does not support inline preview here. Download
+                the attachment to inspect it.
+              </VAlert>
+
+              <VAlert v-else type="warning" variant="tonal" class="ma-4">
+                No uploaded attachment is available for preview.
+              </VAlert>
+            </div>
+          </template>
+
+          <template v-else>
+            <VRow class="print-row mb-6">
+              <VCol class="text-no-wrap">
+                <h6 class="text-h6 mb-4">Quotation To:</h6>
+
+                <p class="mb-0">{{ quotation.client.name }}</p>
+                <p v-if="showClientCompany" class="mb-0">
+                  {{ quotation.client.company }}
+                </p>
+                <p class="mb-0">
+                  {{ quotation.client.address }}, {{ quotation.client.country }}
+                </p>
+                <p class="mb-0">{{ quotation.client.contact }}</p>
+                <p class="mb-0">{{ quotation.client.companyEmail }}</p>
+              </VCol>
+
+              <VCol class="text-no-wrap">
+                <h6 class="text-h6 mb-4">Payment Details:</h6>
+                <template v-if="paymentMethod === 'Bank Transfer'">
+                  <table>
+                    <tbody>
+                      <tr>
+                        <td class="pe-4">Bank Name:</td>
+                        <td>{{ paymentDetails.bankName }}</td>
+                      </tr>
+                      <tr>
+                        <td class="pe-4">Country:</td>
+                        <td>{{ paymentDetails.country }}</td>
+                      </tr>
+                      <tr>
+                        <td class="pe-4">IBAN:</td>
+                        <td>{{ paymentDetails.iban }}</td>
+                      </tr>
+                      <tr>
+                        <td class="pe-4">SWIFT Code:</td>
+                        <td>{{ paymentDetails.swiftCode }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </template>
+
+                <template v-else-if="paymentMethod === 'Cash'">
+                  <p class="mb-0">Cash</p>
+                </template>
+
+                <template v-else>
+                  <p class="mb-2">Credit card payment link</p>
+                  <p class="mb-0 text-wrap">
+                    <a
+                      v-if="creditCardPaymentLink"
+                      :href="creditCardPaymentLink"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {{ creditCardPaymentLink }}
+                    </a>
+                    <span v-else>No payment link added yet.</span>
+                  </p>
+                </template>
+              </VCol>
+            </VRow>
+
+            <VTable
+              class="quotation-preview-table border text-high-emphasis overflow-hidden mb-6"
+            >
+              <thead>
+                <tr>
+                  <th scope="col">ITEM</th>
+                  <th scope="col">DESCRIPTION</th>
+                  <th scope="col" class="text-center">QUANTITY</th>
+                  <th scope="col" class="text-center">PRICE</th>
+                  <th scope="col" class="text-center">TOTAL</th>
+                </tr>
+              </thead>
+
+              <tbody class="text-base">
+                <tr
+                  v-for="(item, index) in purchasedProducts"
+                  :key="`${item.title}-${index}`"
+                >
+                  <td class="quotation-item-cell">{{ item.title }}</td>
+                  <td class="quotation-description-cell">
+                    {{ item.description }}
+                  </td>
+                  <td class="text-center">{{ item.hours }}</td>
+                  <td class="text-center">
+                    {{
+                      formatCurrencyAmount(item.cost, financialConfiguration)
+                    }}
+                  </td>
+                  <td class="text-center">
+                    {{
+                      formatCurrencyAmount(
+                        getLineTotal(item),
+                        financialConfiguration,
+                      )
+                    }}
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
+
+            <div class="d-flex justify-end flex-column flex-sm-row print-row">
+              <div>
+                <table class="w-100">
                   <tbody>
                     <tr>
-                      <td class="pe-4">Bank Name:</td>
-                      <td>{{ paymentDetails.bankName }}</td>
+                      <td class="pe-16">Subtotal:</td>
+                      <td
+                        :class="
+                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
+                        "
+                      >
+                        <h6 class="text-base font-weight-medium">
+                          {{
+                            formatCurrencyAmount(
+                              subtotal,
+                              financialConfiguration,
+                            )
+                          }}
+                        </h6>
+                      </td>
                     </tr>
                     <tr>
-                      <td class="pe-4">Country:</td>
-                      <td>{{ paymentDetails.country }}</td>
+                      <td class="pe-16">Discount:</td>
+                      <td
+                        :class="
+                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
+                        "
+                      >
+                        <h6 class="text-base font-weight-medium">
+                          {{
+                            formatCurrencyAmount(
+                              discountTotal,
+                              financialConfiguration,
+                            )
+                          }}
+                        </h6>
+                      </td>
                     </tr>
                     <tr>
-                      <td class="pe-4">IBAN:</td>
-                      <td>{{ paymentDetails.iban }}</td>
-                    </tr>
-                    <tr>
-                      <td class="pe-4">SWIFT Code:</td>
-                      <td>{{ paymentDetails.swiftCode }}</td>
+                      <td class="pe-16">{{ vatSummary.label }}:</td>
+                      <td
+                        :class="
+                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
+                        "
+                      >
+                        <h6 class="text-base font-weight-medium">
+                          {{ vatSummary.value }}
+                        </h6>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
-              </template>
 
-              <template v-else-if="paymentMethod === 'Cash'">
-                <p class="mb-0">Cash</p>
-              </template>
+                <VDivider class="my-2" />
 
-              <template v-else>
-                <p class="mb-2">Credit card payment link</p>
-                <p class="mb-0 text-wrap">
-                  <a
-                    v-if="creditCardPaymentLink"
-                    :href="creditCardPaymentLink"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {{ creditCardPaymentLink }}
-                  </a>
-                  <span v-else>No payment link added yet.</span>
-                </p>
-              </template>
-            </VCol>
-          </VRow>
-
-          <VTable
-            class="quotation-preview-table border text-high-emphasis overflow-hidden mb-6"
-          >
-            <thead>
-              <tr>
-                <th scope="col">ITEM</th>
-                <th scope="col">DESCRIPTION</th>
-                <th scope="col" class="text-center">QUANTITY</th>
-                <th scope="col" class="text-center">PRICE</th>
-                <th scope="col" class="text-center">TOTAL</th>
-              </tr>
-            </thead>
-
-            <tbody class="text-base">
-              <tr
-                v-for="(item, index) in purchasedProducts"
-                :key="`${item.title}-${index}`"
-              >
-                <td class="quotation-item-cell">{{ item.title }}</td>
-                <td class="quotation-description-cell">
-                  {{ item.description }}
-                </td>
-                <td class="text-center">{{ item.hours }}</td>
-                <td class="text-center">
-                  {{ formatCurrencyAmount(item.cost, financialConfiguration) }}
-                </td>
-                <td class="text-center">
-                  {{
-                    formatCurrencyAmount(
-                      getLineTotal(item),
-                      financialConfiguration,
-                    )
-                  }}
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
-
-          <div class="d-flex justify-end flex-column flex-sm-row print-row">
-            <div>
-              <table class="w-100">
-                <tbody>
-                  <tr>
-                    <td class="pe-16">Subtotal:</td>
-                    <td
-                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
-                    >
-                      <h6 class="text-base font-weight-medium">
-                        {{
-                          formatCurrencyAmount(subtotal, financialConfiguration)
-                        }}
-                      </h6>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="pe-16">Discount:</td>
-                    <td
-                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
-                    >
-                      <h6 class="text-base font-weight-medium">
-                        {{
-                          formatCurrencyAmount(
-                            discountTotal,
-                            financialConfiguration,
-                          )
-                        }}
-                      </h6>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="pe-16">{{ vatSummary.label }}:</td>
-                    <td
-                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
-                    >
-                      <h6 class="text-base font-weight-medium">
-                        {{ vatSummary.value }}
-                      </h6>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <VDivider class="my-2" />
-
-              <table class="w-100">
-                <tbody>
-                  <tr>
-                    <td class="pe-16">Total:</td>
-                    <td
-                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
-                    >
-                      <h6 class="text-base font-weight-medium">
-                        {{
-                          formatCurrencyAmount(
-                            grandTotal,
-                            financialConfiguration,
-                          )
-                        }}
-                      </h6>
-                    </td>
-                  </tr>
-                  <tr v-if="quotationRecord?.totalFx?.trim()">
-                    <td class="pe-16">Total FX:</td>
-                    <td
-                      :class="$vuetify.locale.isRtl ? 'text-start' : 'text-end'"
-                    >
-                      <h6 class="text-base font-weight-medium">
-                        {{ quotationRecord.totalFx }}
-                      </h6>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                <table class="w-100">
+                  <tbody>
+                    <tr>
+                      <td class="pe-16">Total:</td>
+                      <td
+                        :class="
+                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
+                        "
+                      >
+                        <h6 class="text-base font-weight-medium">
+                          {{
+                            formatCurrencyAmount(
+                              grandTotal,
+                              financialConfiguration,
+                            )
+                          }}
+                        </h6>
+                      </td>
+                    </tr>
+                    <tr v-if="quotationRecord?.totalFx?.trim()">
+                      <td class="pe-16">Total FX:</td>
+                      <td
+                        :class="
+                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
+                        "
+                      >
+                        <h6 class="text-base font-weight-medium">
+                          {{ quotationRecord.totalFx }}
+                        </h6>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </template>
 
           <template v-if="quotationRecord?.showClientNote">
             <VDivider class="my-6 border-dashed" />
@@ -761,6 +1075,53 @@ if (!isEmbeddedActionFrame) {
   overflow-wrap: anywhere;
   white-space: normal;
   word-break: break-word;
+}
+
+.external-document-summary {
+  border-color: rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.external-document-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.external-document-label {
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  margin-block-end: 0.25rem;
+  text-transform: uppercase;
+}
+
+.external-document-value {
+  overflow-wrap: anywhere;
+}
+
+.external-document-preview {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface), 0.5);
+  min-block-size: 360px;
+}
+
+.external-document-image {
+  display: block;
+  max-block-size: 720px;
+  max-inline-size: 100%;
+  object-fit: contain;
+}
+
+.external-document-frame {
+  border: 0;
+  background: #fff;
+  inline-size: 100%;
+  min-block-size: 720px;
 }
 
 @media print {

@@ -10,6 +10,7 @@ import {
   useProformasStore,
   type ProformaPaymentInput,
 } from "@/stores/proformas";
+import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
   clearProformaPreviewDraft,
   loadProformaPreviewDraft,
@@ -52,6 +53,32 @@ const sourceRecord =
 const quotationData = ref<ProformaData | null>(
   sourceRecord ? cloneProformaRecord(sourceRecord) : null,
 );
+const isExternalQuotation = computed(
+  () => quotationData.value?.quotation.source === "external",
+);
+const selectedExternalAttachment = ref<File | null>(null);
+const externalEditError = ref("");
+const externalStatusOptions = ["Not Paid", "Partially Paid", "Paid"];
+const allowedAttachmentExtensions = [
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".png",
+  ".jpg",
+  ".jpeg",
+];
+const allowedAttachmentTypes = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "image/png",
+  "image/jpeg",
+];
+const maxAttachmentSizeBytes = 10 * 1024 * 1024;
 
 const addProduct = (value: PurchasedProduct) => {
   quotationData.value?.purchasedProducts.push(value);
@@ -98,9 +125,192 @@ const companyAddressLines = computed(() =>
 const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(configStore.legal),
 );
+const externalAttachmentName = computed(
+  () =>
+    selectedExternalAttachment.value?.name ||
+    quotationData.value?.quotation.attachmentName ||
+    "",
+);
+const externalAttachmentExtension = computed(() => {
+  const match = externalAttachmentName.value
+    .toLowerCase()
+    .match(/\.([a-z0-9]+)$/i);
+  return match?.[1] || "";
+});
+const externalAttachmentPreviewUrl = ref("");
+const externalAttachmentPreviewMimeType = ref("");
+const isImageExternalAttachment = computed(
+  () =>
+    externalAttachmentPreviewMimeType.value.startsWith("image/") ||
+    ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(
+      externalAttachmentExtension.value,
+    ),
+);
+const isPdfExternalAttachment = computed(
+  () =>
+    externalAttachmentPreviewMimeType.value === "application/pdf" ||
+    externalAttachmentExtension.value === "pdf",
+);
 const currentQuotationBalance = computed(() =>
   quotationData.value ? getProformaOutstandingBalance(quotationData.value) : 0,
 );
+
+const revokeExternalAttachmentPreview = () => {
+  if (externalAttachmentPreviewUrl.value) {
+    URL.revokeObjectURL(externalAttachmentPreviewUrl.value);
+    externalAttachmentPreviewUrl.value = "";
+  }
+
+  externalAttachmentPreviewMimeType.value = "";
+};
+
+watch(
+  () =>
+    [
+      selectedExternalAttachment.value,
+      quotationData.value?.quotation.attachmentFileKey,
+    ] as const,
+  async ([selectedFile, attachmentFileKey]) => {
+    revokeExternalAttachmentPreview();
+
+    if (selectedFile) {
+      externalAttachmentPreviewUrl.value = URL.createObjectURL(selectedFile);
+      externalAttachmentPreviewMimeType.value = selectedFile.type || "";
+      return;
+    }
+
+    if (!attachmentFileKey) return;
+
+    const [objectUrl, record] = await Promise.all([
+      getFileObjectUrl(attachmentFileKey).catch(() => null),
+      getFileRecord(attachmentFileKey).catch(() => null),
+    ]);
+
+    if (!objectUrl && !record) return;
+
+    externalAttachmentPreviewUrl.value = objectUrl || "";
+    externalAttachmentPreviewMimeType.value = record?.blob.type || "";
+  },
+  { immediate: true },
+);
+
+const validateExternalAttachment = (
+  file = selectedExternalAttachment.value,
+) => {
+  if (!file) return "";
+
+  const fileName = file.name.toLowerCase();
+  const hasAllowedExtension = allowedAttachmentExtensions.some((extension) =>
+    fileName.endsWith(extension),
+  );
+  const hasAllowedMimeType = allowedAttachmentTypes.includes(file.type);
+
+  if (!hasAllowedExtension && !hasAllowedMimeType) {
+    return "Attachment type is not allowed. Use PDF, Word, Excel, PNG, or JPG files only.";
+  }
+
+  if (file.size > maxAttachmentSizeBytes) {
+    return "Attachment must be 10MB or smaller.";
+  }
+
+  return "";
+};
+
+const saveExternalQuotation = async () => {
+  const currentQuotation = quotationData.value;
+  if (!currentQuotation) return;
+
+  externalEditError.value = "";
+
+  const quoteNumber = currentQuotation.quotation.quoteNumber.trim();
+  const issuedDate = currentQuotation.quotation.issuedDate?.trim();
+  const dueDate = currentQuotation.quotation.dueDate?.trim() || issuedDate;
+  const contactName = currentQuotation.quotation.client.name.trim();
+  const contactEmail = currentQuotation.quotation.client.companyEmail.trim();
+  const amount = Number(currentQuotation.quotation.total);
+
+  if (!quoteNumber || !issuedDate || !dueDate || !Number.isFinite(amount)) {
+    externalEditError.value =
+      "Quote number, issue date, due date, and amount are required.";
+    return;
+  }
+
+  const attachmentValidationError = validateExternalAttachment();
+  if (attachmentValidationError) {
+    externalEditError.value = attachmentValidationError;
+    return;
+  }
+
+  const updatedQuotation = cloneProformaRecord(currentQuotation);
+  const attachmentFile = selectedExternalAttachment.value;
+
+  if (attachmentFile) {
+    try {
+      updatedQuotation.quotation.attachmentFileKey =
+        await saveFile(attachmentFile);
+      updatedQuotation.quotation.attachmentName = attachmentFile.name;
+    } catch {
+      externalEditError.value =
+        "Attachment could not be saved locally for preview.";
+      return;
+    }
+  }
+
+  updatedQuotation.quotation.quoteNumber = quoteNumber;
+  updatedQuotation.quotation.issuedDate = issuedDate;
+  updatedQuotation.quotation.dueDate = dueDate;
+  updatedQuotation.quotation.total = amount;
+  updatedQuotation.quotation.client.name = contactName;
+  updatedQuotation.quotation.client.companyEmail = contactEmail;
+  updatedQuotation.quotation.client.company =
+    contactName || contactEmail || updatedQuotation.quotation.client.company;
+  updatedQuotation.quotation.service = "Imported proforma";
+  updatedQuotation.quotation.linkedRecordType = updatedQuotation.quotation
+    .dealId
+    ? "deal"
+    : null;
+  updatedQuotation.quotation.source = "external";
+  updatedQuotation.purchasedProducts = [
+    {
+      title: "Imported proforma amount",
+      cost: amount,
+      hours: 1,
+      description: "Imported from another system.",
+    },
+  ];
+  updatedQuotation.paymentDetails = buildQuotationPaymentDetails(
+    amount,
+    configStore.legal,
+    configStore.financial,
+  );
+  updatedQuotation.note = updatedQuotation.quotation.dealId
+    ? "Imported proforma linked to an existing record."
+    : "Imported proforma without linked deal or contract.";
+  updatedQuotation.quotation.balance =
+    getProformaOutstandingBalance(updatedQuotation);
+  updatedQuotation.paymentDetails.totalDue = formatCurrencyAmount(
+    updatedQuotation.quotation.balance,
+    configStore.financial,
+  );
+
+  const savedQuotation = proformasStore.updateProforma(
+    updatedQuotation.quotation.id,
+    updatedQuotation,
+  );
+  if (!savedQuotation) return;
+
+  selectedExternalAttachment.value = null;
+  notifications.push(
+    `Proforma ${savedQuotation.quotation.quoteNumber} updated successfully.`,
+    "success",
+    3500,
+  );
+  clearProformaPreviewDraft();
+  await router.push({
+    name: "apps-proforma-preview-id",
+    params: { id: savedQuotation.quotation.id },
+  });
+};
 
 const quotationEmailDraft = computed(() => {
   const currentQuotation = quotationData.value?.quotation;
@@ -451,6 +661,7 @@ const openPreview = async () => {
 };
 
 onBeforeUnmount(() => {
+  revokeExternalAttachmentPreview();
   if (previewActionFrame.value?.parentNode) {
     previewActionFrame.value.parentNode.removeChild(previewActionFrame.value);
   }
@@ -460,7 +671,158 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <VRow v-if="quotationData?.quotation">
+  <VRow v-if="quotationData?.quotation && isExternalQuotation">
+    <VCol cols="12" md="8">
+      <VCard>
+        <VCardItem>
+          <VCardTitle>Edit Imported Proforma</VCardTitle>
+          <VCardSubtitle>
+            Update the imported file and basic document fields without using the
+            full Squarely builder.
+          </VCardSubtitle>
+        </VCardItem>
+
+        <VCardText>
+          <VAlert
+            v-if="externalEditError"
+            type="error"
+            variant="tonal"
+            class="mb-4"
+          >
+            {{ externalEditError }}
+          </VAlert>
+
+          <VRow>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="quotationData.quotation.quoteNumber"
+                label="Proforma Number"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="quotationData.quotation.quotationStatus"
+                :items="externalStatusOptions"
+                label="Status"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="quotationData.quotation.issuedDate"
+                type="date"
+                label="Issued Date"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="quotationData.quotation.dueDate"
+                type="date"
+                label="Due Date"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="quotationData.quotation.client.name"
+                label="Contact Name"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="quotationData.quotation.client.companyEmail"
+                label="Contact Email"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="quotationData.quotation.total"
+                type="number"
+                label="Amount"
+                min="0"
+                step="0.01"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="quotationData.quotation.dealId"
+                :items="dealOptions"
+                label="Deal"
+                clearable
+              />
+            </VCol>
+            <VCol cols="12">
+              <VFileInput
+                v-model="selectedExternalAttachment"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                label="Replace Uploaded File"
+                prepend-icon="tabler-paperclip"
+                show-size
+              />
+            </VCol>
+            <VCol cols="12">
+              <VAlert type="info" variant="tonal">
+                Current attachment:
+                {{ externalAttachmentName || "No attachment uploaded" }}
+              </VAlert>
+            </VCol>
+
+            <VCol cols="12" v-if="externalAttachmentPreviewUrl">
+              <VCard variant="tonal" color="info">
+                <VCardItem>
+                  <VCardTitle>Attachment Preview</VCardTitle>
+                </VCardItem>
+
+                <VCardText>
+                  <img
+                    v-if="isImageExternalAttachment"
+                    :src="externalAttachmentPreviewUrl"
+                    :alt="
+                      externalAttachmentName ||
+                      quotationData.quotation.quoteNumber
+                    "
+                    class="external-attachment-preview"
+                  />
+
+                  <iframe
+                    v-else-if="isPdfExternalAttachment"
+                    :src="externalAttachmentPreviewUrl"
+                    class="external-attachment-preview external-attachment-preview--pdf"
+                    title="Attachment preview"
+                  />
+
+                  <div v-else class="text-body-2 text-medium-emphasis">
+                    This file type does not support inline preview here. Save
+                    and open the preview page to download or share the full
+                    file.
+                  </div>
+                </VCardText>
+              </VCard>
+            </VCol>
+          </VRow>
+        </VCardText>
+      </VCard>
+    </VCol>
+    <VCol cols="12" md="4">
+      <VCard>
+        <VCardText>
+          <VBtn
+            block
+            color="secondary"
+            variant="tonal"
+            class="mb-4"
+            :to="{
+              name: 'apps-proforma-preview-id',
+              params: { id: quotationData.quotation.id },
+            }"
+          >
+            Preview Saved Version
+          </VBtn>
+          <VBtn block @click="saveExternalQuotation">Save Changes</VBtn>
+        </VCardText>
+      </VCard>
+    </VCol>
+  </VRow>
+
+  <VRow v-else-if="quotationData?.quotation">
     <VCol cols="12" md="9">
       <ProformaEditable
         :data="quotationData"
@@ -681,5 +1043,17 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 0.5rem;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.external-attachment-preview {
+  display: block;
+  border-radius: 8px;
+  inline-size: 100%;
+  max-block-size: 32rem;
+  object-fit: contain;
+}
+
+.external-attachment-preview--pdf {
+  min-block-size: 32rem;
 }
 </style>

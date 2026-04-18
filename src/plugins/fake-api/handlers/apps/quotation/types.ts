@@ -33,6 +33,7 @@ export interface Quotation {
   linkedRecordType: LinkedRecordType | null;
   source: QuotationSource;
   attachmentName: string | null;
+  attachmentFileKey: string | null;
   parentQuotationId: number | null;
   isRevision: boolean;
   revisionLabel: string | null;
