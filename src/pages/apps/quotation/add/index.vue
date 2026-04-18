@@ -68,6 +68,10 @@ const buildDefaultClient = (): Client => {
 const hasSelectedClient = (client: Client | null | undefined) =>
   Boolean(client?.name?.trim());
 
+const getTodayDate = () => new Date().toISOString().slice(0, 10);
+const getDefaultDueDate = () =>
+  new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
 const buildBlankQuotation = (): QuotationData => {
   const id = quotationsStore.nextId();
 
@@ -75,10 +79,8 @@ const buildBlankQuotation = (): QuotationData => {
     quotation: {
       id,
       quoteNumber: `${getDocumentSequencePrefix("quotation")}${id}`,
-      issuedDate: new Date().toISOString().slice(0, 10),
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10),
+      issuedDate: getTodayDate(),
+      dueDate: getDefaultDueDate(),
       client: buildDefaultClient(),
       service: "Architectural services",
       total: 0,
@@ -169,11 +171,48 @@ const buildRevisionDraft = (parentId: number): QuotationData => {
   return revisionDraft;
 };
 
+const buildDuplicateDraft = (sourceId: number): QuotationData => {
+  const sourceRecord = quotationsStore.byId(sourceId);
+  if (!sourceRecord) return buildBlankQuotation();
+
+  const duplicateId = quotationsStore.nextId();
+  const duplicateDraft = cloneQuotationRecord(sourceRecord);
+  const total = getQuotationGrandTotal(duplicateDraft.purchasedProducts);
+
+  duplicateDraft.quotation.id = duplicateId;
+  duplicateDraft.quotation.quoteNumber = `${getDocumentSequencePrefix("quotation")}${duplicateId}`;
+  duplicateDraft.quotation.issuedDate = getTodayDate();
+  duplicateDraft.quotation.dueDate = getDefaultDueDate();
+  duplicateDraft.quotation.client = buildDefaultClient();
+  duplicateDraft.quotation.avatar = "";
+  duplicateDraft.quotation.dealId = null;
+  duplicateDraft.quotation.linkedRecordType = null;
+  duplicateDraft.quotation.parentQuotationId = null;
+  duplicateDraft.quotation.isRevision = false;
+  duplicateDraft.quotation.revisionLabel = null;
+  duplicateDraft.quotation.quotationStatus = "Pending";
+  duplicateDraft.quotation.balance = 0;
+  duplicateDraft.quotation.total = total;
+  duplicateDraft.paymentDetails = buildQuotationPaymentDetails(
+    total,
+    configStore.legal,
+    configStore.financial,
+  );
+
+  return duplicateDraft;
+};
+
 const buildInitialQuotation = (): QuotationData => {
   const revisionOf = Number(route.query.revisionOf);
 
   if (Number.isFinite(revisionOf) && revisionOf > 0) {
     return buildRevisionDraft(revisionOf);
+  }
+
+  const duplicateOf = Number(route.query.duplicateOf);
+
+  if (Number.isFinite(duplicateOf) && duplicateOf > 0) {
+    return buildDuplicateDraft(duplicateOf);
   }
 
   const previewDraft = loadQuotationPreviewDraft();
@@ -230,7 +269,7 @@ const employeeOptions = computed(() =>
 );
 
 watch(
-  () => [route.query.revisionOf, route.query.restoreDraft],
+  () => [route.query.revisionOf, route.query.duplicateOf, route.query.restoreDraft],
   () => {
     quotationData.value = buildInitialQuotation();
     initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);

@@ -630,6 +630,17 @@ const openRevisionDraft = async (quotationId: number) => {
   );
 };
 
+const openDuplicateDraft = async (quotationId: number) => {
+  await router.push({
+    name: "apps-invoice-add",
+    query: { duplicateOf: String(quotationId) },
+  });
+
+  pushFinanceSuccess(
+    `Duplicate draft opened for ${getQuotationLabel(quotationId)}.`,
+  );
+};
+
 const pendingDeleteQuotationId = ref<number | null>(null);
 
 const pendingDeleteQuotation = computed(() => {
@@ -788,6 +799,12 @@ const computedMoreList = computed(() => {
       value: "revise",
       prependIcon: "tabler-refresh",
       onClick: () => openRevisionDraft(paramId),
+    },
+    {
+      title: "Duplicate",
+      value: "duplicate",
+      prependIcon: "tabler-copy",
+      onClick: () => openDuplicateDraft(paramId),
     },
     {
       title: "Share",

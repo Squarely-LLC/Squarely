@@ -743,6 +743,17 @@ const openRevisionDraft = async (quotationId: number) => {
   );
 };
 
+const openDuplicateDraft = async (quotationId: number) => {
+  await router.push({
+    name: "apps-quotation-add",
+    query: { duplicateOf: String(quotationId) },
+  });
+
+  pushFinanceSuccess(
+    `Duplicate draft opened for ${getQuotationLabel(quotationId)}.`,
+  );
+};
+
 const convertQuotationToProforma = (quotationId: number) => {
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
@@ -1023,6 +1034,12 @@ const computedMoreList = computed(() => {
           value: "revise",
           prependIcon: "tabler-refresh",
           onClick: () => openRevisionDraft(paramId),
+        },
+        {
+          title: "Duplicate",
+          value: "duplicate",
+          prependIcon: "tabler-copy",
+          onClick: () => openDuplicateDraft(paramId),
         },
         {
           title: "Convert to Proforma",

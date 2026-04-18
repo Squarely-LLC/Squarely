@@ -677,6 +677,17 @@ const openRevisionDraft = async (quotationId: number) => {
   );
 };
 
+const openDuplicateDraft = async (quotationId: number) => {
+  await router.push({
+    name: "apps-proforma-add",
+    query: { duplicateOf: String(quotationId) },
+  });
+
+  pushFinanceSuccess(
+    `Duplicate draft opened for ${getQuotationLabel(quotationId)}.`,
+  );
+};
+
 const convertProformaToInvoice = (quotationId: number) => {
   const proformaRecord = quotationsStore.byId(quotationId);
   if (!proformaRecord) return;
@@ -891,6 +902,12 @@ const computedMoreList = computed(() => {
           value: "revise",
           prependIcon: "tabler-refresh",
           onClick: () => openRevisionDraft(paramId),
+        },
+        {
+          title: "Duplicate",
+          value: "duplicate",
+          prependIcon: "tabler-copy",
+          onClick: () => openDuplicateDraft(paramId),
         },
         {
           title: "Convert to Tax invoice",
