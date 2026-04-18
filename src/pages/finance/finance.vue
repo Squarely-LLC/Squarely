@@ -5,6 +5,7 @@ import { useRouter } from "vue-router";
 import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
 import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
 import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
+import FinanceReceiptsTab from "@/views/apps/finance/FinanceReceiptsTab.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -149,6 +150,7 @@ watch(
           <FinanceQuotationsTab v-if="tabItem.key === 'quotations'" />
           <FinanceProformasTab v-else-if="tabItem.key === 'pro-forma'" />
           <FinanceInvoicesTab v-else-if="tabItem.key === 'invoice'" />
+          <FinanceReceiptsTab v-else-if="tabItem.key === 'receipt'" />
 
           <VCard v-else>
             <VCardText class="pa-6">

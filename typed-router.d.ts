@@ -56,6 +56,8 @@ declare module 'vue-router/auto-routes' {
     'apps-quotation-edit-id': RouteRecordInfo<'apps-quotation-edit-id', '/apps/quotation/edit/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     'apps-quotation-list': RouteRecordInfo<'apps-quotation-list', '/apps/quotation/list', Record<never, never>, Record<never, never>>,
     'apps-quotation-preview-id': RouteRecordInfo<'apps-quotation-preview-id', '/apps/quotation/preview/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
+    'apps-receipt-list': RouteRecordInfo<'apps-receipt-list', '/apps/receipt/list', Record<never, never>, Record<never, never>>,
+    'apps-receipt-preview-id': RouteRecordInfo<'apps-receipt-preview-id', '/apps/receipt/preview/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     'apps-roles': RouteRecordInfo<'apps-roles', '/apps/roles', Record<never, never>, Record<never, never>>,
     'apps-todo-list': RouteRecordInfo<'apps-todo-list', '/apps/todo/list', Record<never, never>, Record<never, never>>,
     'apps-todo-view-id': RouteRecordInfo<'apps-todo-view-id', '/apps/todo/view/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
