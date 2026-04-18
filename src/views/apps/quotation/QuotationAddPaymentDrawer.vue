@@ -28,12 +28,31 @@ const documentLabel = computed(
   () => props.documentLabel?.trim() || "Quotation",
 );
 const balanceLabel = computed(() => `${documentLabel.value} Balance`);
+const paymentMethodOptions = ["Bank Transfer", "Cash", "Credit Card"];
+
+const normalisePaymentMethod = (value?: string | null) => {
+  const normalized = value?.trim().toLowerCase() || "";
+
+  if (normalized === "cash") return "Cash";
+  if (normalized === "bank" || normalized === "bank transfer")
+    return "Bank Transfer";
+  if (
+    normalized === "credit" ||
+    normalized === "credit card" ||
+    normalized === "card" ||
+    normalized === "debit"
+  ) {
+    return "Credit Card";
+  }
+
+  return "Bank Transfer";
+};
 
 const resetForm = () => {
   quotationBalance.value = props.currentBalance.toLocaleString();
   paymentAmount.value = "";
   paymentDate.value = new Date().toISOString().slice(0, 10);
-  paymentMethod.value = props.defaultPaymentMethod?.trim() || "Cash";
+  paymentMethod.value = normalisePaymentMethod(props.defaultPaymentMethod);
   paymentNote.value = "";
   paymentAmountError.value = null;
   paymentDateError.value = null;
@@ -153,13 +172,7 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
                   v-model="paymentMethod"
                   label="Select Payment Method"
                   placeholder="Select Payment Method"
-                  :items="[
-                    'Cash',
-                    'Bank Transfer',
-                    'Debit',
-                    'Credit',
-                    'PayPal',
-                  ]"
+                  :items="paymentMethodOptions"
                   :error-messages="
                     paymentMethodError ? [paymentMethodError] : []
                   "

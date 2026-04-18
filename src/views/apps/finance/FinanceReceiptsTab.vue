@@ -6,7 +6,7 @@ import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { formatSystemDate } from "@core/utils/formatters";
 
 interface Emit {
-  (e: "create-receipt"): void;
+  (e: "create-receipt", mode: "squarely" | "attachment"): void;
   (e: "edit-receipt", receiptId: number): void;
 }
 
@@ -38,6 +38,7 @@ const pendingDeleteReceiptId = ref<number | null>(null);
 const isEmailDialogOpen = ref(false);
 const pendingEmailReceiptId = ref<number | null>(null);
 const emailDialogRef = ref<any | null>(null);
+const isCreateMenuOpen = ref(false);
 
 const headers = [
   { title: "Client", key: "client" },
@@ -123,8 +124,9 @@ const paginatedReceipts = computed(() => {
   return filteredReceipts.value.slice(start, end).map((entry) => entry.receipt);
 });
 
-const openCreateReceiptDrawer = () => {
-  emit("create-receipt");
+const openCreateReceiptDrawer = (mode: "squarely" | "attachment") => {
+  isCreateMenuOpen.value = false;
+  emit("create-receipt", mode);
 };
 
 const openEditReceiptDrawer = (receiptId: number) => {
@@ -394,9 +396,28 @@ watch(totalReceipts, (value) => {
             />
           </div>
 
-          <VBtn prepend-icon="tabler-plus" @click="openCreateReceiptDrawer">
-            Add Receipt
-          </VBtn>
+          <VMenu v-model="isCreateMenuOpen">
+            <template #activator="{ props }">
+              <VBtn v-bind="props" prepend-icon="tabler-plus">
+                Add Receipt
+              </VBtn>
+            </template>
+
+            <VList>
+              <VListItem
+                prepend-icon="tabler-building-estate"
+                @click="openCreateReceiptDrawer('squarely')"
+              >
+                From Squarely
+              </VListItem>
+              <VListItem
+                prepend-icon="tabler-paperclip"
+                @click="openCreateReceiptDrawer('attachment')"
+              >
+                Attachment from another system
+              </VListItem>
+            </VList>
+          </VMenu>
         </div>
       </VCardText>
       <VDivider />

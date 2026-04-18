@@ -48,6 +48,7 @@ const isDeleteDialogOpen = ref(false);
 const emailDialogRef = ref<any | null>(null);
 const hasExecutedAutoAction = ref(false);
 const isEmbeddedActionFrame = route.query.embedded === "1";
+const attachmentPreviewFrame = ref<HTMLIFrameElement | null>(null);
 
 const receiptRecord = computed(() =>
   receiptsStore.byId(String(route.params.id)),
@@ -247,7 +248,112 @@ const downloadAttachment = () => {
   downloadFile(externalFile);
 };
 
+const printExternalAttachment = async () => {
+  if (!externalAttachmentUrl.value) return false;
+
+  if (isPdfAttachment.value) {
+    try {
+      const previewWindow = attachmentPreviewFrame.value?.contentWindow;
+      if (!previewWindow) return false;
+
+      previewWindow.focus();
+      previewWindow.print();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (isImageAttachment.value) {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.tabIndex = -1;
+    iframe.style.position = "fixed";
+    iframe.style.insetInlineStart = "-2000px";
+    iframe.style.insetBlockStart = "0";
+    iframe.style.inlineSize = "1px";
+    iframe.style.blockSize = "1px";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+
+    const cleanup = () => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    };
+
+    const didPrint = await new Promise<boolean>((resolve) => {
+      iframe.onload = () => {
+        try {
+          const iframeDocument = iframe.contentDocument;
+          if (!iframeDocument) {
+            resolve(false);
+            cleanup();
+            return;
+          }
+
+          iframeDocument.open();
+          iframeDocument.write(
+            `<!doctype html><html><head><title>Print attachment</title><style>html,body{margin:0;padding:0;background:#fff;}img{display:block;max-width:100%;margin:0 auto;}</style></head><body><img id="print-image" src="${externalAttachmentUrl.value}" alt="${externalAttachmentName.value}"></body></html>`,
+          );
+          iframeDocument.close();
+
+          const printImage = iframeDocument.getElementById(
+            "print-image",
+          ) as HTMLImageElement | null;
+
+          if (!printImage) {
+            resolve(false);
+            cleanup();
+            return;
+          }
+
+          const triggerPrint = () => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+              resolve(true);
+            } catch {
+              resolve(false);
+            } finally {
+              window.setTimeout(cleanup, 1000);
+            }
+          };
+
+          if (printImage.complete) {
+            window.setTimeout(triggerPrint, 100);
+            return;
+          }
+
+          printImage.addEventListener("load", triggerPrint, { once: true });
+          printImage.addEventListener(
+            "error",
+            () => {
+              resolve(false);
+              cleanup();
+            },
+            { once: true },
+          );
+        } catch {
+          resolve(false);
+          cleanup();
+        }
+      };
+
+      document.body.appendChild(iframe);
+      iframe.src = "about:blank";
+    });
+
+    return didPrint;
+  }
+
+  return false;
+};
+
 const downloadReceipt = async () => {
+  if (receipt.value?.sourceType === "attachment" && hasAttachment.value) {
+    downloadAttachment();
+    return;
+  }
+
   if (!receipt.value) return;
 
   await nextTick();
@@ -264,6 +370,18 @@ const downloadReceipt = async () => {
 };
 
 const printReceipt = async () => {
+  if (receipt.value?.sourceType === "attachment" && hasAttachment.value) {
+    const didPrintAttachment = await printExternalAttachment();
+    if (!didPrintAttachment) {
+      notifications.push(
+        "Attachment preview is not printable for this file type. Download the file instead.",
+        "warning",
+        4000,
+      );
+    }
+    return;
+  }
+
   await nextTick();
   window.print();
 };
@@ -424,9 +542,29 @@ watch(
 );
 
 watch(
-  () => receipt.value?.id,
-  (receiptId) => {
+  () =>
+    [
+      receipt.value?.id,
+      receipt.value?.sourceType,
+      receipt.value?.attachmentFileKey,
+      externalAttachmentUrl.value,
+      !!externalAttachmentBlob.value,
+    ] as const,
+  async ([
+    receiptId,
+    sourceType,
+    attachmentFileKey,
+    attachmentUrl,
+    hasBlob,
+  ]) => {
     if (!isEmbeddedActionFrame || !receiptId) return;
+
+    const needsAttachmentLoad =
+      sourceType === "attachment" && Boolean(attachmentFileKey);
+
+    if (needsAttachmentLoad && !attachmentUrl && !hasBlob) return;
+
+    await nextTick();
 
     window.parent?.postMessage(
       {
@@ -615,6 +753,7 @@ onBeforeUnmount(() => {
             </div>
 
             <iframe
+              ref="attachmentPreviewFrame"
               v-if="externalAttachmentUrl && isPdfAttachment"
               :src="externalAttachmentUrl"
               class="receipt-attachment-frame"

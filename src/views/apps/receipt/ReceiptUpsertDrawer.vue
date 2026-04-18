@@ -37,6 +37,7 @@ export type ReceiptDrawerSubmitPayload = {
 interface Props {
   isDrawerOpen: boolean;
   editingReceipt?: ReceiptRecord | null;
+  creationMode?: "squarely" | "attachment";
   clientOptions: ReceiptClientOption[];
   invoiceOptions: ReceiptDocumentOption[];
   proformaOptions: ReceiptDocumentOption[];
@@ -73,13 +74,17 @@ const allowedAttachmentExtensions = [
 ];
 const attachmentAccept = allowedAttachmentExtensions.join(",");
 const maxAttachmentSizeBytes = 10 * 1024 * 1024;
-const paymentMethodOptions = ["Bank", "Card", "Credit"];
+const paymentMethodOptions = ["Bank Transfer", "Cash", "Credit Card"];
 
 const normalisePaymentMethod = (value?: string | null) => {
   const normalized = value?.trim().toLowerCase() || "";
 
   if (normalized === "bank" || normalized === "bank transfer") {
-    return "Bank";
+    return "Bank Transfer";
+  }
+
+  if (normalized === "cash") {
+    return "Cash";
   }
 
   if (
@@ -87,19 +92,19 @@ const normalisePaymentMethod = (value?: string | null) => {
     normalized === "credit card" ||
     normalized === "debit"
   ) {
-    return "Card";
+    return "Credit Card";
   }
 
   if (normalized === "credit") {
-    return "Credit";
+    return "Credit Card";
   }
 
-  return "Bank";
+  return "Bank Transfer";
 };
 
 const receivedDate = ref("");
 const amount = ref<string | number>("");
-const paymentMethod = ref("Bank");
+const paymentMethod = ref("Bank Transfer");
 const selectedClientKey = ref("");
 const relatedDocumentKey = ref<string | null>(null);
 const clientName = ref("");
@@ -114,11 +119,29 @@ const receivedDateError = ref<string | null>(null);
 const amountError = ref<string | null>(null);
 const paymentMethodError = ref<string | null>(null);
 const clientError = ref<string | null>(null);
+const relatedDocumentError = ref<string | null>(null);
 const clientEmailError = ref<string | null>(null);
 const attachmentError = ref<string | null>(null);
 
 const drawerTitle = computed(() =>
-  props.editingReceipt ? "Edit Receipt" : "Add Receipt",
+  props.editingReceipt
+    ? "Edit Receipt"
+    : props.creationMode === "attachment"
+      ? "Add External Receipt"
+      : "Add Squarely Receipt",
+);
+const isSquarelyCreateMode = computed(
+  () => !props.editingReceipt && props.creationMode === "squarely",
+);
+const isAttachmentCreateMode = computed(
+  () => !props.editingReceipt && props.creationMode === "attachment",
+);
+const showRelatedDocumentFields = computed(() => true);
+const showAttachmentField = computed(
+  () =>
+    isAttachmentCreateMode.value ||
+    props.editingReceipt?.receipt.sourceType === "attachment" ||
+    Boolean(props.editingReceipt?.receipt.attachmentFileKey),
 );
 
 const selectedAttachment = computed<File | null>(() => {
@@ -217,7 +240,9 @@ const currentAvailableAmount = computed(() => {
 const selectedBalanceText = computed(() => {
   const relatedDocument = selectedRelatedDocument.value;
   if (!relatedDocument) {
-    return "Total Balance: select a related invoice or proforma.";
+    return isAttachmentCreateMode.value
+      ? "Total Balance: optionally link a related invoice or proforma."
+      : "Total Balance: select a related invoice or proforma.";
   }
 
   const balance = currentAvailableAmount.value ?? 0;
@@ -229,12 +254,17 @@ const isFlaggedState = computed(
     inferredSourceType.value === "manual" ||
     inferredSourceType.value === "attachment",
 );
+const isAttachmentOnlyReceipt = computed(
+  () =>
+    inferredSourceType.value === "attachment" && !selectedRelatedDocument.value,
+);
 
 const resetValidation = () => {
   receivedDateError.value = null;
   amountError.value = null;
   paymentMethodError.value = null;
   clientError.value = null;
+  relatedDocumentError.value = null;
   clientEmailError.value = null;
   attachmentError.value = null;
 };
@@ -278,7 +308,7 @@ const resetForm = () => {
 
   receivedDate.value = new Date().toISOString().slice(0, 10);
   amount.value = "";
-  paymentMethod.value = "Bank";
+  paymentMethod.value = "Bank Transfer";
   selectedClientKey.value = "";
   relatedDocumentKey.value = null;
   applyClient(null);
@@ -318,9 +348,15 @@ watch(selectedClientKey, (value) => {
 watch(relatedDocumentKey, () => {
   const relatedDocument = selectedRelatedDocument.value;
   if (!relatedDocument) {
+    if (isSquarelyCreateMode.value) {
+      relatedDocumentError.value =
+        "Link this receipt to an invoice or proforma";
+    }
     applyClient(selectedClient.value?.client ?? null);
     return;
   }
+
+  relatedDocumentError.value = null;
 
   if (selectedClientKey.value !== relatedDocument.clientKey) {
     selectedClientKey.value = relatedDocument.clientKey;
@@ -339,6 +375,9 @@ watch(relatedDocumentKey, () => {
 
 const validateAttachment = () => {
   const file = selectedAttachment.value;
+  if (isAttachmentCreateMode.value && !file) {
+    return "Attachment is required for receipts from another system.";
+  }
   if (!file) return "";
 
   const fileName = file.name.toLowerCase();
@@ -376,7 +415,14 @@ const onSubmit = () => {
   paymentMethodError.value = paymentMethod.value.trim()
     ? null
     : "Select a payment method";
-  clientError.value = clientName.value.trim() ? null : "Select a client";
+  relatedDocumentError.value =
+    isSquarelyCreateMode.value && !selectedRelatedDocument.value
+      ? "Link this receipt to an invoice or proforma"
+      : null;
+  clientError.value =
+    isAttachmentOnlyReceipt.value || clientName.value.trim()
+      ? null
+      : "Select a client";
   clientEmailError.value = trimmedEmail
     ? emailValidator(trimmedEmail) === true
       ? null
@@ -389,6 +435,7 @@ const onSubmit = () => {
     amountError.value ||
     paymentMethodError.value ||
     clientError.value ||
+    relatedDocumentError.value ||
     clientEmailError.value ||
     attachmentError.value
   ) {
@@ -475,28 +522,39 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
               <VCol cols="12">
                 <AppSelect
                   v-model="selectedClientKey"
-                  label="Name"
-                  placeholder="Select client"
+                  :label="isAttachmentCreateMode ? 'Client (optional)' : 'Name'"
+                  :placeholder="
+                    isAttachmentCreateMode
+                      ? 'Select client if available'
+                      : 'Select client'
+                  "
                   :items="availableClientOptions"
                   :error-messages="clientError ? [clientError] : []"
                 />
               </VCol>
 
-              <VCol cols="12">
+              <VCol v-if="showRelatedDocumentFields" cols="12">
                 <div class="text-body-2 text-medium-emphasis">
                   {{ selectedBalanceText }}
                 </div>
               </VCol>
 
-              <VCol cols="12">
+              <VCol v-if="showRelatedDocumentFields" cols="12">
                 <AppSelect
                   v-model="relatedDocumentKey"
                   label="Payment Related To"
-                  placeholder="Select invoice or proforma"
+                  :placeholder="
+                    isAttachmentCreateMode
+                      ? 'Optionally link invoice or proforma'
+                      : 'Select invoice or proforma'
+                  "
                   :items="availableRelatedOptions"
                   clearable
                   clear-icon="tabler-x"
                   :disabled="!selectedClientKey"
+                  :error-messages="
+                    relatedDocumentError ? [relatedDocumentError] : []
+                  "
                 />
               </VCol>
 
@@ -541,7 +599,7 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
                 />
               </VCol>
 
-              <VCol cols="12">
+              <VCol v-if="showAttachmentField" cols="12">
                 <VFileInput
                   v-model="attachment"
                   label="Attachment File"
@@ -560,8 +618,18 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
                   variant="tonal"
                   border="start"
                 >
-                  This receipt will be flagged unless it is linked to a Squarely
-                  invoice or proforma.
+                  <template v-if="isAttachmentCreateMode">
+                    This receipt will be created as an attachment-only receipt
+                    from another system. It can still be linked to an invoice or
+                    proforma.
+                  </template>
+                  <template v-else-if="isSquarelyCreateMode">
+                    Squarely receipts must be linked to an invoice or proforma.
+                  </template>
+                  <template v-else>
+                    This receipt will be flagged unless it is linked to a
+                    Squarely invoice or proforma.
+                  </template>
                 </VAlert>
               </VCol>
 

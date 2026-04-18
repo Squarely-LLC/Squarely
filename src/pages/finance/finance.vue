@@ -98,6 +98,7 @@ const tabsData = [
 const activeTab = ref<number | null>(null);
 const isReceiptDrawerOpen = ref(false);
 const editingReceiptId = ref<number | null>(null);
+const receiptCreationMode = ref<"squarely" | "attachment">("squarely");
 
 const createClientKey = (name: string, email: string) =>
   `${name.trim().toLowerCase()}::${email.trim().toLowerCase()}`;
@@ -190,19 +191,22 @@ const clientOptions = computed<ReceiptClientOption[]>(() => {
   return mergeClientOptions([...contactOptions, ...documentClients]);
 });
 
-const openCreateReceiptDrawer = () => {
+const openCreateReceiptDrawer = (mode: "squarely" | "attachment") => {
   editingReceiptId.value = null;
+  receiptCreationMode.value = mode;
   isReceiptDrawerOpen.value = true;
 };
 
 const openEditReceiptDrawer = (receiptId: number) => {
   editingReceiptId.value = receiptId;
+  receiptCreationMode.value = "squarely";
   isReceiptDrawerOpen.value = true;
 };
 
 const closeReceiptDrawer = () => {
   isReceiptDrawerOpen.value = false;
   editingReceiptId.value = null;
+  receiptCreationMode.value = "squarely";
 };
 
 const saveReceipt = async (payload: ReceiptDrawerSubmitPayload) => {
@@ -337,6 +341,7 @@ watch(
   <ReceiptUpsertDrawer
     v-model:is-drawer-open="isReceiptDrawerOpen"
     :editing-receipt="editingReceipt"
+    :creation-mode="receiptCreationMode"
     :client-options="clientOptions"
     :invoice-options="invoiceOptions"
     :proforma-options="proformaOptions"
