@@ -8,6 +8,7 @@ const buildInvoiceReceipt = (
   id: number,
   invoiceId: number,
   amount: number,
+  linkedPaymentId: string | null = null,
 ): ReceiptRecord => {
   const invoiceRecord = invoiceDatabase.find(
     (record) => record.quotation.id === invoiceId,
@@ -23,6 +24,7 @@ const buildInvoiceReceipt = (
       receiptNumber: `RV-${id}`,
       issuedDate: `${year}-04-0${(id % 7) + 1}`,
       receivedDate: `${year}-04-0${(id % 7) + 1}`,
+      linkedPaymentId,
       client: { ...invoiceRecord.quotation.client },
       amount,
       avatar: invoiceRecord.quotation.avatar || "",
@@ -44,6 +46,7 @@ const buildProformaReceipt = (
   id: number,
   proformaId: number,
   amount: number,
+  linkedPaymentId: string | null = null,
 ): ReceiptRecord => {
   const proformaRecord = proformaDatabase.find(
     (record) => record.quotation.id === proformaId,
@@ -59,6 +62,7 @@ const buildProformaReceipt = (
       receiptNumber: `RV-${id}`,
       issuedDate: `${year}-04-${String((id % 7) + 10).padStart(2, "0")}`,
       receivedDate: `${year}-04-${String((id % 7) + 10).padStart(2, "0")}`,
+      linkedPaymentId,
       client: { ...proformaRecord.quotation.client },
       amount,
       avatar: proformaRecord.quotation.avatar || "",
@@ -106,7 +110,7 @@ const buildFlaggedReceipt = (): ReceiptRecord => ({
 });
 
 export const database: ReceiptRecord[] = [
-  buildInvoiceReceipt(9101, 6301, 2100),
-  buildProformaReceipt(9102, 6201, 3200),
+  buildInvoiceReceipt(9101, 6301, 2100, "inv-pay-6301-1"),
+  buildProformaReceipt(9102, 6201, 3200, "pf-pay-6201-1"),
   buildFlaggedReceipt(),
 ];

@@ -20,7 +20,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.proformas.v1";
+const STORAGE_KEY = "app.proformas.v2";
 type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
   quotation?: Partial<Proforma>;
 };

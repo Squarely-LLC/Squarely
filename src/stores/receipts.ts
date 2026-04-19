@@ -9,7 +9,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.receipts.v1";
+const STORAGE_KEY = "app.receipts.v2";
 
 type ReceiptPayload = Omit<Partial<ReceiptRecord>, "receipt"> & {
   receipt?: Partial<Receipt>;

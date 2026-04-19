@@ -6,11 +6,12 @@ import type {
   ExpenseStatus,
   ExpenseSupplier,
 } from "@/plugins/fake-api/handlers/apps/expense/types";
+import { useContactsStore } from "@/stores/contacts";
 import { saveFile } from "@/utils/fileStore";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.expenses.v1";
+const STORAGE_KEY = "app.expenses.v2";
 
 const SEEDED_ATTACHMENT_FACTORIES: Record<
   number,
@@ -38,9 +39,9 @@ BT
 (Office Supplies Bill) Tj
 0 -28 Td
 /F1 12 Tf
-(Supplier: Office Depot) Tj
+(Supplier: Nora Farouk) Tj
 0 -20 Td
-(Invoice: OD-4821) Tj
+(Invoice: NF-4821) Tj
 0 -20 Td
 (Bill Date: 2026-04-12) Tj
 0 -20 Td
@@ -561,6 +562,7 @@ export const useExpensesStore = defineStore("expenses", {
       const hydratedItems = await ensureSeedExpenseAttachments(initialItems);
 
       this.items = hydratedItems.map((record) => sanitizeStoredRecord(record));
+      this.syncSupplierContactFlags();
 
       saveToStorage(this.items);
       this.initialized = true;
@@ -588,6 +590,7 @@ export const useExpensesStore = defineStore("expenses", {
       const id = incomingId ?? nextExpenseId(this.items);
       const normalised = normaliseExpenseRecord(payload, id);
       this.items.unshift(normalised);
+      this.flagSupplierContact(normalised.expense.supplier);
       return this.byId(id);
     },
 
@@ -599,6 +602,7 @@ export const useExpensesStore = defineStore("expenses", {
 
       const updated = mergeExpenseRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
+      this.flagSupplierContact(updated.expense.supplier);
       return this.byId(id);
     },
 
@@ -629,6 +633,39 @@ export const useExpensesStore = defineStore("expenses", {
       this.items = this.items.filter(
         (record) => String(record.expense.id) !== String(id),
       );
+    },
+
+    flagSupplierContact(supplier: ExpenseSupplier | null | undefined) {
+      const supplierId = Number(supplier?.id);
+      if (!Number.isFinite(supplierId) || supplierId <= 0) return;
+
+      const contactsStore = useContactsStore();
+      contactsStore.init();
+
+      const contact = contactsStore.byId(supplierId);
+      if (!contact || contact.class === "Supplier") return;
+
+      contactsStore.updateContact(supplierId, { class: "Supplier" });
+    },
+
+    syncSupplierContactFlags() {
+      const uniqueSupplierIds = new Set<number>();
+
+      this.items.forEach((record) => {
+        const supplierId = Number(record.expense.supplier.id);
+        if (!Number.isFinite(supplierId) || supplierId <= 0) return;
+        uniqueSupplierIds.add(supplierId);
+      });
+
+      uniqueSupplierIds.forEach((supplierId) => {
+        this.flagSupplierContact({
+          id: supplierId,
+          name: "",
+          email: "",
+          phone: "",
+          address: "",
+        });
+      });
     },
   },
 });

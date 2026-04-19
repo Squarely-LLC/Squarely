@@ -12,6 +12,7 @@ import UserTabAccount from "@/views/apps/contact/view/UserTabAccount.vue";
 import UserTabDocuments from "@/views/apps/contact/view/UserTabDocuments.vue";
 import UserTabNotifications from "@/views/apps/contact/view/UserTabNotifications.vue";
 import UserTabRecords from "@/views/apps/contact/view/UserTabRecords.vue";
+import UserTabSOA from "@/views/apps/contact/view/UserTabSOA.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 
 const route = useRoute("apps-contact-view-id");
@@ -65,13 +66,13 @@ const resolveContact = () => {
 const userTab = ref<number | null>(null);
 
 // stable keys for tabs used in the URL query param (order must match `tabs`)
-const tabKeys = ["account", "documents", "records", "notifications"] as const;
+const tabKeys = ["account", "documents", "records", "soa", "notifications"] as const;
 
 const tabs = [
   { icon: "tabler-users", title: "Account" },
   { icon: "tabler-folder", title: "Documents" },
   { icon: "tabler-file-text", title: "Records" },
-
+  { icon: "tabler-report-money", title: "SOA" },
   { icon: "tabler-bell", title: "Notifications" },
 ] as const;
 
@@ -261,6 +262,10 @@ watch(
             @open-add-record="handleAddRecordRequest"
             @edit-record="handleEditRecordRequest"
           />
+        </VWindowItem>
+
+        <VWindowItem>
+          <UserTabSOA :user="contact" />
         </VWindowItem>
 
         <VWindowItem>

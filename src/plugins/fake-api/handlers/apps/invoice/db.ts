@@ -64,6 +64,7 @@ const buildStandaloneRecord = (
   overrides: Partial<InvoiceRecord["quotation"]> & {
     client: InvoiceRecord["quotation"]["client"];
   },
+  payments: InvoiceRecord["payments"] = [],
 ): InvoiceRecord => ({
   quotation: {
     id,
@@ -91,7 +92,7 @@ const buildStandaloneRecord = (
     iban: "LB12345678901234567890123456",
     swiftCode: "BYBALBBX",
   },
-  payments: [],
+  payments,
   purchasedProducts: defaultPurchasedProducts(),
   note: "Pricing is valid for 14 days from the issue date.",
   showClientNote: true,
@@ -157,14 +158,36 @@ const standaloneRecords: InvoiceRecord[] = [
     service: "Interior fit-out invoice",
     dealId: 401,
     linkedRecordType: "deal",
-  }),
+  }, [
+    {
+      id: "inv-pay-6301-1",
+      amount: 2100,
+      date: `${year}-04-14`,
+      method: "Bank Transfer",
+      note: "Initial partial payment posted by finance.",
+      createdAt: `${year}-04-14T10:00:00Z`,
+      balanceBefore: 4200,
+      balanceAfter: 2100,
+    },
+  ]),
   buildStandaloneRecord(6302, "Partially Paid", getSeedAvatar(5), {
     total: 7600,
     client: getSeedClient(5),
     service: "Retail branch execution invoice",
     dealId: 402,
     linkedRecordType: "deal",
-  }),
+  }, [
+    {
+      id: "inv-pay-6302-1",
+      amount: 3200,
+      date: `${year}-04-12`,
+      method: "Credit Card",
+      note: "Card settlement batch 1.",
+      createdAt: `${year}-04-12T12:00:00Z`,
+      balanceBefore: 7600,
+      balanceAfter: 4400,
+    },
+  ]),
   buildStandaloneRecord(6311, "Paid", getSeedAvatar(5), {
     quoteNumber: "INV-6302-R1",
     total: 7350,
@@ -175,7 +198,18 @@ const standaloneRecords: InvoiceRecord[] = [
     parentQuotationId: 6302,
     isRevision: true,
     revisionLabel: "R1",
-  }),
+  }, [
+    {
+      id: "inv-pay-6311-1",
+      amount: 7350,
+      date: `${year}-04-16`,
+      method: "Bank Transfer",
+      note: "Revision invoice settled in full.",
+      createdAt: `${year}-04-16T14:30:00Z`,
+      balanceBefore: 7350,
+      balanceAfter: 0,
+    },
+  ]),
 ];
 
 export const database: InvoiceRecord[] = [

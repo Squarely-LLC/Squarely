@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { database as invoiceSeedDatabase } from "@/plugins/fake-api/handlers/apps/invoice/db";
 
-const STORAGE_KEY = "app.debit-notes.v1";
+const STORAGE_KEY = "app.debit-notes.v2";
 
 export type DebitNoteStatus = "Draft" | "Issued" | "Voided";
 

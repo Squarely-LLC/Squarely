@@ -1,7 +1,8 @@
+import { database as expenseSeedDatabase } from "@/plugins/fake-api/handlers/apps/expense/db";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.payment-vouchers.v1";
+const STORAGE_KEY = "app.payment-vouchers.v2";
 
 export type PaymentVoucherRecord = {
   id: string;
@@ -98,6 +99,37 @@ function normaliseVoucher(input: PaymentVoucherInput): PaymentVoucherRecord {
   });
 }
 
+function buildSeedVouchers(): PaymentVoucherRecord[] {
+  const seedVouchers: PaymentVoucherRecord[] = [];
+
+  expenseSeedDatabase.forEach((record) => {
+    const expense = record.expense;
+    const payments = Array.isArray(record.payments) ? record.payments : [];
+
+    payments.forEach((payment, index) => {
+      seedVouchers.push(
+        sanitizeVoucher({
+          id: payment.id || `seed-voucher-${expense.id}-${index + 1}`,
+          voucherNumber:
+            payment.voucherNumber || `PV-SEED-${expense.id}-${index + 1}`,
+          billId: Number(expense.id) || 0,
+          billNumber: expense.billNumber || "",
+          supplierName: expense.supplier.name || "",
+          amount: Number(payment.amount) || 0,
+          date: payment.date || expense.billDate,
+          paymentMethod: payment.method || expense.paymentMethod || "Cash",
+          paymentNote: payment.note || record.note || "",
+          linkedPaymentId:
+            payment.id || `seed-payment-${expense.id}-${index + 1}`,
+          createdAt: payment.createdAt || new Date().toISOString(),
+        }),
+      );
+    });
+  });
+
+  return seedVouchers;
+}
+
 export const usePaymentVouchersStore = defineStore("paymentVouchers", {
   state: () => ({
     items: [] as PaymentVoucherRecord[],
@@ -115,7 +147,7 @@ export const usePaymentVouchersStore = defineStore("paymentVouchers", {
       const stored = loadFromStorage();
       this.items = stored?.length
         ? stored.map((record) => sanitizeVoucher(record))
-        : [];
+        : buildSeedVouchers();
 
       saveToStorage(this.items);
       this.initialized = true;

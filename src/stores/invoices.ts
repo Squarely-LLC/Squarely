@@ -20,7 +20,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.invoices.v1";
+const STORAGE_KEY = "app.invoices.v2";
 type InvoicePayload = Omit<Partial<InvoiceRecord>, "quotation"> & {
   quotation?: Partial<Invoice>;
 };

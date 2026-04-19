@@ -64,6 +64,7 @@ const buildStandaloneRecord = (
   overrides: Partial<ProformaRecord["quotation"]> & {
     client: ProformaRecord["quotation"]["client"];
   },
+  payments: ProformaRecord["payments"] = [],
 ): ProformaRecord => ({
   quotation: {
     id,
@@ -91,7 +92,7 @@ const buildStandaloneRecord = (
     iban: "LB12345678901234567890123456",
     swiftCode: "BYBALBBX",
   },
-  payments: [],
+  payments,
   purchasedProducts: defaultPurchasedProducts(),
   note: "Pricing is valid for 14 days from the issue date.",
   showClientNote: true,
@@ -157,14 +158,36 @@ const standaloneRecords: ProformaRecord[] = [
     service: "Interior fit-out proforma",
     dealId: 301,
     linkedRecordType: "deal",
-  }),
+  }, [
+    {
+      id: "pf-pay-6201-1",
+      amount: 3200,
+      date: `${year}-04-15`,
+      method: "Bank Transfer",
+      note: "Client advance receipt.",
+      createdAt: `${year}-04-15T11:00:00Z`,
+      balanceBefore: 4200,
+      balanceAfter: 1000,
+    },
+  ]),
   buildStandaloneRecord(6202, "Partially Paid", getSeedAvatar(5), {
     total: 7600,
     client: getSeedClient(5),
     service: "Retail branch design package",
     dealId: 302,
     linkedRecordType: "deal",
-  }),
+  }, [
+    {
+      id: "pf-pay-6202-1",
+      amount: 1500,
+      date: `${year}-04-11`,
+      method: "Cash",
+      note: "Initial proforma deposit.",
+      createdAt: `${year}-04-11T09:40:00Z`,
+      balanceBefore: 7600,
+      balanceAfter: 6100,
+    },
+  ]),
   buildStandaloneRecord(6203, "Not Paid", "", {
     total: 3100,
     client: getSeedClient(7),
