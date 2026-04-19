@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useContactsStore } from "@/stores/contacts";
 import { useConfigStore } from "@/stores/config";
+import type { CreditNoteRecord } from "@/stores/creditNotes";
 import { useCreditNotesStore } from "@/stores/creditNotes";
+import type { DebitNoteRecord } from "@/stores/debitNotes";
 import { useDebitNotesStore } from "@/stores/debitNotes";
 import { useExpensesStore } from "@/stores/expenses";
 import type { ExpensePaymentInput } from "@/stores/expenses";
@@ -28,6 +30,13 @@ import { useRouter } from "vue-router";
 
 import FinanceExpensesTab from "@/views/apps/finance/FinanceExpensesTab.vue";
 import FinanceCreditNotesTab from "@/views/apps/finance/FinanceCreditNotesTab.vue";
+import CreditNoteUpsertDrawer, {
+  type CreditNoteDrawerSubmitPayload,
+} from "@/views/apps/finance/CreditNoteUpsertDrawer.vue";
+import DebitNoteUpsertDrawer, {
+  type DebitNoteDrawerSubmitPayload,
+  type DebitNoteInvoiceOption,
+} from "@/views/apps/finance/DebitNoteUpsertDrawer.vue";
 import FinanceDebitNotesTab from "@/views/apps/finance/FinanceDebitNotesTab.vue";
 import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
 import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
@@ -124,8 +133,12 @@ const activeTab = ref<number | null>(null);
 const isExpenseDrawerOpen = ref(false);
 const isExpensePaymentDrawerOpen = ref(false);
 const isReceiptDrawerOpen = ref(false);
+const isDebitNoteDrawerOpen = ref(false);
+const isCreditNoteDrawerOpen = ref(false);
 const editingExpenseId = ref<number | null>(null);
 const editingReceiptId = ref<number | null>(null);
+const editingDebitNoteId = ref<number | null>(null);
+const editingCreditNoteId = ref<number | null>(null);
 const receiptCreationMode = ref<"squarely" | "attachment">("squarely");
 const pendingExpensePaymentPayload = ref<ExpenseDrawerSubmitPayload | null>(null);
 const allowExpensePaymentEditing = ref(true);
@@ -198,6 +211,16 @@ const editingExpense = computed(() =>
     ? null
     : expensesStore.byId(editingExpenseId.value),
 );
+const editingDebitNote = computed<DebitNoteRecord | null>(() =>
+  editingDebitNoteId.value === null
+    ? null
+    : debitNotesStore.byId(editingDebitNoteId.value),
+);
+const editingCreditNote = computed<CreditNoteRecord | null>(() =>
+  editingCreditNoteId.value === null
+    ? null
+    : creditNotesStore.byId(editingCreditNoteId.value),
+);
 
 const invoiceOptions = computed<ReceiptDocumentOption[]>(() =>
   invoicesStore.all
@@ -209,6 +232,19 @@ const proformaOptions = computed<ReceiptDocumentOption[]>(() =>
   proformasStore.all
     .filter((record) => !record.quotation.parentQuotationId)
     .map((record) => mapDocumentOption(record, "proforma")),
+);
+
+const noteInvoiceOptions = computed<DebitNoteInvoiceOption[]>(() =>
+  invoicesStore.all
+    .filter((record) => !record.quotation.parentQuotationId)
+    .map((record) => ({
+      title: `${record.quotation.quoteNumber} | ${record.quotation.client.name} | $${record.quotation.total.toLocaleString()}`,
+      value: String(record.quotation.id),
+      invoiceId: record.quotation.id,
+      invoiceNumber: record.quotation.quoteNumber,
+      clientName: record.quotation.client.name || "-",
+      total: Number(record.quotation.total || 0),
+    })),
 );
 
 const clientOptions = computed<ReceiptClientOption[]>(() => {
@@ -303,6 +339,60 @@ const closeReceiptDrawer = () => {
 const closeExpenseDrawer = () => {
   isExpenseDrawerOpen.value = false;
   editingExpenseId.value = null;
+};
+
+const openCreateDebitNoteDrawer = () => {
+  editingDebitNoteId.value = null;
+  isDebitNoteDrawerOpen.value = true;
+};
+
+const openEditDebitNoteDrawer = (noteId: number) => {
+  editingDebitNoteId.value = noteId;
+  isDebitNoteDrawerOpen.value = true;
+};
+
+const closeDebitNoteDrawer = () => {
+  isDebitNoteDrawerOpen.value = false;
+  editingDebitNoteId.value = null;
+};
+
+const saveDebitNote = (payload: DebitNoteDrawerSubmitPayload) => {
+  if (payload.id) {
+    debitNotesStore.updateNote(payload.id, payload);
+    notifications.push("Debit note updated successfully.", "success", 3500);
+  } else {
+    debitNotesStore.addNote(payload);
+    notifications.push("Debit note created successfully.", "success", 3500);
+  }
+
+  closeDebitNoteDrawer();
+};
+
+const openCreateCreditNoteDrawer = () => {
+  editingCreditNoteId.value = null;
+  isCreditNoteDrawerOpen.value = true;
+};
+
+const openEditCreditNoteDrawer = (noteId: number) => {
+  editingCreditNoteId.value = noteId;
+  isCreditNoteDrawerOpen.value = true;
+};
+
+const closeCreditNoteDrawer = () => {
+  isCreditNoteDrawerOpen.value = false;
+  editingCreditNoteId.value = null;
+};
+
+const saveCreditNote = (payload: CreditNoteDrawerSubmitPayload) => {
+  if (payload.id) {
+    creditNotesStore.updateNote(payload.id, payload);
+    notifications.push("Credit note updated successfully.", "success", 3500);
+  } else {
+    creditNotesStore.addNote(payload);
+    notifications.push("Credit note created successfully.", "success", 3500);
+  }
+
+  closeCreditNoteDrawer();
 };
 
 const closeExpensePaymentDrawer = () => {
@@ -527,8 +617,16 @@ watch(
             @edit-expense="openEditExpenseDrawer"
             @pay-expense="openPayExpenseDrawer"
           />
-          <FinanceDebitNotesTab v-else-if="tabItem.key === 'debit-note'" />
-          <FinanceCreditNotesTab v-else-if="tabItem.key === 'credit-note'" />
+          <FinanceDebitNotesTab
+            v-else-if="tabItem.key === 'debit-note'"
+            @create-debit-note="openCreateDebitNoteDrawer"
+            @edit-debit-note="openEditDebitNoteDrawer"
+          />
+          <FinanceCreditNotesTab
+            v-else-if="tabItem.key === 'credit-note'"
+            @create-credit-note="openCreateCreditNoteDrawer"
+            @edit-credit-note="openEditCreditNoteDrawer"
+          />
           <FinanceReceiptsTab
             v-else-if="tabItem.key === 'receipt'"
             @create-receipt="openCreateReceiptDrawer"
@@ -581,6 +679,20 @@ watch(
     :existing-payments="pendingExpensePayments"
     @submit="saveExpensePayment($event, pendingExpensePaymentPayload)"
     @update:is-drawer-open="$event ? (isExpensePaymentDrawerOpen = true) : closeExpensePaymentDrawer()"
+  />
+
+  <DebitNoteUpsertDrawer
+    v-model:is-drawer-open="isDebitNoteDrawerOpen"
+    :editing-note="editingDebitNote"
+    :invoice-options="noteInvoiceOptions"
+    @submit="saveDebitNote"
+  />
+
+  <CreditNoteUpsertDrawer
+    v-model:is-drawer-open="isCreditNoteDrawerOpen"
+    :editing-note="editingCreditNote"
+    :invoice-options="noteInvoiceOptions"
+    @submit="saveCreditNote"
   />
 </template>
 

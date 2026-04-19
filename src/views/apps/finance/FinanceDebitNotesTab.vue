@@ -1,26 +1,21 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useDebitNotesStore } from "@/stores/debitNotes";
-import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { formatSystemDate } from "@core/utils/formatters";
 
-type InvoiceOption = {
-  title: string;
-  value: string;
-  invoiceId: number;
-  invoiceNumber: string;
-  clientName: string;
-  total: number;
-};
+interface Emit {
+  (e: "create-debit-note"): void;
+  (e: "edit-debit-note", noteId: number): void;
+}
+
+const emit = defineEmits<Emit>();
 
 const debitNotesStore = useDebitNotesStore();
-const invoicesStore = useInvoicesStore();
 const notifications = useNotificationsStore();
 const router = useRouter();
 
 debitNotesStore.init();
-invoicesStore.init();
 
 const searchQuery = ref("");
 const selectedStatus = ref<"Draft" | "Issued" | "Voided" | null>(null);
@@ -28,20 +23,6 @@ const itemsPerPage = ref(10);
 const page = ref(1);
 const sortBy = ref<string>();
 const orderBy = ref<string>();
-
-const isDrawerOpen = ref(false);
-const editingNoteId = ref<number | null>(null);
-
-const linkedInvoice = ref<string>("");
-const issuedDate = ref("");
-const amount = ref<string | number>("");
-const reason = ref("");
-const internalNote = ref("");
-const status = ref<"Draft" | "Issued" | "Voided">("Draft");
-
-const invoiceError = ref<string | null>(null);
-const dateError = ref<string | null>(null);
-const amountError = ref<string | null>(null);
 
 const isDeleteDialogOpen = ref(false);
 const pendingDeleteId = ref<number | null>(null);
@@ -61,29 +42,7 @@ const statusColor = (value: string) => {
   return "warning";
 };
 
-const invoiceOptions = computed<InvoiceOption[]>(() =>
-  invoicesStore.all
-    .filter((record) => !record.quotation.parentQuotationId)
-    .map((record) => ({
-      title: `${record.quotation.quoteNumber} | ${record.quotation.client.name} | $${record.quotation.total.toLocaleString()}`,
-      value: String(record.quotation.id),
-      invoiceId: record.quotation.id,
-      invoiceNumber: record.quotation.quoteNumber,
-      clientName: record.quotation.client.name || "-",
-      total: Number(record.quotation.total || 0),
-    })),
-);
-
-const selectedInvoice = computed(
-  () =>
-    invoiceOptions.value.find((option) => option.value === linkedInvoice.value) ??
-    null,
-);
-
 const notes = computed(() => debitNotesStore.all);
-const editingNote = computed(() =>
-  editingNoteId.value === null ? null : debitNotesStore.byId(editingNoteId.value),
-);
 
 const filteredNotes = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
@@ -123,80 +82,12 @@ const paginatedNotes = computed(() => {
   return filteredNotes.value.slice(start, start + itemsPerPage.value);
 });
 
-const resetForm = () => {
-  linkedInvoice.value = "";
-  issuedDate.value = new Date().toISOString().slice(0, 10);
-  amount.value = "";
-  reason.value = "";
-  internalNote.value = "";
-  status.value = "Draft";
-  invoiceError.value = null;
-  dateError.value = null;
-  amountError.value = null;
-};
-
 const openCreateDrawer = () => {
-  editingNoteId.value = null;
-  resetForm();
-  isDrawerOpen.value = true;
+  emit("create-debit-note");
 };
 
 const openEditDrawer = (id: number) => {
-  const record = debitNotesStore.byId(id);
-  if (!record) return;
-
-  editingNoteId.value = id;
-  linkedInvoice.value = String(record.linkedInvoiceId);
-  issuedDate.value = record.issuedDate;
-  amount.value = record.amount;
-  reason.value = record.reason;
-  internalNote.value = record.note;
-  status.value = record.status;
-  invoiceError.value = null;
-  dateError.value = null;
-  amountError.value = null;
-  isDrawerOpen.value = true;
-};
-
-const validateForm = () => {
-  const numericAmount = Math.max(0, Number(amount.value) || 0);
-  invoiceError.value = selectedInvoice.value ? null : "Select an invoice";
-  dateError.value = issuedDate.value?.trim() ? null : "Date is required";
-  amountError.value =
-    numericAmount > 0
-      ? selectedInvoice.value && numericAmount > selectedInvoice.value.total
-        ? "Amount cannot exceed invoice total"
-        : null
-      : "Enter an amount greater than 0";
-
-  return !(invoiceError.value || dateError.value || amountError.value);
-};
-
-const submitNote = () => {
-  if (!validateForm()) return;
-  if (!selectedInvoice.value) return;
-
-  const payload = {
-    linkedInvoiceId: selectedInvoice.value.invoiceId,
-    linkedInvoiceNumber: selectedInvoice.value.invoiceNumber,
-    clientName: selectedInvoice.value.clientName,
-    issuedDate: issuedDate.value,
-    amount: Math.max(0, Number(amount.value) || 0),
-    reason: reason.value.trim(),
-    note: internalNote.value.trim(),
-    status: status.value,
-  };
-
-  if (editingNoteId.value) {
-    debitNotesStore.updateNote(editingNoteId.value, payload);
-    notifications.push("Debit note updated successfully.", "success", 3500);
-  } else {
-    debitNotesStore.addNote(payload);
-    notifications.push("Debit note created successfully.", "success", 3500);
-  }
-
-  isDrawerOpen.value = false;
-  editingNoteId.value = null;
+  emit("edit-debit-note", id);
 };
 
 const openDeleteDialog = (id: number) => {
@@ -347,86 +238,6 @@ watch(totalNotes, (value) => {
         </template>
       </VDataTableServer>
     </VCard>
-
-    <VNavigationDrawer
-      temporary
-      location="end"
-      :width="440"
-      border="none"
-      :scrim="true"
-      style="z-index: 2000"
-      :model-value="isDrawerOpen"
-      class="scrollable-content"
-      @update:model-value="isDrawerOpen = $event"
-    >
-      <AppDrawerHeaderSection
-        :title="editingNote ? 'Edit Debit Note' : 'Add Debit Note'"
-        @cancel="isDrawerOpen = false"
-      />
-      <VDivider />
-      <VCard flat>
-        <VCardText>
-          <VRow>
-            <VCol cols="12">
-              <AppSelect
-                v-model="linkedInvoice"
-                label="Invoice"
-                placeholder="Select linked invoice"
-                :items="invoiceOptions"
-                :error-messages="invoiceError ? [invoiceError] : []"
-              />
-            </VCol>
-            <VCol cols="12" md="6">
-              <AppDateTimePicker
-                v-model="issuedDate"
-                label="Date"
-                placeholder="Select date"
-                :error-messages="dateError ? [dateError] : []"
-              />
-            </VCol>
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="status"
-                label="Status"
-                :items="['Draft', 'Issued', 'Voided']"
-              />
-            </VCol>
-            <VCol cols="12">
-              <AppTextField
-                v-model="amount"
-                label="Amount"
-                type="number"
-                min="0"
-                step="0.01"
-                :error-messages="amountError ? [amountError] : []"
-              />
-            </VCol>
-            <VCol cols="12">
-              <AppTextField
-                v-model="reason"
-                label="Reason"
-                placeholder="Adjustment reason"
-              />
-            </VCol>
-            <VCol cols="12">
-              <AppTextarea
-                v-model="internalNote"
-                label="Internal Note"
-                placeholder="Optional internal note"
-              />
-            </VCol>
-            <VCol cols="12">
-              <VBtn class="me-3" @click="submitNote">
-                {{ editingNote ? "Update" : "Save" }}
-              </VBtn>
-              <VBtn color="secondary" variant="tonal" @click="isDrawerOpen = false">
-                Cancel
-              </VBtn>
-            </VCol>
-          </VRow>
-        </VCardText>
-      </VCard>
-    </VNavigationDrawer>
 
     <VDialog v-model="isDeleteDialogOpen" max-width="440" persistent>
       <VCard>
