@@ -152,7 +152,6 @@ watch(
   },
   { immediate: true },
 );
-
 </script>
 
 <template>
@@ -161,32 +160,34 @@ watch(
       class="d-flex flex-wrap justify-space-between flex-column rounded bg-var-theme-background flex-sm-row gap-6 pa-6 mb-6"
     >
       <div>
-        <div class="quotation-company-brand mb-6">
+        <div
+          class="quotation-company-brand mb-6 d-flex flex-column align-start"
+        >
           <img
             v-if="companyLogoUrl"
             :src="companyLogoUrl"
             :alt="companyName"
-            class="quotation-company-logo"
+            class="quotation-company-logo mb-1"
           />
-          <h6 class="app-logo-title quotation-company-title">
-            {{ companyName }}
-          </h6>
+          <div v-if="companyName" class="text-body-2">{{ companyName }}</div>
+          <div
+            v-for="(line, index) in companyAddressLines"
+            :key="`address-${index}`"
+            class="text-body-2"
+          >
+            {{ line }}
+          </div>
+          <div
+            v-for="(line, index) in companyContactLines"
+            :key="`contact-${index}`"
+            class="text-body-2"
+          >
+            {{ line }}
+          </div>
+          <div v-if="configStore.legal?.trn" class="text-body-2">
+            TRN: {{ configStore.legal.trn }}
+          </div>
         </div>
-
-        <p
-          v-for="(line, index) in companyAddressLines"
-          :key="`address-${index}`"
-          class="text-high-emphasis mb-0"
-        >
-          {{ line }}
-        </p>
-        <p
-          v-for="(line, index) in companyContactLines"
-          :key="`contact-${index}`"
-          class="text-high-emphasis mb-0"
-        >
-          {{ line }}
-        </p>
       </div>
 
       <div class="d-flex flex-column gap-2">
@@ -462,7 +463,8 @@ watch(
   min-block-size: 150px;
   outline: none;
   overflow-y: auto;
-  padding: 0.875rem 1rem;
+  padding-block: 0.875rem;
+  padding-inline: 1rem;
 }
 
 .totals-summary {

@@ -194,7 +194,9 @@ const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(legalConfiguration.value),
 );
 const vatSummary = computed(() => getVatSummary(financialConfiguration.value));
-const renderedNote = computed(() => normalizeRichText(quotationRecord.value?.note));
+const renderedNote = computed(() =>
+  normalizeRichText(quotationRecord.value?.note),
+);
 
 const isAddPaymentSidebarVisible = ref(false);
 const isSendPaymentSidebarVisible = ref(false);
@@ -643,32 +645,36 @@ if (!isEmbeddedActionFrame) {
             class="quotation-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6"
           >
             <div>
-              <div class="quotation-company-brand mb-6">
+              <div
+                class="quotation-company-brand mb-6 d-flex flex-column align-start gap-1"
+              >
                 <img
                   v-if="companyLogoUrl"
                   :src="companyLogoUrl"
                   :alt="companyName"
-                  class="quotation-company-logo"
+                  class="quotation-company-logo mb-2"
                 />
-                <h6 class="app-logo-title quotation-company-title">
+                <div v-if="companyName" class="text-body-2 mb-1">
                   {{ companyName }}
-                </h6>
+                </div>
+                <div
+                  v-for="(line, index) in companyAddressLines"
+                  :key="`address-${index}`"
+                  class="text-body-2"
+                >
+                  {{ line }}
+                </div>
+                <div
+                  v-for="(line, index) in companyContactLines"
+                  :key="`contact-${index}`"
+                  class="text-body-2"
+                >
+                  {{ line }}
+                </div>
+                <div v-if="legalConfiguration?.trn" class="text-body-2 mt-1">
+                  TRN: {{ legalConfiguration.trn }}
+                </div>
               </div>
-
-              <h6
-                v-for="(line, index) in companyAddressLines"
-                :key="`address-${index}`"
-                class="text-h6 font-weight-regular"
-              >
-                {{ line }}
-              </h6>
-              <h6
-                v-for="(line, index) in companyContactLines"
-                :key="`contact-${index}`"
-                class="text-h6 font-weight-regular"
-              >
-                {{ line }}
-              </h6>
             </div>
 
             <div>
@@ -752,8 +758,8 @@ if (!isEmbeddedActionFrame) {
           </template>
 
           <template v-else>
-            <VRow class="print-row mb-6">
-              <VCol class="text-no-wrap">
+            <VRow class="print-row mb-6 recipient-payment-row">
+              <VCol cols="6" class="recipient-payment-col">
                 <h6 class="text-h6 mb-4">Proforma To:</h6>
 
                 <p class="mb-0">{{ quotation.client.name }}</p>
@@ -767,7 +773,7 @@ if (!isEmbeddedActionFrame) {
                 <p class="mb-0">{{ quotation.client.companyEmail }}</p>
               </VCol>
 
-              <VCol class="text-no-wrap">
+              <VCol cols="6" class="recipient-payment-col">
                 <h6 class="text-h6 mb-4">Payment Details:</h6>
                 <template v-if="paymentMethod === 'Bank Transfer'">
                   <table>
@@ -854,94 +860,9 @@ if (!isEmbeddedActionFrame) {
             </VTable>
 
             <div class="d-flex justify-end flex-column flex-sm-row print-row">
-              <div>
-                <table class="w-100">
-                  <tbody>
-                    <tr>
-                      <td class="pe-16">Subtotal:</td>
-                      <td
-                        :class="
-                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
-                        "
-                      >
-                        <h6 class="text-base font-weight-medium">
-                          {{
-                            formatCurrencyAmount(
-                              subtotal,
-                              financialConfiguration,
-                            )
-                          }}
-                        </h6>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td class="pe-16">Discount:</td>
-                      <td
-                        :class="
-                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
-                        "
-                      >
-                        <h6 class="text-base font-weight-medium">
-                          {{
-                            formatCurrencyAmount(
-                              discountTotal,
-                              financialConfiguration,
-                            )
-                          }}
-                        </h6>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td class="pe-16">{{ vatSummary.label }}:</td>
-                      <td
-                        :class="
-                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
-                        "
-                      >
-                        <h6 class="text-base font-weight-medium">
-                          {{ vatSummary.value }}
-                        </h6>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <VDivider class="my-2" />
-
-                <table class="w-100">
-                  <tbody>
-                    <tr>
-                      <td class="pe-16">Total:</td>
-                      <td
-                        :class="
-                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
-                        "
-                      >
-                        <h6 class="text-base font-weight-medium">
-                          {{
-                            formatCurrencyAmount(
-                              grandTotal,
-                              financialConfiguration,
-                            )
-                          }}
-                        </h6>
-                      </td>
-                    </tr>
-                    <tr v-if="quotationRecord?.totalFx?.trim()">
-                      <td class="pe-16">Total FX:</td>
-                      <td
-                        :class="
-                          $vuetify.locale.isRtl ? 'text-start' : 'text-end'
-                        "
-                      >
-                        <h6 class="text-base font-weight-medium">
-                          {{ quotationRecord.totalFx }}
-                        </h6>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <div
+                class="quotation-company-brand mb-0 d-flex flex-column align-start gap-0"
+              ></div>
             </div>
           </template>
 

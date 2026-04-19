@@ -599,34 +599,27 @@ onBeforeUnmount(() => {
             <div
               class="d-flex justify-space-between align-start flex-wrap gap-6 mb-8"
             >
-              <div class="d-flex align-start gap-4">
+              <div class="d-flex flex-column align-start gap-2">
                 <img
                   v-if="companyLogoUrl"
                   :src="companyLogoUrl"
                   :alt="companyName"
-                  class="receipt-company-logo"
+                  class="receipt-company-logo mb-2"
                 />
-
-                <div>
-                  <h4 class="text-h4 mb-2">
-                    {{ companyName }}
-                  </h4>
-
-                  <div
-                    v-for="line in companyAddressLines"
-                    :key="line"
-                    class="text-body-2"
-                  >
-                    {{ line }}
-                  </div>
-
-                  <div
-                    v-for="line in companyContactLines"
-                    :key="line"
-                    class="text-body-2"
-                  >
-                    {{ line }}
-                  </div>
+                <div class="text-body-2 mb-1">{{ companyName }}</div>
+                <div
+                  v-for="line in companyAddressLines"
+                  :key="'address-' + line"
+                  class="text-body-2"
+                >
+                  {{ line }}
+                </div>
+                <div
+                  v-for="line in companyContactLines"
+                  :key="'contact-' + line"
+                  class="text-body-2"
+                >
+                  {{ line }}
                 </div>
               </div>
 
