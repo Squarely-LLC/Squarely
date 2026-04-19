@@ -2,8 +2,10 @@
 import { useContactsStore } from "@/stores/contacts";
 import { useConfigStore } from "@/stores/config";
 import { useExpensesStore } from "@/stores/expenses";
+import type { ExpensePaymentInput } from "@/stores/expenses";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import { usePaymentVouchersStore } from "@/stores/paymentVouchers";
 import { useProformasStore } from "@/stores/proformas";
 import { useReceiptsStore } from "@/stores/receipts";
 import { saveFile } from "@/utils/fileStore";
@@ -11,6 +13,7 @@ import type {
   ExpenseDrawerSubmitPayload,
   ExpenseSupplierOption,
 } from "@/views/apps/expense/ExpenseUpsertDrawer.vue";
+import ExpensePaymentDrawer from "@/views/apps/expense/ExpensePaymentDrawer.vue";
 import ExpenseUpsertDrawer from "@/views/apps/expense/ExpenseUpsertDrawer.vue";
 import type {
   ReceiptClientOption,
@@ -33,6 +36,7 @@ const contactsStore = useContactsStore();
 const configStore = useConfigStore();
 const expensesStore = useExpensesStore();
 const invoicesStore = useInvoicesStore();
+const paymentVouchersStore = usePaymentVouchersStore();
 const proformasStore = useProformasStore();
 const receiptsStore = useReceiptsStore();
 const notifications = useNotificationsStore();
@@ -41,6 +45,7 @@ contactsStore.init();
 configStore.init();
 expensesStore.init();
 invoicesStore.init();
+paymentVouchersStore.init();
 proformasStore.init();
 receiptsStore.init();
 
@@ -109,10 +114,22 @@ const tabsData = [
 
 const activeTab = ref<number | null>(null);
 const isExpenseDrawerOpen = ref(false);
+const isExpensePaymentDrawerOpen = ref(false);
 const isReceiptDrawerOpen = ref(false);
 const editingExpenseId = ref<number | null>(null);
 const editingReceiptId = ref<number | null>(null);
 const receiptCreationMode = ref<"squarely" | "attachment">("squarely");
+const pendingExpensePaymentPayload = ref<ExpenseDrawerSubmitPayload | null>(null);
+const pendingExpensePayments = ref<
+  Array<{
+    id: string;
+    voucherNumber: string;
+    amount: number;
+    date: string;
+    method: string;
+    note: string;
+  }>
+>([]);
 
 const createClientKey = (name: string, email: string) =>
   `${name.trim().toLowerCase()}::${email.trim().toLowerCase()}`;
@@ -238,6 +255,23 @@ const openEditExpenseDrawer = (expenseId: number) => {
   isExpenseDrawerOpen.value = true;
 };
 
+const openPayExpenseDrawer = (expenseId: number) => {
+  const existingExpense = expensesStore.byId(expenseId);
+  if (!existingExpense) return;
+
+  pendingExpensePaymentPayload.value = {
+    id: existingExpense.expense.id,
+    action: "save",
+    expense: {
+      ...existingExpense.expense,
+    },
+    note: existingExpense.note,
+    attachment: null,
+  };
+  pendingExpensePayments.value = [...(existingExpense.payments ?? [])];
+  isExpensePaymentDrawerOpen.value = true;
+};
+
 const openCreateReceiptDrawer = (mode: "squarely" | "attachment") => {
   editingReceiptId.value = null;
   receiptCreationMode.value = mode;
@@ -261,7 +295,13 @@ const closeExpenseDrawer = () => {
   editingExpenseId.value = null;
 };
 
-const saveExpense = async (payload: ExpenseDrawerSubmitPayload) => {
+const closeExpensePaymentDrawer = () => {
+  isExpensePaymentDrawerOpen.value = false;
+  pendingExpensePaymentPayload.value = null;
+  pendingExpensePayments.value = [];
+};
+
+const persistExpenseDraft = async (payload: ExpenseDrawerSubmitPayload) => {
   let attachmentFileKey = payload.expense.attachmentFileKey;
 
   if (payload.attachment) {
@@ -274,29 +314,96 @@ const saveExpense = async (payload: ExpenseDrawerSubmitPayload) => {
       attachmentName:
         payload.attachment?.name ?? payload.expense.attachmentName ?? null,
       attachmentFileKey: attachmentFileKey ?? null,
-      paidAt:
-        payload.action === "pay"
-          ? new Date().toISOString()
-          : payload.expense.paidAt ?? null,
     },
     note: payload.note,
   };
 
   if (payload.id) {
-    expensesStore.updateExpense(payload.id, nextPayload);
-    notifications.push("Bill updated successfully.", "success", 3500);
-  } else {
-    expensesStore.addExpense(nextPayload);
-    notifications.push(
-      payload.action === "pay"
-        ? "Bill created and marked as paid."
-        : "Bill created successfully.",
-      "success",
-      3500,
-    );
+    return expensesStore.updateExpense(payload.id, nextPayload);
   }
 
+  return expensesStore.addExpense(nextPayload);
+};
+
+const saveExpense = async (payload: ExpenseDrawerSubmitPayload) => {
+  const savedExpense = await persistExpenseDraft(payload);
+
+  notifications.push(
+    payload.id ? "Bill updated successfully." : "Bill created successfully.",
+    "success",
+    3500,
+  );
+
   closeExpenseDrawer();
+  return savedExpense;
+};
+
+const openExpensePaymentDrawerFromDraft = (payload: ExpenseDrawerSubmitPayload) => {
+  pendingExpensePaymentPayload.value = payload;
+  pendingExpensePayments.value = [];
+  isExpenseDrawerOpen.value = false;
+  isExpensePaymentDrawerOpen.value = true;
+};
+
+const saveExpensePayment = async (
+  payment: ExpensePaymentInput,
+  draftPayloadOverride?: ExpenseDrawerSubmitPayload | null,
+) => {
+  const draftPayload =
+    draftPayloadOverride ?? pendingExpensePaymentPayload.value;
+  if (!draftPayload) return;
+
+  const savedExpenseRecord = await persistExpenseDraft(draftPayload);
+  if (!savedExpenseRecord) {
+    notifications.push("Unable to save the bill before payment.", "error", 3500);
+    return;
+  }
+
+  const nextVoucherNumber = `PV-${Date.now()}`;
+  const isEditingExistingPayment = !!payment.paymentId?.trim();
+  const updatedExpenseRecord = isEditingExistingPayment
+    ? expensesStore.updatePayment(savedExpenseRecord.expense.id, payment)
+    : expensesStore.addPayment(savedExpenseRecord.expense.id, {
+        ...payment,
+        voucherNumber: nextVoucherNumber,
+      });
+
+  if (!updatedExpenseRecord) {
+    notifications.push("Unable to record payment.", "error", 3500);
+    return;
+  }
+  const latestPayment = isEditingExistingPayment
+    ? updatedExpenseRecord.payments?.find(
+        (entry) => entry.id === payment.paymentId?.trim(),
+      ) ?? null
+    : updatedExpenseRecord.payments?.at(-1) ?? null;
+  if (!latestPayment) {
+    notifications.push("Unable to record payment.", "error", 3500);
+    return;
+  }
+
+  paymentVouchersStore.addVoucher({
+    voucherNumber: latestPayment.voucherNumber,
+    billId: updatedExpenseRecord.expense.id,
+    billNumber: updatedExpenseRecord.expense.billNumber,
+    supplierName: updatedExpenseRecord.expense.supplier.name,
+    amount: latestPayment.amount,
+    date: latestPayment.date,
+    paymentMethod: latestPayment.method,
+    paymentNote: latestPayment.note,
+    linkedPaymentId: latestPayment.id,
+  });
+
+  notifications.push(
+    isEditingExistingPayment
+      ? `${updatedExpenseRecord.expense.billNumber} payment updated. Voucher ${latestPayment.voucherNumber} synced.`
+      : `${updatedExpenseRecord.expense.billNumber} payment recorded. Voucher ${latestPayment.voucherNumber} created.`,
+    "success",
+    4000,
+  );
+
+  closeExpenseDrawer();
+  closeExpensePaymentDrawer();
 };
 
 const saveReceipt = async (payload: ReceiptDrawerSubmitPayload) => {
@@ -407,6 +514,7 @@ watch(
             v-else-if="tabItem.key === 'expenses'"
             @create-expense="openCreateExpenseDrawer"
             @edit-expense="openEditExpenseDrawer"
+            @pay-expense="openPayExpenseDrawer"
           />
           <FinanceReceiptsTab
             v-else-if="tabItem.key === 'receipt'"
@@ -449,6 +557,16 @@ watch(
     :supplier-options="expenseSupplierOptions"
     :category-options="expenseCategoryOptions"
     @submit="saveExpense"
+    @pay="openExpensePaymentDrawerFromDraft"
+  />
+
+  <ExpensePaymentDrawer
+    v-model:is-drawer-open="isExpensePaymentDrawerOpen"
+    :expense-draft="pendingExpensePaymentPayload?.expense ?? null"
+    :current-balance="Number(pendingExpensePaymentPayload?.expense.balance ?? pendingExpensePaymentPayload?.expense.amount ?? 0) || 0"
+    :existing-payments="pendingExpensePayments"
+    @submit="saveExpensePayment($event, pendingExpensePaymentPayload)"
+    @update:is-drawer-open="$event ? (isExpensePaymentDrawerOpen = true) : closeExpensePaymentDrawer()"
   />
 </template>
 

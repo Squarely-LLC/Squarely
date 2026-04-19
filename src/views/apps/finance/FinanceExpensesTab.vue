@@ -8,6 +8,7 @@ import { formatSystemDate } from "@core/utils/formatters";
 interface Emit {
   (e: "create-expense"): void;
   (e: "edit-expense", expenseId: number): void;
+  (e: "pay-expense", expenseId: number): void;
 }
 
 const emit = defineEmits<Emit>();
@@ -27,7 +28,9 @@ const pendingPreviewAction = ref<{
 } | null>(null);
 
 const searchQuery = ref("");
-const selectedStatus = ref<"Open" | "Paid" | "Flagged" | null>(null);
+const selectedStatus = ref<
+  "Open" | "Paid" | "Flagged" | "Partially Paid" | null
+>(null);
 const itemsPerPage = ref(10);
 const page = ref(1);
 const sortBy = ref<string>();
@@ -120,6 +123,7 @@ const paginatedExpenses = computed(() => {
 const statusChipColor = (status: string) => {
   if (status === "Flagged") return "warning";
   if (status === "Paid") return "success";
+  if (status === "Partially Paid") return "info";
   return "primary";
 };
 
@@ -129,6 +133,10 @@ const openCreateExpenseDrawer = () => {
 
 const openEditExpenseDrawer = (expenseId: number) => {
   emit("edit-expense", expenseId);
+};
+
+const openPayExpenseDrawer = (expenseId: number) => {
+  emit("pay-expense", expenseId);
 };
 
 const ensurePreviewActionFrame = () => {
@@ -295,39 +303,56 @@ const onExpenseEmailSend = (payload: any) => {
 };
 
 const computedMoreList = computed(() => {
-  return (expenseId: number) => [
-    {
-      title: "Edit",
-      value: "edit",
-      prependIcon: "tabler-pencil",
-      onClick: () => openEditExpenseDrawer(expenseId),
-    },
-    {
-      title: "Print",
-      value: "print",
-      prependIcon: "tabler-printer",
-      onClick: () => openExpensePreview(expenseId, "print"),
-    },
-    {
-      title: "Email",
-      value: "email",
-      prependIcon: "tabler-mail",
-      onClick: () => openExpenseEmailDialog(expenseId),
-    },
-    {
-      title: "Download",
-      value: "download",
-      prependIcon: "tabler-download",
-      onClick: () => openExpensePreview(expenseId, "download"),
-    },
-    {
-      title: "Delete",
-      value: "delete",
-      prependIcon: "tabler-trash",
-      class: "text-error",
-      onClick: () => openDeleteExpenseDialog(expenseId),
-    },
-  ];
+  return (expenseId: number) => {
+    const expenseRecord = expensesStore.byId(expenseId);
+    const canPay = Math.max(0, Number(expenseRecord?.expense.balance) || 0) > 0;
+    const hasPayments = (expenseRecord?.payments?.length || 0) > 0;
+    const canPayOrEditPayment = canPay || hasPayments;
+
+    return [
+      {
+        title: "Edit",
+        value: "edit",
+        prependIcon: "tabler-pencil",
+        onClick: () => openEditExpenseDrawer(expenseId),
+      },
+      ...(canPayOrEditPayment
+        ? [
+            {
+              title: canPay ? "Pay" : "Edit Payment",
+              value: "pay",
+              prependIcon: "tabler-credit-card-pay",
+              onClick: () => openPayExpenseDrawer(expenseId),
+            },
+          ]
+        : []),
+      {
+        title: "Print",
+        value: "print",
+        prependIcon: "tabler-printer",
+        onClick: () => openExpensePreview(expenseId, "print"),
+      },
+      {
+        title: "Email",
+        value: "email",
+        prependIcon: "tabler-mail",
+        onClick: () => openExpenseEmailDialog(expenseId),
+      },
+      {
+        title: "Download",
+        value: "download",
+        prependIcon: "tabler-download",
+        onClick: () => openExpensePreview(expenseId, "download"),
+      },
+      {
+        title: "Delete",
+        value: "delete",
+        prependIcon: "tabler-trash",
+        class: "text-error",
+        onClick: () => openDeleteExpenseDialog(expenseId),
+      },
+    ];
+  };
 });
 
 onMounted(() => {
@@ -390,7 +415,7 @@ watch(totalExpenses, (value) => {
               clearable
               clear-icon="tabler-x"
               single-line
-              :items="['Open', 'Paid', 'Flagged']"
+              :items="['Open', 'Partially Paid', 'Paid', 'Flagged']"
             />
           </div>
 
@@ -412,9 +437,20 @@ watch(totalExpenses, (value) => {
         @update:options="updateOptions"
       >
         <template #item.id="{ item }">
-          <RouterLink :to="`/apps/expense/preview/${item.id}`">
-            {{ item.billNumber }}
-          </RouterLink>
+          <div class="expense-reference-cell">
+            <RouterLink
+              :to="`/apps/expense/preview/${item.id}`"
+              class="expense-reference-primary"
+            >
+              {{ item.supplierInvoiceNumber || "-" }}
+            </RouterLink>
+            <RouterLink
+              :to="`/apps/expense/preview/${item.id}`"
+              class="expense-reference-secondary"
+            >
+              {{ item.billNumber }}
+            </RouterLink>
+          </div>
         </template>
 
         <template #item.supplier="{ item }">
@@ -495,6 +531,23 @@ watch(totalExpenses, (value) => {
 
 <style lang="scss">
 #expense-list {
+  .expense-reference-cell {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+
+  .expense-reference-primary {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .expense-reference-secondary {
+    color: rgba(var(--v-theme-on-surface), 0.65);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
   .quotation-list-toolbar {
     justify-content: flex-end;
   }

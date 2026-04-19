@@ -372,6 +372,17 @@ onBeforeUnmount(() => {
                         expense.supplierInvoiceNumber || "-"
                       }}</span>
                     </div>
+                    <div class="d-flex justify-space-between mb-2">
+                      <span>Amount Due</span>
+                      <span class="font-weight-medium">
+                        {{
+                          formatCurrencyAmount(
+                            expense.balance,
+                            financialConfiguration,
+                          )
+                        }}
+                      </span>
+                    </div>
                     <div class="d-flex justify-space-between">
                       <span>Total Amount</span>
                       <span class="font-weight-bold">

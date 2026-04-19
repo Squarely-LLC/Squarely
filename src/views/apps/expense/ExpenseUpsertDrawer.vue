@@ -25,6 +25,7 @@ interface Props {
 interface Emit {
   (e: "update:isDrawerOpen", value: boolean): void;
   (e: "submit", value: ExpenseDrawerSubmitPayload): void;
+  (e: "pay", value: ExpenseDrawerSubmitPayload): void;
 }
 
 const props = defineProps<Props>();
@@ -85,6 +86,14 @@ const hasAttachment = computed(
     !!props.editingExpense?.expense.attachmentFileKey ||
     !!props.editingExpense?.expense.attachmentName,
 );
+const existingPaidAmount = computed(() => {
+  if (!props.editingExpense) return 0;
+
+  const total = Math.max(0, Number(props.editingExpense.expense.amount) || 0);
+  const balance = Math.max(0, Number(props.editingExpense.expense.balance) || 0);
+
+  return Math.max(0, total - balance);
+});
 
 const generatedNote = computed(() => {
   const numericAmount = Math.max(0, Number(amount.value) || 0);
@@ -158,26 +167,11 @@ watch(drawerOpen, (value) => {
   emit("update:isDrawerOpen", value);
 });
 
-const submit = (action: "save" | "pay") => {
+const buildPayload = (): ExpenseDrawerSubmitPayload => {
   const numericAmount = Math.max(0, Number(amount.value) || 0);
-  dateError.value = billDate.value.trim() ? null : "Date is required";
-  supplierError.value = selectedSupplier.value ? null : "Supplier is required";
-  categoryError.value = category.value.trim() ? null : "Category is required";
-  amountError.value =
-    numericAmount > 0 ? null : "Enter an amount greater than 0";
-
-  if (
-    dateError.value ||
-    supplierError.value ||
-    categoryError.value ||
-    amountError.value
-  ) {
-    return;
-  }
-
-  emit("submit", {
+  return {
     id: props.editingExpense?.expense.id ?? null,
-    action,
+    action: "save",
     expense: {
       id: props.editingExpense?.expense.id ?? 0,
       billNumber: props.editingExpense?.expense.billNumber ?? "",
@@ -192,19 +186,46 @@ const submit = (action: "save" | "pay") => {
       category: category.value.trim(),
       supplierInvoiceNumber: supplierInvoiceNumber.value.trim(),
       amount: numericAmount,
-      status: "Open",
+      balance: Math.max(0, numericAmount - existingPaidAmount.value),
+      status: props.editingExpense?.expense.status ?? "Open",
       attachmentName:
         selectedAttachment.value?.name ??
         props.editingExpense?.expense.attachmentName ??
         null,
       attachmentFileKey: props.editingExpense?.expense.attachmentFileKey ?? null,
-      paidAt:
-        action === "pay" ? new Date().toISOString() : props.editingExpense?.expense.paidAt ?? null,
+      paidAt: props.editingExpense?.expense.paidAt ?? null,
       avatar: props.editingExpense?.expense.avatar ?? null,
+      paymentMethod: props.editingExpense?.expense.paymentMethod ?? "Cash",
     },
     note: generatedNote.value,
     attachment: selectedAttachment.value,
-  });
+  };
+};
+
+const validateForm = () => {
+  const numericAmount = Math.max(0, Number(amount.value) || 0);
+  dateError.value = billDate.value.trim() ? null : "Date is required";
+  supplierError.value = selectedSupplier.value ? null : "Supplier is required";
+  categoryError.value = category.value.trim() ? null : "Category is required";
+  amountError.value =
+    numericAmount > 0 ? null : "Enter an amount greater than 0";
+
+  return !(
+    dateError.value ||
+    supplierError.value ||
+    categoryError.value ||
+    amountError.value
+  );
+};
+
+const submit = () => {
+  if (!validateForm()) return;
+  emit("submit", buildPayload());
+};
+
+const openPayDrawer = () => {
+  if (!validateForm()) return;
+  emit("pay", buildPayload());
 };
 
 const handleDrawerModelValueUpdate = (value: boolean) => {
@@ -233,7 +254,7 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
     <div class="expense-drawer-content">
       <VCard flat>
         <VCardText>
-          <VForm @submit.prevent="submit('save')">
+          <VForm @submit.prevent="submit">
             <VRow>
               <VCol cols="12">
                 <AppDateTimePicker
@@ -324,7 +345,7 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
                     type="button"
                     color="success"
                     variant="tonal"
-                    @click="submit('pay')"
+                    @click="openPayDrawer"
                   >
                     Pay
                   </VBtn>
