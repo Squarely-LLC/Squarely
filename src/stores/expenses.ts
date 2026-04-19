@@ -5,10 +5,71 @@ import type {
   ExpenseStatus,
   ExpenseSupplier,
 } from "@/plugins/fake-api/handlers/apps/expense/types";
+import { saveFile } from "@/utils/fileStore";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
 const STORAGE_KEY = "app.expenses.v1";
+
+const SEEDED_ATTACHMENT_FACTORIES: Record<
+  number,
+  () => File
+> = {
+  1: () =>
+    new File(
+      [
+        `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 174 >>
+stream
+BT
+/F1 18 Tf
+72 720 Td
+(Office Supplies Bill) Tj
+0 -28 Td
+/F1 12 Tf
+(Supplier: Office Depot) Tj
+0 -20 Td
+(Invoice: OD-4821) Tj
+0 -20 Td
+(Bill Date: 2026-04-12) Tj
+0 -20 Td
+(Amount: $185.00) Tj
+0 -20 Td
+(Seeded attachment preview for expense BILL-1.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000010 00000 n 
+0000000063 00000 n 
+0000000122 00000 n 
+0000000248 00000 n 
+0000000473 00000 n 
+trailer
+<< /Root 1 0 R /Size 6 >>
+startxref
+543
+%%EOF`,
+      ],
+      "office-supplies-apr.pdf",
+      { type: "application/pdf" },
+    ),
+};
 
 type ExpensePayload = Omit<Partial<ExpenseRecord>, "expense"> & {
   expense?: Partial<Expense>;
@@ -76,6 +137,29 @@ function saveToStorage(records: ExpenseRecord[]) {
   } catch {
     // Ignore.
   }
+}
+
+async function ensureSeedExpenseAttachments(records: ExpenseRecord[]) {
+  const clonedRecords = cloneExpenseArray(records);
+  let hasChanges = false;
+
+  for (const record of clonedRecords) {
+    if (record.expense.attachmentFileKey?.trim()) continue;
+    if (!record.expense.attachmentName?.trim()) continue;
+
+    const createSeedAttachment = SEEDED_ATTACHMENT_FACTORIES[record.expense.id];
+    if (!createSeedAttachment) continue;
+
+    try {
+      const fileKey = await saveFile(createSeedAttachment());
+      record.expense.attachmentFileKey = fileKey;
+      hasChanges = true;
+    } catch {
+      // Ignore seed attachment failures and keep the record usable.
+    }
+  }
+
+  return hasChanges ? clonedRecords : records;
 }
 
 function nextExpenseId(items: ExpenseRecord[]) {
@@ -238,14 +322,14 @@ export const useExpensesStore = defineStore("expenses", {
       null,
   },
   actions: {
-    init(force = false) {
+    async init(force = false) {
       if (this.initialized && !force) return;
 
       const stored = loadFromStorage();
+      const initialItems = stored?.length ? stored : seedExpenses();
+      const hydratedItems = await ensureSeedExpenseAttachments(initialItems);
 
-      this.items = stored?.length
-        ? stored.map((record) => sanitizeStoredRecord(record))
-        : seedExpenses().map((record) => sanitizeStoredRecord(record));
+      this.items = hydratedItems.map((record) => sanitizeStoredRecord(record));
 
       saveToStorage(this.items);
       this.initialized = true;
