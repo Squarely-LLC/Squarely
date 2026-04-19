@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useContactsStore } from "@/stores/contacts";
 import { useConfigStore } from "@/stores/config";
+import { useCreditNotesStore } from "@/stores/creditNotes";
+import { useDebitNotesStore } from "@/stores/debitNotes";
 import { useExpensesStore } from "@/stores/expenses";
 import type { ExpensePaymentInput } from "@/stores/expenses";
 import { useInvoicesStore } from "@/stores/invoices";
@@ -25,6 +27,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import FinanceExpensesTab from "@/views/apps/finance/FinanceExpensesTab.vue";
+import FinanceCreditNotesTab from "@/views/apps/finance/FinanceCreditNotesTab.vue";
+import FinanceDebitNotesTab from "@/views/apps/finance/FinanceDebitNotesTab.vue";
 import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
 import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
 import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
@@ -34,6 +38,8 @@ const route = useRoute();
 const router = useRouter();
 const contactsStore = useContactsStore();
 const configStore = useConfigStore();
+const creditNotesStore = useCreditNotesStore();
+const debitNotesStore = useDebitNotesStore();
 const expensesStore = useExpensesStore();
 const invoicesStore = useInvoicesStore();
 const paymentVouchersStore = usePaymentVouchersStore();
@@ -43,6 +49,8 @@ const notifications = useNotificationsStore();
 
 contactsStore.init();
 configStore.init();
+creditNotesStore.init();
+debitNotesStore.init();
 expensesStore.init();
 invoicesStore.init();
 paymentVouchersStore.init();
@@ -519,6 +527,8 @@ watch(
             @edit-expense="openEditExpenseDrawer"
             @pay-expense="openPayExpenseDrawer"
           />
+          <FinanceDebitNotesTab v-else-if="tabItem.key === 'debit-note'" />
+          <FinanceCreditNotesTab v-else-if="tabItem.key === 'credit-note'" />
           <FinanceReceiptsTab
             v-else-if="tabItem.key === 'receipt'"
             @create-receipt="openCreateReceiptDrawer"
