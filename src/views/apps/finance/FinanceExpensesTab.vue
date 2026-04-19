@@ -2,6 +2,7 @@
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useExpensesStore } from "@/stores/expenses";
 import { useNotificationsStore } from "@/stores/notifications";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { formatSystemDate } from "@core/utils/formatters";
 
 interface Emit {
@@ -11,10 +12,19 @@ interface Emit {
 
 const emit = defineEmits<Emit>();
 
+const router = useRouter();
 const expensesStore = useExpensesStore();
 const notifications = useNotificationsStore();
 
 expensesStore.init();
+
+const previewActionFrame = ref<HTMLIFrameElement | null>(null);
+const isPreviewActionFrameReady = ref(false);
+const loadedPreviewExpenseId = ref<number | null>(null);
+const pendingPreviewAction = ref<{
+  expenseId: number;
+  action: "print" | "download";
+} | null>(null);
 
 const searchQuery = ref("");
 const selectedStatus = ref<"Open" | "Paid" | "Flagged" | null>(null);
@@ -24,6 +34,9 @@ const sortBy = ref<string>();
 const orderBy = ref<string>();
 const isDeleteExpenseDialogOpen = ref(false);
 const pendingDeleteExpenseId = ref<number | null>(null);
+const isEmailDialogOpen = ref(false);
+const pendingEmailExpenseId = ref<number | null>(null);
+const emailDialogRef = ref<any | null>(null);
 
 const headers = [
   { title: "#", key: "id" },
@@ -44,6 +57,11 @@ const pendingDeleteExpense = computed(() =>
   pendingDeleteExpenseId.value === null
     ? null
     : expensesStore.byId(pendingDeleteExpenseId.value),
+);
+const emailExpenseRecord = computed(() =>
+  pendingEmailExpenseId.value === null
+    ? null
+    : expensesStore.byId(pendingEmailExpenseId.value),
 );
 
 const filteredExpenses = computed(() => {
@@ -113,6 +131,94 @@ const openEditExpenseDrawer = (expenseId: number) => {
   emit("edit-expense", expenseId);
 };
 
+const ensurePreviewActionFrame = () => {
+  if (!previewActionFrame.value) {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.tabIndex = -1;
+    iframe.style.position = "fixed";
+    iframe.style.insetInlineStart = "-2000px";
+    iframe.style.insetBlockStart = "0";
+    iframe.style.inlineSize = "1280px";
+    iframe.style.blockSize = "1800px";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+    previewActionFrame.value = iframe;
+  }
+};
+
+const sendPreviewAction = (expenseId: number, action: "print" | "download") => {
+  if (!previewActionFrame.value?.contentWindow) return;
+
+  previewActionFrame.value.contentWindow.postMessage(
+    {
+      type: "expense-preview-action",
+      payload: { action },
+    },
+    window.location.origin,
+  );
+
+  notifications.push(
+    `${action === "download" ? "Download" : "Print"} started for bill ${expensesStore.byId(expenseId)?.expense.billNumber || expenseId}.`,
+    "success",
+    3500,
+  );
+};
+
+const flushPendingPreviewAction = () => {
+  const pendingAction = pendingPreviewAction.value;
+  if (!pendingAction || !isPreviewActionFrameReady.value) return;
+  if (loadedPreviewExpenseId.value !== pendingAction.expenseId) return;
+
+  sendPreviewAction(pendingAction.expenseId, pendingAction.action);
+  pendingPreviewAction.value = null;
+};
+
+const handlePreviewActionFrameMessage = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "expense-preview-ready") return;
+
+  isPreviewActionFrameReady.value = true;
+  loadedPreviewExpenseId.value = Number(event.data?.expenseId || 0) || null;
+  flushPendingPreviewAction();
+};
+
+const openExpensePreview = (
+  expenseId: number,
+  action?: "print" | "download" | "email",
+) => {
+  if (action === "print" || action === "download") {
+    ensurePreviewActionFrame();
+    if (!previewActionFrame.value) return;
+
+    pendingPreviewAction.value = { expenseId, action };
+
+    const resolved = router.resolve({
+      path: `/apps/expense/preview/${expenseId}`,
+      query: { embedded: "1" },
+    });
+
+    if (previewActionFrame.value.src !== resolved.href) {
+      isPreviewActionFrameReady.value = false;
+      loadedPreviewExpenseId.value = null;
+      previewActionFrame.value.src = resolved.href;
+      return;
+    }
+
+    flushPendingPreviewAction();
+    return;
+  }
+
+  const resolved = router.resolve({
+    path: `/apps/expense/preview/${expenseId}`,
+    query: action === "email" ? { email: "1" } : {},
+  });
+
+  window.open(resolved.href, "_blank", "noopener,noreferrer");
+};
+
 const deleteDialogMessage = computed(() => {
   const expense = pendingDeleteExpense.value?.expense;
   if (!expense) return "";
@@ -139,6 +245,55 @@ const confirmDeleteExpense = () => {
   closeDeleteExpenseDialog();
 };
 
+const expenseEmailDraft = computed(() => {
+  const expense = emailExpenseRecord.value?.expense;
+  if (!expense) {
+    return { to: "", subject: "", message: "", attachments: [] };
+  }
+
+  return {
+    to: expense.supplier.email?.trim() || "",
+    subject: `Bill ${expense.billNumber}`,
+    message: `Dear ${expense.supplier.name || "there"},
+
+Please find bill ${expense.billNumber} attached.
+
+Amount: $${expense.amount.toLocaleString()}
+
+Thank you,
+Squarely`.trim(),
+    attachments: [{ name: `${expense.billNumber}.pdf` }],
+  };
+});
+
+const openExpenseEmailDialog = (expenseId: number) => {
+  pendingEmailExpenseId.value = expenseId;
+  isEmailDialogOpen.value = true;
+  nextTick(() => {
+    emailDialogRef.value?.openWith?.(expenseEmailDraft.value);
+  });
+};
+
+const closeExpenseEmailDialog = () => {
+  isEmailDialogOpen.value = false;
+  pendingEmailExpenseId.value = null;
+};
+
+const onExpenseEmailSend = (payload: any) => {
+  const recipients = Array.isArray(payload?.to)
+    ? payload.to.filter(Boolean)
+    : payload?.to
+      ? [String(payload.to)]
+      : [];
+  const subject = String(payload?.subject || "(no subject)");
+  notifications.push(
+    `Email sent${recipients.length ? ` to ${recipients.length} recipient${recipients.length > 1 ? "s" : ""}` : ""}: ${subject}`,
+    "success",
+    3500,
+  );
+  closeExpenseEmailDialog();
+};
+
 const computedMoreList = computed(() => {
   return (expenseId: number) => [
     {
@@ -148,6 +303,24 @@ const computedMoreList = computed(() => {
       onClick: () => openEditExpenseDrawer(expenseId),
     },
     {
+      title: "Print",
+      value: "print",
+      prependIcon: "tabler-printer",
+      onClick: () => openExpensePreview(expenseId, "print"),
+    },
+    {
+      title: "Email",
+      value: "email",
+      prependIcon: "tabler-mail",
+      onClick: () => openExpenseEmailDialog(expenseId),
+    },
+    {
+      title: "Download",
+      value: "download",
+      prependIcon: "tabler-download",
+      onClick: () => openExpensePreview(expenseId, "download"),
+    },
+    {
       title: "Delete",
       value: "delete",
       prependIcon: "tabler-trash",
@@ -155,6 +328,19 @@ const computedMoreList = computed(() => {
       onClick: () => openDeleteExpenseDialog(expenseId),
     },
   ];
+});
+
+onMounted(() => {
+  window.addEventListener("message", handlePreviewActionFrameMessage);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("message", handlePreviewActionFrameMessage);
+  previewActionFrame.value?.remove();
+  previewActionFrame.value = null;
+  isPreviewActionFrameReady.value = false;
+  loadedPreviewExpenseId.value = null;
+  pendingPreviewAction.value = null;
 });
 
 watch([searchQuery, selectedStatus, itemsPerPage], () => {
@@ -226,7 +412,9 @@ watch(totalExpenses, (value) => {
         @update:options="updateOptions"
       >
         <template #item.id="{ item }">
-          {{ item.billNumber }}
+          <RouterLink :to="`/apps/expense/preview/${item.id}`">
+            {{ item.billNumber }}
+          </RouterLink>
         </template>
 
         <template #item.supplier="{ item }">
@@ -276,6 +464,13 @@ watch(totalExpenses, (value) => {
         </template>
       </VDataTableServer>
     </VCard>
+
+    <EmailDialog
+      ref="emailDialogRef"
+      v-model:is-dialog-visible="isEmailDialogOpen"
+      @close="closeExpenseEmailDialog"
+      @send="onExpenseEmailSend"
+    />
 
     <VDialog v-model="isDeleteExpenseDialogOpen" max-width="440" persistent>
       <VCard>
