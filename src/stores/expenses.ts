@@ -643,9 +643,27 @@ export const useExpensesStore = defineStore("expenses", {
       contactsStore.init();
 
       const contact = contactsStore.byId(supplierId);
-      if (!contact || contact.class === "Supplier") return;
+      if (!contact) return;
 
-      contactsStore.updateContact(supplierId, { class: "Supplier" });
+      const nextRoles = new Set(contact.roles ?? []);
+      if (contact.class === "Client") nextRoles.add("client");
+      if (contact.class === "Supplier") nextRoles.add("supplier");
+      nextRoles.add("supplier");
+
+      const hasRolesChanged =
+        (contact.roles ?? []).length !== nextRoles.size ||
+        Array.from(nextRoles).some((role) => !(contact.roles ?? []).includes(role));
+      if (!hasRolesChanged && contact.class === "Supplier") return;
+
+      const nextClass =
+        contact.class === "Client" || contact.class === "Supplier"
+          ? contact.class
+          : "Supplier";
+
+      contactsStore.updateContact(supplierId, {
+        class: nextClass,
+        roles: Array.from(nextRoles),
+      });
     },
 
     syncSupplierContactFlags() {

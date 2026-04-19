@@ -1,4 +1,6 @@
 import { database } from "@/plugins/fake-api/handlers/apps/receipt/db";
+import { useInvoicesStore } from "@/stores/invoices";
+import { useProformasStore } from "@/stores/proformas";
 import type {
   Receipt,
   ReceiptRecord,
@@ -9,7 +11,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.receipts.v2";
+const STORAGE_KEY = "app.receipts.v3";
 
 type ReceiptPayload = Omit<Partial<ReceiptRecord>, "receipt"> & {
   receipt?: Partial<Receipt>;
@@ -278,6 +280,7 @@ export const useReceiptsStore = defineStore("receipts", {
       this.items = stored?.length
         ? stored.map((record) => sanitizeStoredRecord(record))
         : seedReceipts().map((record) => sanitizeStoredRecord(record));
+      this.reconcileLinkedPaymentReceipts();
 
       saveToStorage(this.items);
       this.initialized = true;
@@ -364,6 +367,181 @@ export const useReceiptsStore = defineStore("receipts", {
       this.items = this.items.filter(
         (record) => String(record.receipt.id) !== String(id),
       );
+    },
+
+    reconcileLinkedPaymentReceipts() {
+      const invoicesStore = useInvoicesStore();
+      const proformasStore = useProformasStore();
+
+      const expectedByKey = new Map<
+        string,
+        {
+          documentType: "invoice" | "proforma";
+          documentId: number;
+          documentNumber: string;
+          client: Receipt["client"];
+          avatar: string;
+          payment: {
+            id: string;
+            amount: number;
+            date: string;
+            method: string;
+            note: string;
+          };
+        }
+      >();
+
+      invoicesStore.all.forEach((record) => {
+        const quotation = record.quotation;
+        (record.payments ?? []).forEach((payment) => {
+          const paymentId = payment.id?.trim();
+          if (!paymentId) return;
+
+          const key = `invoice:${quotation.id}:${paymentId}`;
+          expectedByKey.set(key, {
+            documentType: "invoice",
+            documentId: Number(quotation.id),
+            documentNumber: quotation.quoteNumber,
+            client: ensureClient(quotation.client),
+            avatar: quotation.avatar || "",
+            payment: {
+              id: paymentId,
+              amount: Math.max(0, Number(payment.amount) || 0),
+              date: payment.date?.trim() || new Date().toISOString().slice(0, 10),
+              method: payment.method?.trim() || "Cash",
+              note: payment.note?.trim() || "",
+            },
+          });
+        });
+      });
+
+      proformasStore.all.forEach((record) => {
+        const quotation = record.quotation;
+        (record.payments ?? []).forEach((payment) => {
+          const paymentId = payment.id?.trim();
+          if (!paymentId) return;
+
+          const key = `proforma:${quotation.id}:${paymentId}`;
+          expectedByKey.set(key, {
+            documentType: "proforma",
+            documentId: Number(quotation.id),
+            documentNumber: quotation.quoteNumber,
+            client: ensureClient(quotation.client),
+            avatar: quotation.avatar || "",
+            payment: {
+              id: paymentId,
+              amount: Math.max(0, Number(payment.amount) || 0),
+              date: payment.date?.trim() || new Date().toISOString().slice(0, 10),
+              method: payment.method?.trim() || "Cash",
+              note: payment.note?.trim() || "",
+            },
+          });
+        });
+      });
+
+      const existingByKey = new Map<string, ReceiptRecord>();
+      const keptRecords: ReceiptRecord[] = [];
+
+      this.items.forEach((record) => {
+        const sourceType = record.receipt.sourceType;
+        const paymentId = record.receipt.linkedPaymentId?.trim();
+
+        if (
+          (sourceType !== "invoice" && sourceType !== "proforma") ||
+          !paymentId
+        ) {
+          keptRecords.push(record);
+          return;
+        }
+
+        const documentId =
+          sourceType === "invoice"
+            ? Number(record.receipt.linkedInvoiceId)
+            : Number(record.receipt.linkedProformaId);
+        if (!Number.isFinite(documentId) || documentId <= 0) return;
+
+        const key = `${sourceType}:${documentId}:${paymentId}`;
+        if (!expectedByKey.has(key)) return;
+
+        if (!existingByKey.has(key)) {
+          existingByKey.set(key, record);
+          keptRecords.push(record);
+        }
+      });
+
+      this.items = keptRecords;
+
+      expectedByKey.forEach((payload, key) => {
+        const existing = existingByKey.get(key);
+
+        if (existing) {
+          const updated = mergeReceiptRecord(existing, {
+            receipt: {
+              issuedDate: payload.payment.date,
+              receivedDate: payload.payment.date,
+              linkedPaymentId: payload.payment.id,
+              client: payload.client,
+              amount: payload.payment.amount,
+              avatar: payload.avatar,
+              sourceType: payload.documentType,
+              linkedInvoiceId:
+                payload.documentType === "invoice" ? payload.documentId : null,
+              linkedInvoiceNumber:
+                payload.documentType === "invoice"
+                  ? payload.documentNumber
+                  : null,
+              linkedProformaId:
+                payload.documentType === "proforma" ? payload.documentId : null,
+              linkedProformaNumber:
+                payload.documentType === "proforma"
+                  ? payload.documentNumber
+                  : null,
+            },
+            paymentMethod: payload.payment.method,
+            note: normalizeRichText(payload.payment.note),
+          });
+          const index = this.items.findIndex(
+            (entry) => String(entry.receipt.id) === String(existing.receipt.id),
+          );
+          if (index !== -1) this.items.splice(index, 1, updated);
+          return;
+        }
+
+        const id = nextReceiptId(this.items);
+        const created = normaliseReceiptRecord(
+          {
+            receipt: {
+              id,
+              issuedDate: payload.payment.date,
+              receivedDate: payload.payment.date,
+              linkedPaymentId: payload.payment.id,
+              client: payload.client,
+              amount: payload.payment.amount,
+              avatar: payload.avatar,
+              sourceType: payload.documentType,
+              linkedInvoiceId:
+                payload.documentType === "invoice" ? payload.documentId : null,
+              linkedInvoiceNumber:
+                payload.documentType === "invoice"
+                  ? payload.documentNumber
+                  : null,
+              linkedProformaId:
+                payload.documentType === "proforma" ? payload.documentId : null,
+              linkedProformaNumber:
+                payload.documentType === "proforma"
+                  ? payload.documentNumber
+                  : null,
+              attachmentName: null,
+              attachmentFileKey: null,
+            },
+            paymentMethod: payload.payment.method,
+            note: normalizeRichText(payload.payment.note),
+          },
+          id,
+        );
+
+        this.items.unshift(created);
+      });
     },
   },
 });

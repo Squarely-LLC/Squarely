@@ -1,5 +1,7 @@
 export type ContactClass = "Lead" | "Client" | "Supplier" | "Contact" | "Owner";
 
+export type ContactRole = "client" | "supplier";
+
 export type ContactType = "Entity" | "Individual";
 
 export type ContactCategory = "General" | "VIP" | "Real Estate";
@@ -87,6 +89,7 @@ export interface ContactProperties {
   id: number;
   fullName: string;
   class: ContactClass;
+  roles?: ContactRole[];
   type: ContactType;
   category: ContactCategory;
   email: string;

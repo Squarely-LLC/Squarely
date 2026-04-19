@@ -5,12 +5,13 @@ import { db } from "../plugins/fake-api/handlers/apps/contact/db";
 import type {
   ContactAccounting,
   ContactConnection,
+  ContactRole,
   ContactProperties,
 } from "../plugins/fake-api/handlers/apps/contact/types";
 
 import type { ContactRecord } from "../plugins/fake-api/handlers/apps/contact/types";
 
-const STORAGE_KEY = "app.contacts.v2";
+const STORAGE_KEY = "app.contacts.v3";
 
 function cloneConnection(connection: ContactConnection): ContactConnection {
   const raw = toRaw(connection) as ContactConnection;
@@ -19,14 +20,13 @@ function cloneConnection(connection: ContactConnection): ContactConnection {
     try {
       return structuredClone(raw);
     } catch (error) {
-      console.warn("structuredClone failed while cloning connection:", error);
+      // Fall through to JSON/manual cloning to avoid DataCloneError loops.
     }
   }
 
   try {
-    return structuredClone(raw) as ContactConnection;
+    return JSON.parse(JSON.stringify(raw)) as ContactConnection;
   } catch (error) {
-    console.warn("JSON clone failed while cloning connection:", error);
     return { ...raw };
   }
 }
@@ -38,14 +38,13 @@ function cloneAccounting(accounting: ContactAccounting): ContactAccounting {
     try {
       return structuredClone(raw);
     } catch (error) {
-      console.warn("structuredClone failed while cloning accounting:", error);
+      // Fall through to JSON/manual cloning to avoid DataCloneError loops.
     }
   }
 
   try {
-    return structuredClone(raw) as ContactAccounting;
+    return JSON.parse(JSON.stringify(raw)) as ContactAccounting;
   } catch (error) {
-    console.warn("JSON clone failed while cloning accounting:", error);
     return { ...raw };
   }
 }
@@ -57,15 +56,13 @@ function cloneContact(contact: ContactProperties): ContactProperties {
     try {
       return structuredClone(raw);
     } catch (error) {
-      console.warn("structuredClone failed while cloning contact:", error);
+      // Fall through to JSON/manual cloning to avoid DataCloneError loops.
     }
   }
 
   try {
-    return structuredClone(raw) as ContactProperties;
+    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
   } catch (error) {
-    console.warn("JSON clone failed while cloning contact:", error);
-
     return {
       ...raw,
       connections: Array.isArray(raw.connections)
@@ -146,11 +143,14 @@ function normaliseContact(
   assignedId: number
 ): ContactProperties {
   const now = new Date().toISOString();
+  const roles = ensureRoles(payload.roles, payload.class);
+  const contactClass = deriveClassFromRoles(payload.class ?? "Contact", roles);
 
   return {
     id: assignedId,
     fullName: payload.fullName?.trim() || "Untitled Contact",
-    class: payload.class ?? "Contact",
+    class: contactClass,
+    roles,
     type: payload.type ?? "Individual",
     category: payload.category ?? "General",
     email: payload.email?.trim() || "unknown@example.com",
@@ -175,9 +175,20 @@ function mergeContact(
   original: ContactProperties,
   patch: Partial<ContactProperties>
 ): ContactProperties {
+  const roles = ensureRoles(
+    patch.roles ?? original.roles,
+    patch.class ?? original.class
+  );
+  const contactClass = deriveClassFromRoles(
+    patch.class ?? original.class,
+    roles
+  );
+
   const merged = {
     ...original,
     ...patch,
+    class: contactClass,
+    roles,
     connections: ensureConnections(
       patch.connections ?? original.connections ?? []
     ),
@@ -191,6 +202,43 @@ function mergeContact(
   if (!merged.createdAt) merged.createdAt = original.createdAt;
 
   return cloneContact(merged);
+}
+
+function ensureRoles(
+  roles: ContactRole[] | undefined | null,
+  contactClass: ContactProperties["class"] | undefined
+): ContactRole[] {
+  const next = new Set<ContactRole>();
+
+  if (Array.isArray(roles)) {
+    roles.forEach((role) => {
+      if (role === "client" || role === "supplier") next.add(role);
+    });
+  }
+
+  if (contactClass === "Client") next.add("client");
+  if (contactClass === "Supplier") next.add("supplier");
+
+  return Array.from(next);
+}
+
+function deriveClassFromRoles(
+  currentClass: ContactProperties["class"],
+  roles: ContactRole[]
+): ContactProperties["class"] {
+  const hasClientRole = roles.includes("client");
+  const hasSupplierRole = roles.includes("supplier");
+
+  if (hasClientRole && !hasSupplierRole) return "Client";
+  if (!hasClientRole && hasSupplierRole) return "Supplier";
+  if (hasClientRole && hasSupplierRole) {
+    if (currentClass === "Client" || currentClass === "Supplier") {
+      return currentClass;
+    }
+    return "Contact";
+  }
+
+  return currentClass;
 }
 
 function nextContactId(items: ContactProperties[]) {
@@ -231,6 +279,16 @@ export const useContactsStore = defineStore("contacts", {
             .map((value) => value!.toString().toLowerCase());
           return haystacks.some((value) => value.includes(q));
         });
+      },
+    hasRole:
+      (state) =>
+      (id: number | string, role: ContactRole): boolean => {
+        const contact =
+          state.items.find((item) => String(item.id) === String(id)) ?? null;
+        if (!contact) return false;
+
+        const roles = ensureRoles(contact.roles, contact.class);
+        return roles.includes(role);
       },
   },
   actions: {

@@ -98,7 +98,14 @@ const matchesFilters = (contact: ContactProperties) => {
     if (!hasMatch) return false;
   }
 
-  if (selectedRole.value && contact.class !== selectedRole.value) return false;
+  if (selectedRole.value) {
+    const selected = String(selectedRole.value).toLowerCase();
+    const hasSelectedRole =
+      contact.class === selectedRole.value ||
+      (selected === "client" && (contact.roles ?? []).includes("client")) ||
+      (selected === "supplier" && (contact.roles ?? []).includes("supplier"));
+    if (!hasSelectedRole) return false;
+  }
   if (selectedPlan.value && contact.category !== selectedPlan.value)
     return false;
 
@@ -334,18 +341,23 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
     try {
       return structuredClone(raw);
     } catch (error) {
-      console.warn(
-        "structuredClone failed for contact, falling back to JSON:",
-        error,
-      );
+      // Fall through to JSON/manual cloning to avoid repeated DataCloneError logs.
     }
   }
 
   try {
-    return structuredClone(raw) as ContactProperties;
+    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
   } catch (error) {
-    console.warn("Failed to clone contact payload:", error);
-    return { ...raw };
+    return {
+      ...raw,
+      connections: Array.isArray(raw.connections)
+        ? raw.connections.map((connection) => ({ ...connection }))
+        : [],
+      accounting: raw.accounting ? { ...raw.accounting } : {},
+      records: Array.isArray(raw.records)
+        ? raw.records.map((record) => ({ ...record }))
+        : [],
+    };
   }
 };
 
@@ -361,7 +373,7 @@ const notifications = useNotificationsStore();
 
 const addNewContact = (contact: Partial<ContactProperties>) => {
   // eslint-disable-next-line no-console
-  console.log("addNewContact received:", structuredClone(contact));
+  console.log("addNewContact received:", toRaw(contact));
 
   // The store expects a Partial<ContactProperties> for addContact.
   // Ensure we pass the payload through directly so the store assigns an id and defaults.

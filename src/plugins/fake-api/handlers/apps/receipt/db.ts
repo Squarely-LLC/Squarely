@@ -112,5 +112,6 @@ const buildFlaggedReceipt = (): ReceiptRecord => ({
 export const database: ReceiptRecord[] = [
   buildInvoiceReceipt(9101, 6301, 2100, "inv-pay-6301-1"),
   buildProformaReceipt(9102, 6201, 3200, "pf-pay-6201-1"),
+  buildInvoiceReceipt(9104, 6401, 900, "inv-pay-6401-1"),
   buildFlaggedReceipt(),
 ];

@@ -88,6 +88,16 @@ const avatarText = (name?: string | null) => {
 };
 
 const connectionList = computed(() => props.userData.connections ?? []);
+const contactRoleLabels = computed(() => {
+  const roles = new Set(props.userData.roles ?? []);
+
+  if (props.userData.class === "Client") roles.add("client");
+  if (props.userData.class === "Supplier") roles.add("supplier");
+
+  return Array.from(roles)
+    .map((role) => (role === "client" ? "Client" : "Supplier"))
+    .filter((label) => label !== props.userData.class);
+});
 
 // local override so UI updates instantly when adding a connection
 const localConnections = ref<ContactConnection[] | null>(null);
@@ -751,6 +761,18 @@ function onContactEditSubmit(payload: ContactProperties) {
               variant="tonal"
             >
               {{ props.userData.class }}
+            </VChip>
+
+            <VChip
+              v-for="role in contactRoleLabels"
+              :key="'role-' + role"
+              label
+              size="small"
+              class="text-capitalize"
+              :color="role === 'Supplier' ? 'info' : 'primary'"
+              variant="tonal"
+            >
+              {{ role }}
             </VChip>
 
             <VChip

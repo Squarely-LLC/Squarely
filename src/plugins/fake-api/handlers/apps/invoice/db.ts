@@ -210,6 +210,24 @@ const standaloneRecords: InvoiceRecord[] = [
       balanceAfter: 0,
     },
   ]),
+  buildStandaloneRecord(6401, "Partially Paid", getSeedAvatar(15), {
+    total: 1800,
+    client: getSeedClient(15),
+    service: "Landscaping concept and permitting package",
+    dealId: 403,
+    linkedRecordType: "deal",
+  }, [
+    {
+      id: "inv-pay-6401-1",
+      amount: 900,
+      date: `${year}-04-17`,
+      method: "Bank Transfer",
+      note: "First installment received.",
+      createdAt: `${year}-04-17T11:15:00Z`,
+      balanceBefore: 1800,
+      balanceAfter: 900,
+    },
+  ]),
 ];
 
 export const database: InvoiceRecord[] = [

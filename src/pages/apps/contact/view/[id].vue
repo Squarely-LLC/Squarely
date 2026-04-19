@@ -29,18 +29,23 @@ const cloneContact = (contact: ContactProperties | null | undefined) => {
     try {
       return structuredClone(raw);
     } catch (error) {
-      console.warn(
-        "structuredClone failed for contact, falling back to JSON:",
-        error,
-      );
+      // Fall through to JSON/manual cloning to avoid repeated DataCloneError logs.
     }
   }
 
   try {
-    return structuredClone(raw) as ContactProperties;
+    return JSON.parse(JSON.stringify(raw)) as ContactProperties;
   } catch (error) {
-    console.warn("Failed to clone contact payload:", error);
-    return { ...raw };
+    return {
+      ...raw,
+      connections: Array.isArray(raw.connections)
+        ? raw.connections.map((connection) => ({ ...connection }))
+        : [],
+      accounting: raw.accounting ? { ...raw.accounting } : {},
+      records: Array.isArray(raw.records)
+        ? raw.records.map((record) => ({ ...record }))
+        : [],
+    };
   }
 };
 

@@ -2,6 +2,7 @@
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useExpensesStore } from "@/stores/expenses";
 import { useNotificationsStore } from "@/stores/notifications";
+import { usePaymentVouchersStore } from "@/stores/paymentVouchers";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { formatSystemDate } from "@core/utils/formatters";
 
@@ -15,9 +16,11 @@ const emit = defineEmits<Emit>();
 
 const router = useRouter();
 const expensesStore = useExpensesStore();
+const paymentVouchersStore = usePaymentVouchersStore();
 const notifications = useNotificationsStore();
 
 expensesStore.init();
+paymentVouchersStore.init();
 
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const isPreviewActionFrameReady = ref(false);
@@ -40,6 +43,8 @@ const pendingDeleteExpenseId = ref<number | null>(null);
 const isEmailDialogOpen = ref(false);
 const pendingEmailExpenseId = ref<number | null>(null);
 const emailDialogRef = ref<any | null>(null);
+const isVoucherDialogOpen = ref(false);
+const voucherDialogBillNumber = ref("");
 
 const headers = [
   { title: "#", key: "id" },
@@ -309,6 +314,10 @@ const computedMoreList = computed(() => {
     const hasPayments = (expenseRecord?.payments?.length || 0) > 0;
     const canPayOrEditPayment = canPay || hasPayments;
 
+    const hasVouchers = paymentVouchersStore.byBillNumber(
+      expenseRecord?.expense.billNumber || "",
+    ).length > 0;
+
     return [
       {
         title: "Edit",
@@ -344,6 +353,16 @@ const computedMoreList = computed(() => {
         prependIcon: "tabler-download",
         onClick: () => openExpensePreview(expenseId, "download"),
       },
+      ...(hasVouchers
+        ? [
+            {
+              title: "View Vouchers",
+              value: "vouchers",
+              prependIcon: "tabler-file-invoice",
+              onClick: () => openVoucherDialog(expenseId),
+            },
+          ]
+        : []),
       {
         title: "Delete",
         value: "delete",
@@ -354,6 +373,17 @@ const computedMoreList = computed(() => {
     ];
   };
 });
+
+const voucherDialogEntries = computed(() =>
+  paymentVouchersStore.byBillNumber(voucherDialogBillNumber.value),
+);
+
+const openVoucherDialog = (expenseId: number) => {
+  const expenseRecord = expensesStore.byId(expenseId);
+  if (!expenseRecord) return;
+  voucherDialogBillNumber.value = expenseRecord.expense.billNumber;
+  isVoucherDialogOpen.value = true;
+};
 
 onMounted(() => {
   window.addEventListener("message", handlePreviewActionFrameMessage);
@@ -523,6 +553,47 @@ watch(totalExpenses, (value) => {
             @save="confirmDeleteExpense"
             @cancel="closeDeleteExpenseDialog"
           />
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isVoucherDialogOpen" max-width="620">
+      <VCard>
+        <VCardTitle>
+          Payment Vouchers - {{ voucherDialogBillNumber || "-" }}
+        </VCardTitle>
+        <VCardText>
+          <VTable class="text-no-wrap">
+            <thead>
+              <tr>
+                <th>Voucher #</th>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Supplier</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="entry in voucherDialogEntries" :key="entry.id">
+                <td>{{ entry.voucherNumber }}</td>
+                <td>{{ formatSystemDate(entry.date) }}</td>
+                <td>${{ entry.amount.toLocaleString() }}</td>
+                <td>{{ entry.paymentMethod }}</td>
+                <td>{{ entry.supplierName }}</td>
+              </tr>
+              <tr v-if="!voucherDialogEntries.length">
+                <td colspan="5" class="text-center text-medium-emphasis py-5">
+                  No vouchers linked to this bill.
+                </td>
+              </tr>
+            </tbody>
+          </VTable>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="tonal" @click="isVoucherDialogOpen = false">
+            Close
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

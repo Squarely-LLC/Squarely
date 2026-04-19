@@ -20,7 +20,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.invoices.v2";
+const STORAGE_KEY = "app.invoices.v3";
 type InvoicePayload = Omit<Partial<InvoiceRecord>, "quotation"> & {
   quotation?: Partial<Invoice>;
 };
@@ -88,6 +88,18 @@ export function cloneInvoiceRecord(record: InvoiceRecord): InvoiceRecord {
 
 function cloneInvoiceArray(records: InvoiceRecord[]) {
   return records.map((record) => cloneInvoiceRecord(record));
+}
+
+function triggerReceiptReconciliation() {
+  void import("@/stores/receipts")
+    .then(({ useReceiptsStore }) => {
+      const receiptsStore = useReceiptsStore();
+      receiptsStore.init();
+      receiptsStore.reconcileLinkedPaymentReceipts();
+    })
+    .catch(() => {
+      // Ignore reconciliation load failures.
+    });
 }
 
 function loadFromStorage(): InvoiceRecord[] | null {
@@ -717,6 +729,7 @@ export const useInvoicesStore = defineStore("invoices", {
       }
 
       this.initialized = true;
+      triggerReceiptReconciliation();
 
       if (typeof window !== "undefined") {
         this.$subscribe(
@@ -744,6 +757,7 @@ export const useInvoicesStore = defineStore("invoices", {
       );
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
+      triggerReceiptReconciliation();
       return this.byId(id);
     },
 
@@ -757,6 +771,7 @@ export const useInvoicesStore = defineStore("invoices", {
       const updated = mergeInvoiceRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
+      triggerReceiptReconciliation();
       return this.byId(id);
     },
 
@@ -789,10 +804,12 @@ export const useInvoicesStore = defineStore("invoices", {
       });
 
       this.items = resequenceRevisions(this.items);
+      triggerReceiptReconciliation();
     },
 
     replaceAll(records: InvoiceRecord[]) {
       this.items = resequenceRevisions(records);
+      triggerReceiptReconciliation();
     },
   },
 });

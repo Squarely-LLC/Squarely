@@ -90,6 +90,18 @@ function cloneProformaArray(records: ProformaRecord[]) {
   return records.map((record) => cloneProformaRecord(record));
 }
 
+function triggerReceiptReconciliation() {
+  void import("@/stores/receipts")
+    .then(({ useReceiptsStore }) => {
+      const receiptsStore = useReceiptsStore();
+      receiptsStore.init();
+      receiptsStore.reconcileLinkedPaymentReceipts();
+    })
+    .catch(() => {
+      // Ignore reconciliation load failures.
+    });
+}
+
 function loadFromStorage(): ProformaRecord[] | null {
   if (typeof window === "undefined") return null;
 
@@ -730,6 +742,7 @@ export const useProformasStore = defineStore("proformas", {
       }
 
       this.initialized = true;
+      triggerReceiptReconciliation();
 
       if (typeof window !== "undefined") {
         this.$subscribe(
@@ -757,6 +770,7 @@ export const useProformasStore = defineStore("proformas", {
       );
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
+      triggerReceiptReconciliation();
       return this.byId(id);
     },
 
@@ -770,6 +784,7 @@ export const useProformasStore = defineStore("proformas", {
       const updated = mergeProformaRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
+      triggerReceiptReconciliation();
       return this.byId(id);
     },
 
@@ -802,10 +817,12 @@ export const useProformasStore = defineStore("proformas", {
       });
 
       this.items = resequenceRevisions(this.items);
+      triggerReceiptReconciliation();
     },
 
     replaceAll(records: ProformaRecord[]) {
       this.items = resequenceRevisions(records);
+      triggerReceiptReconciliation();
     },
   },
 });
