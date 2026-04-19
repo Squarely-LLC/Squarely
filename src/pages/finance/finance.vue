@@ -120,6 +120,7 @@ const editingExpenseId = ref<number | null>(null);
 const editingReceiptId = ref<number | null>(null);
 const receiptCreationMode = ref<"squarely" | "attachment">("squarely");
 const pendingExpensePaymentPayload = ref<ExpenseDrawerSubmitPayload | null>(null);
+const allowExpensePaymentEditing = ref(true);
 const pendingExpensePayments = ref<
   Array<{
     id: string;
@@ -259,6 +260,7 @@ const openPayExpenseDrawer = (expenseId: number) => {
   const existingExpense = expensesStore.byId(expenseId);
   if (!existingExpense) return;
 
+  allowExpensePaymentEditing.value = true;
   pendingExpensePaymentPayload.value = {
     id: existingExpense.expense.id,
     action: "save",
@@ -297,6 +299,7 @@ const closeExpenseDrawer = () => {
 
 const closeExpensePaymentDrawer = () => {
   isExpensePaymentDrawerOpen.value = false;
+  allowExpensePaymentEditing.value = true;
   pendingExpensePaymentPayload.value = null;
   pendingExpensePayments.value = [];
 };
@@ -339,9 +342,9 @@ const saveExpense = async (payload: ExpenseDrawerSubmitPayload) => {
 };
 
 const openExpensePaymentDrawerFromDraft = (payload: ExpenseDrawerSubmitPayload) => {
+  allowExpensePaymentEditing.value = false;
   pendingExpensePaymentPayload.value = payload;
   pendingExpensePayments.value = [];
-  isExpenseDrawerOpen.value = false;
   isExpensePaymentDrawerOpen.value = true;
 };
 
@@ -564,6 +567,7 @@ watch(
     v-model:is-drawer-open="isExpensePaymentDrawerOpen"
     :expense-draft="pendingExpensePaymentPayload?.expense ?? null"
     :current-balance="Number(pendingExpensePaymentPayload?.expense.balance ?? pendingExpensePaymentPayload?.expense.amount ?? 0) || 0"
+    :allow-edit-payments="allowExpensePaymentEditing"
     :existing-payments="pendingExpensePayments"
     @submit="saveExpensePayment($event, pendingExpensePaymentPayload)"
     @update:is-drawer-open="$event ? (isExpensePaymentDrawerOpen = true) : closeExpensePaymentDrawer()"

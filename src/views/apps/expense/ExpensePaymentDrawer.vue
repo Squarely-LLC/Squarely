@@ -7,6 +7,7 @@ interface Props {
   isDrawerOpen: boolean;
   expenseDraft: Partial<Expense> | null;
   currentBalance: number;
+  allowEditPayments?: boolean;
   existingPayments?: Array<{
     id: string;
     voucherNumber: string;
@@ -36,9 +37,12 @@ const paymentDateError = ref<string | null>(null);
 const paymentMethodError = ref<string | null>(null);
 
 const paymentMethodOptions = ["Bank Transfer", "Cash", "Credit Card"];
+const editablePayments = computed(() =>
+  props.allowEditPayments ? props.existingPayments ?? [] : [],
+);
 
 const paymentOptions = computed(() => {
-  const history = (props.existingPayments ?? []).map((payment) => ({
+  const history = editablePayments.value.map((payment) => ({
     title: `${payment.voucherNumber} | ${payment.date} | ${Number(payment.amount || 0).toLocaleString()}`,
     value: payment.id,
   }));
@@ -47,7 +51,7 @@ const paymentOptions = computed(() => {
 });
 
 const selectedExistingPayment = computed(() =>
-  (props.existingPayments ?? []).find(
+  editablePayments.value.find(
     (payment) => payment.id === selectedPaymentId.value,
   ) ?? null,
 );
@@ -82,8 +86,8 @@ const normalisePaymentMethod = (value?: string | null) => {
 
 const resetForm = () => {
   const defaultPaymentForEdit =
-    props.currentBalance <= 0 && (props.existingPayments?.length || 0) > 0
-      ? props.existingPayments![props.existingPayments!.length - 1]?.id
+    props.currentBalance <= 0 && editablePayments.value.length > 0
+      ? editablePayments.value[editablePayments.value.length - 1]?.id
       : "new";
   selectedPaymentId.value = defaultPaymentForEdit || "new";
   amountDue.value = editableAmountDue.value.toLocaleString();
@@ -176,7 +180,9 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
     temporary
     location="end"
     :width="420"
+    :scrim="true"
     border="none"
+    style="z-index: 2100"
     :model-value="props.isDrawerOpen"
     class="scrollable-content"
     @update:model-value="handleDrawerModelValueUpdate"
@@ -191,7 +197,7 @@ const handleDrawerModelValueUpdate = (value: boolean) => {
         <VCardText>
           <VForm @submit.prevent="onSubmit">
             <VRow>
-              <VCol cols="12">
+              <VCol v-if="props.allowEditPayments && paymentOptions.length > 1" cols="12">
                 <AppSelect
                   v-model="selectedPaymentId"
                   label="Payment Entry"
