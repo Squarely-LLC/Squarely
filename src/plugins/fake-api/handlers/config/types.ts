@@ -103,7 +103,6 @@ export interface DealsConfig {
   quotationStartsSeq?: string // prefix or sequence
   proformaStartSeq?: string
   salesType?: string[]
-  salesLocation?: string[]
   fieldLabels?: Record<string, string>
   customFields?: DealCustomFieldDefinition[]
   dealStages?: string[]

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import type { VForm } from 'vuetify/components/VForm'
+import { requiredValidator } from '@/@core/utils/validators'
 import DialogActionBar from '@/components/DialogActionBar.vue'
 import type {
   DealCustomFieldDefinition,
@@ -12,6 +13,7 @@ import type {
 } from '@/plugins/fake-api/handlers/operations/deals/types'
 import { useConfigStore } from '@/stores/config'
 import { useContactsStore } from '@/stores/contacts'
+import { useEmployeesStore } from '@/stores/employees'
 
 interface Props {
   deal?: DealProperties | null
@@ -38,18 +40,21 @@ const isFormValid = ref(false)
 
 const configStore = useConfigStore()
 const contactsStore = useContactsStore()
+const employeesStore = useEmployeesStore()
 
 configStore.init()
 contactsStore.init()
+employeesStore.init()
 
 const stageOptions = computed(() => configStore.configurations?.deals?.dealStages || [])
 const typeOptions = computed(() => configStore.configurations?.deals?.salesType || [])
 
-const locationOptions = computed(() =>
-  configStore.configurations?.deals?.salesLocation
-  || configStore.configurations?.crm?.locations
-  || [],
-)
+const defaultLocation = computed(() => {
+  const city = String(configStore.configurations?.legal?.city ?? '').trim()
+  const country = String(configStore.configurations?.legal?.country ?? '').trim()
+
+  return [city, country].filter(Boolean).join(', ')
+})
 
 const customFieldDefinitions = computed<DealCustomFieldDefinition[]>(() => {
   const configured = configStore.configurations?.deals?.customFields
@@ -70,6 +75,14 @@ const contactOptions = computed(() =>
     title: contact.fullName,
     value: contact.id,
     avatar: contact.picture || null,
+  })),
+)
+
+const collaboratorOptions = computed(() =>
+  employeesStore.all.map(employee => ({
+    title: employee.fullName,
+    value: employee.id,
+    avatar: employee.picture || null,
   })),
 )
 
@@ -120,7 +133,7 @@ const buildEmptyDeal = (): Partial<DealProperties> => ({
   estimatedDeliveryDate: null,
   stage: stageOptions.value[0] || null,
   important: false,
-  location: locationOptions.value[0] || null,
+  location: defaultLocation.value || null,
   collaborators: [],
   note: '',
   customFieldValues: buildDefaultCustomFieldValues(),
@@ -135,6 +148,7 @@ const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
   return {
     ...raw,
     collaborators: Array.isArray(raw.collaborators) ? [...raw.collaborators] : [],
+    location: raw.location || defaultLocation.value || null,
     customFieldValues: buildDefaultCustomFieldValues(raw.customFieldValues),
   }
 }
@@ -240,11 +254,12 @@ const onSubmit = async () => {
             >
               <AppSelect
                 v-model="localDeal.relatedTo"
-                label="Owner"
-                placeholder="Select Owner"
+                label="Linked to"
+                placeholder="Select Contact"
                 :items="contactOptions"
                 item-title="title"
                 item-value="value"
+                :rules="[requiredValidator]"
                 clearable
                 clear-icon="tabler-x"
               >
@@ -277,22 +292,12 @@ const onSubmit = async () => {
               cols="12"
               md="6"
             >
-              <AppTextField
-                :model-value="props.deal?.code || 'Auto-generated on save'"
-                label="Deal Code"
-                readonly
-              />
-            </VCol>
-
-            <VCol
-              cols="12"
-              md="6"
-            >
               <AppSelect
                 v-model="localDeal.type"
                 label="Type"
                 placeholder="Select Type"
                 :items="typeOptions"
+                :rules="[requiredValidator]"
               />
             </VCol>
 
@@ -317,6 +322,7 @@ const onSubmit = async () => {
                 label="Stage"
                 placeholder="Select Stage"
                 :items="stageOptions"
+                :rules="[requiredValidator]"
               />
             </VCol>
 
@@ -324,11 +330,10 @@ const onSubmit = async () => {
               cols="12"
               md="6"
             >
-              <AppSelect
+              <AppTextField
                 v-model="localDeal.location"
                 label="Location"
-                placeholder="Select Location"
-                :items="locationOptions"
+                placeholder="City, Country"
               />
             </VCol>
 
@@ -336,14 +341,9 @@ const onSubmit = async () => {
               cols="12"
               md="6"
             >
-              <div class="d-flex align-center justify-space-between rounded border pa-3">
-                <div>
-                  <div class="text-body-1 font-weight-medium">
-                    Important
-                  </div>
-                  <div class="text-body-2 text-medium-emphasis">
-                    Star deals that need extra attention.
-                  </div>
+              <div class="d-flex align-center justify-space-between rounded border px-4 py-3">
+                <div class="text-body-1 font-weight-medium">
+                  Important
                 </div>
 
                 <VBtn
@@ -362,7 +362,7 @@ const onSubmit = async () => {
                 v-model="localDeal.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"
-                :items="contactOptions"
+                :items="collaboratorOptions"
                 item-title="title"
                 item-value="value"
                 multiple

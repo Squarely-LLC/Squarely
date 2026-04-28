@@ -221,7 +221,6 @@ export const db: ConfigDB = {
       quotationStartsSeq: 'QTN-',
       proformaStartSeq: 'PF-',
       salesType: ['Retail', 'Wholesale'],
-      salesLocation: ['Dubai', 'Riyadh', 'Online'],
       fieldLabels: {
         additional_field_1: 'Additional field 1',
         additional_field_2: 'Additional field 2',

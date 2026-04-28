@@ -13,12 +13,10 @@ store.init()
 const notifications = useNotificationsStore()
 
 const salesType = ref<string[]>([])
-const salesLocation = ref<string[]>([])
 const dealStages = ref<string[]>([])
 const customFields = ref<DealCustomFieldDefinition[]>([])
 
 const isSavingSalesType = ref(false)
-const isSavingSalesLocation = ref(false)
 const isSavingDealStages = ref(false)
 const isSavingCustomFields = ref(false)
 
@@ -73,7 +71,6 @@ const sanitizeCustomField = (
 const loadData = () => {
   const deals = store.configurations.deals || {}
   salesType.value = cleanEntries(deals.salesType || [])
-  salesLocation.value = cleanEntries(deals.salesLocation || [])
   dealStages.value = cleanEntries(deals.dealStages || [])
 
   const configuredCustomFields = Array.isArray(deals.customFields)
@@ -124,16 +121,6 @@ const saveSalesType = makeListSaver({
   failureMessage: 'Failed to save sales type',
   payloadBuilder: cleaned => ({
     deals: { ...(store.configurations.deals || {}), salesType: cleaned },
-  }),
-})
-
-const saveSalesLocation = makeListSaver({
-  state: salesLocation,
-  loading: isSavingSalesLocation,
-  successMessage: 'Sales location saved',
-  failureMessage: 'Failed to save sales location',
-  payloadBuilder: cleaned => ({
-    deals: { ...(store.configurations.deals || {}), salesLocation: cleaned },
   }),
 })
 
@@ -238,18 +225,6 @@ const removeCustomField = (index: number) => {
           :loading="isSavingSalesType"
           placeholder="Add sales types"
           @save="saveSalesType"
-          @warn="notifyWarn"
-          @error="notifyError"
-        />
-      </div>
-
-      <div class="mb-4">
-        <EditableChipList
-          label="Sales location"
-          :items="salesLocation"
-          :loading="isSavingSalesLocation"
-          placeholder="Add sales locations"
-          @save="saveSalesLocation"
           @warn="notifyWarn"
           @error="notifyError"
         />

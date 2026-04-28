@@ -6,6 +6,7 @@ import type { DealProperties } from '@/plugins/fake-api/handlers/operations/deal
 import { useConfigStore } from '@/stores/config'
 import { useContactsStore } from '@/stores/contacts'
 import { useDealsStore } from '@/stores/deals'
+import { useEmployeesStore } from '@/stores/employees'
 import { useNotificationsStore } from '@/stores/notifications'
 import DealUpsertDialog from '@/views/operations/deals/list/DealUpsertDialog.vue'
 
@@ -15,11 +16,13 @@ type SortOrder = 'asc' | 'desc'
 const dealsStore = useDealsStore()
 const contactsStore = useContactsStore()
 const configStore = useConfigStore()
+const employeesStore = useEmployeesStore()
 const notifications = useNotificationsStore()
 
 dealsStore.init()
 contactsStore.init()
 configStore.init()
+employeesStore.init()
 
 const searchQuery = ref('')
 const selectedStage = ref<string | undefined>()
@@ -48,7 +51,7 @@ const selectedRows = ref<number[]>([])
 
 const headers = [
   { title: 'Deal', key: 'deal' },
-  { title: 'Owner', key: 'contact' },
+  { title: 'Linked to', key: 'contact' },
   { title: 'Stage', key: 'stage' },
   { title: 'Type', key: 'type' },
   { title: 'Delivery', key: 'delivery' },
@@ -134,6 +137,22 @@ const contactDirectory = computed(() => {
     map.set(Number(contact.id), {
       name: contact.fullName,
       picture: contact.picture || null,
+    })
+  })
+
+  return map
+})
+
+const employeeDirectory = computed(() => {
+  const map = new Map<number, { name: string; picture: string | null }>()
+
+  employeesStore.all.forEach(employee => {
+    if (employee?.id === null || employee?.id === undefined)
+      return
+
+    map.set(Number(employee.id), {
+      name: employee.fullName,
+      picture: employee.picture || null,
     })
   })
 
@@ -253,7 +272,7 @@ const totalDeals = computed(() => sortedDeals.value.length)
 
 const decoratedCollaborators = (deal: DealProperties) =>
   (deal.collaborators || [])
-    .map(id => getContactEntry(id))
+    .map(id => employeeDirectory.value.get(Number(id)) ?? null)
     .filter(Boolean) as Array<{ name: string; picture: string | null }>
 
 const formatDate = (value?: string | null) => {
@@ -287,38 +306,48 @@ const resolveCustomFieldPreview = (deal: DealProperties) => {
   return previews.join(' - ')
 }
 
-const stageColorPalette = [
-  'primary',
-  'success',
-  'warning',
-  'info',
-  'secondary',
-  'error',
-] as const
-
 const resolveStageColor = (stage?: string | null) => {
   const value = String(stage ?? '').trim()
   if (!value)
-    return 'secondary'
+    return '#7C8AA5'
 
   const normalized = value.toLowerCase()
 
+  const colorMap: Record<string, string> = {
+    'under review': '#5C7CFA',
+    negotiation: '#8B5CF6',
+    'in progress': '#06B6D4',
+    'high priority': '#F97316',
+    'express order': '#EC4899',
+    'on hold': '#F4B740',
+    'awaiting payment': '#14B8A6',
+    canceled: '#EF4444',
+    completed: '#22C55E',
+  }
+
+  if (colorMap[normalized])
+    return colorMap[normalized]
+
   if (normalized.includes('complete'))
-    return 'success'
+    return '#22C55E'
   if (normalized.includes('progress'))
-    return 'info'
-  if (normalized.includes('review') || normalized.includes('negotiation'))
-    return 'primary'
-  if (normalized.includes('hold') || normalized.includes('await'))
-    return 'warning'
+    return '#06B6D4'
+  if (normalized.includes('review'))
+    return '#5C7CFA'
+  if (normalized.includes('negotiat'))
+    return '#8B5CF6'
+  if (normalized.includes('priority'))
+    return '#F97316'
+  if (normalized.includes('express'))
+    return '#EC4899'
+  if (normalized.includes('hold'))
+    return '#F4B740'
+  if (normalized.includes('await') || normalized.includes('payment'))
+    return '#14B8A6'
   if (normalized.includes('cancel'))
-    return 'error'
-  if (normalized.includes('priority') || normalized.includes('express'))
-    return 'secondary'
+    return '#EF4444'
 
-  const hash = [...normalized].reduce((total, char) => total + char.charCodeAt(0), 0)
-
-  return stageColorPalette[hash % stageColorPalette.length]
+  return '#7C8AA5'
 }
 
 const isDealDialogVisible = ref(false)
