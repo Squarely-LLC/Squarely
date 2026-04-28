@@ -3,7 +3,9 @@ import { toRaw } from 'vue'
 
 import { db } from '@/plugins/fake-api/handlers/operations/deals/db'
 import type {
+  DealFinancialEntry,
   DealFieldValue,
+  DealItem,
   DealProperties,
 } from '@/plugins/fake-api/handlers/operations/deals/types'
 
@@ -20,6 +22,9 @@ function cloneDeal(deal: DealProperties): DealProperties {
       ...raw,
       collaborators: Array.isArray(raw.collaborators) ? [...raw.collaborators] : [],
       customFieldValues: { ...(raw.customFieldValues || {}) },
+      items: Array.isArray(raw.items) ? raw.items.map(item => ({ ...item })) : [],
+      documents: Array.isArray(raw.documents) ? raw.documents.map(document => ({ ...document })) : [],
+      financials: Array.isArray(raw.financials) ? raw.financials.map(entry => ({ ...entry })) : [],
     }
   }
 }
@@ -91,6 +96,27 @@ function normalizeCustomFieldValues(
   return Object.fromEntries(Object.entries(values))
 }
 
+function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
+  if (!Array.isArray(items))
+    return []
+
+  return items.map(item => ({ ...item }))
+}
+
+function normalizeDocuments(documents: DealProperties['documents'] | undefined | null) {
+  if (!Array.isArray(documents))
+    return []
+
+  return documents.map(document => ({ ...document }))
+}
+
+function normalizeFinancials(financials: DealFinancialEntry[] | undefined | null): DealFinancialEntry[] {
+  if (!Array.isArray(financials))
+    return []
+
+  return financials.map(entry => ({ ...entry }))
+}
+
 function normaliseDeal(
   payload: Partial<DealProperties>,
   assignedId: number,
@@ -114,6 +140,9 @@ function normaliseDeal(
       : [],
     note: payload.note?.trim() || null,
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
+    items: normalizeItems(payload.items),
+    documents: normalizeDocuments(payload.documents),
+    financials: normalizeFinancials(payload.financials),
     createdAt: payload.createdAt || now,
   }
 }
@@ -136,6 +165,15 @@ function mergeDeal(
     customFieldValues: patch.customFieldValues === undefined
       ? { ...(original.customFieldValues || {}) }
       : normalizeCustomFieldValues(patch.customFieldValues),
+    items: patch.items === undefined
+      ? normalizeItems(original.items)
+      : normalizeItems(patch.items),
+    documents: patch.documents === undefined
+      ? normalizeDocuments(original.documents)
+      : normalizeDocuments(patch.documents),
+    financials: patch.financials === undefined
+      ? normalizeFinancials(original.financials)
+      : normalizeFinancials(patch.financials),
   })
 }
 

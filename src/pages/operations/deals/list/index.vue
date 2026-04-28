@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import type { DealCustomFieldDefinition } from '@/plugins/fake-api/handlers/config/types'
 import type { DealProperties } from '@/plugins/fake-api/handlers/operations/deals/types'
@@ -22,6 +23,7 @@ const contactsStore = useContactsStore()
 const configStore = useConfigStore()
 const employeesStore = useEmployeesStore()
 const notifications = useNotificationsStore()
+const router = useRouter()
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(null)
 const isAddTodoDrawerVisible = ref(false)
 const addTodoInitial = ref<any | null>(null)
@@ -389,6 +391,13 @@ const openEditDialog = (deal: DealProperties) => {
   isDealDialogVisible.value = true
 }
 
+const openDealView = (deal: DealProperties) => {
+  router.push({
+    name: 'operations-deals-view-id',
+    params: { id: deal.id },
+  })
+}
+
 const saveDeal = (payload: Partial<DealProperties>) => {
   dialogLoading.value = true
   dialogError.value = null
@@ -406,8 +415,13 @@ const saveDeal = (payload: Partial<DealProperties>) => {
       notifications.push('Deal updated', 'success', 3000)
     }
     else {
-      dealsStore.addDeal(payload)
+      const created = dealsStore.addDeal(payload)
       notifications.push('Deal created', 'success', 3000)
+      isDealDialogVisible.value = false
+      selectedDeal.value = null
+      openDealView(created)
+
+      return
     }
 
     isDealDialogVisible.value = false
@@ -812,7 +826,11 @@ const updateItemsPerPage = (value: number | string) => {
               <VIcon :icon="item.important ? 'tabler-star-filled' : 'tabler-star'" />
             </VBtn>
 
-            <div class="deal-cell__content d-flex flex-column gap-1">
+            <button
+              type="button"
+              class="deal-cell__content deal-cell__link d-flex flex-column gap-1 text-start"
+              @click="openDealView(item)"
+            >
               <div class="deal-cell__title text-base font-weight-medium">
                 {{ item.code || '--' }}
               </div>
@@ -829,7 +847,7 @@ const updateItemsPerPage = (value: number | string) => {
               >
                 {{ resolveCustomFieldPreview(item) }}
               </div>
-            </div>
+            </button>
           </div>
         </template>
 
@@ -1122,6 +1140,15 @@ const updateItemsPerPage = (value: number | string) => {
 .deal-cell__content,
 .linked-cell {
   min-inline-size: 0;
+}
+
+.deal-cell__link {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  inline-size: 100%;
+  padding: 0;
 }
 
 .deal-cell__title,

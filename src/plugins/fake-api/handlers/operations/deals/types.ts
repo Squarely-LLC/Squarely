@@ -1,5 +1,29 @@
 export type DealFieldValue = string | number | boolean | null
 
+import type { JobDocument } from '@/plugins/fake-api/handlers/operations/jobs/types'
+
+export interface DealItem {
+  id: number
+  name: string
+  category?: string | null
+  catalogueItemId?: string | null
+  catalogueType?: string | null
+  quantity: number
+  unitPrice?: number | null
+  status?: string | null
+  note?: string | null
+}
+
+export interface DealFinancialEntry {
+  id: number
+  title: string
+  type: 'quotation' | 'invoice' | 'payment' | 'cost'
+  amount: number
+  status?: string | null
+  dueDate?: string | null
+  createdAt: string
+}
+
 export interface DealProperties {
   id: number
   name: string
@@ -13,5 +37,8 @@ export interface DealProperties {
   collaborators: number[]
   note?: string | null
   customFieldValues: Record<string, DealFieldValue>
+  items: DealItem[]
+  documents: JobDocument[]
+  financials: DealFinancialEntry[]
   createdAt: string
 }
