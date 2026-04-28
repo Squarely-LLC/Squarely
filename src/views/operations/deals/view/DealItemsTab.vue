@@ -56,7 +56,6 @@ type DealItemWithPlan = DealItem & {
 const addItemDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
-const expandedGoals = ref<Array<number | string>>([]);
 const selectedCatalogueItemId = ref<string | null>(null);
 
 const addItemDraft = reactive({
@@ -139,6 +138,19 @@ const isProductLike = (type?: string | null) =>
   type === "Produced Product" ||
   type === "Onetime Service";
 
+const childLabelForItem = (item: DealItem) => {
+  const type = (item.catalogueType || "").trim();
+
+  if (type === "Contractual Service")
+    return { singular: "Phase", plural: "Phases" };
+  if (type === "Reccurent Service")
+    return { singular: "Recurrent Service", plural: "Recurrent Services" };
+  if (type === "Retainer Service")
+    return { singular: "Retainer Service", plural: "Retainer Services" };
+
+  return { singular: "Item", plural: "Items" };
+};
+
 const formatMoney = (value?: number | null) =>
   value === null || value === undefined ? "--" : Number(value).toLocaleString();
 
@@ -154,9 +166,11 @@ const shouldShowSectionHeader = (
   if (!isSingleSection) return true;
 
   const sameName =
-    normalizeComparableText(section.name) === normalizeComparableText(item.name);
+    normalizeComparableText(section.name) ===
+    normalizeComparableText(item.name);
   const sameNote =
-    normalizeComparableText(section.note) === normalizeComparableText(item.note);
+    normalizeComparableText(section.note) ===
+    normalizeComparableText(item.note);
   const samePrice = (section.price ?? null) === (item.unitPrice ?? null);
 
   return !(sameName && sameNote && samePrice);
@@ -299,6 +313,9 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
     derivedSections: deriveSections(item),
   })),
 );
+
+const totalChildrenCount = (item: DealItemWithPlan) =>
+  item.derivedSections.reduce((sum, section) => sum + section.goals.length, 0);
 </script>
 
 <template>
@@ -348,75 +365,27 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
 
       <div v-else class="d-flex flex-column gap-4">
         <template v-for="item in dealItemsWithPlan" :key="item.id">
-          <VCard
-            v-if="!item.isExpandable"
-            variant="tonal"
-            class="item-static-card"
-          >
-            <VCardText>
-              <div class="d-flex align-start gap-3 w-100">
-                <div class="rounded-circle milestone-status-dot mt-2" />
-
-                <div class="flex-grow-1 min-w-0">
-                  <div class="d-flex align-center gap-2 flex-wrap">
-                    <div
-                      class="font-weight-medium truncate-title truncate-title--header"
-                    >
-                      {{ item.name }}
-                    </div>
-                    <VChip size="small" variant="text" color="primary">
-                      {{ item.catalogueType || "Custom Item" }}
-                    </VChip>
-                  </div>
-
-                  <div class="text-caption text-medium-emphasis">
-                    <span v-if="item.category">{{ item.category }} | </span>
-                    <span>Qty {{ item.quantity }}</span>
-                    <span
-                      v-if="
-                        item.unitPrice !== null && item.unitPrice !== undefined
-                      "
-                    >
-                      | {{ formatMoney(item.unitPrice) }}
-                    </span>
-                  </div>
-
-                  <div class="text-body-2 text-medium-emphasis mt-1">
-                    {{ item.note || "No item notes." }}
-                  </div>
-                </div>
-
-                <div
-                  class="d-flex align-center gap-2 milestone-actions"
-                  @click.stop
-                >
-                  <VBtn icon variant="text" size="x-small">
-                    <VIcon icon="tabler-dots-vertical" size="18" />
-                    <VMenu activator="parent">
-                      <VList>
-                        <VListItem @click="removeDealItem(item.id)">
-                          <template #prepend>
-                            <VIcon icon="tabler-trash" color="error" />
-                          </template>
-                          <VListItemTitle>Remove</VListItemTitle>
-                        </VListItem>
-                      </VList>
-                    </VMenu>
-                  </VBtn>
-                </div>
-              </div>
-            </VCardText>
-          </VCard>
-
           <VExpansionPanels
-            v-else
             v-model="expandedItems"
             variant="accordion"
             multiple
             class="expansion-panels-width-border milestone-panels"
           >
-            <VExpansionPanel :value="item.id" class="milestone-panel">
-              <VExpansionPanelTitle>
+            <VExpansionPanel
+              :value="item.id"
+              class="milestone-panel"
+              :class="{ 'milestone-panel--static': !item.isExpandable }"
+            >
+              <VExpansionPanelTitle
+                @click.capture="
+                  (event: MouseEvent) => {
+                    if (!item.isExpandable) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }
+                  }
+                "
+              >
                 <div class="d-flex align-center gap-3 w-100">
                   <div class="rounded-circle milestone-status-dot" />
 
@@ -433,14 +402,8 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
                     </div>
 
                     <div class="text-caption text-medium-emphasis">
-                      {{ item.derivedSections[0]?.goals.length || 0 }} Goal<span
-                        v-if="
-                          (item.derivedSections[0]?.goals.length || 0) !== 1
-                        "
-                        >s</span
-                      >
-                      <span v-if="item.category"> | {{ item.category }}</span>
-                      <span> | Qty {{ item.quantity }}</span>
+                      <span v-if="item.category">{{ item.category }} | </span>
+                      <span>Qty {{ item.quantity }}</span>
                       <span
                         v-if="
                           item.unitPrice !== null &&
@@ -477,7 +440,7 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
                 </div>
               </VExpansionPanelTitle>
 
-              <VExpansionPanelText>
+              <VExpansionPanelText v-if="item.isExpandable">
                 <VCard variant="flat" class="pa-4 milestone-panel-body">
                   <div class="d-flex flex-column gap-3">
                     <VCard
@@ -505,55 +468,63 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
                           </div>
                         </div>
 
-                        <VExpansionPanels
+                        <div
                           v-if="section.goals.length"
-                          v-model="expandedGoals"
-                          variant="accordion"
-                          multiple
-                          class="expansion-panels-width-border goal-panels"
-                          :class="{ 'mt-4': shouldShowSectionHeader(item, section) }"
+                          class="d-flex align-center gap-2 flex-wrap text-caption text-medium-emphasis"
+                          :class="{
+                            'mt-4': shouldShowSectionHeader(item, section),
+                          }"
                         >
-                          <VExpansionPanel
+                          <span class="font-weight-medium">
+                            {{
+                              `${section.goals.length} ${
+                                section.goals.length === 1
+                                  ? childLabelForItem(item).singular
+                                  : childLabelForItem(item).plural
+                              }`
+                            }}
+                          </span>
+                        </div>
+
+                        <div
+                          v-if="section.goals.length"
+                          class="d-flex flex-column gap-2"
+                          :class="{
+                            'mt-3': shouldShowSectionHeader(item, section),
+                          }"
+                        >
+                          <VCard
                             v-for="goal in section.goals"
                             :key="goal.id"
-                            :value="goal.id"
-                            class="goal-panel"
+                            variant="tonal"
+                            class="child-static-row"
                           >
-                            <VExpansionPanelTitle>
-                              <div class="d-flex align-center gap-3 w-100">
-                                <VIcon
-                                  icon="tabler-target-arrow"
-                                  size="16"
-                                  class="goal-icon"
-                                />
+                            <div class="d-flex align-center gap-3 w-100">
+                              <VIcon
+                                icon="tabler-target-arrow"
+                                size="16"
+                                class="goal-icon"
+                              />
 
-                                <div class="flex-grow-1 min-w-0">
-                                  <div class="font-weight-medium truncate-title truncate-title--header">
-                                    {{ goal.name }}
-                                  </div>
-                                  <div class="text-caption text-medium-emphasis">
-                                    0 Tasks
-                                  </div>
-                                  <div class="text-body-2 text-medium-emphasis mt-1">
-                                    {{ goal.note || "No goal notes." }}
-                                  </div>
+                              <div class="flex-grow-1 min-w-0">
+                                <div
+                                  class="font-weight-medium truncate-title truncate-title--header"
+                                >
+                                  {{ goal.name }}
                                 </div>
-
-                                <div class="text-sm text-medium-emphasis">
-                                  {{ formatMoney(goal.price) }}
+                                <div
+                                  class="text-body-2 text-medium-emphasis mt-1"
+                                >
+                                  {{ goal.note || "No notes." }}
                                 </div>
                               </div>
-                            </VExpansionPanelTitle>
 
-                            <VExpansionPanelText>
-                              <VCard variant="flat" class="pa-4 goal-panel-body">
-                                <div class="text-body-2 text-medium-emphasis empty-tasks">
-                                  No tasks linked to this goal yet.
-                                </div>
-                              </VCard>
-                            </VExpansionPanelText>
-                          </VExpansionPanel>
-                        </VExpansionPanels>
+                              <div class="text-sm text-medium-emphasis">
+                                {{ formatMoney(goal.price) }}
+                              </div>
+                            </div>
+                          </VCard>
+                        </div>
                       </VCardText>
                     </VCard>
                   </div>
@@ -654,29 +625,12 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
   border-radius: 12px;
 }
 
-.goal-panels :deep(.v-expansion-panel) {
-  border: 0;
-  border-radius: 10px;
-  background: rgba(var(--v-theme-info), 0.035);
+.milestone-panel--static {
+  cursor: default;
 }
 
-.goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
-  margin-block-start: 0.625rem;
-}
-
-.goal-panels :deep(.v-expansion-panel-title) {
-  min-block-size: auto;
-  padding-block: 1rem;
-  padding-inline: 1.25rem;
-}
-
-.goal-panels :deep(.v-expansion-panel-text__wrapper) {
-  padding-block: 0 1rem;
-  padding-inline: 1rem;
-}
-
-.goal-panels :deep(.v-expansion-panel__shadow) {
-  box-shadow: none;
+.milestone-panel--static :deep(.v-expansion-panel-title__icon) {
+  display: none;
 }
 
 .milestone-status-dot {
@@ -693,11 +647,6 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
   background: rgba(var(--v-theme-surface), 0.14);
   box-shadow: none;
   gap: 1rem;
-}
-
-.goal-panel-body {
-  background: rgba(var(--v-theme-surface), 0.14);
-  box-shadow: none;
 }
 
 .milestone-actions {
@@ -722,6 +671,14 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
 
 .goal-icon {
   color: rgb(var(--v-theme-info));
+}
+
+.child-static-row {
+  border: 0;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-info), 0.035);
+  padding-block: 1rem;
+  padding-inline: 1.25rem;
 }
 
 .item-plan-card {
