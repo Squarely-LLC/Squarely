@@ -1,8 +1,9 @@
 export default [
   {
-    title: "Dashboard",
-    icon: { icon: "tabler-smart-home" },
-    to: "dashboards-analytics",
+    title: 'Dashboard',
+    icon: { icon: 'tabler-smart-home' },
+    to: 'dashboards-analytics',
+
     // children: [
     //   {
     //     title: 'Analytics',
@@ -28,6 +29,7 @@ export default [
     // badgeContent: '5',
     // badgeClass: 'bg-error',
   },
+
   // {
   //   title: 'Front Pages',
   //   icon: { icon: 'tabler-files' },
@@ -61,57 +63,57 @@ export default [
   // },
 
   {
-    title: "Reports",
-    icon: { icon: "tabler-report" },
-    to: "dashboards-crm",
+    title: 'Reports',
+    icon: { icon: 'tabler-report' },
+    to: 'dashboards-crm',
   },
-  { heading: "Activities" },
+  { heading: 'Activities' },
   {
-    title: "Tasks",
-    icon: { icon: "tabler-list-check" },
-    to: "apps-todo-list",
-  },
-  {
-    title: "Calendar",
-    icon: { icon: "tabler-calendar" },
-    to: "apps-calendar",
-  },
-  { heading: "Operations" },
-  {
-    title: "Contacts",
-    icon: { icon: "tabler-address-book" },
-    to: "apps-contact-list",
+    title: 'Tasks',
+    icon: { icon: 'tabler-list-check' },
+    to: 'apps-todo-list',
   },
   {
-    title: "Deals",
-    icon: { icon: "tabler-contract" },
-    to: "",
+    title: 'Calendar',
+    icon: { icon: 'tabler-calendar' },
+    to: 'apps-calendar',
+  },
+  { heading: 'Operations' },
+  {
+    title: 'Contacts',
+    icon: { icon: 'tabler-address-book' },
+    to: 'apps-contact-list',
   },
   {
-    title: "Jobs",
-    icon: { icon: "tabler-briefcase" },
-    to: "operations-jobs-list",
-  },
-  { heading: "Admin" },
-  {
-    title: "HR",
-    icon: { icon: "tabler-users-group" },
-    to: "apps-hr-list",
+    title: 'Deals',
+    icon: { icon: 'tabler-contract' },
+    to: 'operations-deals-list',
   },
   {
-    title: "Finance",
-    icon: { icon: "tabler-calculator" },
-    to: "finance-finance",
+    title: 'Jobs',
+    icon: { icon: 'tabler-briefcase' },
+    to: 'operations-jobs-list',
   },
-  { heading: "Settings" },
+  { heading: 'Admin' },
   {
-    title: "Catalogue",
-    icon: { icon: "tabler-library" },
-    to: "catalogues-list",
+    title: 'HR',
+    icon: { icon: 'tabler-users-group' },
+    to: 'apps-hr-list',
   },
   {
-    title: "Configurations",
-    icon: { icon: "tabler-settings" },
-    to: "configuration-configuration",
+    title: 'Finance',
+    icon: { icon: 'tabler-calculator' },
+    to: 'finance-finance',
   },
-];
+  { heading: 'Settings' },
+  {
+    title: 'Catalogue',
+    icon: { icon: 'tabler-library' },
+    to: 'catalogues-list',
+  },
+  {
+    title: 'Configurations',
+    icon: { icon: 'tabler-settings' },
+    to: 'configuration-configuration',
+  },
+]

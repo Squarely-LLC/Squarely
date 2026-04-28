@@ -124,6 +124,7 @@ declare module 'vue-router/auto-routes' {
     'home': RouteRecordInfo<'home', '/home', Record<never, never>, Record<never, never>>,
     'login': RouteRecordInfo<'login', '/login', Record<never, never>, Record<never, never>>,
     'not-authorized': RouteRecordInfo<'not-authorized', '/not-authorized', Record<never, never>, Record<never, never>>,
+    'operations-deals-list': RouteRecordInfo<'operations-deals-list', '/operations/deals/list', Record<never, never>, Record<never, never>>,
     'operations-jobs-list': RouteRecordInfo<'operations-jobs-list', '/operations/jobs/list', Record<never, never>, Record<never, never>>,
     'operations-jobs-view-id': RouteRecordInfo<'operations-jobs-view-id', '/operations/jobs/view/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     'pages-account-settings-tab': RouteRecordInfo<'pages-account-settings-tab', '/pages/account-settings/:tab', { tab: ParamValue<true> }, { tab: ParamValue<false> }>,

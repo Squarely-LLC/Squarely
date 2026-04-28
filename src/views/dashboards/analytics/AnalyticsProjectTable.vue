@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { db } from '@db/dashboard/db'
 import type { ProjectAnalytics } from '@db/dashboard/type'
 
 const projectTableHeaders = [
@@ -16,23 +17,58 @@ const page = ref(1)
 const sortBy = ref()
 const orderBy = ref()
 
-const { data: projectsData } = await useApi<any>(createUrl('/dashboard/analytics/projects', {
-  query: {
-    q: search,
-    itemsPerPage,
-    page,
-    sortBy,
-    orderBy,
-  },
-}))
-
 const updateOptions = (options: any) => {
+  page.value = options.page
   sortBy.value = options.sortBy[0]?.key
   orderBy.value = options.sortBy[0]?.order
 }
 
-const projects = computed((): ProjectAnalytics[] => projectsData.value?.projects)
-const totalProjects = computed(() => projectsData.value?.totalProjects)
+const filteredProjects = computed(() => {
+  const query = search.value.trim().toLowerCase()
+  const projects = [...db.analytics]
+    .filter(project =>
+      !query
+      || project.name.toLowerCase().includes(query)
+      || project.leader.toLowerCase().includes(query)
+      || project.project.toLowerCase().includes(query),
+    )
+    .reverse()
+
+  if (sortBy.value === 'project') {
+    projects.sort((a, b) => orderBy.value === 'asc'
+      ? a.name.localeCompare(b.name)
+      : b.name.localeCompare(a.name))
+  }
+
+  if (sortBy.value === 'leader') {
+    projects.sort((a, b) => orderBy.value === 'asc'
+      ? a.leader.localeCompare(b.leader)
+      : b.leader.localeCompare(a.leader))
+  }
+
+  if (sortBy.value === 'progress') {
+    projects.sort((a, b) => orderBy.value === 'asc'
+      ? a.progress - b.progress
+      : b.progress - a.progress)
+  }
+
+  return projects
+})
+
+const totalProjects = computed(() => filteredProjects.value.length)
+
+const projects = computed((): ProjectAnalytics[] => {
+  if (itemsPerPage.value === -1)
+    return filteredProjects.value
+
+  const start = (page.value - 1) * itemsPerPage.value
+
+  return filteredProjects.value.slice(start, start + itemsPerPage.value)
+})
+
+watch([search, itemsPerPage], () => {
+  page.value = 1
+})
 
 const moreList = [
   { title: 'Download', value: 'Download' },

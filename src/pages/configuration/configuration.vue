@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 
 import SettingsCRM from "@/views/apps/configuration/SettingsCRM.vue";
 import SettingsCatalogue from "@/views/apps/configuration/SettingsCatalogue.vue";
+import SettingsDeals from "@/views/apps/configuration/SettingsDeals.vue";
 import SettingsFinancial from "@/views/apps/configuration/SettingsFinancial.vue";
 import SettingsHR from "@/views/apps/configuration/SettingsHR.vue";
 import SettingsLegal from "@/views/apps/configuration/SettingsLegal.vue";
@@ -16,6 +17,7 @@ const router = useRouter();
 const tabsData = [
   { icon: "tabler-gavel", title: "Legal" },
   { icon: "tabler-currency-dollar", title: "Financial" },
+  { icon: "tabler-contract", title: "Deals" },
   { icon: "tabler-man", title: "Human Resources" },
   { icon: "tabler-hierarchy", title: "CRM" },
   { icon: "tabler-library", title: "Catalogue" },
@@ -27,6 +29,7 @@ const tabsData = [
 const tabKeys = [
   "legal",
   "financial",
+  "deals",
   "HR",
   "CRM",
   "catalogue",
@@ -110,6 +113,10 @@ watch(
 
         <VWindowItem>
           <SettingsFinancial />
+        </VWindowItem>
+
+        <VWindowItem>
+          <SettingsDeals />
         </VWindowItem>
 
         <VWindowItem>

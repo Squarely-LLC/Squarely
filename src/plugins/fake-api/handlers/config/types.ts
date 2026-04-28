@@ -1,134 +1,151 @@
 export interface LegalConfig {
-  logo?: string; // url to company picture
-  companyName?: string;
-  crn?: string; // company registration number
-  address?: string;
-  country?: string;
-  city?: string;
-  number?: string; // primary phone
-  email?: string;
-  website?: string;
-  socialLinks?: string[]; // array of urls
-  ownership?: { contactId: number; contactName?: string }[]; // references to Contact
+  logo?: string // url to company picture
+  companyName?: string
+  crn?: string // company registration number
+  address?: string
+  country?: string
+  city?: string
+  number?: string // primary phone
+  email?: string
+  website?: string
+  socialLinks?: string[] // array of urls
+  ownership?: { contactId: number; contactName?: string }[] // references to Contact
 }
 
 export interface VatSettings {
-  enabled: boolean;
-  registrationNumber?: string; // VAT Reg No / TRN No
-  attachDocument?: boolean; // whether to attach VAT/TRN document
+  enabled: boolean
+  registrationNumber?: string // VAT Reg No / TRN No
+  attachDocument?: boolean // whether to attach VAT/TRN document
 }
 
 export interface BankDetailsItem {
-  enabled: boolean;
-  bankName?: string;
-  accountName?: string;
-  iban?: string;
-  accountNumber?: string;
-  branch?: string;
-  swiftCode?: string;
+  enabled: boolean
+  bankName?: string
+  accountName?: string
+  iban?: string
+  accountNumber?: string
+  branch?: string
+  swiftCode?: string
 }
 
 export interface InvoicingSettings {
-  showNotes: boolean;
-  notesOnInvoice?: string;
-  noteOnQuotation?: string;
-  noteOnProforma?: string;
+  showNotes: boolean
+  notesOnInvoice?: string
+  noteOnQuotation?: string
+  noteOnProforma?: string
 }
 
 export interface FinancialConfig {
-  currency?: string;
-  vat?: VatSettings;
-  bankDetails?: BankDetailsItem[];
-  invoicing?: InvoicingSettings;
-  expenseCategories?: string[];
-  documentTypes?: string[];
-  invoiceSequence?: string; // pattern or prefix
-  referenceFormat?: string;
-  skipDeleted?: boolean;
+  currency?: string
+  vat?: VatSettings
+  bankDetails?: BankDetailsItem[]
+  invoicing?: InvoicingSettings
+  expenseCategories?: string[]
+  documentTypes?: string[]
+  invoiceSequence?: string // pattern or prefix
+  referenceFormat?: string
+  skipDeleted?: boolean
   paymentReminders?: {
-    enabled: boolean;
-    invoiceDaysBefore?: number;
-    purchaseDaysBefore?: number;
-  };
-  accounts?: { id: string; name: string }[];
+    enabled: boolean
+    invoiceDaysBefore?: number
+    purchaseDaysBefore?: number
+  }
+  accounts?: { id: string; name: string }[]
 }
 
 export interface HrLeavesConfig {
-  types?: string[];
-  policy?: string;
-  countBasis?: string;
-  includeNonWorkingDays?: boolean;
+  types?: string[]
+  policy?: string
+  countBasis?: string
+  includeNonWorkingDays?: boolean
 }
 
 export interface HrConfig {
-  deductions?: string[];
-  additions?: string[];
-  advances?: string[];
-  leaves?: HrLeavesConfig;
-  departments?: string[];
-  requestApproval?: "required" | "one_level" | "two_level" | "none";
-  reimbursables?: string[];
+  deductions?: string[]
+  additions?: string[]
+  advances?: string[]
+  leaves?: HrLeavesConfig
+  departments?: string[]
+  requestApproval?: 'required' | 'one_level' | 'two_level' | 'none'
+  reimbursables?: string[]
 }
 
 export interface CrmEntitySettings {
-  category?: string;
-  requirePhone?: boolean;
-  requireEmail?: boolean;
-  inactiveAfterMonths?: number | null; // months after which contact becomes inactive
+  category?: string
+  requirePhone?: boolean
+  requireEmail?: boolean
+  inactiveAfterMonths?: number | null // months after which contact becomes inactive
 }
 
 interface CrmConfig {
-  DefaultContactType?: string;
-  organization?: any;
-  individual?: any;
-  individualCategories?: string[];
-  organizationCategories?: string[];
-  channels?: string[];
-  locations?: string[];
-  documentCategories?: string[];
-  documentTypes?: string[];
-  documentRenewable?: string | null;
-  callPurposes?: string[];
-  sentiment?: string[];
-  showContactRecord?: boolean;
-  notes?: string[];
-  meetings?: string[];
-  jobStages?: string[];
-  jobAlert?: { enabled: boolean; days: number };
+  DefaultContactType?: string
+  organization?: any
+  individual?: any
+  individualCategories?: string[]
+  organizationCategories?: string[]
+  channels?: string[]
+  locations?: string[]
+  documentCategories?: string[]
+  documentTypes?: string[]
+  documentRenewable?: string | null
+  callPurposes?: string[]
+  sentiment?: string[]
+  showContactRecord?: boolean
+  notes?: string[]
+  meetings?: string[]
+  jobStages?: string[]
+  jobAlert?: { enabled: boolean; days: number }
 }
 
 export interface DealsConfig {
-  leadLostIn?: number; // days
-  quotationLostIn?: number; // days
-  quotationStartsSeq?: string; // prefix or sequence
-  proformaStartSeq?: string;
-  salesType?: string[];
-  salesLocation?: string[];
-  fieldLabels?: Record<string, string>;
-  dealStages?: string[];
-  dealAlert?: { enabled: boolean; days?: number };
+  leadLostIn?: number // days
+  quotationLostIn?: number // days
+  quotationStartsSeq?: string // prefix or sequence
+  proformaStartSeq?: string
+  salesType?: string[]
+  salesLocation?: string[]
+  fieldLabels?: Record<string, string>
+  customFields?: DealCustomFieldDefinition[]
+  dealStages?: string[]
+  dealAlert?: { enabled: boolean; days?: number }
+}
+
+export type DealCustomFieldType =
+  | 'text'
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'boolean'
+  | 'textarea'
+
+export interface DealCustomFieldDefinition {
+  key: string
+  label: string
+  type: DealCustomFieldType
+  options?: string[]
+  defaultValue?: string | number | boolean | null
 }
 
 export interface CatalogueConfig {
-  itemTypes?: string[];
-  activeStates?: string[];
-  hideArchivedByDefault?: boolean;
-  categories?: CatalogueCategory[];
+  itemTypes?: string[]
+  activeStates?: string[]
+  hideArchivedByDefault?: boolean
+  categories?: CatalogueCategory[]
 }
 
 export interface CatalogueCategory {
-  id: string;
-  name: string;
-  children?: CatalogueCategory[];
+  id: string
+  name: string
+  children?: CatalogueCategory[]
 }
 
 interface AppConfigurations {
-  legal?: LegalConfig;
-  financial?: FinancialConfig;
-  hr?: HrConfig;
-  crm?: CrmConfig;
-  deals?: DealsConfig;
-  catalogue?: CatalogueConfig;
+  legal?: LegalConfig
+  financial?: FinancialConfig
+  hr?: HrConfig
+  crm?: CrmConfig
+  deals?: DealsConfig
+  catalogue?: CatalogueConfig
 }
 
-export default AppConfigurations;
+export default AppConfigurations

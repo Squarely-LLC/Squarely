@@ -38,10 +38,10 @@ type FinancialUiState = Partial<FinancialConfig> & {
   };
 };
 
-type DealsUiState = Partial<DealsConfig> & {
-  quotationStartsSeq: string;
-  proformaStartSeq: string;
-};
+type DealsUiState = Pick<
+  DealsConfig,
+  "quotationStartsSeq" | "proformaStartSeq"
+>;
 
 // Initialize with safe defaults to avoid undefined access on first render
 const fin = ref<FinancialUiState>({
@@ -90,7 +90,7 @@ const ensureDefaults = () => {
 
 const syncFromStore = () => {
   const cfg = (store.financial || {}) as FinancialConfig;
-  const dealsCfg = (store.all?.deals || {}) as DealsConfig;
+  const dealCfg = (store.configurations.deals || {}) as DealsConfig;
   const termsAndNotes =
     normalizeRichText(cfg.invoicing?.noteOnQuotation) ||
     normalizeRichText(cfg.invoicing?.noteOnProforma) ||
@@ -129,11 +129,8 @@ const syncFromStore = () => {
   } as FinancialUiState;
 
   deals.value = {
-    ...deals.value,
-    ...dealsCfg,
-    quotationStartsSeq:
-      dealsCfg.quotationStartsSeq ?? deals.value.quotationStartsSeq,
-    proformaStartSeq: dealsCfg.proformaStartSeq ?? deals.value.proformaStartSeq,
+    quotationStartsSeq: String(dealCfg.quotationStartsSeq ?? ""),
+    proformaStartSeq: String(dealCfg.proformaStartSeq ?? ""),
   };
 
   ensureDefaults();
@@ -159,9 +156,8 @@ const takeSnapshot = () => {
       notesOnInvoice: normalizeRichText(fin.value.invoicing.termsAndNotes),
     },
     invoiceSequence: fin.value.invoiceSequence,
-    quotationStartsSeq: deals.value.quotationStartsSeq,
-    proformaStartSeq: deals.value.proformaStartSeq,
     paymentReminders: { ...fin.value.paymentReminders },
+    deals: { ...deals.value },
   };
   return JSON.stringify(snap);
 };
@@ -196,11 +192,6 @@ const isBankValid = computed(
 );
 const isCurrencyValid = computed(() => nonEmpty(fin.value.currency));
 const isInvoiceValid = computed(() => nonEmpty(fin.value.invoiceSequence));
-const isDealsValid = computed(
-  () =>
-    nonEmpty(deals.value.quotationStartsSeq) &&
-    nonEmpty(deals.value.proformaStartSeq),
-);
 const isRemindersValid = computed(() => {
   if (!fin.value.paymentReminders.enabled) return true;
   const inv = Number(fin.value.paymentReminders.invoiceDaysBefore ?? 0);
@@ -213,7 +204,6 @@ const isValid = computed(
     isBankValid.value &&
     isCurrencyValid.value &&
     isInvoiceValid.value &&
-    isDealsValid.value &&
     isRemindersValid.value,
 );
 
@@ -236,14 +226,6 @@ const toServerPayload = (): Partial<FinancialConfig> => {
   } as Partial<FinancialConfig>;
 };
 
-const toDealsPayload = (): Partial<DealsConfig> => {
-  return {
-    ...(store.all?.deals || {}),
-    quotationStartsSeq: deals.value.quotationStartsSeq,
-    proformaStartSeq: deals.value.proformaStartSeq,
-  };
-};
-
 const onDiscard = () => {
   syncFromStore();
   savedSnapshot.value = takeSnapshot();
@@ -253,7 +235,11 @@ const onSave = async () => {
   const payload = toServerPayload();
   const res = await store.saveRemote({
     financial: payload,
-    deals: toDealsPayload(),
+    deals: {
+      ...(store.configurations.deals || {}),
+      quotationStartsSeq: deals.value.quotationStartsSeq,
+      proformaStartSeq: deals.value.proformaStartSeq,
+    },
   } as any);
   if (res) {
     notifications.push("Financial settings saved", "success", 2500);
@@ -459,8 +445,14 @@ const updateExpenseCategories = (payload: {
         <VRow>
           <VCol cols="12" md="6">
             <AppTextField
-              v-model="deals.quotationStartsSeq"
+              v-model="fin.invoiceSequence"
               :rules="[requiredValidator]"
+              label="Invoice Prefix / Sequence"
+            />
+          </VCol>
+          <VCol cols="12" md="6">
+            <AppTextField
+              v-model="deals.quotationStartsSeq"
               label="Quotation Prefix"
               placeholder="QTN-"
             />
@@ -468,16 +460,8 @@ const updateExpenseCategories = (payload: {
           <VCol cols="12" md="6">
             <AppTextField
               v-model="deals.proformaStartSeq"
-              :rules="[requiredValidator]"
               label="Proforma Prefix"
               placeholder="PF-"
-            />
-          </VCol>
-          <VCol cols="12" md="6">
-            <AppTextField
-              v-model="fin.invoiceSequence"
-              :rules="[requiredValidator]"
-              label="Invoice Prefix / Sequence"
             />
           </VCol>
           <VCol cols="12" md="6">
