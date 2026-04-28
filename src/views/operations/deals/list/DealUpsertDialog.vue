@@ -1,132 +1,135 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, toRaw, watch } from 'vue'
-import type { VForm } from 'vuetify/components/VForm'
-import { requiredValidator } from '@/@core/utils/validators'
-import DialogActionBar from '@/components/DialogActionBar.vue'
+import { requiredValidator } from "@/@core/utils/validators";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type {
   DealCustomFieldDefinition,
   DealCustomFieldType,
-} from '@/plugins/fake-api/handlers/config/types'
+} from "@/plugins/fake-api/handlers/config/types";
 import type {
   DealFieldValue,
   DealProperties,
-} from '@/plugins/fake-api/handlers/operations/deals/types'
-import { useConfigStore } from '@/stores/config'
-import { useContactsStore } from '@/stores/contacts'
-import { useEmployeesStore } from '@/stores/employees'
+} from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useConfigStore } from "@/stores/config";
+import { useContactsStore } from "@/stores/contacts";
+import { useEmployeesStore } from "@/stores/employees";
+import { computed, nextTick, ref, toRaw, watch } from "vue";
+import type { VForm } from "vuetify/components/VForm";
 
 interface Props {
-  deal?: DealProperties | null
-  error?: string | null
-  isDialogVisible: boolean
-  loading?: boolean
+  deal?: DealProperties | null;
+  error?: string | null;
+  isDialogVisible: boolean;
+  loading?: boolean;
 }
 
 interface Emit {
-  (e: 'submit', value: Partial<DealProperties>): void
-  (e: 'update:isDialogVisible', value: boolean): void
+  (e: "submit", value: Partial<DealProperties>): void;
+  (e: "update:isDialogVisible", value: boolean): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   deal: null,
   error: null,
   loading: false,
-})
+});
 
-const emit = defineEmits<Emit>()
+const emit = defineEmits<Emit>();
 
-const refForm = ref<VForm>()
-const isFormValid = ref(false)
+const refForm = ref<VForm>();
+const isFormValid = ref(false);
 
-const configStore = useConfigStore()
-const contactsStore = useContactsStore()
-const employeesStore = useEmployeesStore()
+const configStore = useConfigStore();
+const contactsStore = useContactsStore();
+const employeesStore = useEmployeesStore();
 
-configStore.init()
-contactsStore.init()
-employeesStore.init()
+configStore.init();
+contactsStore.init();
+employeesStore.init();
 
-const stageOptions = computed(() => configStore.configurations?.deals?.dealStages || [])
-const typeOptions = computed(() => configStore.configurations?.deals?.salesType || [])
+const stageOptions = computed(
+  () => configStore.configurations?.deals?.dealStages || [],
+);
+const typeOptions = computed(
+  () => configStore.configurations?.deals?.salesType || [],
+);
 
 const defaultLocation = computed(() => {
-  const city = String(configStore.configurations?.legal?.city ?? '').trim()
-  const country = String(configStore.configurations?.legal?.country ?? '').trim()
+  const city = String(configStore.configurations?.legal?.city ?? "").trim();
+  const country = String(
+    configStore.configurations?.legal?.country ?? "",
+  ).trim();
 
-  return [city, country].filter(Boolean).join(', ')
-})
+  return [city, country].filter(Boolean).join(", ");
+});
 
 const customFieldDefinitions = computed<DealCustomFieldDefinition[]>(() => {
-  const configured = configStore.configurations?.deals?.customFields
-  if (Array.isArray(configured) && configured.length)
-    return configured
+  const configured = configStore.configurations?.deals?.customFields;
+  if (Array.isArray(configured) && configured.length) return configured;
 
-  const labels = configStore.configurations?.deals?.fieldLabels || {}
+  const labels = configStore.configurations?.deals?.fieldLabels || {};
 
   return Object.entries(labels).map(([key, label]) => ({
     key,
     label,
-    type: 'text',
-  }))
-})
+    type: "text",
+  }));
+});
 
 const contactOptions = computed(() =>
-  contactsStore.all.map(contact => ({
+  contactsStore.all.map((contact) => ({
     title: contact.fullName,
     value: contact.id,
     avatar: contact.picture || null,
   })),
-)
+);
 
 const collaboratorOptions = computed(() =>
-  employeesStore.all.map(employee => ({
+  employeesStore.all.map((employee) => ({
     title: employee.fullName,
     value: employee.id,
     avatar: employee.picture || null,
   })),
-)
+);
 
 const avatarText = (name?: string | null) => {
-  const safe = (name || '').trim()
-  if (!safe)
-    return '??'
+  const safe = (name || "").trim();
+  if (!safe) return "??";
 
   return safe
     .split(/\s+/)
     .filter(Boolean)
-    .map(part => part[0])
-    .join('')
+    .map((part) => part[0])
+    .join("")
     .slice(0, 2)
-    .toUpperCase()
-}
+    .toUpperCase();
+};
 
-const getDefaultFieldValue = (field: DealCustomFieldDefinition): DealFieldValue => {
-  if (field.defaultValue !== undefined)
-    return field.defaultValue
+const getDefaultFieldValue = (
+  field: DealCustomFieldDefinition,
+): DealFieldValue => {
+  if (field.defaultValue !== undefined) return field.defaultValue;
 
-  if (field.type === 'boolean')
-    return false
+  if (field.type === "boolean") return false;
 
-  if (field.type === 'number')
-    return null
+  if (field.type === "number") return null;
 
-  return ''
-}
+  return "";
+};
 
 const buildDefaultCustomFieldValues = (
   current?: Record<string, DealFieldValue> | null,
 ) => {
-  const nextValues: Record<string, DealFieldValue> = {}
+  const nextValues: Record<string, DealFieldValue> = {};
 
-  customFieldDefinitions.value.forEach(field => {
-    nextValues[field.key] = current?.[field.key] ?? getDefaultFieldValue(field)
-  })
+  customFieldDefinitions.value.forEach((field) => {
+    nextValues[field.key] = current?.[field.key] ?? getDefaultFieldValue(field);
+  });
 
-  return nextValues
-}
+  return nextValues;
+};
 
 const buildEmptyDeal = (): Partial<DealProperties> => ({
-  name: '',
+  name: "",
   code: null,
   relatedTo: null,
   type: typeOptions.value[0] || null,
@@ -135,52 +138,53 @@ const buildEmptyDeal = (): Partial<DealProperties> => ({
   important: false,
   location: defaultLocation.value || null,
   collaborators: [],
-  note: '',
+  note: "",
   customFieldValues: buildDefaultCustomFieldValues(),
-})
+});
 
 const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
-  if (!deal)
-    return buildEmptyDeal()
+  if (!deal) return buildEmptyDeal();
 
-  const raw = toRaw(deal) as DealProperties
+  const raw = toRaw(deal) as DealProperties;
 
   return {
     ...raw,
-    collaborators: Array.isArray(raw.collaborators) ? [...raw.collaborators] : [],
+    collaborators: Array.isArray(raw.collaborators)
+      ? [...raw.collaborators]
+      : [],
     location: raw.location || defaultLocation.value || null,
     customFieldValues: buildDefaultCustomFieldValues(raw.customFieldValues),
-  }
-}
+  };
+};
 
-const localDeal = ref<Partial<DealProperties>>(buildEmptyDeal())
+const localDeal = ref<Partial<DealProperties>>(buildEmptyDeal());
 
 watch(
-  () => [props.isDialogVisible, props.deal, customFieldDefinitions.value] as const,
+  () =>
+    [props.isDialogVisible, props.deal, customFieldDefinitions.value] as const,
   ([visible]) => {
-    if (!visible)
-      return
+    if (!visible) return;
 
-    localDeal.value = sanitiseDeal(props.deal ?? null)
+    localDeal.value = sanitiseDeal(props.deal ?? null);
 
     nextTick(() => {
-      refForm.value?.resetValidation()
-    })
+      refForm.value?.resetValidation();
+    });
   },
   { deep: true },
-)
+);
 
-const dialogTitle = computed(() => props.deal ? 'Edit Deal' : 'Add New Deal')
+const dialogTitle = computed(() => (props.deal ? "Edit Deal" : "Add New Deal"));
 
 const dialogDescription = computed(() =>
   props.deal
-    ? 'Update the deal information and save your changes.'
-    : 'Capture the key information for a new deal record.',
-)
+    ? "Update the deal information and save your changes."
+    : "Capture the key information for a new deal record.",
+);
 
 const dialogModelValueUpdate = (value: boolean) => {
-  emit('update:isDialogVisible', value)
-}
+  emit("update:isDialogVisible", value);
+};
 
 const setCustomFieldValue = (key: string, value: DealFieldValue) => {
   localDeal.value = {
@@ -189,30 +193,31 @@ const setCustomFieldValue = (key: string, value: DealFieldValue) => {
       ...(localDeal.value.customFieldValues || {}),
       [key]: value,
     },
-  }
-}
+  };
+};
 
 const getCustomFieldValue = (key: string) =>
-  localDeal.value.customFieldValues?.[key] ?? null
+  localDeal.value.customFieldValues?.[key] ?? null;
 
 const customFieldCols = (type: DealCustomFieldType) =>
-  type === 'textarea' ? 12 : 6
+  type === "textarea" ? 12 : 6;
 
 const onCancel = () => {
-  localDeal.value = sanitiseDeal(props.deal ?? null)
-  emit('update:isDialogVisible', false)
-}
+  localDeal.value = sanitiseDeal(props.deal ?? null);
+  emit("update:isDialogVisible", false);
+};
 
 const onSubmit = async () => {
-  const { valid } = (await refForm.value?.validate()) ?? { valid: true }
-  if (!valid)
-    return
+  const { valid } = (await refForm.value?.validate()) ?? { valid: true };
+  if (!valid) return;
 
-  emit('submit', {
+  emit("submit", {
     ...localDeal.value,
-    customFieldValues: buildDefaultCustomFieldValues(localDeal.value.customFieldValues),
-  })
-}
+    customFieldValues: buildDefaultCustomFieldValues(
+      localDeal.value.customFieldValues,
+    ),
+  });
+};
 </script>
 
 <template>
@@ -242,16 +247,9 @@ const onSubmit = async () => {
           {{ error }}
         </VAlert>
 
-        <VForm
-          ref="refForm"
-          v-model="isFormValid"
-          @submit.prevent="onSubmit"
-        >
+        <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
           <VRow>
-            <VCol
-              cols="12"
-              md="6"
-            >
+            <VCol cols="12" md="6">
               <AppSelect
                 v-model="localDeal.relatedTo"
                 label="Linked to"
@@ -269,16 +267,14 @@ const onSubmit = async () => {
                       <VAvatar
                         size="28"
                         :color="item.raw.avatar ? undefined : 'primary'"
-                        :class="item.raw.avatar ? null : 'text-white font-weight-medium'"
+                        :class="
+                          item.raw.avatar
+                            ? null
+                            : 'text-white font-weight-medium'
+                        "
                       >
-                        <VImg
-                          v-if="item.raw.avatar"
-                          :src="item.raw.avatar"
-                        />
-                        <span
-                          v-else
-                          class="text-caption font-weight-bold"
-                        >
+                        <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
+                        <span v-else class="text-caption font-weight-bold">
                           {{ avatarText(item.raw.title) }}
                         </span>
                       </VAvatar>
@@ -288,10 +284,7 @@ const onSubmit = async () => {
               </AppSelect>
             </VCol>
 
-            <VCol
-              cols="12"
-              md="6"
-            >
+            <VCol cols="12" md="6">
               <AppSelect
                 v-model="localDeal.type"
                 label="Type"
@@ -301,10 +294,7 @@ const onSubmit = async () => {
               />
             </VCol>
 
-            <VCol
-              cols="12"
-              md="6"
-            >
+            <VCol cols="12" md="6">
               <AppDateTimePicker
                 v-model="localDeal.estimatedDeliveryDate"
                 label="Estimated Delivery Date"
@@ -313,10 +303,7 @@ const onSubmit = async () => {
               />
             </VCol>
 
-            <VCol
-              cols="12"
-              md="6"
-            >
+            <VCol cols="12" md="6">
               <AppSelect
                 v-model="localDeal.stage"
                 label="Stage"
@@ -326,10 +313,7 @@ const onSubmit = async () => {
               />
             </VCol>
 
-            <VCol
-              cols="12"
-              md="6"
-            >
+            <VCol cols="12" md="6">
               <AppTextField
                 v-model="localDeal.location"
                 label="Location"
@@ -337,24 +321,41 @@ const onSubmit = async () => {
               />
             </VCol>
 
-            <VCol
-              cols="12"
-              md="6"
-            >
-              <div class="d-flex align-center justify-space-between rounded border px-4 py-3">
-                <div class="text-body-1 font-weight-medium">
-                  Important
-                </div>
-
-                <VBtn
-                  :color="localDeal.important ? 'warning' : 'secondary'"
-                  variant="text"
-                  icon
-                  @click="localDeal.important = !localDeal.important"
-                >
-                  <VIcon :icon="localDeal.important ? 'tabler-star-filled' : 'tabler-star'" />
-                </VBtn>
+            <VCol cols="12" md="6">
+              <div
+                class="deal-important-spacer mb-1 text-body-2"
+                aria-hidden="true"
+              >
+                Important
               </div>
+
+              <AppTextField
+                model-value=""
+                placeholder="Important"
+                persistent-placeholder
+                readonly
+                class="deal-important-input"
+                @click="localDeal.important = !localDeal.important"
+              >
+                <template #append-inner>
+                  <VBtn
+                    class="deal-important-trigger"
+                    :color="localDeal.important ? 'warning' : 'secondary'"
+                    variant="text"
+                    icon
+                    @click.stop="localDeal.important = !localDeal.important"
+                  >
+                    <VIcon
+                      :icon="
+                        localDeal.important
+                          ? 'tabler-star-filled'
+                          : 'tabler-star'
+                      "
+                      size="20"
+                    />
+                  </VBtn>
+                </template>
+              </AppTextField>
             </VCol>
 
             <VCol cols="12">
@@ -382,16 +383,12 @@ const onSubmit = async () => {
                       start
                       class="me-2"
                       :color="item.raw.avatar ? undefined : 'primary'"
-                      :class="item.raw.avatar ? null : 'text-white font-weight-medium'"
+                      :class="
+                        item.raw.avatar ? null : 'text-white font-weight-medium'
+                      "
                     >
-                      <VImg
-                        v-if="item.raw.avatar"
-                        :src="item.raw.avatar"
-                      />
-                      <span
-                        v-else
-                        class="text-xxs font-weight-bold"
-                      >
+                      <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
+                      <span v-else class="text-xxs font-weight-bold">
                         {{ avatarText(item.raw.title) }}
                       </span>
                     </VAvatar>
@@ -408,19 +405,15 @@ const onSubmit = async () => {
               </AppSelect>
             </VCol>
 
-            <template
-              v-for="field in customFieldDefinitions"
-              :key="field.key"
-            >
-              <VCol
-                cols="12"
-                :md="customFieldCols(field.type)"
-              >
+            <template v-for="field in customFieldDefinitions" :key="field.key">
+              <VCol cols="12" :md="customFieldCols(field.type)">
                 <AppTextField
                   v-if="field.type === 'text'"
                   :model-value="String(getCustomFieldValue(field.key) ?? '')"
                   :label="field.label"
-                  @update:model-value="setCustomFieldValue(field.key, String($event ?? ''))"
+                  @update:model-value="
+                    setCustomFieldValue(field.key, String($event ?? ''))
+                  "
                 />
 
                 <AppTextField
@@ -428,7 +421,12 @@ const onSubmit = async () => {
                   :model-value="getCustomFieldValue(field.key)"
                   :label="field.label"
                   type="number"
-                  @update:model-value="setCustomFieldValue(field.key, $event === '' ? null : Number($event))"
+                  @update:model-value="
+                    setCustomFieldValue(
+                      field.key,
+                      $event === '' ? null : Number($event),
+                    )
+                  "
                 />
 
                 <AppDateTimePicker
@@ -436,7 +434,12 @@ const onSubmit = async () => {
                   :model-value="String(getCustomFieldValue(field.key) ?? '')"
                   :label="field.label"
                   clearable
-                  @update:model-value="setCustomFieldValue(field.key, $event ? String($event) : null)"
+                  @update:model-value="
+                    setCustomFieldValue(
+                      field.key,
+                      $event ? String($event) : null,
+                    )
+                  "
                 />
 
                 <AppSelect
@@ -446,7 +449,12 @@ const onSubmit = async () => {
                   :items="field.options || []"
                   clearable
                   clear-icon="tabler-x"
-                  @update:model-value="setCustomFieldValue(field.key, $event ? String($event) : null)"
+                  @update:model-value="
+                    setCustomFieldValue(
+                      field.key,
+                      $event ? String($event) : null,
+                    )
+                  "
                 />
 
                 <div
@@ -463,7 +471,9 @@ const onSubmit = async () => {
                     hide-details
                     density="compact"
                     class="ma-0"
-                    @update:model-value="setCustomFieldValue(field.key, Boolean($event))"
+                    @update:model-value="
+                      setCustomFieldValue(field.key, Boolean($event))
+                    "
                   />
                 </div>
 
@@ -473,7 +483,9 @@ const onSubmit = async () => {
                   :label="field.label"
                   auto-grow
                   rows="2"
-                  @update:model-value="setCustomFieldValue(field.key, String($event ?? ''))"
+                  @update:model-value="
+                    setCustomFieldValue(field.key, String($event ?? ''))
+                  "
                 />
               </VCol>
             </template>
@@ -488,10 +500,7 @@ const onSubmit = async () => {
               />
             </VCol>
 
-            <VCol
-              cols="12"
-              class="mt-4"
-            >
+            <VCol cols="12" class="mt-4">
               <DialogActionBar
                 save-type="submit"
                 :save-loading="loading"
@@ -505,3 +514,27 @@ const onSubmit = async () => {
     </VCard>
   </VDialog>
 </template>
+
+<style scoped>
+.deal-important-spacer {
+  line-height: 19px;
+  visibility: hidden;
+}
+
+.deal-important-trigger {
+  padding: 0 !important;
+  block-size: 24px !important;
+  inline-size: 24px !important;
+  min-inline-size: 24px !important;
+}
+
+.deal-important-input :deep(input) {
+  cursor: pointer;
+  color: transparent;
+  user-select: none;
+}
+
+.deal-important-input {
+  cursor: pointer;
+}
+</style>

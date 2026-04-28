@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, ref, toRaw, watch } from 'vue'
 
 import type { DealCustomFieldDefinition } from '@/plugins/fake-api/handlers/config/types'
 import type { DealProperties } from '@/plugins/fake-api/handlers/operations/deals/types'
@@ -8,6 +8,10 @@ import { useContactsStore } from '@/stores/contacts'
 import { useDealsStore } from '@/stores/deals'
 import { useEmployeesStore } from '@/stores/employees'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useTodos } from '@/stores/todos'
+import EmailDialog from '@/views/apps/email/EmailDialog.vue'
+import AddMeetingDrawer from '@/views/apps/todo/list/AddMeetingDrawer.vue'
+import AddNewToDoDrawer from '@/views/apps/todo/list/AddNewToDoDrawer.vue'
 import DealUpsertDialog from '@/views/operations/deals/list/DealUpsertDialog.vue'
 
 type SortKey = 'code' | 'createdAt' | 'estimatedDeliveryDate' | 'stage' | 'type'
@@ -18,6 +22,13 @@ const contactsStore = useContactsStore()
 const configStore = useConfigStore()
 const employeesStore = useEmployeesStore()
 const notifications = useNotificationsStore()
+const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(null)
+const isAddTodoDrawerVisible = ref(false)
+const addTodoInitial = ref<any | null>(null)
+const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null)
+const isAddMeetingOpen = ref(false)
+const composeDialogRef = ref<any | null>(null)
+const isComposeDialogVisible = ref(false)
 
 dealsStore.init()
 contactsStore.init()
@@ -128,7 +139,7 @@ const avatarText = (name?: string | null) => {
 }
 
 const contactDirectory = computed(() => {
-  const map = new Map<number, { name: string; picture: string | null }>()
+  const map = new Map<number, { name: string; picture: string | null; email: string | null }>()
 
   contactsStore.all.forEach(contact => {
     if (contact?.id === null || contact?.id === undefined)
@@ -137,6 +148,7 @@ const contactDirectory = computed(() => {
     map.set(Number(contact.id), {
       name: contact.fullName,
       picture: contact.picture || null,
+      email: contact.email || null,
     })
   })
 
@@ -354,6 +366,19 @@ const isDealDialogVisible = ref(false)
 const selectedDeal = ref<DealProperties | null>(null)
 const dialogLoading = ref(false)
 const dialogError = ref<string | null>(null)
+const isFlagDialogVisible = ref(false)
+const isStageDialogVisible = ref(false)
+const flagDialogValue = ref<'important' | 'normal'>('normal')
+const stageDialogValue = ref<string | null>(null)
+const flagDialogDealId = ref<number | null>(null)
+const stageDialogDealId = ref<number | null>(null)
+const meetingContacts = computed(() =>
+  contactsStore.all.map(contact => ({
+    id: contact.id,
+    name: contact.fullName,
+    avatarUrl: contact.picture || null,
+  })),
+)
 
 const openAddDialog = () => {
   selectedDeal.value = null
@@ -401,6 +426,48 @@ const saveDeal = (payload: Partial<DealProperties>) => {
   }
 }
 
+const onTodoCreated = (payload: any) => {
+  try {
+    const todos = useTodos()
+    try {
+      todos.init()
+    }
+    catch {}
+    todos.addTodo && todos.addTodo(payload)
+    notifications.push('Task created', 'success', 3500)
+  }
+  catch (error) {
+    console.error('onTodoCreated failed:', error)
+    notifications.push('Task created', 'success', 3500)
+  }
+  finally {
+    isAddTodoDrawerVisible.value = false
+  }
+}
+
+const onMeetingCreated = (payload: any) => {
+  try {
+    const todos = useTodos()
+    try {
+      todos.init()
+    }
+    catch {}
+    todos.addMeeting && todos.addMeeting(payload)
+    notifications.push('Meeting created', 'success', 3500)
+  }
+  catch (error) {
+    console.error('onMeetingCreated failed:', error)
+    notifications.push('Meeting created', 'success', 3500)
+  }
+  finally {
+    isAddMeetingOpen.value = false
+  }
+}
+
+const closeMeetingDrawer = () => {
+  isAddMeetingOpen.value = false
+}
+
 const isConfirmDeleteVisible = ref(false)
 const deleteCandidateId = ref<number | null>(null)
 
@@ -437,6 +504,143 @@ const toggleImportant = (deal: DealProperties) => {
   )
 }
 
+const duplicateDeal = (deal: DealProperties) => {
+  const duplicated = dealsStore.addDeal({
+    relatedTo: deal.relatedTo ?? null,
+    type: deal.type ?? null,
+    estimatedDeliveryDate: deal.estimatedDeliveryDate ?? null,
+    stage: deal.stage ?? null,
+    important: deal.important,
+    location: deal.location ?? null,
+    collaborators: Array.isArray(deal.collaborators) ? [...deal.collaborators] : [],
+    note: deal.note ?? null,
+    customFieldValues: { ...(deal.customFieldValues || {}) },
+  })
+
+  notifications.push(`Duplicated ${deal.code || `deal #${deal.id}`}`, 'success', 3000)
+
+  return duplicated
+}
+
+const handleDealAction = (
+  action: 'todo' | 'meeting' | 'email' | 'call' | 'flag' | 'stage' | 'duplicate' | 'delete',
+  deal: DealProperties,
+) => {
+  switch (action) {
+    case 'todo':
+      addTodoInitial.value = {
+        title: `Deal: ${deal.code || `#${deal.id}`}`,
+        description: deal.note || '',
+        relatedTo: {
+          id: deal.id,
+          name: deal.code || `Deal #${deal.id}`,
+          type: 'deal',
+        },
+        linkedTo: [
+          {
+            id: deal.id,
+            name: deal.code || `Deal #${deal.id}`,
+            avatarUrl: null,
+            type: 'deal',
+          },
+        ],
+        collaborators: deal.relatedTo
+          ? [
+              {
+                id: deal.relatedTo,
+                name: relatedContactName(deal),
+                avatarUrl: getContactEntry(deal.relatedTo)?.picture || null,
+              },
+            ]
+          : [],
+      }
+      isAddTodoDrawerVisible.value = true
+      nextTick(() => {
+        try {
+          addTodoDrawerRef.value?.openWith?.(addTodoInitial.value)
+        }
+        catch {}
+        addTodoInitial.value = null
+      })
+      break
+    case 'meeting':
+      nextTick(() => {
+        try {
+          const linkedContacts: Array<{
+            id: number | string
+            name: string
+            avatarUrl: string | null
+            type: 'contact'
+            roles: ['contact']
+            contactId: number | string
+          }> = []
+
+          if (deal.relatedTo !== null && deal.relatedTo !== undefined) {
+            const entry = getContactEntry(deal.relatedTo)
+            linkedContacts.push({
+              id: deal.relatedTo,
+              contactId: deal.relatedTo,
+              name: entry?.name || `Contact ${deal.relatedTo}`,
+              avatarUrl: entry?.picture || null,
+              type: 'contact',
+              roles: ['contact'],
+            })
+          }
+
+          addMeetingRef.value?.openWith?.({
+            title: `Meeting: ${deal.code || `Deal #${deal.id}`}`,
+            initialStart: new Date(),
+            durationMins: 60,
+            linkedTo: linkedContacts,
+            relatedTo: {
+              id: deal.id,
+              name: deal.code || `Deal #${deal.id}`,
+              type: 'deal',
+            },
+            attendees: [],
+            notes: `Meeting regarding ${deal.code || `deal #${deal.id}`}`,
+          })
+        }
+        catch {}
+        isAddMeetingOpen.value = true
+      })
+      break
+    case 'email':
+      isComposeDialogVisible.value = true
+      nextTick(() => {
+        try {
+          const toAddress = getContactEntry(deal.relatedTo)?.email || ''
+          composeDialogRef.value?.openWith?.({
+            to: toAddress ? [toAddress] : [],
+            subject: `Regarding ${deal.code || `Deal #${deal.id}`}`,
+            message: `Hello,\n\nI'd like to discuss ${deal.code || `deal #${deal.id}`}.\n\nThanks,`,
+          })
+        }
+        catch {}
+      })
+      break
+    case 'call':
+      notifications.push(`Call for ${deal.code || `deal #${deal.id}`}`, 'info', 2500)
+      break
+    case 'flag':
+      flagDialogDealId.value = Number(deal.id)
+      flagDialogValue.value = deal.important ? 'important' : 'normal'
+      isFlagDialogVisible.value = true
+      break
+    case 'stage':
+      stageDialogDealId.value = Number(deal.id)
+      stageDialogValue.value = deal.stage ?? null
+      isStageDialogVisible.value = true
+      break
+    case 'duplicate':
+      duplicateDeal(deal)
+      break
+    case 'delete':
+      confirmDelete(Number(deal.id))
+      break
+  }
+}
+
 const deleteCandidateName = computed(() => {
   if (deleteCandidateId.value === null)
     return ''
@@ -445,6 +649,34 @@ const deleteCandidateName = computed(() => {
 
   return deal?.code ?? String(deleteCandidateId.value)
 })
+
+const saveFlagChange = () => {
+  if (flagDialogDealId.value === null) {
+    isFlagDialogVisible.value = false
+    return
+  }
+
+  dealsStore.updateDeal(flagDialogDealId.value, {
+    important: flagDialogValue.value === 'important',
+  })
+  notifications.push('Flag updated', 'success', 2500)
+  isFlagDialogVisible.value = false
+  flagDialogDealId.value = null
+}
+
+const saveStageChange = () => {
+  if (stageDialogDealId.value === null || !stageDialogValue.value) {
+    isStageDialogVisible.value = false
+    return
+  }
+
+  dealsStore.updateDeal(stageDialogDealId.value, {
+    stage: stageDialogValue.value,
+  })
+  notifications.push('Stage updated', 'success', 2500)
+  isStageDialogVisible.value = false
+  stageDialogDealId.value = null
+}
 
 const updateOptions = (options: {
   sortBy?: Array<{ key: SortKey; order: SortOrder }>
@@ -720,50 +952,135 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.actions="{ item }">
-          <VBtn
-            icon
-            variant="text"
-            color="medium-emphasis"
-          >
-            <VIcon icon="tabler-dots-vertical" />
+          <div class="d-flex align-center">
+            <VBtn
+              icon
+              variant="text"
+              color="medium-emphasis"
+              @click="openEditDialog(item)"
+            >
+              <VIcon icon="tabler-pencil" />
+            </VBtn>
 
-            <VMenu activator="parent">
-              <VList>
-                <VListItem @click="openEditDialog(item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-pencil" />
-                  </template>
-                  <VListItemTitle>Edit</VListItemTitle>
-                </VListItem>
+            <VBtn
+              icon
+              variant="text"
+              color="medium-emphasis"
+            >
+              <VIcon icon="tabler-dots-vertical" />
 
-                <VListItem @click="toggleImportant(item)">
-                  <template #prepend>
-                    <VIcon :icon="item.important ? 'tabler-star-off' : 'tabler-star'" />
-                  </template>
-                  <VListItemTitle>
-                    {{ item.important ? "Remove Important" : "Mark Important" }}
-                  </VListItemTitle>
-                </VListItem>
+              <VMenu activator="parent">
+                <VList>
+                  <VListItem @click="handleDealAction('todo', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-list-check" />
+                    </template>
+                    <VListItemTitle>Todo</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleDealAction('meeting', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-calendar" />
+                    </template>
+                    <VListItemTitle>Meeting</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleDealAction('email', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-mail" />
+                    </template>
+                    <VListItemTitle>Email</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleDealAction('call', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-phone" />
+                    </template>
+                    <VListItemTitle>Call</VListItemTitle>
+                  </VListItem>
 
-                <VDivider />
+                  <VDivider />
 
-                <VListItem @click="confirmDelete(item.id)">
-                  <template #prepend>
-                    <VIcon
-                      color="error"
-                      icon="tabler-trash"
-                    />
-                  </template>
-                  <VListItemTitle class="text-error">
-                    Delete
-                  </VListItemTitle>
-                </VListItem>
-              </VList>
-            </VMenu>
-          </VBtn>
+                  <VListItem @click="handleDealAction('flag', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-flag" />
+                    </template>
+                    <VListItemTitle>Change Flag</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleDealAction('stage', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-arrows-exchange-2" />
+                    </template>
+                    <VListItemTitle>Change Stage</VListItemTitle>
+                  </VListItem>
+
+                  <VDivider />
+
+                  <VListItem @click="handleDealAction('duplicate', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-copy" />
+                    </template>
+                    <VListItemTitle>Duplicate</VListItemTitle>
+                  </VListItem>
+
+                  <VDivider />
+
+                  <VListItem @click="handleDealAction('delete', item)">
+                    <template #prepend>
+                      <VIcon
+                        color="error"
+                        icon="tabler-trash"
+                      />
+                    </template>
+                    <VListItemTitle class="text-error">
+                      Delete
+                    </VListItemTitle>
+                  </VListItem>
+                </VList>
+              </VMenu>
+            </VBtn>
+          </div>
         </template>
       </VDataTableServer>
     </VCard>
+
+    <AddNewToDoDrawer
+      ref="addTodoDrawerRef"
+      v-model:is-drawer-open="isAddTodoDrawerVisible"
+      :collaborators-options="[]"
+      source="contacts"
+      :initial="addTodoInitial"
+      @user-data="onTodoCreated"
+    />
+
+    <AddMeetingDrawer
+      ref="addMeetingRef"
+      v-model:modelValue="isAddMeetingOpen"
+      :contacts="meetingContacts"
+      source="contacts"
+      @cancel="closeMeetingDrawer"
+      @save="onMeetingCreated"
+    />
+
+    <EmailDialog
+      ref="composeDialogRef"
+      v-model:is-dialog-visible="isComposeDialogVisible"
+      @send="
+        (payload) => {
+          try {
+            const recipients = Array.isArray(payload?.to)
+              ? payload.to
+              : payload?.to
+                ? [String(payload.to)]
+                : [];
+            notifications.push(
+              `Email sent to ${recipients.length} recipient(s)`,
+              'success',
+              3500,
+            );
+          } catch (e) {
+            notifications.push('Email sent', 'success', 3500);
+          }
+        }
+      "
+    />
 
     <DealUpsertDialog
       v-model:is-dialog-visible="isDealDialogVisible"
@@ -799,6 +1116,59 @@ const updateItemsPerPage = (value: number | string) => {
           >
             Delete
           </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isFlagDialogVisible" max-width="480">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Change Flag</VCardTitle>
+        <VCardText>
+          <AppSelect
+            v-model="flagDialogValue"
+            placeholder="Select Flag"
+            :items="[
+              { title: 'Important', value: 'important' },
+              { title: 'Not Important', value: 'normal' },
+            ]"
+            clearable
+            clear-icon="tabler-x"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isFlagDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn color="primary" @click="saveFlagChange">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isStageDialogVisible" max-width="480">
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Change Stage</VCardTitle>
+        <VCardText>
+          <AppSelect
+            v-model="stageDialogValue"
+            placeholder="Select Stage"
+            :items="stageOptions"
+            clearable
+            clear-icon="tabler-x"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isStageDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn color="primary" @click="saveStageChange">Save</VBtn>
         </VCardActions>
       </VCard>
     </VDialog>
