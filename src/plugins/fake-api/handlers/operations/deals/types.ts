@@ -12,6 +12,7 @@ export interface DealItem {
   parentItemId?: number | null
   sourceRelatedItemId?: number | null
   excludedRelatedItemIds?: number[] | null
+  generatedTaskIds?: Array<number | string> | null
   quantity: number
   unitPrice?: number | null
   status?: string | null

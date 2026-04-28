@@ -85,90 +85,62 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
 
       <VList class="py-0 card-list">
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Deal Code:
-              <div class="d-inline-block text-body-1">
-                {{ deal.code || '--' }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Deal Code:</span>
+            <span class="detail-row__value">{{ deal.code || '--' }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Linked To:
-              <div class="d-inline-block text-body-1">
-                {{ linkedToName }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Linked To:</span>
+            <span class="detail-row__value">{{ linkedToName }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Delivery:
-              <div class="d-inline-block text-body-1">
-                {{ formatDate(deal.estimatedDeliveryDate) }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Delivery:</span>
+            <span class="detail-row__value">{{ formatDate(deal.estimatedDeliveryDate) }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Location:
-              <div class="d-inline-block text-body-1">
-                {{ deal.location || '--' }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Location:</span>
+            <span class="detail-row__value">{{ deal.location || '--' }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Items:
-              <div class="d-inline-block text-body-1">
-                {{ itemCount }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Items:</span>
+            <span class="detail-row__value">{{ itemCount }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Financial Total:
-              <div class="d-inline-block text-body-1">
-                {{ financialTotal.toLocaleString() }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Financial Total:</span>
+            <span class="detail-row__value">{{ financialTotal.toLocaleString() }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Collaborators:
-              <div class="d-inline-block text-body-1 text-wrap">
-                {{ collaboratorNames.length ? collaboratorNames.join(', ') : '--' }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row detail-row--stacked">
+            <span class="detail-row__label">Collaborators:</span>
+            <span class="detail-row__value detail-row__value--wrap">
+              {{ collaboratorNames.length ? collaboratorNames.join(', ') : '--' }}
+            </span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
-          <VListItemTitle>
-            <h6 class="text-h6">
-              Notes:
-              <div class="d-inline-block text-body-1 text-wrap">
-                {{ noteText }}
-              </div>
-            </h6>
+          <VListItemTitle class="detail-row detail-row--stacked">
+            <span class="detail-row__label">Notes:</span>
+            <span class="detail-row__value detail-row__value--wrap">
+              {{ noteText }}
+            </span>
           </VListItemTitle>
         </VListItem>
       </VList>
@@ -185,5 +157,48 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
 <style scoped>
 .card-list {
   --v-card-list-gap: 0.5rem;
+}
+
+.detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  min-inline-size: 0;
+}
+
+.detail-row--stacked {
+  display: block;
+}
+
+.detail-row__label {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.detail-row__value {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 1rem;
+  min-inline-size: 0;
+}
+
+.detail-row__value--wrap {
+  display: block;
+  margin-block-start: 0.25rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 960px) {
+  .detail-row {
+    display: block;
+  }
+
+  .detail-row__value {
+    display: block;
+    margin-block-start: 0.25rem;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }
 </style>

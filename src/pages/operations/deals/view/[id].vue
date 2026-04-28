@@ -2,12 +2,15 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import type { ToDo } from '@/data/schema'
+import type { CatalogueTaskStartTrigger } from '@/plugins/fake-api/handlers/catalogues/types'
 import type { DealProperties } from '@/plugins/fake-api/handlers/operations/deals/types'
 import { useContactsStore } from '@/stores/contacts'
 import { useDealsStore } from '@/stores/deals'
 import { useEmployeesStore } from '@/stores/employees'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useTodos } from '@/stores/todos'
+import CatalogueTaskTemplateDrawer from '@/components/catalogues/CatalogueTaskTemplateDrawer.vue'
 import EmailDialog from '@/views/apps/email/EmailDialog.vue'
 import AddMeetingDrawer from '@/views/apps/todo/list/AddMeetingDrawer.vue'
 import DealUpsertDialog from '@/views/operations/deals/list/DealUpsertDialog.vue'
@@ -43,6 +46,10 @@ const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null)
 const isAddMeetingOpen = ref(false)
 const composeDialogRef = ref<any | null>(null)
 const isComposeDialogVisible = ref(false)
+const taskTemplateDrawerRef = ref<InstanceType<typeof CatalogueTaskTemplateDrawer> | null>(null)
+const isTaskTemplateDrawerOpen = ref(false)
+const taskTemplateMode = ref<'create' | 'edit'>('create')
+const taskTemplateTodoId = ref<number | string | null>(null)
 
 const tabKeys = ['items', 'communication', 'documents', 'financials', 'timeline'] as const
 const tabs = [
@@ -105,6 +112,8 @@ const meetingContacts = computed(() =>
     avatarUrl: contact.picture || null,
   })),
 )
+
+const goalTriggerOptions = computed(() => [] as Array<{ title: string; value: string }>)
 
 const openEditDialog = () => {
   dialogError.value = null
@@ -209,6 +218,129 @@ const openEmail = () => {
   })
 }
 
+const openAddTask = (payload: { initial: Partial<ToDo> }) => {
+  taskTemplateMode.value = 'create'
+  taskTemplateTodoId.value = null
+
+  nextTick(() => {
+    try {
+      taskTemplateDrawerRef.value?.openWith?.({
+        ...payload.initial,
+        afterWhen: (payload.initial as ToDo).afterWhen ?? '+1 day',
+        startTrigger: (payload.initial as ToDo).startTrigger ?? {
+          type: 'time',
+          goalId: null,
+          taskId: null,
+        },
+      })
+    }
+    catch {}
+  })
+  isTaskTemplateDrawerOpen.value = true
+}
+
+const openEditTask = (todoId: number | string) => {
+  const todo = todosStore.byId(todoId)
+  if (!todo)
+    return
+
+  taskTemplateMode.value = 'edit'
+  taskTemplateTodoId.value = todoId
+  nextTick(() => {
+    try {
+      taskTemplateDrawerRef.value?.openWith?.({
+        title: todo.title,
+        collaborators: todo.collaborators,
+        afterWhen: todo.afterWhen ?? todo.dueAt ?? '+1 day',
+        startTrigger: (todo.startTrigger as CatalogueTaskStartTrigger | null | undefined) ?? {
+          type: 'time',
+          goalId: null,
+          taskId: null,
+        },
+        notes: todo.notes ?? '',
+        important: todo.important,
+        status: todo.status,
+        attachment: todo.attachment ?? null,
+        relatedTo: todo.relatedTo ?? null,
+        goalId: todo.goalId ?? null,
+        milestoneId: todo.milestoneId ?? null,
+        steps: Array.isArray(todo.steps) ? todo.steps.map(step => ({ ...step })) : [],
+      })
+    }
+    catch {}
+  })
+  isTaskTemplateDrawerOpen.value = true
+}
+
+const deleteTask = (todoId: number | string) => {
+  todosStore.removeTodo(todoId)
+  notifications.push('Task deleted', 'success', 3000)
+}
+
+const onTaskTemplateSaved = (payload: Partial<ToDo> & {
+  afterWhen?: string | null
+  startTrigger?: CatalogueTaskStartTrigger | null
+}) => {
+  if (!deal.value)
+    return
+  const relatedTo = {
+    id: deal.value.id,
+    name: deal.value.code || `Deal #${deal.value.id}`,
+    type: 'deal',
+  }
+  const normalized: Partial<ToDo> = {
+    title: String(payload.title ?? '').trim(),
+    collaborators: Array.isArray(payload.collaborators)
+      ? payload.collaborators.map(collaborator => ({ ...collaborator }))
+      : [],
+    dueAt: String(payload.afterWhen ?? payload.dueAt ?? '+1 day'),
+    afterWhen: payload.afterWhen ?? payload.dueAt ?? null,
+    startTrigger:
+      payload.startTrigger?.type === 'goal' || payload.startTrigger?.type === 'task'
+        ? {
+            type: payload.startTrigger.type,
+            goalId: payload.startTrigger.goalId ?? null,
+            taskId: payload.startTrigger.taskId ?? null,
+          }
+        : {
+            type: 'time' as const,
+            goalId: null,
+            taskId: null,
+          },
+    status:
+      payload.status === 'in_progress' ||
+      payload.status === 'for_review' ||
+      payload.status === 'completed'
+        ? payload.status
+        : 'pending',
+    notes: String(payload.notes ?? '').trim(),
+    important: Boolean(payload.important),
+    attachment: payload.attachment ?? null,
+    relatedTo,
+    goalId: payload.goalId ?? null,
+    milestoneId: payload.milestoneId ?? null,
+    steps: Array.isArray(payload.steps)
+      ? payload.steps.map((step, index) => ({
+          ...step,
+          id: step.id ?? index + 1,
+        }))
+      : [],
+  }
+
+  if (taskTemplateMode.value === 'edit' && taskTemplateTodoId.value !== null) {
+    todosStore.updateTodo(taskTemplateTodoId.value, normalized)
+    notifications.push('Task updated', 'success', 3000)
+  }
+  else {
+    todosStore.addTodo(normalized)
+    notifications.push('Task created', 'success', 3000)
+  }
+
+  isTaskTemplateDrawerOpen.value = false
+  taskTemplateTodoId.value = null
+  taskTemplateMode.value = 'create'
+}
+
 onMounted(() => {
   resolveDeal()
   setTabFromQuery()
@@ -297,7 +429,12 @@ watch(() => dealTab.value, (value) => {
           :touch="false"
         >
           <VWindowItem>
-            <DealItemsTab :deal="deal" />
+            <DealItemsTab
+              :deal="deal"
+              @open-add-task="openAddTask"
+              @open-edit-task="openEditTask"
+              @delete-task="deleteTask"
+            />
           </VWindowItem>
 
           <VWindowItem>
@@ -339,6 +476,13 @@ watch(() => dealTab.value, (value) => {
       source="contacts"
       @cancel="isAddMeetingOpen = false"
       @save="onMeetingCreated"
+    />
+
+    <CatalogueTaskTemplateDrawer
+      ref="taskTemplateDrawerRef"
+      v-model:is-drawer-open="isTaskTemplateDrawerOpen"
+      :goal-trigger-options="goalTriggerOptions"
+      @save="onTaskTemplateSaved"
     />
 
     <EmailDialog

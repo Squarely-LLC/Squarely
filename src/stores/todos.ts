@@ -204,6 +204,8 @@ export const useTodos = defineStore("todos", {
         copy.relatedTo = t.relatedTo ?? null;
         copy.goalId = t.goalId ?? null;
         copy.milestoneId = t.milestoneId ?? null;
+        copy.afterWhen = t.afterWhen ?? null;
+        copy.startTrigger = t.startTrigger ?? null;
         return copy as ToDo;
       };
 
@@ -241,6 +243,8 @@ export const useTodos = defineStore("todos", {
         title: todo.title || "Untitled",
         collaborators: todo.collaborators || [],
         dueAt: toDateOnlyISOString(todo.dueAt),
+        afterWhen: (todo as any).afterWhen ?? null,
+        startTrigger: (todo as any).startTrigger ?? null,
         important: !!todo.important,
         status: (todo.status as ToDo["status"]) || "pending",
         steps: todo.steps || [],

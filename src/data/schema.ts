@@ -50,6 +50,12 @@ export type ToDoAttachment = {
   fileKey?: string | null;
 };
 
+export type TaskStartTrigger = {
+  type: "time" | "goal" | "task";
+  goalId?: string | number | null;
+  taskId?: string | number | null;
+};
+
 // Add below your MeetingSentiment export
 export type MeetingNote = {
   id: number | string;
@@ -69,6 +75,8 @@ export type ToDo = {
   title: string;
   collaborators: ContactRef[];
   dueAt: string;
+  afterWhen?: string | null;
+  startTrigger?: TaskStartTrigger | null;
   priority?: Priority;
   important: boolean;
   status: Status;
