@@ -9,7 +9,7 @@ import { useDealsStore } from '@/stores/deals'
 import { useNotificationsStore } from '@/stores/notifications'
 import DealUpsertDialog from '@/views/operations/deals/list/DealUpsertDialog.vue'
 
-type SortKey = 'name' | 'createdAt' | 'estimatedDeliveryDate' | 'stage' | 'type'
+type SortKey = 'code' | 'createdAt' | 'estimatedDeliveryDate' | 'stage' | 'type'
 type SortOrder = 'asc' | 'desc'
 
 const dealsStore = useDealsStore()
@@ -30,8 +30,8 @@ const sortOptions: {
   title: string
   value: { key: SortKey; order: SortOrder }
 }[] = [
-  { title: 'Name (A-Z)', value: { key: 'name', order: 'asc' } },
-  { title: 'Name (Z-A)', value: { key: 'name', order: 'desc' } },
+  { title: 'Code (A-Z)', value: { key: 'code', order: 'asc' } },
+  { title: 'Code (Z-A)', value: { key: 'code', order: 'desc' } },
   { title: 'Recently Added', value: { key: 'createdAt', order: 'desc' } },
   {
     title: 'Delivery Date (Soonest)',
@@ -48,7 +48,7 @@ const selectedRows = ref<number[]>([])
 
 const headers = [
   { title: 'Deal', key: 'deal' },
-  { title: 'Contact', key: 'contact' },
+  { title: 'Owner', key: 'contact' },
   { title: 'Stage', key: 'stage' },
   { title: 'Type', key: 'type' },
   { title: 'Delivery', key: 'delivery' },
@@ -165,7 +165,6 @@ const matchesFilters = (deal: DealProperties) => {
       .map(value => String(value).toLowerCase())
 
     const haystack = [
-      deal.name,
       deal.code,
       deal.location,
       relatedContactName(deal),
@@ -191,8 +190,8 @@ const matchesFilters = (deal: DealProperties) => {
 }
 
 const normalizeSortValue = (deal: DealProperties, key?: SortKey) => {
-  if (key === 'name')
-    return deal.name?.toLowerCase() ?? ''
+  if (key === 'code')
+    return deal.code?.toLowerCase() ?? ''
 
   if (key === 'stage')
     return deal.stage ?? ''
@@ -207,6 +206,9 @@ const normalizeSortValue = (deal: DealProperties, key?: SortKey) => {
 }
 
 const compareDeals = (a: DealProperties, b: DealProperties) => {
+  if (a.important !== b.important)
+    return a.important ? -1 : 1
+
   const key = sortBy.value ?? 'createdAt'
   const order = orderBy.value ?? 'desc'
 
@@ -283,6 +285,40 @@ const resolveCustomFieldPreview = (deal: DealProperties) => {
     .filter(Boolean)
 
   return previews.join(' - ')
+}
+
+const stageColorPalette = [
+  'primary',
+  'success',
+  'warning',
+  'info',
+  'secondary',
+  'error',
+] as const
+
+const resolveStageColor = (stage?: string | null) => {
+  const value = String(stage ?? '').trim()
+  if (!value)
+    return 'secondary'
+
+  const normalized = value.toLowerCase()
+
+  if (normalized.includes('complete'))
+    return 'success'
+  if (normalized.includes('progress'))
+    return 'info'
+  if (normalized.includes('review') || normalized.includes('negotiation'))
+    return 'primary'
+  if (normalized.includes('hold') || normalized.includes('await'))
+    return 'warning'
+  if (normalized.includes('cancel'))
+    return 'error'
+  if (normalized.includes('priority') || normalized.includes('express'))
+    return 'secondary'
+
+  const hash = [...normalized].reduce((total, char) => total + char.charCodeAt(0), 0)
+
+  return stageColorPalette[hash % stageColorPalette.length]
 }
 
 const isDealDialogVisible = ref(false)
@@ -378,7 +414,7 @@ const deleteCandidateName = computed(() => {
 
   const deal = dealsStore.byId(deleteCandidateId.value)
 
-  return deal?.name ?? String(deleteCandidateId.value)
+  return deal?.code ?? String(deleteCandidateId.value)
 })
 
 const updateOptions = (options: {
@@ -542,12 +578,12 @@ const updateItemsPerPage = (value: number | string) => {
 
             <div class="d-flex flex-column gap-1">
               <div class="text-base font-weight-medium">
-                {{ item.name }}
+                {{ item.code || '--' }}
               </div>
 
               <div class="text-sm text-medium-emphasis">
-                <span v-if="item.code">{{ item.code }}</span>
-                <span v-if="item.code && item.location"> - </span>
+                <span>{{ relatedContactName(item) }}</span>
+                <span v-if="relatedContactName(item) !== '--' && item.location"> - </span>
                 <span v-if="item.location">{{ item.location }}</span>
               </div>
 
@@ -581,7 +617,7 @@ const updateItemsPerPage = (value: number | string) => {
 
         <template #item.stage="{ item }">
           <VChip
-            color="info"
+            :color="resolveStageColor(item.stage)"
             label
             size="small"
           >

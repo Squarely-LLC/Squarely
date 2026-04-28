@@ -239,13 +239,6 @@ export const db: ConfigDB = {
           type: 'text',
           defaultValue: '',
         },
-        {
-          key: 'source',
-          label: 'Lead Source',
-          type: 'select',
-          options: ['Referral', 'Direct Sales', 'Website', 'Social Media'],
-          defaultValue: 'Referral',
-        },
       ],
       dealStages: [
         'Under Review',

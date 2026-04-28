@@ -68,6 +68,20 @@ function nextDealId(items: DealProperties[]) {
   return ids.length ? Math.max(...ids) + 1 : 1
 }
 
+function nextDealCode(items: DealProperties[]) {
+  const nextSequence = items.reduce((maxValue, deal) => {
+    const match = String(deal.code ?? '').match(/DL-(\d+)/i)
+    if (!match)
+      return maxValue
+
+    const numeric = Number(match[1])
+
+    return Number.isFinite(numeric) ? Math.max(maxValue, numeric) : maxValue
+  }, 1000) + 1
+
+  return `DL-${nextSequence}`
+}
+
 function normalizeCustomFieldValues(
   values: Record<string, DealFieldValue> | undefined | null,
 ): Record<string, DealFieldValue> {
@@ -80,13 +94,15 @@ function normalizeCustomFieldValues(
 function normaliseDeal(
   payload: Partial<DealProperties>,
   assignedId: number,
+  generatedCode: string,
 ): DealProperties {
   const now = new Date().toISOString()
+  const code = payload.code?.trim() || generatedCode
 
   return {
     id: assignedId,
-    name: payload.name?.trim() || 'Untitled Deal',
-    code: payload.code?.trim() || null,
+    name: code,
+    code,
     relatedTo: payload.relatedTo ?? null,
     type: payload.type?.trim() || null,
     estimatedDeliveryDate: payload.estimatedDeliveryDate || null,
@@ -162,7 +178,7 @@ export const useDealsStore = defineStore('deals', {
     addDeal(payload: Partial<DealProperties>) {
       const incomingId = payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined
       const id = incomingId ?? nextDealId(this.items)
-      const normalised = normaliseDeal(payload, id)
+      const normalised = normaliseDeal(payload, id, nextDealCode(this.items))
 
       this.items.unshift(normalised)
 

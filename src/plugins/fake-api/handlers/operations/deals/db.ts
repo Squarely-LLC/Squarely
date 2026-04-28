@@ -21,7 +21,6 @@ export const db: DB = {
       customFieldValues: {
         additional_field_1: 180000,
         additional_field_2: 'Ted',
-        source: 'Referral',
       },
       createdAt: '2026-04-10T09:30:00Z',
     },
@@ -40,7 +39,6 @@ export const db: DB = {
       customFieldValues: {
         additional_field_1: 92000,
         additional_field_2: 'Nora',
-        source: 'Website',
       },
       createdAt: '2026-04-14T13:15:00Z',
     },
@@ -59,7 +57,6 @@ export const db: DB = {
       customFieldValues: {
         additional_field_1: 45000,
         additional_field_2: 'Maya',
-        source: 'Direct Sales',
       },
       createdAt: '2026-04-18T08:00:00Z',
     },

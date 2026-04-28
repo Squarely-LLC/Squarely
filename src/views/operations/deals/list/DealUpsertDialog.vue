@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import type { VForm } from 'vuetify/components/VForm'
-import { requiredValidator } from '@/@core/utils/validators'
 import DialogActionBar from '@/components/DialogActionBar.vue'
 import type {
   DealCustomFieldDefinition,
@@ -115,7 +114,7 @@ const buildDefaultCustomFieldValues = (
 
 const buildEmptyDeal = (): Partial<DealProperties> => ({
   name: '',
-  code: '',
+  code: null,
   relatedTo: null,
   type: typeOptions.value[0] || null,
   estimatedDeliveryDate: null,
@@ -239,37 +238,13 @@ const onSubmit = async () => {
               cols="12"
               md="6"
             >
-              <AppTextField
-                v-model="localDeal.name"
-                label="Deal Name"
-                placeholder="Boutique Fit-out"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
-
-            <VCol
-              cols="12"
-              md="6"
-            >
-              <AppTextField
-                v-model="localDeal.code"
-                label="Code"
-                placeholder="DL-1001"
-              />
-            </VCol>
-
-            <VCol
-              cols="12"
-              md="6"
-            >
               <AppSelect
                 v-model="localDeal.relatedTo"
-                label="Contact"
-                placeholder="Select Contact"
+                label="Owner"
+                placeholder="Select Owner"
                 :items="contactOptions"
                 item-title="title"
                 item-value="value"
-                :rules="[requiredValidator]"
                 clearable
                 clear-icon="tabler-x"
               >
@@ -302,12 +277,22 @@ const onSubmit = async () => {
               cols="12"
               md="6"
             >
+              <AppTextField
+                :model-value="props.deal?.code || 'Auto-generated on save'"
+                label="Deal Code"
+                readonly
+              />
+            </VCol>
+
+            <VCol
+              cols="12"
+              md="6"
+            >
               <AppSelect
                 v-model="localDeal.type"
                 label="Type"
                 placeholder="Select Type"
                 :items="typeOptions"
-                :rules="[requiredValidator]"
               />
             </VCol>
 
@@ -332,7 +317,6 @@ const onSubmit = async () => {
                 label="Stage"
                 placeholder="Select Stage"
                 :items="stageOptions"
-                :rules="[requiredValidator]"
               />
             </VCol>
 
