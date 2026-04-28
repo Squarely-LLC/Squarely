@@ -48,6 +48,11 @@ type DerivedSection = {
   goals: DerivedGoal[];
 };
 
+type DealItemWithPlan = DealItem & {
+  isExpandable: boolean;
+  derivedSections: DerivedSection[];
+};
+
 const addItemDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
@@ -136,6 +141,26 @@ const isProductLike = (type?: string | null) =>
 
 const formatMoney = (value?: number | null) =>
   value === null || value === undefined ? "--" : Number(value).toLocaleString();
+
+const normalizeComparableText = (value?: string | null) =>
+  (value || "").trim().toLowerCase();
+
+const shouldShowSectionHeader = (
+  item: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const isSingleSection = item.derivedSections.length === 1;
+
+  if (!isSingleSection) return true;
+
+  const sameName =
+    normalizeComparableText(section.name) === normalizeComparableText(item.name);
+  const sameNote =
+    normalizeComparableText(section.note) === normalizeComparableText(item.note);
+  const samePrice = (section.price ?? null) === (item.unitPrice ?? null);
+
+  return !(sameName && sameNote && samePrice);
+};
 
 const deriveSections = (item: DealItem): DerivedSection[] => {
   const record = item.catalogueItemId
@@ -267,7 +292,7 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
   ];
 };
 
-const dealItemsWithPlan = computed(() =>
+const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
   (props.deal.items || []).map((item) => ({
     ...item,
     isExpandable: !isProductLike(item.catalogueType),
@@ -463,6 +488,7 @@ const dealItemsWithPlan = computed(() =>
                     >
                       <VCardText>
                         <div
+                          v-if="shouldShowSectionHeader(item, section)"
                           class="d-flex justify-space-between align-center gap-2 flex-wrap"
                         >
                           <div>
@@ -484,7 +510,8 @@ const dealItemsWithPlan = computed(() =>
                           v-model="expandedGoals"
                           variant="accordion"
                           multiple
-                          class="expansion-panels-width-border goal-panels mt-4"
+                          class="expansion-panels-width-border goal-panels"
+                          :class="{ 'mt-4': shouldShowSectionHeader(item, section) }"
                         >
                           <VExpansionPanel
                             v-for="goal in section.goals"
