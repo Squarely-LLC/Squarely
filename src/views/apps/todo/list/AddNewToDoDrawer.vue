@@ -191,7 +191,7 @@ function loadInitialAndMaybeFocus() {
     relatedTo.value = init.relatedTo ?? relatedTo.value;
     selectedRelatedKey.value =
       init.relatedTo?.type === "job" ? `job-${init.relatedTo.id}` : null;
-    relatedToLocked.value = init.relatedTo?.type === "job";
+    relatedToLocked.value = Boolean(init.relatedTo);
     goalId.value = init.goalId ?? goalId.value;
     milestoneId.value = init.milestoneId ?? milestoneId.value;
     selectedStatus.value = (init.status as any) ?? selectedStatus.value;
@@ -356,7 +356,7 @@ async function onSubmit() {
           name: relatedOption.title,
           type: relatedOption.type,
         }
-      : null,
+      : relatedTo.value,
     goalId: goalId.value,
     milestoneId: milestoneId.value,
   });

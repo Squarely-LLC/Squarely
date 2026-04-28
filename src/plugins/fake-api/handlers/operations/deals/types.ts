@@ -13,6 +13,8 @@ export interface DealItem {
   sourceRelatedItemId?: number | null
   excludedRelatedItemIds?: number[] | null
   generatedTaskIds?: Array<number | string> | null
+  discountPercent?: number | null
+  taxApplicable?: boolean | null
   quantity: number
   unitPrice?: number | null
   status?: string | null

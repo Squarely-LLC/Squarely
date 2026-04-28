@@ -11,6 +11,7 @@ export type ContactRef = {
   name: string;
   email?: string;
   avatarUrl?: string | null;
+  group?: string;
   type?: "contact" | "employee" | "employee_contact";
   roles?: ("contact" | "employee")[];
   contactId?: number | string;
@@ -89,6 +90,7 @@ const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
 const selectedRelatedKey = ref<string | null>(null);
+const initialRelatedTo = ref<{ id: string | number; name: string; type: string } | null>(null);
 
 // build stable keys so contact/employee ids don't collide
 const contactKey = (id: string | number) => `contact-${id}`;
@@ -328,8 +330,9 @@ function applyInitial(initial?: any) {
     if (Array.isArray(initial.linkedTo)) {
       selectedLinkedIds.value = initial.linkedTo
         .map((l: any) => resolveLinkedValue(l))
-        .filter((v): v is string => !!v);
+        .filter((v: string | null): v is string => !!v);
     }
+    initialRelatedTo.value = initial.relatedTo ?? null;
     if (initial.relatedTo && initial.relatedTo.type === "job") {
       selectedRelatedKey.value = `job-${initial.relatedTo.id}`;
     }
@@ -513,6 +516,7 @@ function initialiseForm() {
   notes.value = "";
   attachmentFile.value = null;
   selectedRelatedKey.value = null;
+  initialRelatedTo.value = null;
   linkedSearch.value = "";
 }
 
@@ -572,7 +576,7 @@ async function onSubmit() {
           name: relatedOption.title,
           type: relatedOption.type,
         }
-      : null,
+      : initialRelatedTo.value,
     // compatibility fields expected by todos store and other consumers
     subject: subject.value.trim(),
     startAt: startDate.toISOString(),

@@ -3,8 +3,8 @@ import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { useContactsStore } from "@/stores/contacts";
 import { defineStore } from "pinia";
 
-const STORAGE_KEY_MEETINGS = "app.meetings.v1";
-const STORAGE_KEY_MEETINGS_SEEDED = "app.meetings.seeded.v1";
+const STORAGE_KEY_MEETINGS = "app.meetings.v2";
+const STORAGE_KEY_MEETINGS_SEEDED = "app.meetings.seeded.v2";
 
 function loadMeetingsFromStorage(): Meeting[] | null {
   try {
@@ -18,7 +18,7 @@ function saveMeetingsToStorage(items: Meeting[]) {
   localStorage.setItem(STORAGE_KEY_MEETINGS_SEEDED, "1");
 }
 
-const STORAGE_KEY = "app.todos.v1";
+const STORAGE_KEY = "app.todos.v2";
 
 function loadFromStorage(): ToDo[] | null {
   try {

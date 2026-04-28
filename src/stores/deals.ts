@@ -9,7 +9,7 @@ import type {
   DealProperties,
 } from '@/plugins/fake-api/handlers/operations/deals/types'
 
-const STORAGE_KEY = 'app.deals.v2'
+const STORAGE_KEY = 'app.deals.v3'
 
 function cloneDeal(deal: DealProperties): DealProperties {
   const raw = toRaw(deal) as DealProperties

@@ -3,14 +3,16 @@ import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { Status, ToDo } from "@/data/schema";
 import type {
-  CatalogueSalesTask,
+  CatalogueActiveState,
   CatalogueContractualServiceRecord,
   CatalogueItem,
+  CatalogueItemType,
   CatalogueOnetimeServiceRecord,
   CatalogueProducedProductRecord,
   CatalogueProductRecord,
   CatalogueReccurentServiceRecord,
   CatalogueRetainerServiceRecord,
+  CatalogueSalesTask,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
   DealItem,
@@ -21,7 +23,6 @@ import { useDealsStore } from "@/stores/deals";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { computed, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
@@ -37,7 +38,6 @@ const cataloguesStore = useCataloguesStore();
 const dealsStore = useDealsStore();
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
-const router = useRouter();
 
 cataloguesStore.init();
 dealsStore.init();
@@ -78,14 +78,88 @@ type DealItemWithPlan = DealItem & {
   actionsEnabled: boolean;
 };
 
+type ItemTypeChoice = {
+  title: string;
+  value: CatalogueItemType;
+  description: string;
+  icon: string;
+  comingSoon?: boolean;
+};
+
 const addItemDialogVisible = ref(false);
+const createItemTypeDialogVisible = ref(false);
+const createDraftItemDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
+const createDraftItemFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
 const selectedCatalogueItemId = ref<string | null>(null);
+const selectedCreateItemType = ref<CatalogueItemType | null>(null);
 
 const addItemDraft = reactive({
   quantity: 1,
 });
+
+const createDraftItem = reactive({
+  name: "",
+  quantity: 1,
+  price: 0,
+  discountPercent: 0,
+  taxApplicable: true,
+  note: "",
+});
+
+const itemTypeChoices: ItemTypeChoice[] = [
+  {
+    title: "Onetime Service",
+    value: "Onetime Service",
+    description:
+      "Single-scope service delivered once, such as an installation or one-off site visit.",
+    icon: "tabler-bolt",
+  },
+  {
+    title: "Product",
+    value: "Product",
+    description:
+      "Standard stocked item purchased, stored, and sold as inventory.",
+    icon: "tabler-package",
+  },
+  {
+    title: "Contractual Service",
+    value: "Contractual Service",
+    description:
+      "Service sold under a fixed contract period, scope, or maintenance agreement.",
+    icon: "tabler-file-description",
+  },
+  {
+    title: "Produced Product",
+    value: "Produced Product",
+    description:
+      "Item manufactured, assembled, or custom-built internally before delivery.",
+    icon: "tabler-building-factory-2",
+  },
+  {
+    title: "Reccurent Service",
+    value: "Reccurent Service",
+    description:
+      "Scheduled repeat service delivered on a recurring basis such as monthly cleaning or upkeep.",
+    icon: "tabler-repeat",
+  },
+  {
+    title: "Rental",
+    value: "Rental",
+    description:
+      "Reusable asset hired out for a defined time window and then returned to stock.",
+    icon: "tabler-calendar-time",
+    comingSoon: true,
+  },
+  {
+    title: "Retainer Service",
+    value: "Retainer Service",
+    description:
+      "Ongoing advisory or support service billed to reserve team availability over time.",
+    icon: "tabler-briefcase",
+  },
+];
 
 const catalogueOptions = computed(() =>
   cataloguesStore.all
@@ -116,8 +190,12 @@ const buildDealRelatedTo = () => ({
 
 const parseAfterWhen = (raw?: string | null) => {
   const base = new Date();
-  const value = String(raw || "").trim().toLowerCase();
-  const match = value.match(/^([+-]?\d+)\s*(day|days|week|weeks|month|months)$/);
+  const value = String(raw || "")
+    .trim()
+    .toLowerCase();
+  const match = value.match(
+    /^([+-]?\d+)\s*(day|days|week|weeks|month|months)$/,
+  );
 
   if (!match) return base.toISOString();
 
@@ -135,7 +213,8 @@ const parseAfterWhen = (raw?: string | null) => {
 const extractSalesTasks = (record: unknown): CatalogueSalesTask[] => {
   if (!record || typeof record !== "object") return [];
 
-  const salesTasks = (record as { salesTasks?: CatalogueSalesTask[] }).salesTasks;
+  const salesTasks = (record as { salesTasks?: CatalogueSalesTask[] })
+    .salesTasks;
 
   return Array.isArray(salesTasks) ? salesTasks : [];
 };
@@ -152,7 +231,11 @@ const createTodosFromSalesTasks = (
       })),
       dueAt: parseAfterWhen(task.afterWhen),
       afterWhen: task.afterWhen ?? null,
-      startTrigger: task.startTrigger ?? { type: "time", goalId: null, taskId: null },
+      startTrigger: task.startTrigger ?? {
+        type: "time",
+        goalId: null,
+        taskId: null,
+      },
       status: (task.status as Status) || "pending",
       notes: [item.name, task.notes].filter(Boolean).join(" | "),
       important: Boolean(task.important),
@@ -172,66 +255,55 @@ const nextItemId = () => {
   return ids.length ? Math.max(...ids) + 1 : 1;
 };
 
-const itemTypeLabel = (item: DealItem) =>
-  item.itemTypeLabel || item.catalogueType || "Item";
-
-const openAddItemDialog = () => {
-  selectedCatalogueItemId.value = null;
-  addItemDraft.quantity = 1;
-  addItemDialogVisible.value = true;
-};
-
-const openCreateCatalogueItem = async () => {
-  const target = router.resolve({ name: "catalogues-add" });
-
-  if (typeof window !== "undefined")
-    window.open(target.href, "_blank", "noopener,noreferrer");
-};
-
-const saveSelectedCatalogueItem = async () => {
-  const { valid } = (await addItemFormRef.value?.validate()) ?? { valid: true };
-  if (!valid || !selectedCatalogueItem.value) return;
-
-  const selectedItem = selectedCatalogueItem.value;
+const addDealItemsFromCatalogueItem = (
+  catalogueItem: CatalogueItem,
+  quantity: number,
+  options?: {
+    note?: string | null;
+    discountPercent?: number | null;
+    taxApplicable?: boolean | null;
+  },
+) => {
   const baseId = nextItemId();
-  const quantity = Number(addItemDraft.quantity || 1);
   const generatedTaskIds = createTodosFromSalesTasks(
     {
       id: baseId,
-      name: selectedItem.name,
+      name: catalogueItem.name,
     },
-    extractSalesTasks(selectedCatalogueRecord.value),
+    extractSalesTasks(cataloguesStore.recordById(catalogueItem.id)),
   ).map((todo) => todo.id);
+  const catalogueRecord = cataloguesStore.recordById(catalogueItem.id);
   const relatedItems =
-    selectedCatalogueRecord.value?.type === "Onetime Service"
-      ? (selectedCatalogueRecord.value as CatalogueOnetimeServiceRecord)
-          .relatedItems || []
+    catalogueRecord?.type === "Onetime Service"
+      ? (catalogueRecord as CatalogueOnetimeServiceRecord).relatedItems || []
       : [];
 
   const nextItems: DealItem[] = [
     ...(props.deal.items || []),
     {
       id: baseId,
-      name: selectedItem.name,
-      itemTypeLabel: selectedItem.type,
-      category: selectedItem.category,
-      catalogueItemId: selectedItem.id,
-      catalogueType: selectedItem.type,
+      name: catalogueItem.name,
+      itemTypeLabel: catalogueItem.type,
+      category: catalogueItem.category,
+      catalogueItemId: catalogueItem.id,
+      catalogueType: catalogueItem.type,
       parentItemId: null,
       sourceRelatedItemId: null,
       excludedRelatedItemIds: null,
       generatedTaskIds,
+      discountPercent: options?.discountPercent ?? 0,
+      taxApplicable: options?.taxApplicable ?? null,
       quantity,
-      unitPrice: Number(selectedItem.bestPrice || 0),
+      unitPrice: Number(catalogueItem.bestPrice || 0),
       status: "Planned",
-      note: selectedItem.description || null,
+      note: options?.note ?? (catalogueItem.description || null),
     },
     ...relatedItems.map((relatedItem, index) => ({
       id: baseId + index + 1,
       name: relatedItem.name,
       itemTypeLabel: "Related Item",
       category: relatedItem.category,
-      catalogueItemId: selectedItem.id,
+      catalogueItemId: catalogueItem.id,
       catalogueType: "Related Item",
       parentItemId: baseId,
       sourceRelatedItemId: relatedItem.id,
@@ -244,8 +316,77 @@ const saveSelectedCatalogueItem = async () => {
   ];
 
   dealsStore.updateDeal(props.deal.id, { items: nextItems });
+};
+
+const itemTypeLabel = (item: DealItem) =>
+  item.itemTypeLabel || item.catalogueType || "Item";
+
+const openAddItemDialog = () => {
+  selectedCatalogueItemId.value = null;
+  addItemDraft.quantity = 1;
+  addItemDialogVisible.value = true;
+};
+
+const openCreateCatalogueItem = async () => {
+  selectedCreateItemType.value = null;
+  createItemTypeDialogVisible.value = true;
+};
+
+const saveSelectedCatalogueItem = async () => {
+  const { valid } = (await addItemFormRef.value?.validate()) ?? { valid: true };
+  if (!valid || !selectedCatalogueItem.value) return;
+
+  const selectedItem = selectedCatalogueItem.value;
+  const quantity = Number(addItemDraft.quantity || 1);
+  addDealItemsFromCatalogueItem(selectedItem, quantity);
   notifications.push("Item added to deal", "success", 3000);
   addItemDialogVisible.value = false;
+};
+
+const openCreateDraftItemDialog = (type: CatalogueItemType) => {
+  const choice = itemTypeChoices.find((item) => item.value === type);
+  if (choice?.comingSoon) return;
+
+  selectedCreateItemType.value = type;
+  createDraftItem.name = "";
+  createDraftItem.quantity = 1;
+  createDraftItem.price = 0;
+  createDraftItem.discountPercent = 0;
+  createDraftItem.taxApplicable = true;
+  createDraftItem.note = "";
+  createItemTypeDialogVisible.value = false;
+  createDraftItemDialogVisible.value = true;
+};
+
+const saveCreatedDraftItem = async () => {
+  const { valid } = (await createDraftItemFormRef.value?.validate()) ?? {
+    valid: true,
+  };
+  if (!valid || !selectedCreateItemType.value) return;
+
+  const draftRecord = cataloguesStore.addItem({
+    type: selectedCreateItemType.value,
+    name: createDraftItem.name,
+    qty: Number(createDraftItem.quantity || 1),
+    bestPrice: Number(createDraftItem.price || 0),
+    chargeTax: Boolean(createDraftItem.taxApplicable),
+    description: String(createDraftItem.note || "").trim(),
+    category: "",
+    activeState: "Draft" as CatalogueActiveState,
+  });
+
+  addDealItemsFromCatalogueItem(
+    draftRecord,
+    Number(createDraftItem.quantity || 1),
+    {
+      note: String(createDraftItem.note || "").trim() || null,
+      discountPercent: Number(createDraftItem.discountPercent || 0),
+      taxApplicable: Boolean(createDraftItem.taxApplicable),
+    },
+  );
+
+  createDraftItemDialogVisible.value = false;
+  notifications.push("Draft catalogue item created and added", "success", 3000);
 };
 
 const removeDealItem = (item: DealItemWithPlan) => {
@@ -299,8 +440,7 @@ const formatMoney = (value?: number | null) =>
   value === null || value === undefined ? "--" : Number(value).toLocaleString();
 
 const formatTaxApplicable = (value: boolean | null) => {
-  if (value === null)
-    return "--";
+  if (value === null) return "--";
 
   return value ? "Yes" : "No";
 };
@@ -620,7 +760,15 @@ const itemsSubtotal = computed(() =>
   }, 0),
 );
 
-const totalDiscount = computed(() => 0);
+const totalDiscount = computed(() =>
+  (props.deal.items || []).reduce((sum, item) => {
+    const quantity = Number(item.quantity || 0);
+    const unitPrice = Number(item.unitPrice || 0);
+    const discountPercent = Number(item.discountPercent || 0);
+
+    return sum + quantity * unitPrice * (discountPercent / 100);
+  }, 0),
+);
 const totalTax = computed(() => 0);
 const grandTotal = computed(
   () => itemsSubtotal.value - totalDiscount.value + totalTax.value,
@@ -631,15 +779,16 @@ type DealTodo = ToDo & {
   milestoneId?: number | string | null;
 };
 
-const dealTodos = computed<DealTodo[]>(() =>
-  (todosStore.items || []).filter((todo) => {
-    if (!todo?.relatedTo) return false;
+const dealTodos = computed<DealTodo[]>(
+  () =>
+    (todosStore.items || []).filter((todo) => {
+      if (!todo?.relatedTo) return false;
 
-    return (
-      String(todo.relatedTo.id) === String(props.deal.id) &&
-      todo.relatedTo.type === "deal"
-    );
-  }) as DealTodo[],
+      return (
+        String(todo.relatedTo.id) === String(props.deal.id) &&
+        todo.relatedTo.type === "deal"
+      );
+    }) as DealTodo[],
 );
 
 const salesTasks = computed(() =>
@@ -653,10 +802,7 @@ const salesTasks = computed(() =>
 
 const collaboratorInitials = (name?: string) =>
   name
-    ? (name.trim().match(/\b\w/g) || [])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase()
+    ? (name.trim().match(/\b\w/g) || []).slice(0, 2).join("").toUpperCase()
     : "?";
 
 const todoStatusLabel = (status?: Status) => {
@@ -733,9 +879,10 @@ const ensureGeneratedSalesTasks = () => {
       : null;
 
     const salesTaskItems = extractSalesTasks(record);
-    const generatedTaskIds = createTodosFromSalesTasks(item, salesTaskItems).map(
-      (todo) => todo.id,
-    );
+    const generatedTaskIds = createTodosFromSalesTasks(
+      item,
+      salesTaskItems,
+    ).map((todo) => todo.id);
 
     changed = true;
 
@@ -761,200 +908,198 @@ watch(
   <div class="d-flex flex-column gap-4">
     <VCard>
       <VCardText>
-      <div
-        class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
-      >
-        <div>
-          <h5 class="text-h5 mb-1">Items</h5>
-          <p class="text-body-2 text-medium-emphasis mb-0">
-            Add or create catalogue items .
-          </p>
+        <div
+          class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
+        >
+          <div>
+            <h5 class="text-h5 mb-1">Items</h5>
+            <p class="text-body-2 text-medium-emphasis mb-0">
+              Add or create catalogue items .
+            </p>
+          </div>
+
+          <VMenu>
+            <template #activator="{ props: menuProps }">
+              <VBtn v-bind="menuProps" prepend-icon="tabler-plus">
+                Add Item
+              </VBtn>
+            </template>
+
+            <VList>
+              <VListItem @click="openAddItemDialog">
+                <template #prepend>
+                  <VIcon icon="tabler-package" />
+                </template>
+                <VListItemTitle>Select from Catalogue</VListItemTitle>
+              </VListItem>
+
+              <VListItem @click="openCreateCatalogueItem">
+                <template #prepend>
+                  <VIcon icon="tabler-layout-grid-add" />
+                </template>
+                <VListItemTitle>Add new Item</VListItemTitle>
+              </VListItem>
+            </VList>
+          </VMenu>
         </div>
 
-        <VMenu>
-          <template #activator="{ props: menuProps }">
-            <VBtn v-bind="menuProps" prepend-icon="tabler-plus">
-              Add Item
-            </VBtn>
-          </template>
-
-          <VList>
-            <VListItem @click="openAddItemDialog">
-              <template #prepend>
-                <VIcon icon="tabler-package" />
-              </template>
-              <VListItemTitle>Select from Catalogue</VListItemTitle>
-            </VListItem>
-
-            <VListItem @click="openCreateCatalogueItem">
-              <template #prepend>
-                <VIcon icon="tabler-layout-grid-add" />
-              </template>
-              <VListItemTitle>Create Catalogue Item</VListItemTitle>
-            </VListItem>
-          </VList>
-        </VMenu>
-      </div>
-
-      <div
-        v-if="!dealItemsWithPlan.length"
-        class="text-center text-medium-emphasis py-6"
-      >
-        No items yet. Add one to get started.
-      </div>
-
-      <VExpansionPanels
-        v-else
-        v-model="expandedItems"
-        variant="accordion"
-        multiple
-        class="expansion-panels-width-border milestone-panels"
-      >
-        <VExpansionPanel
-          v-for="item in dealItemsWithPlan"
-          :key="item.panelId"
-          :value="item.panelId"
-          class="milestone-panel"
-          :class="{ 'milestone-panel--static': !item.isExpandable }"
-          :readonly="!item.isExpandable"
+        <div
+          v-if="!dealItemsWithPlan.length"
+          class="text-center text-medium-emphasis py-6"
         >
-          <VExpansionPanelTitle>
-            <div class="d-flex align-center gap-3 w-100">
-              <div class="rounded-circle milestone-status-dot" />
+          No items yet. Add one to get started.
+        </div>
 
-              <div class="flex-grow-1 min-w-0">
-                <div class="d-flex align-center gap-2 flex-wrap">
-                  <VTooltip :text="item.name" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <div
-                        v-bind="tooltipProps"
-                        class="font-weight-medium truncate-title truncate-title--header"
-                      >
-                        {{ item.name }}
-                      </div>
-                    </template>
-                  </VTooltip>
-                  <VChip size="small" variant="text" color="primary">
-                    {{ itemTypeLabel(item) }}
-                  </VChip>
-                </div>
-                <div class="text-caption text-medium-emphasis">
-                  {{ childCountLabel(item) }}
-                  <span v-if="item.category"> | {{ item.category }}</span>
-                  | Qty {{ item.quantity }}
-                  <span
-                    v-if="
-                      item.unitPrice !== null && item.unitPrice !== undefined
-                    "
-                  >
-                    | {{ formatMoney(item.unitPrice) }}
-                  </span>
-                </div>
-                <div class="text-body-2 text-medium-emphasis mt-1">
-                  {{ item.note || "No item notes." }}
-                </div>
-              </div>
+        <VExpansionPanels
+          v-else
+          v-model="expandedItems"
+          variant="accordion"
+          multiple
+          class="expansion-panels-width-border milestone-panels"
+        >
+          <VExpansionPanel
+            v-for="item in dealItemsWithPlan"
+            :key="item.panelId"
+            :value="item.panelId"
+            class="milestone-panel"
+            :class="{ 'milestone-panel--static': !item.isExpandable }"
+            :readonly="!item.isExpandable"
+          >
+            <VExpansionPanelTitle>
+              <div class="d-flex align-center gap-3 w-100">
+                <div class="rounded-circle milestone-status-dot" />
 
-              <div
-                v-if="item.actionsEnabled"
-                class="d-flex align-center gap-2 milestone-actions"
-                @click.stop
-              >
-                <VBtn icon variant="text" size="x-small">
-                  <VIcon icon="tabler-dots-vertical" size="18" />
-                  <VMenu activator="parent">
-                    <VList>
-                      <VListItem @click="removeDealItem(item)">
-                        <template #prepend>
-                          <VIcon icon="tabler-trash" color="error" />
-                        </template>
-                        <VListItemTitle>Remove</VListItemTitle>
-                      </VListItem>
-                    </VList>
-                  </VMenu>
-                </VBtn>
-              </div>
-            </div>
-          </VExpansionPanelTitle>
+                <div class="flex-grow-1 min-w-0">
+                  <div class="d-flex align-center gap-2 flex-wrap">
+                    <VTooltip :text="item.name" location="top">
+                      <template #activator="{ props: tooltipProps }">
+                        <div
+                          v-bind="tooltipProps"
+                          class="font-weight-medium truncate-title truncate-title--header"
+                        >
+                          {{ item.name }}
+                        </div>
+                      </template>
+                    </VTooltip>
+                    <VChip size="small" variant="text" color="primary">
+                      {{ itemTypeLabel(item) }}
+                    </VChip>
+                  </div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ childCountLabel(item) }}
+                    <span v-if="item.category"> | {{ item.category }}</span>
+                    | Qty {{ item.quantity }}
+                    <span
+                      v-if="
+                        item.unitPrice !== null && item.unitPrice !== undefined
+                      "
+                    >
+                      | {{ formatMoney(item.unitPrice) }}
+                    </span>
+                  </div>
+                  <div class="text-body-2 text-medium-emphasis mt-1">
+                    {{ item.note || "No item notes." }}
+                  </div>
+                </div>
 
-          <VExpansionPanelText v-if="item.isExpandable">
-            <VCard variant="flat" class="pa-4 milestone-panel-body">
-              <div
-                v-if="derivedGoalsForItem(item).length"
-                class="d-flex flex-column gap-2 goal-panels"
-              >
-                <VCard
-                  v-for="goal in derivedGoalsForItem(item)"
-                  :key="goal.id"
-                  variant="tonal"
-                  class="goal-panel goal-panel--static"
+                <div
+                  v-if="item.actionsEnabled"
+                  class="d-flex align-center gap-2 milestone-actions"
+                  @click.stop
                 >
-                  <div class="d-flex align-center gap-3 w-100">
-                    <VIcon
-                      icon="tabler-target-arrow"
-                      size="16"
-                      class="goal-icon"
-                    />
-
-                    <div class="flex-grow-1 min-w-0">
-                      <div class="d-flex align-center gap-2 flex-wrap">
-                        <VTooltip :text="goal.name" location="top">
-                          <template #activator="{ props: tooltipProps }">
-                            <div
-                              v-bind="tooltipProps"
-                              class="font-weight-medium truncate-title truncate-title--header"
-                            >
-                              {{ goal.name }}
-                            </div>
+                  <VBtn icon variant="text" size="x-small">
+                    <VIcon icon="tabler-dots-vertical" size="18" />
+                    <VMenu activator="parent">
+                      <VList>
+                        <VListItem @click="removeDealItem(item)">
+                          <template #prepend>
+                            <VIcon icon="tabler-trash" color="error" />
                           </template>
-                        </VTooltip>
-                        <VChip color="primary" size="x-small" variant="text">
-                          {{ goal.typeLabel }}
-                        </VChip>
-                      </div>
-                      <div
-                        v-if="
-                          goal.showQuantity ||
-                          goal.showPrice ||
-                          goal.showDiscount ||
-                          goal.showTaxApplicable
-                        "
-                        class="text-caption text-medium-emphasis"
-                      >
-                        <span v-if="goal.showQuantity">
-                          Qty {{ goal.quantity ?? "--" }}
-                        </span>
-                        <span v-if="goal.showPrice">
-                          | Price {{ formatMoney(goal.price) }}
-                        </span>
-                        <span v-if="goal.showDiscount">
-                          | Discount {{ goal.discountLabel || "--" }}
-                        </span>
-                        <span v-if="goal.showTaxApplicable">
-                          | Tax Applicable
-                          {{ formatTaxApplicable(goal.taxApplicable) }}
-                        </span>
-                      </div>
-                      <div class="text-body-2 text-medium-emphasis mt-1">
-                        {{ goal.note || "No notes." }}
+                          <VListItemTitle>Remove</VListItemTitle>
+                        </VListItem>
+                      </VList>
+                    </VMenu>
+                  </VBtn>
+                </div>
+              </div>
+            </VExpansionPanelTitle>
+
+            <VExpansionPanelText v-if="item.isExpandable">
+              <VCard variant="flat" class="pa-4 milestone-panel-body">
+                <div
+                  v-if="derivedGoalsForItem(item).length"
+                  class="d-flex flex-column gap-2 goal-panels"
+                >
+                  <VCard
+                    v-for="goal in derivedGoalsForItem(item)"
+                    :key="goal.id"
+                    variant="tonal"
+                    class="goal-panel goal-panel--static"
+                  >
+                    <div class="d-flex align-center gap-3 w-100">
+                      <VIcon
+                        icon="tabler-target-arrow"
+                        size="16"
+                        class="goal-icon"
+                      />
+
+                      <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex align-center gap-2 flex-wrap">
+                          <VTooltip :text="goal.name" location="top">
+                            <template #activator="{ props: tooltipProps }">
+                              <div
+                                v-bind="tooltipProps"
+                                class="font-weight-medium truncate-title truncate-title--header"
+                              >
+                                {{ goal.name }}
+                              </div>
+                            </template>
+                          </VTooltip>
+                          <VChip color="primary" size="x-small" variant="text">
+                            {{ goal.typeLabel }}
+                          </VChip>
+                        </div>
+                        <div
+                          v-if="
+                            goal.showQuantity ||
+                            goal.showPrice ||
+                            goal.showDiscount ||
+                            goal.showTaxApplicable
+                          "
+                          class="text-caption text-medium-emphasis"
+                        >
+                          <span v-if="goal.showQuantity">
+                            Qty {{ goal.quantity ?? "--" }}
+                          </span>
+                          <span v-if="goal.showPrice">
+                            | Price {{ formatMoney(goal.price) }}
+                          </span>
+                          <span v-if="goal.showDiscount">
+                            | Discount {{ goal.discountLabel || "--" }}
+                          </span>
+                          <span v-if="goal.showTaxApplicable">
+                            | Tax Applicable
+                            {{ formatTaxApplicable(goal.taxApplicable) }}
+                          </span>
+                        </div>
+                        <div class="text-body-2 text-medium-emphasis mt-1">
+                          {{ goal.note || "No notes." }}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </VCard>
-              </div>
+                  </VCard>
+                </div>
 
-              <div v-else class="text-body-2 text-medium-emphasis">
-                No {{ item.childTypePlural.toLowerCase() }} under this item yet.
-              </div>
-            </VCard>
-          </VExpansionPanelText>
-        </VExpansionPanel>
-      </VExpansionPanels>
+                <div v-else class="text-body-2 text-medium-emphasis">
+                  No {{ item.childTypePlural.toLowerCase() }} under this item
+                  yet.
+                </div>
+              </VCard>
+            </VExpansionPanelText>
+          </VExpansionPanel>
+        </VExpansionPanels>
 
-        <div
-          v-if="dealItemsWithPlan.length"
-          class="items-summary mt-4 pt-4"
-        >
+        <div v-if="dealItemsWithPlan.length" class="items-summary mt-4 pt-4">
           <div class="items-summary__row">
             <span>Total</span>
             <strong>{{ formatMoney(itemsSubtotal) }}</strong>
@@ -977,7 +1122,9 @@ watch(
 
     <VCard>
       <VCardText>
-        <div class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4">
+        <div
+          class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
+        >
           <div class="d-flex flex-column gap-1">
             <h5 class="text-h5 mb-0">Sales Tasks</h5>
             <p class="text-body-2 text-medium-emphasis mb-0">
@@ -1000,13 +1147,6 @@ watch(
           >
             <div class="task-row-main">
               <div class="task-row-left">
-                <VCheckbox
-                  hide-details
-                  density="compact"
-                  :model-value="task.status === 'completed'"
-                  @click.stop="toggleTaskCompleted(task.id)"
-                />
-
                 <div class="task-copy">
                   <VTooltip :text="task.title" location="top">
                     <template #activator="{ props: tooltipProps }">
@@ -1065,7 +1205,12 @@ watch(
                   color="warning"
                   size="18"
                 />
-                <VBtn icon variant="text" size="x-small" @click.stop="emit('delete-task', task.id)">
+                <VBtn
+                  icon
+                  variant="text"
+                  size="x-small"
+                  @click.stop="emit('delete-task', task.id)"
+                >
                   <VIcon icon="tabler-trash" color="error" size="18" />
                 </VBtn>
                 <span
@@ -1146,9 +1291,177 @@ watch(
       </VCardText>
     </VCard>
   </VDialog>
+
+  <VDialog v-model="createItemTypeDialogVisible" max-width="920">
+    <VCard class="pa-sm-6 pa-4">
+      <VCardTitle class="text-h4 pb-2">Choose Item Type</VCardTitle>
+      <VCardText class="text-body-1 text-medium-emphasis pb-6">
+        Select kind of catalogue item you want to create. Each option opens
+        matching add flow.
+      </VCardText>
+
+      <VRow>
+        <VCol
+          v-for="choice in itemTypeChoices"
+          :key="choice.value"
+          cols="12"
+          md="6"
+        >
+          <VCard
+            variant="outlined"
+            class="item-type-card h-100"
+            :class="{ 'item-type-card--disabled': choice.comingSoon }"
+            @click="openCreateDraftItemDialog(choice.value)"
+          >
+            <VCardText class="d-flex align-start gap-4">
+              <VAvatar size="44" rounded variant="tonal" color="primary">
+                <VIcon :icon="choice.icon" size="22" />
+              </VAvatar>
+
+              <div class="flex-grow-1">
+                <div
+                  class="d-flex align-center justify-space-between gap-3 mb-1"
+                >
+                  <div class="text-h6 text-high-emphasis">
+                    {{ choice.title }}
+                  </div>
+                  <VChip
+                    v-if="choice.comingSoon"
+                    size="small"
+                    color="warning"
+                    variant="tonal"
+                  >
+                    Coming Soon
+                  </VChip>
+                </div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ choice.description }}
+                </div>
+              </div>
+            </VCardText>
+          </VCard>
+        </VCol>
+      </VRow>
+
+      <VCardActions class="pt-6">
+        <VSpacer />
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="createItemTypeDialogVisible = false"
+        >
+          Cancel
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="createDraftItemDialogVisible" max-width="720">
+    <VCard>
+      <VCardText>
+        <h5 class="text-h5 mb-4">Add {{ selectedCreateItemType || "Item" }}</h5>
+
+        <VForm
+          ref="createDraftItemFormRef"
+          @submit.prevent="saveCreatedDraftItem"
+        >
+          <VRow>
+            <VCol cols="12">
+              <AppTextField
+                v-model="createDraftItem.name"
+                label="Item Name"
+                placeholder="Item name"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="createDraftItem.quantity"
+                type="number"
+                min="1"
+                label="Quantity"
+                placeholder="1"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="createDraftItem.price"
+                type="number"
+                min="0"
+                label="Price"
+                placeholder="0"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="createDraftItem.discountPercent"
+                type="number"
+                min="0"
+                label="Discount %"
+                placeholder="0"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <div class="d-flex flex-column gap-2">
+                <span class="text-sm text-medium-emphasis">Tax?</span>
+                <VSwitch
+                  v-model="createDraftItem.taxApplicable"
+                  inset
+                  hide-details
+                  color="primary"
+                  label="Applicable"
+                />
+              </div>
+            </VCol>
+
+            <VCol cols="12">
+              <AppTextarea
+                v-model="createDraftItem.note"
+                label="Note"
+                placeholder="Short note"
+                rows="1"
+                auto-grow
+              />
+            </VCol>
+
+            <VCol cols="12">
+              <DialogActionBar
+                save-type="submit"
+                @save="() => undefined"
+                @cancel="createDraftItemDialogVisible = false"
+              />
+            </VCol>
+          </VRow>
+        </VForm>
+      </VCardText>
+    </VCard>
+  </VDialog>
 </template>
 
 <style scoped>
+.item-type-card {
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.item-type-card:hover {
+  border-color: rgba(var(--v-theme-primary), 0.5);
+  transform: translateY(-1px);
+}
+
+.item-type-card--disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .milestone-panels :deep(.v-expansion-panel),
 .goal-panels :deep(.v-expansion-panel) {
   background: transparent;
@@ -1288,7 +1601,9 @@ watch(
 .task-row {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   cursor: pointer;
-  transition: border-color 0.18s ease, transform 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .task-row:hover {
@@ -1301,7 +1616,8 @@ watch(
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.125rem;
+  padding-block: 1rem;
+  padding-inline: 1.125rem;
 }
 
 .task-row-left {

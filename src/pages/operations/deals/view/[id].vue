@@ -12,7 +12,9 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useTodos } from '@/stores/todos'
 import CatalogueTaskTemplateDrawer from '@/components/catalogues/CatalogueTaskTemplateDrawer.vue'
 import EmailDialog from '@/views/apps/email/EmailDialog.vue'
+import AddNewToDoDrawer from '@/views/apps/todo/list/AddNewToDoDrawer.vue'
 import AddMeetingDrawer from '@/views/apps/todo/list/AddMeetingDrawer.vue'
+import EditToDoDrawer from '@/views/apps/todo/list/EditToDoDrawer.vue'
 import DealUpsertDialog from '@/views/operations/deals/list/DealUpsertDialog.vue'
 import DealCommunicationTab from '@/views/operations/deals/view/DealCommunicationTab.vue'
 import DealDocumentsTab from '@/views/operations/deals/view/DealDocumentsTab.vue'
@@ -44,12 +46,18 @@ const dialogLoading = ref(false)
 const dialogError = ref<string | null>(null)
 const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null)
 const isAddMeetingOpen = ref(false)
+const lockMeetingRelatedTo = ref(false)
 const composeDialogRef = ref<any | null>(null)
 const isComposeDialogVisible = ref(false)
 const taskTemplateDrawerRef = ref<InstanceType<typeof CatalogueTaskTemplateDrawer> | null>(null)
 const isTaskTemplateDrawerOpen = ref(false)
 const taskTemplateMode = ref<'create' | 'edit'>('create')
 const taskTemplateTodoId = ref<number | string | null>(null)
+const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(null)
+const isAddTodoDrawerVisible = ref(false)
+const addTodoInitial = ref<Partial<ToDo> | null>(null)
+const editingTodo = ref<ToDo | null>(null)
+const isEditTodoDrawerVisible = ref(false)
 
 const tabKeys = ['items', 'communication', 'documents', 'financials', 'timeline'] as const
 const tabs = [
@@ -105,12 +113,71 @@ const collaboratorNames = computed(() =>
   }),
 )
 
+const dealEmployeeCollaborators = computed(() =>
+  (deal.value?.collaborators || []).map((id) => {
+    const employee = employeesStore.byId(Number(id))
+
+    return {
+      id: Number(id),
+      name: employee?.fullName || `Employee ${id}`,
+      avatarUrl: employee?.picture || null,
+    }
+  }),
+)
+
+const dealLinkedEntities = computed(() => {
+  const entries: Array<any> = []
+
+  if (deal.value?.relatedTo !== null && deal.value?.relatedTo !== undefined) {
+    const relatedContact = contactsStore.byId(Number(deal.value.relatedTo))
+    entries.push({
+      id: deal.value.relatedTo,
+      contactId: deal.value.relatedTo,
+      name: relatedContact?.fullName || linkedToName.value,
+      avatarUrl: relatedContact?.picture || null,
+      type: 'contact' as const,
+      roles: ['contact'] as ['contact'],
+    })
+  }
+
+  dealEmployeeCollaborators.value.forEach(collaborator => {
+    entries.push({
+      id: collaborator.id,
+      employeeId: collaborator.id,
+      name: collaborator.name,
+      avatarUrl: collaborator.avatarUrl,
+      type: 'employee' as const,
+      roles: ['employee'] as ['employee'],
+    })
+  })
+
+  return entries
+})
+
 const meetingContacts = computed(() =>
   contactsStore.all.map(contact => ({
     id: contact.id,
     name: contact.fullName,
     avatarUrl: contact.picture || null,
   })),
+)
+
+const contactOptions = computed(() =>
+  contactsStore.all.map(contact => ({
+    id: contact.id,
+    name: contact.fullName,
+    avatarUrl: contact.picture || null,
+  })),
+)
+
+const dealRelatedRef = computed(() =>
+  deal.value
+    ? {
+        id: deal.value.id,
+        name: deal.value.code || `Deal #${deal.value.id}`,
+        type: 'deal',
+      }
+    : null,
 )
 
 const goalTriggerOptions = computed(() => [] as Array<{ title: string; value: string }>)
@@ -156,29 +223,84 @@ const openAddMeeting = () => {
 
   nextTick(() => {
     try {
-      const linkedTo = deal.value?.relatedTo !== null && deal.value?.relatedTo !== undefined
-        ? [{
-            id: deal.value.relatedTo,
-            contactId: deal.value.relatedTo,
-            name: linkedToName.value,
-            avatarUrl: contactsStore.byId(Number(deal.value?.relatedTo))?.picture || null,
-            type: 'contact' as const,
-            roles: ['contact'] as ['contact'],
-          }]
-        : []
-
       addMeetingRef.value?.openWith?.({
         title: `Meeting: ${deal.value?.code || `Deal #${deal.value?.id}`}`,
         initialStart: new Date(),
         durationMins: 60,
-        linkedTo,
-        relatedTo: {
-          id: deal.value?.id,
-          name: deal.value?.code || `Deal #${deal.value?.id}`,
-          type: 'deal',
-        },
+        linkedTo: dealLinkedEntities.value,
+        relatedTo: dealRelatedRef.value,
         attendees: [],
         notes: `Meeting regarding ${deal.value?.code || `deal #${deal.value?.id}`}`,
+      })
+    }
+    catch {}
+    isAddMeetingOpen.value = true
+  })
+}
+
+const handleAddMeetingFromCommunication = () => {
+  if (!deal.value)
+    return
+  const currentDeal = deal.value
+
+  lockMeetingRelatedTo.value = true
+  nextTick(() => {
+    try {
+      addMeetingRef.value?.openWith?.({
+        title: `Meeting: ${currentDeal.code || `Deal #${currentDeal.id}`}`,
+        initialStart: new Date(),
+        durationMins: 60,
+        linkedTo: dealLinkedEntities.value,
+        relatedTo: dealRelatedRef.value,
+        attendees: [],
+        notes: `Meeting regarding ${currentDeal.code || `deal #${currentDeal.id}`}`,
+      })
+    }
+    catch {}
+    isAddMeetingOpen.value = true
+  })
+}
+
+const handleAddTaskFromCommunication = () => {
+  if (!deal.value)
+    return
+
+  addTodoInitial.value = {
+    title: '',
+    collaborators: dealEmployeeCollaborators.value,
+    relatedTo: dealRelatedRef.value,
+    dueAt: new Date().toISOString(),
+    notes: '',
+    important: false,
+    status: 'pending',
+  }
+  isAddTodoDrawerVisible.value = true
+  nextTick(() => {
+    try {
+      addTodoDrawerRef.value?.openWith?.(addTodoInitial.value)
+    }
+    catch {}
+    addTodoInitial.value = null
+  })
+}
+
+const handleAddCallFromCommunication = () => {
+  if (!deal.value)
+    return
+  const currentDeal = deal.value
+
+  nextTick(() => {
+    try {
+      addMeetingRef.value?.openWith?.({
+        title: `Call: ${currentDeal.code || `Deal #${currentDeal.id}`}`,
+        initialStart: new Date(),
+        durationMins: 30,
+        meetingType: 'Brief',
+        linkedTo: dealLinkedEntities.value,
+        relatedTo: dealRelatedRef.value,
+        attendees: [],
+        location: 'Phone',
+        notes: `Call regarding ${currentDeal.code || `deal #${currentDeal.id}`}`,
       })
     }
     catch {}
@@ -197,6 +319,7 @@ const onMeetingCreated = (payload: any) => {
   }
   finally {
     isAddMeetingOpen.value = false
+    lockMeetingRelatedTo.value = false
   }
 }
 
@@ -212,6 +335,8 @@ const openEmail = () => {
         to: relatedContact?.email ? [relatedContact.email] : [],
         subject: `Regarding ${deal.value?.code || `Deal #${deal.value?.id}`}`,
         message: `Hello,\n\nI'd like to discuss ${deal.value?.code || `deal #${deal.value?.id}`}.\n\nThanks,`,
+        linkedTo: dealLinkedEntities.value,
+        relatedTo: dealRelatedRef.value,
       })
     }
     catch {}
@@ -277,6 +402,40 @@ const deleteTask = (todoId: number | string) => {
   notifications.push('Task deleted', 'success', 3000)
 }
 
+const handleDocumentTodoRequest = (payload: {
+  initial: Record<string, any>
+  collaborators: Array<{
+    id: number | string
+    name: string
+    avatarUrl?: string | null
+  }>
+}) => {
+  addTodoInitial.value = {
+    ...(payload?.initial ?? {}),
+    collaborators:
+      payload?.initial?.collaborators && Array.isArray(payload.initial.collaborators) && payload.initial.collaborators.length
+        ? payload.initial.collaborators
+        : dealEmployeeCollaborators.value,
+    relatedTo:
+      payload?.initial?.relatedTo ??
+      (deal.value
+        ? {
+            id: deal.value.id,
+            name: deal.value.code || `Deal #${deal.value.id}`,
+            type: 'deal',
+          }
+        : null),
+  }
+  isAddTodoDrawerVisible.value = true
+  nextTick(() => {
+    try {
+      addTodoDrawerRef.value?.openWith?.(addTodoInitial.value)
+    }
+    catch {}
+    addTodoInitial.value = null
+  })
+}
+
 const onTaskTemplateSaved = (payload: Partial<ToDo> & {
   afterWhen?: string | null
   startTrigger?: CatalogueTaskStartTrigger | null
@@ -339,6 +498,103 @@ const onTaskTemplateSaved = (payload: Partial<ToDo> & {
   isTaskTemplateDrawerOpen.value = false
   taskTemplateTodoId.value = null
   taskTemplateMode.value = 'create'
+}
+
+const onTodoCreated = (payload: any) => {
+  try {
+    try {
+      todosStore.init()
+    }
+    catch {}
+    todosStore.addTodo && todosStore.addTodo(payload)
+    notifications.push('Task created', 'success', 3500)
+  }
+  catch (e) {
+    console.error('onTodoCreated failed:', e)
+    notifications.push('Task created', 'success', 3500)
+  }
+  finally {
+    isAddTodoDrawerVisible.value = false
+  }
+}
+
+const onTodoEdited = (payload: any) => {
+  const partial: any = {
+    title: payload.title,
+    collaborators: payload.collaborators,
+    dueAt: payload.dueAt,
+    status: payload.status,
+    notes: payload.notes,
+    important: payload.important,
+    attachment: payload.attachment,
+    relatedTo: payload.relatedTo,
+  }
+
+  if ('completed' in payload) partial.completed = payload.completed
+  if ('isCompleted' in payload) partial.isCompleted = payload.isCompleted
+  if ('doneAt' in payload) partial.doneAt = payload.doneAt
+
+  todosStore.updateTodo(payload.id, partial)
+  isEditTodoDrawerVisible.value = false
+}
+
+const onTodoStepsEdited = (payload: { id: number | string; steps: any[] }) => {
+  todosStore.updateTodo(payload.id, {
+    steps: payload.steps.map(step => ({ ...step })),
+  })
+}
+
+const closeMeetingDrawer = () => {
+  isAddMeetingOpen.value = false
+  lockMeetingRelatedTo.value = false
+}
+
+const upsertDealEmailThread = (payload: any) => {
+  if (!deal.value)
+    return null
+
+  const existing = todosStore.items.find(todo =>
+    todo.relatedTo?.type === 'deal'
+    && String(todo.relatedTo.id) === String(deal.value?.id)
+    && todo.notes === '__deal_email_thread__',
+  )
+
+  const recipients = Array.isArray(payload?.to)
+    ? payload.to.filter(Boolean)
+    : payload?.to
+      ? [String(payload.to)]
+      : []
+  const subject = String(payload?.subject || `Regarding ${deal.value.code || `Deal #${deal.value.id}`}`).trim()
+  const messageBody = String(payload?.message || '').trim()
+  const recipientsLabel = recipients.length ? `To: ${recipients.join(', ')}` : ''
+  const body = [subject, recipientsLabel, messageBody].filter(Boolean).join('\n')
+  const newMessage = {
+    id: `deal-email-${Date.now()}`,
+    author: { id: 'me', name: 'You' },
+    body,
+    createdAt: new Date().toISOString(),
+    isRead: true,
+  }
+
+  if (existing) {
+    todosStore.updateTodo(existing.id, {
+      messages: [...(existing.messages || []), newMessage],
+    } as any)
+    return existing.id
+  }
+
+  return todosStore.addTodo({
+    title: 'Email Correspondence',
+    collaborators: [],
+    dueAt: new Date().toISOString(),
+    important: false,
+    status: 'completed',
+    steps: [],
+    notes: '__deal_email_thread__',
+    activities: [],
+    messages: [newMessage],
+    relatedTo: dealRelatedRef.value,
+  } as any).id
 }
 
 onMounted(() => {
@@ -441,13 +697,18 @@ watch(() => dealTab.value, (value) => {
             <DealCommunicationTab
               :deal-id="deal.id"
               :deal-code="deal.code || `Deal #${deal.id}`"
-              @open-add-meeting="openAddMeeting"
-              @open-email="openEmail"
+              @open-add-task="handleAddTaskFromCommunication"
+              @open-add-email="openEmail"
+              @open-add-meeting="handleAddMeetingFromCommunication"
+              @open-add-call="handleAddCallFromCommunication"
             />
           </VWindowItem>
 
           <VWindowItem>
-            <DealDocumentsTab :deal="deal" />
+            <DealDocumentsTab
+              :deal-id="deal.id"
+              @open-add-todo="handleDocumentTodoRequest"
+            />
           </VWindowItem>
 
           <VWindowItem>
@@ -472,10 +733,27 @@ watch(() => dealTab.value, (value) => {
     <AddMeetingDrawer
       ref="addMeetingRef"
       v-model:modelValue="isAddMeetingOpen"
-      :contacts="meetingContacts"
-      source="contacts"
-      @cancel="isAddMeetingOpen = false"
+      :contacts="contactOptions"
+      :lock-related-to="lockMeetingRelatedTo"
+      @cancel="closeMeetingDrawer"
       @save="onMeetingCreated"
+    />
+
+    <AddNewToDoDrawer
+      ref="addTodoDrawerRef"
+      v-model:is-drawer-open="isAddTodoDrawerVisible"
+      :collaborators-options="[]"
+      source="employees"
+      :initial="addTodoInitial ?? undefined"
+      @user-data="onTodoCreated"
+    />
+
+    <EditToDoDrawer
+      v-model:is-drawer-open="isEditTodoDrawerVisible"
+      :todo="editingTodo"
+      :collaborators-options="contactOptions"
+      @save="onTodoEdited"
+      @saveSteps="onTodoStepsEdited"
     />
 
     <CatalogueTaskTemplateDrawer
@@ -491,6 +769,7 @@ watch(() => dealTab.value, (value) => {
       @send="
         (payload) => {
           try {
+            upsertDealEmailThread(payload);
             const recipients = Array.isArray(payload?.to)
               ? payload.to
               : payload?.to
