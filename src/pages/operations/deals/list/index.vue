@@ -61,13 +61,13 @@ const orderBy = ref<SortOrder | undefined>(selectedSort.value.order)
 const selectedRows = ref<number[]>([])
 
 const headers = [
-  { title: 'Deal', key: 'deal' },
-  { title: 'Linked to', key: 'contact' },
-  { title: 'Stage', key: 'stage' },
-  { title: 'Type', key: 'type' },
-  { title: 'Delivery', key: 'delivery' },
-  { title: 'Collaborators', key: 'collaborators', sortable: false },
-  { title: 'Actions', key: 'actions', sortable: false },
+  { title: 'Deal', key: 'deal', width: '31%' },
+  { title: 'Linked to', key: 'contact', width: '18%' },
+  { title: 'Stage', key: 'stage', width: '12%' },
+  { title: 'Type', key: 'type', width: '9%' },
+  { title: 'Delivery', key: 'delivery', width: '12%' },
+  { title: 'Collaborators', key: 'collaborators', sortable: false, width: '11%' },
+  { title: 'Actions', key: 'actions', sortable: false, width: '7%' },
 ]
 
 const stageOptions = computed(() =>
@@ -366,11 +366,8 @@ const isDealDialogVisible = ref(false)
 const selectedDeal = ref<DealProperties | null>(null)
 const dialogLoading = ref(false)
 const dialogError = ref<string | null>(null)
-const isFlagDialogVisible = ref(false)
 const isStageDialogVisible = ref(false)
-const flagDialogValue = ref<'important' | 'normal'>('normal')
 const stageDialogValue = ref<string | null>(null)
-const flagDialogDealId = ref<number | null>(null)
 const stageDialogDealId = ref<number | null>(null)
 const meetingContacts = computed(() =>
   contactsStore.all.map(contact => ({
@@ -523,7 +520,7 @@ const duplicateDeal = (deal: DealProperties) => {
 }
 
 const handleDealAction = (
-  action: 'todo' | 'meeting' | 'email' | 'call' | 'flag' | 'stage' | 'duplicate' | 'delete',
+  action: 'todo' | 'meeting' | 'email' | 'stage' | 'duplicate' | 'delete',
   deal: DealProperties,
 ) => {
   switch (action) {
@@ -619,14 +616,6 @@ const handleDealAction = (
         catch {}
       })
       break
-    case 'call':
-      notifications.push(`Call for ${deal.code || `deal #${deal.id}`}`, 'info', 2500)
-      break
-    case 'flag':
-      flagDialogDealId.value = Number(deal.id)
-      flagDialogValue.value = deal.important ? 'important' : 'normal'
-      isFlagDialogVisible.value = true
-      break
     case 'stage':
       stageDialogDealId.value = Number(deal.id)
       stageDialogValue.value = deal.stage ?? null
@@ -649,20 +638,6 @@ const deleteCandidateName = computed(() => {
 
   return deal?.code ?? String(deleteCandidateId.value)
 })
-
-const saveFlagChange = () => {
-  if (flagDialogDealId.value === null) {
-    isFlagDialogVisible.value = false
-    return
-  }
-
-  dealsStore.updateDeal(flagDialogDealId.value, {
-    important: flagDialogValue.value === 'important',
-  })
-  notifications.push('Flag updated', 'success', 2500)
-  isFlagDialogVisible.value = false
-  flagDialogDealId.value = null
-}
 
 const saveStageChange = () => {
   if (stageDialogDealId.value === null || !stageDialogValue.value) {
@@ -823,11 +798,11 @@ const updateItemsPerPage = (value: number | string) => {
         item-value="id"
         :items-length="totalDeals"
         :headers="headers"
-        class="text-no-wrap"
+        class="deals-table"
         @update:options="updateOptions"
       >
         <template #item.deal="{ item }">
-          <div class="d-flex align-center gap-x-4 py-2">
+          <div class="deal-cell d-flex align-center gap-x-3 py-2">
             <VBtn
               icon
               variant="text"
@@ -837,12 +812,12 @@ const updateItemsPerPage = (value: number | string) => {
               <VIcon :icon="item.important ? 'tabler-star-filled' : 'tabler-star'" />
             </VBtn>
 
-            <div class="d-flex flex-column gap-1">
-              <div class="text-base font-weight-medium">
+            <div class="deal-cell__content d-flex flex-column gap-1">
+              <div class="deal-cell__title text-base font-weight-medium">
                 {{ item.code || '--' }}
               </div>
 
-              <div class="text-sm text-medium-emphasis">
+              <div class="deal-cell__meta text-sm text-medium-emphasis">
                 <span>{{ relatedContactName(item) }}</span>
                 <span v-if="relatedContactName(item) !== '--' && item.location"> - </span>
                 <span v-if="item.location">{{ item.location }}</span>
@@ -850,7 +825,7 @@ const updateItemsPerPage = (value: number | string) => {
 
               <div
                 v-if="resolveCustomFieldPreview(item)"
-                class="text-sm text-medium-emphasis"
+                class="deal-cell__meta deal-cell__preview text-sm text-medium-emphasis"
               >
                 {{ resolveCustomFieldPreview(item) }}
               </div>
@@ -859,9 +834,9 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.contact="{ item }">
-          <div class="d-flex align-center gap-3">
+          <div class="linked-cell d-flex align-center gap-2">
             <VAvatar
-              size="34"
+              size="30"
               :color="getContactEntry(item.relatedTo)?.picture ? undefined : 'primary'"
               :class="getContactEntry(item.relatedTo)?.picture ? null : 'text-white font-weight-medium'"
             >
@@ -872,7 +847,7 @@ const updateItemsPerPage = (value: number | string) => {
               <span v-else>{{ avatarText(relatedContactName(item)) }}</span>
             </VAvatar>
 
-            <span class="text-high-emphasis">{{ relatedContactName(item) }}</span>
+            <span class="linked-cell__name text-high-emphasis">{{ relatedContactName(item) }}</span>
           </div>
         </template>
 
@@ -897,7 +872,7 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.collaborators="{ item }">
-          <div class="d-flex align-center gap-2">
+          <div class="d-flex align-center gap-2 justify-end">
             <div
               v-if="decoratedCollaborators(item).length"
               class="v-avatar-group demo-avatar-group"
@@ -905,7 +880,7 @@ const updateItemsPerPage = (value: number | string) => {
               <VAvatar
                 v-for="(collaborator, index) in decoratedCollaborators(item).slice(0, 3)"
                 :key="`${item.id}-${index}`"
-                :size="36"
+                :size="32"
                 :color="collaborator.picture ? undefined : 'primary'"
                 :class="collaborator.picture ? null : 'text-white font-weight-medium'"
               >
@@ -926,7 +901,7 @@ const updateItemsPerPage = (value: number | string) => {
               <VAvatar
                 v-if="decoratedCollaborators(item).length > 3"
                 color="secondary"
-                :size="36"
+                :size="32"
                 class="font-weight-medium text-white"
               >
                 +{{ decoratedCollaborators(item).length - 3 }}
@@ -952,7 +927,7 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.actions="{ item }">
-          <div class="d-flex align-center">
+          <div class="actions-cell d-flex align-center justify-end">
             <VBtn
               icon
               variant="text"
@@ -989,21 +964,9 @@ const updateItemsPerPage = (value: number | string) => {
                     </template>
                     <VListItemTitle>Email</VListItemTitle>
                   </VListItem>
-                  <VListItem @click="handleDealAction('call', item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-phone" />
-                    </template>
-                    <VListItemTitle>Call</VListItemTitle>
-                  </VListItem>
 
                   <VDivider />
 
-                  <VListItem @click="handleDealAction('flag', item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-flag" />
-                    </template>
-                    <VListItemTitle>Change Flag</VListItemTitle>
-                  </VListItem>
                   <VListItem @click="handleDealAction('stage', item)">
                     <template #prepend>
                       <VIcon icon="tabler-arrows-exchange-2" />
@@ -1120,34 +1083,6 @@ const updateItemsPerPage = (value: number | string) => {
       </VCard>
     </VDialog>
 
-    <VDialog v-model="isFlagDialogVisible" max-width="480">
-      <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Change Flag</VCardTitle>
-        <VCardText>
-          <AppSelect
-            v-model="flagDialogValue"
-            placeholder="Select Flag"
-            :items="[
-              { title: 'Important', value: 'important' },
-              { title: 'Not Important', value: 'normal' },
-            ]"
-            clearable
-            clear-icon="tabler-x"
-          />
-        </VCardText>
-        <VCardActions class="justify-end">
-          <VBtn
-            variant="tonal"
-            color="secondary"
-            @click="isFlagDialogVisible = false"
-          >
-            Close
-          </VBtn>
-          <VBtn color="primary" @click="saveFlagChange">Save</VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
-
     <VDialog v-model="isStageDialogVisible" max-width="480">
       <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Change Stage</VCardTitle>
@@ -1174,3 +1109,62 @@ const updateItemsPerPage = (value: number | string) => {
     </VDialog>
   </section>
 </template>
+
+<style scoped>
+.deals-table {
+  table-layout: fixed;
+}
+
+.deal-cell {
+  min-inline-size: 0;
+}
+
+.deal-cell__content,
+.linked-cell {
+  min-inline-size: 0;
+}
+
+.deal-cell__title,
+.deal-cell__meta,
+.linked-cell__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-cell__preview {
+  max-inline-size: 230px;
+}
+
+.actions-cell :deep(.v-btn) {
+  margin-inline: 0;
+}
+
+@media (max-width: 1366px) {
+  .deal-cell__preview {
+    max-inline-size: 170px;
+  }
+
+  .deals-table {
+    font-size: 0.875rem;
+  }
+
+  .deals-table :deep(th),
+  .deals-table :deep(td) {
+    padding-inline: 10px !important;
+  }
+
+  .deals-table :deep(th) {
+    white-space: nowrap;
+  }
+
+  .deals-table :deep(.v-chip) {
+    max-inline-size: 100%;
+  }
+
+  .demo-avatar-group {
+    transform: scale(0.94);
+    transform-origin: right center;
+  }
+}
+</style>
