@@ -1,43 +1,46 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from "vue";
 
-import type { DealProperties } from '@/plugins/fake-api/handlers/operations/deals/types'
+import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
 
 interface Props {
-  deal: DealProperties
-  linkedToName: string
-  collaboratorNames: string[]
+  deal: DealProperties;
+  linkedToName: string;
+  collaboratorNames: string[];
 }
 
-const props = defineProps<Props>()
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
-  (e: 'edit'): void
-}>()
+  (e: "edit"): void;
+}>();
 
 const formatDate = (value?: string | null) => {
-  if (!value)
-    return '--'
+  if (!value) return "--";
 
   try {
     return new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date(value))
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return value;
   }
-  catch {
-    return value
-  }
-}
+};
 
 const financialTotal = computed(() =>
-  (props.deal.financials || []).reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
-)
+  (props.deal.financials || []).reduce(
+    (sum, entry) => sum + Number(entry.amount || 0),
+    0,
+  ),
+);
 
-const itemCount = computed(() => props.deal.items?.length || 0)
+const itemCount = computed(() => props.deal.items?.length || 0);
 
-const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
+const noteText = computed(
+  () => props.deal.note?.trim() || "No notes available",
+);
 </script>
 
 <template>
@@ -50,7 +53,7 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
         variant="tonal"
       >
         <span class="text-5xl font-weight-medium">
-          {{ deal.code || '--' }}
+          {{ deal.code || "--" }}
         </span>
       </VAvatar>
 
@@ -60,11 +63,11 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
 
       <div class="d-flex justify-center gap-2 mt-2 flex-wrap">
         <VChip label size="small" color="info" variant="text">
-          {{ deal.stage || '--' }}
+          {{ deal.stage || "--" }}
         </VChip>
 
         <VChip label size="small" color="primary" variant="text">
-          {{ deal.type || '--' }}
+          {{ deal.type || "--" }}
         </VChip>
 
         <VChip
@@ -73,7 +76,7 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
           :color="deal.important ? 'warning' : 'secondary'"
           variant="text"
         >
-          {{ deal.important ? 'Important' : 'Standard' }}
+          {{ deal.important ? "Important" : "Standard" }}
         </VChip>
       </div>
     </VCardText>
@@ -87,7 +90,7 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Deal Code:</span>
-            <span class="detail-row__value">{{ deal.code || '--' }}</span>
+            <span class="detail-row__value">{{ deal.code || "--" }}</span>
           </VListItemTitle>
         </VListItem>
 
@@ -101,14 +104,16 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Delivery:</span>
-            <span class="detail-row__value">{{ formatDate(deal.estimatedDeliveryDate) }}</span>
+            <span class="detail-row__value">{{
+              formatDate(deal.estimatedDeliveryDate)
+            }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Location:</span>
-            <span class="detail-row__value">{{ deal.location || '--' }}</span>
+            <span class="detail-row__value">{{ deal.location || "--" }}</span>
           </VListItemTitle>
         </VListItem>
 
@@ -122,7 +127,9 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Financial Total:</span>
-            <span class="detail-row__value">{{ financialTotal.toLocaleString() }}</span>
+            <span class="detail-row__value">{{
+              financialTotal.toLocaleString()
+            }}</span>
           </VListItemTitle>
         </VListItem>
 
@@ -130,7 +137,9 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
           <VListItemTitle class="detail-row detail-row--stacked">
             <span class="detail-row__label">Collaborators:</span>
             <span class="detail-row__value detail-row__value--wrap">
-              {{ collaboratorNames.length ? collaboratorNames.join(', ') : '--' }}
+              {{
+                collaboratorNames.length ? collaboratorNames.join(", ") : "--"
+              }}
             </span>
           </VListItemTitle>
         </VListItem>
@@ -146,12 +155,17 @@ const noteText = computed(() => props.deal.note?.trim() || 'No notes available')
       </VList>
     </VCardText>
 
-    <VCardText class="d-flex justify-center pb-6">
-      <VBtn @click="emit('edit')">
-        Edit
-      </VBtn>
+    <VCardText class="d-flex flex-column align-center pb-6">
+      <VBtn @click="emit('edit')" class="mb-2"> Edit </VBtn>
     </VCardText>
   </VCard>
+
+  <VCardText class="d-flex flex-column align-center pb-2">
+    <VBtn variant="elevated">
+      <VIcon left>tabler-play</VIcon>
+      Execute Deal
+    </VBtn>
+  </VCardText>
 </template>
 
 <style scoped>
