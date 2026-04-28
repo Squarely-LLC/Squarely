@@ -222,17 +222,20 @@ export const db: ConfigDB = {
       proformaStartSeq: 'PF-',
       salesType: ['Retail', 'Wholesale'],
       salesLocation: ['Dubai', 'Riyadh', 'Online'],
-      fieldLabels: { amount: 'Deal Amount', owner: 'Owner' },
+      fieldLabels: {
+        additional_field_1: 'Additional field 1',
+        additional_field_2: 'Additional field 2',
+      },
       customFields: [
         {
-          key: 'amount',
-          label: 'Deal Amount',
+          key: 'additional_field_1',
+          label: 'Additional field 1',
           type: 'number',
           defaultValue: 0,
         },
         {
-          key: 'owner',
-          label: 'Owner',
+          key: 'additional_field_2',
+          label: 'Additional field 2',
           type: 'text',
           defaultValue: '',
         },

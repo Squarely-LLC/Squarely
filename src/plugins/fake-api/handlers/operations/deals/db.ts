@@ -19,8 +19,8 @@ export const db: DB = {
       collaborators: [1, 3, 6],
       note: 'Client wants phased delivery around store launch.',
       customFieldValues: {
-        amount: 180000,
-        owner: 'Ted',
+        additional_field_1: 180000,
+        additional_field_2: 'Ted',
         source: 'Referral',
       },
       createdAt: '2026-04-10T09:30:00Z',
@@ -38,8 +38,8 @@ export const db: DB = {
       collaborators: [2, 5],
       note: 'Pending final material palette approval.',
       customFieldValues: {
-        amount: 92000,
-        owner: 'Nora',
+        additional_field_1: 92000,
+        additional_field_2: 'Nora',
         source: 'Website',
       },
       createdAt: '2026-04-14T13:15:00Z',
@@ -57,8 +57,8 @@ export const db: DB = {
       collaborators: [3, 7, 9],
       note: 'Fast turnaround requested for June activation.',
       customFieldValues: {
-        amount: 45000,
-        owner: 'Maya',
+        additional_field_1: 45000,
+        additional_field_2: 'Maya',
         source: 'Direct Sales',
       },
       createdAt: '2026-04-18T08:00:00Z',
