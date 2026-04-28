@@ -5,9 +5,13 @@ import type { JobDocument } from '@/plugins/fake-api/handlers/operations/jobs/ty
 export interface DealItem {
   id: number
   name: string
+  itemTypeLabel?: string | null
   category?: string | null
   catalogueItemId?: string | null
   catalogueType?: string | null
+  parentItemId?: number | null
+  sourceRelatedItemId?: number | null
+  excludedRelatedItemIds?: number[] | null
   quantity: number
   unitPrice?: number | null
   status?: string | null

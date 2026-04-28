@@ -38,6 +38,9 @@ type DerivedGoal = {
   name: string;
   note: string | null;
   price: number | null;
+  dueDate: string | null;
+  typeLabel: string;
+  emptyLabel: string;
 };
 
 type DerivedSection = {
@@ -46,21 +49,28 @@ type DerivedSection = {
   note: string | null;
   price: number | null;
   goals: DerivedGoal[];
+  goalTypeSingular: string;
+  goalTypePlural: string;
 };
 
 type DealItemWithPlan = DealItem & {
+  panelId: number | string;
   isExpandable: boolean;
   derivedSections: DerivedSection[];
+  childTypeSingular: string;
+  childTypePlural: string;
+  childCount: number;
+  actionsEnabled: boolean;
 };
 
 const addItemDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
+const expandedGoals = ref<Array<number | string>>([]);
 const selectedCatalogueItemId = ref<string | null>(null);
 
 const addItemDraft = reactive({
   quantity: 1,
-  status: "Planned",
 });
 
 const catalogueOptions = computed(() =>
@@ -78,6 +88,12 @@ const selectedCatalogueItem = computed<CatalogueItem | null>(() => {
   return cataloguesStore.byId(selectedCatalogueItemId.value) ?? null;
 });
 
+const selectedCatalogueRecord = computed(() =>
+  selectedCatalogueItemId.value
+    ? cataloguesStore.recordById(selectedCatalogueItemId.value)
+    : null,
+);
+
 const nextItemId = () => {
   const ids = (props.deal.items || [])
     .map((item) => Number(item.id))
@@ -86,10 +102,12 @@ const nextItemId = () => {
   return ids.length ? Math.max(...ids) + 1 : 1;
 };
 
+const itemTypeLabel = (item: DealItem) =>
+  item.itemTypeLabel || item.catalogueType || "Item";
+
 const openAddItemDialog = () => {
   selectedCatalogueItemId.value = null;
   addItemDraft.quantity = 1;
-  addItemDraft.status = "Planned";
   addItemDialogVisible.value = true;
 };
 
@@ -104,19 +122,46 @@ const saveSelectedCatalogueItem = async () => {
   const { valid } = (await addItemFormRef.value?.validate()) ?? { valid: true };
   if (!valid || !selectedCatalogueItem.value) return;
 
+  const baseId = nextItemId();
+  const quantity = Number(addItemDraft.quantity || 1);
+  const relatedItems =
+    selectedCatalogueRecord.value?.type === "Onetime Service"
+      ? (selectedCatalogueRecord.value as CatalogueOnetimeServiceRecord)
+          .relatedItems || []
+      : [];
+
   const nextItems: DealItem[] = [
     ...(props.deal.items || []),
     {
-      id: nextItemId(),
+      id: baseId,
       name: selectedCatalogueItem.value.name,
+      itemTypeLabel: selectedCatalogueItem.value.type,
       category: selectedCatalogueItem.value.category,
       catalogueItemId: selectedCatalogueItem.value.id,
       catalogueType: selectedCatalogueItem.value.type,
-      quantity: Number(addItemDraft.quantity || 1),
+      parentItemId: null,
+      sourceRelatedItemId: null,
+      excludedRelatedItemIds: null,
+      quantity,
       unitPrice: Number(selectedCatalogueItem.value.bestPrice || 0),
-      status: addItemDraft.status || "Planned",
+      status: "Planned",
       note: selectedCatalogueItem.value.description || null,
     },
+    ...relatedItems.map((relatedItem, index) => ({
+      id: baseId + index + 1,
+      name: relatedItem.name,
+      itemTypeLabel: "Related Item",
+      category: relatedItem.category,
+      catalogueItemId: selectedCatalogueItem.value.id,
+      catalogueType: "Related Item",
+      parentItemId: baseId,
+      sourceRelatedItemId: relatedItem.id,
+      excludedRelatedItemIds: null,
+      quantity,
+      unitPrice: relatedItem.price ?? null,
+      status: "Planned",
+      note: relatedItem.description || null,
+    })),
   ];
 
   dealsStore.updateDeal(props.deal.id, { items: nextItems });
@@ -124,9 +169,32 @@ const saveSelectedCatalogueItem = async () => {
   addItemDialogVisible.value = false;
 };
 
-const removeDealItem = (itemId: number) => {
-  const nextItems = (props.deal.items || []).filter(
-    (item) => item.id !== itemId,
+const removeDealItem = (item: DealItemWithPlan) => {
+  const isRelatedItemChild =
+    item.catalogueType === "Related Item" &&
+    !!item.parentItemId &&
+    !!item.sourceRelatedItemId;
+
+  let nextItems = (props.deal.items || []).map((existingItem) => {
+    if (
+      !isRelatedItemChild ||
+      existingItem.id !== item.parentItemId ||
+      !item.sourceRelatedItemId
+    )
+      return existingItem;
+
+    const excluded = new Set(existingItem.excludedRelatedItemIds || []);
+    excluded.add(item.sourceRelatedItemId);
+
+    return {
+      ...existingItem,
+      excludedRelatedItemIds: [...excluded],
+    };
+  });
+
+  nextItems = nextItems.filter(
+    (existingItem) =>
+      existingItem.id !== item.id && existingItem.parentItemId !== item.id,
   );
 
   dealsStore.updateDeal(props.deal.id, { items: nextItems });
@@ -136,45 +204,49 @@ const removeDealItem = (itemId: number) => {
 const isProductLike = (type?: string | null) =>
   type === "Product" ||
   type === "Produced Product" ||
-  type === "Onetime Service";
-
-const childLabelForItem = (item: DealItem) => {
-  const type = (item.catalogueType || "").trim();
-
-  if (type === "Contractual Service")
-    return { singular: "Phase", plural: "Phases" };
-  if (type === "Reccurent Service")
-    return { singular: "Recurrent Service", plural: "Recurrent Services" };
-  if (type === "Retainer Service")
-    return { singular: "Retainer Service", plural: "Retainer Services" };
-
-  return { singular: "Item", plural: "Items" };
-};
+  type === "Rental" ||
+  type === "Onetime Service" ||
+  type === "Related Item";
 
 const formatMoney = (value?: number | null) =>
   value === null || value === undefined ? "--" : Number(value).toLocaleString();
+const formatDate = (value?: string | null) =>
+  value
+    ? new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }).format(new Date(value))
+    : "--";
 
-const normalizeComparableText = (value?: string | null) =>
-  (value || "").trim().toLowerCase();
+const makeDerivedGoal = (
+  item: DealItem,
+  prefix: string,
+  typeLabel: string,
+  source: {
+    id: number | string;
+    name: string;
+    description?: string | null;
+    note?: string | null;
+    price?: number | null;
+  },
+): DerivedGoal => ({
+  id: `${prefix}-${item.id}-${source.id}`,
+  name: source.name,
+  note: source.note ?? source.description ?? null,
+  price: source.price ?? null,
+  dueDate: null,
+  typeLabel,
+  emptyLabel: `No tasks linked to this ${typeLabel.toLowerCase()} yet.`,
+});
 
-const shouldShowSectionHeader = (
-  item: DealItemWithPlan,
-  section: DerivedSection,
-) => {
-  const isSingleSection = item.derivedSections.length === 1;
-
-  if (!isSingleSection) return true;
-
-  const sameName =
-    normalizeComparableText(section.name) ===
-    normalizeComparableText(item.name);
-  const sameNote =
-    normalizeComparableText(section.note) ===
-    normalizeComparableText(item.note);
-  const samePrice = (section.price ?? null) === (item.unitPrice ?? null);
-
-  return !(sameName && sameNote && samePrice);
-};
+const makeSection = (
+  item: DealItem,
+  section: Omit<DerivedSection, "id">,
+): DerivedSection => ({
+  id: `item-${item.id}`,
+  ...section,
+});
 
 const deriveSections = (item: DealItem): DerivedSection[] => {
   const record = item.catalogueItemId
@@ -187,11 +259,12 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
   if (!record) {
     return [
       {
-        id: `item-${item.id}`,
         name: item.name,
         note: item.note || null,
         price: item.unitPrice ?? null,
         goals: [],
+        goalTypeSingular: itemTypeLabel(item),
+        goalTypePlural: `${itemTypeLabel(item)}s`,
       },
     ];
   }
@@ -199,72 +272,59 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
   if (record.type === "Contractual Service") {
     const contractual = record as CatalogueContractualServiceRecord;
 
-    return [
-      {
-        id: `item-${item.id}`,
+    return [makeSection(item, {
         name: contractual.name,
         note: contractual.description || null,
         price: contractual.bestPrice,
         goals: (contractual.phases || []).map((phase) => ({
-          id: `phase-${item.id}-${phase.id}`,
-          name: phase.name,
-          note: null,
-          price: phase.price,
+          ...makeDerivedGoal(item, "phase", "Phase", phase),
         })),
-      },
-    ];
+        goalTypeSingular: "Phase",
+        goalTypePlural: "Phases",
+      })];
   }
 
   if (record.type === "Retainer Service") {
     const retainer = record as CatalogueRetainerServiceRecord;
 
-    return [
-      {
-        id: `item-${item.id}`,
+    return [makeSection(item, {
         name: retainer.name,
         note: retainer.description || null,
         price: retainer.bestPrice,
-        goals: (retainer.retainerServices || []).map((service) => ({
-          id: `retainer-${item.id}-${service.id}`,
-          name: service.name,
-          note: service.description || null,
-          price: service.price,
-        })),
-      },
-    ];
+        goals: (retainer.retainerServices || []).map((service) =>
+          makeDerivedGoal(item, "retainer", "Retainer Service", service),
+        ),
+        goalTypeSingular: "Retainer Service",
+        goalTypePlural: "Retainer Services",
+      })];
   }
 
   if (record.type === "Reccurent Service") {
     const recurrent = record as CatalogueReccurentServiceRecord;
 
-    return [
-      {
-        id: `item-${item.id}`,
+    return [makeSection(item, {
         name: recurrent.name,
         note: recurrent.description || null,
         price: recurrent.bestPrice,
-        goals: (recurrent.reccurentServices || []).map((service) => ({
-          id: `recurrent-${item.id}-${service.id}`,
-          name: service.name,
-          note: service.description || null,
-          price: service.price,
-        })),
-      },
-    ];
+        goals: (recurrent.reccurentServices || []).map((service) =>
+          makeDerivedGoal(item, "recurrent", "Recurrent Service", service),
+        ),
+        goalTypeSingular: "Recurrent Service",
+        goalTypePlural: "Recurrent Services",
+      })];
   }
 
   if (record.type === "Onetime Service") {
     const service = record as CatalogueOnetimeServiceRecord;
 
-    return [
-      {
-        id: `item-${item.id}`,
+    return [makeSection(item, {
         name: service.name,
         note: service.description || null,
         price: service.bestPrice,
         goals: [],
-      },
-    ];
+        goalTypeSingular: "Related Item",
+        goalTypePlural: "Related Items",
+      })];
   }
 
   if (record.type === "Produced Product") {
@@ -272,11 +332,12 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
 
     return [
       {
-        id: `item-${item.id}`,
         name: produced.name,
         note: produced.description || null,
         price: produced.bestPrice,
         goals: [],
+        goalTypeSingular: "Item",
+        goalTypePlural: "Items",
       },
     ];
   }
@@ -286,36 +347,125 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
   if (isProductLike(product.type)) {
     return [
       {
-        id: `item-${item.id}`,
         name: product.name,
         note: product.description || null,
         price: product.bestPrice,
         goals: [],
+        goalTypeSingular: "Item",
+        goalTypePlural: "Items",
       },
     ];
   }
 
   return [
     {
-      id: `item-${item.id}`,
       name: item.name,
       note: item.note || null,
       price: item.unitPrice ?? null,
       goals: [],
+      goalTypeSingular: "Item",
+      goalTypePlural: "Items",
     },
   ];
 };
 
+const deriveRelatedItemMilestones = (item: DealItem): DealItemWithPlan[] => {
+  if (item.catalogueType === "Related Item" || item.parentItemId)
+    return [];
+
+  const alreadyMaterialized = (props.deal.items || []).some(
+    (existingItem) =>
+      existingItem.parentItemId === item.id &&
+      existingItem.catalogueType === "Related Item",
+  );
+
+  if (alreadyMaterialized)
+    return [];
+
+  const record = item.catalogueItemId
+    ? cataloguesStore.recordById(
+        item.catalogueItemId,
+        item.catalogueType || undefined,
+      )
+    : null;
+
+  if (!record || record.type !== "Onetime Service")
+    return [];
+
+  const service = record as CatalogueOnetimeServiceRecord;
+  const excluded = new Set(item.excludedRelatedItemIds || []);
+
+  return (service.relatedItems || [])
+    .filter((relatedItem) => !excluded.has(relatedItem.id))
+    .map((relatedItem) => ({
+    id: item.id,
+    panelId: `related-${item.id}-${relatedItem.id}`,
+    name: relatedItem.name,
+    itemTypeLabel: "Related Item",
+    category: relatedItem.category,
+    catalogueItemId: item.catalogueItemId,
+    catalogueType: "Related Item",
+    parentItemId: item.id,
+    sourceRelatedItemId: relatedItem.id,
+    quantity: item.quantity,
+    unitPrice: relatedItem.price ?? null,
+    status: item.status,
+    note: relatedItem.description || null,
+    isExpandable: false,
+    derivedSections: [makeSection(item, {
+      name: relatedItem.name,
+      note: relatedItem.description || null,
+      price: relatedItem.price ?? null,
+      goals: [],
+      goalTypeSingular: "Related Item",
+      goalTypePlural: "Related Items",
+    })],
+    childTypeSingular: "Related Item",
+    childTypePlural: "Related Items",
+    childCount: 0,
+    actionsEnabled: true,
+  }));
+};
+
 const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
-  (props.deal.items || []).map((item) => ({
-    ...item,
-    isExpandable: !isProductLike(item.catalogueType),
-    derivedSections: deriveSections(item),
-  })),
+  (props.deal.items || []).flatMap((item) => {
+    const derivedSections = deriveSections(item);
+    const relatedItemMilestones = deriveRelatedItemMilestones(item);
+    const [firstSection] = derivedSections;
+
+    const primaryItem: DealItemWithPlan = {
+      ...item,
+      panelId: item.id,
+      isExpandable: !isProductLike(item.catalogueType),
+      derivedSections,
+      childTypeSingular: firstSection?.goalTypeSingular || "Item",
+      childTypePlural: firstSection?.goalTypePlural || "Items",
+      childCount:
+        item.catalogueType === "Onetime Service"
+          ? relatedItemMilestones.length
+          : derivedSections.reduce(
+              (sum, section) => sum + section.goals.length,
+              0,
+            ),
+      actionsEnabled: true,
+    };
+
+    return [primaryItem, ...relatedItemMilestones];
+  }),
 );
 
-const totalChildrenCount = (item: DealItemWithPlan) =>
-  item.derivedSections.reduce((sum, section) => sum + section.goals.length, 0);
+const totalChildrenCount = (item: DealItemWithPlan) => item.childCount;
+
+const derivedGoalsForItem = (item: DealItemWithPlan) =>
+  item.derivedSections.flatMap((section) => section.goals);
+
+const childCountLabel = (item: DealItemWithPlan) => {
+  const count = totalChildrenCount(item);
+
+  return `${count} ${
+    count === 1 ? item.childTypeSingular : item.childTypePlural
+  }`;
+};
 </script>
 
 <template>
@@ -363,177 +513,153 @@ const totalChildrenCount = (item: DealItemWithPlan) =>
         No items yet. Add one to get started.
       </div>
 
-      <div v-else class="d-flex flex-column gap-4">
-        <template v-for="item in dealItemsWithPlan" :key="item.id">
-          <VExpansionPanels
-            v-model="expandedItems"
-            variant="accordion"
-            multiple
-            class="expansion-panels-width-border milestone-panels"
-          >
-            <VExpansionPanel
-              :value="item.id"
-              class="milestone-panel"
-              :class="{ 'milestone-panel--static': !item.isExpandable }"
-            >
-              <VExpansionPanelTitle
-                @click.capture="
-                  (event: MouseEvent) => {
-                    if (!item.isExpandable) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }
-                  }
-                "
-              >
-                <div class="d-flex align-center gap-3 w-100">
-                  <div class="rounded-circle milestone-status-dot" />
+      <VExpansionPanels
+        v-else
+        v-model="expandedItems"
+        variant="accordion"
+        multiple
+        class="expansion-panels-width-border milestone-panels"
+      >
+        <VExpansionPanel
+          v-for="item in dealItemsWithPlan"
+          :key="item.panelId"
+          :value="item.panelId"
+          class="milestone-panel"
+          :class="{ 'milestone-panel--static': !item.isExpandable }"
+          :readonly="!item.isExpandable"
+        >
+          <VExpansionPanelTitle>
+            <div class="d-flex align-center gap-3 w-100">
+              <div class="rounded-circle milestone-status-dot" />
 
-                  <div class="flex-grow-1 min-w-0">
-                    <div class="d-flex align-center gap-2 flex-wrap">
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex align-center gap-2 flex-wrap">
+                  <VTooltip :text="item.name" location="top">
+                    <template #activator="{ props: tooltipProps }">
                       <div
+                        v-bind="tooltipProps"
                         class="font-weight-medium truncate-title truncate-title--header"
                       >
                         {{ item.name }}
                       </div>
-                      <VChip size="small" variant="text" color="primary">
-                        {{ item.catalogueType || "Custom Item" }}
-                      </VChip>
-                    </div>
-
-                    <div class="text-caption text-medium-emphasis">
-                      <span v-if="item.category">{{ item.category }} | </span>
-                      <span>Qty {{ item.quantity }}</span>
-                      <span
-                        v-if="
-                          item.unitPrice !== null &&
-                          item.unitPrice !== undefined
-                        "
-                      >
-                        | {{ formatMoney(item.unitPrice) }}
-                      </span>
-                    </div>
-
-                    <div class="text-body-2 text-medium-emphasis mt-1">
-                      {{ item.note || "No item notes." }}
-                    </div>
-                  </div>
-
-                  <div
-                    class="d-flex align-center gap-2 milestone-actions"
-                    @click.stop
-                  >
-                    <VBtn icon variant="text" size="x-small">
-                      <VIcon icon="tabler-dots-vertical" size="18" />
-                      <VMenu activator="parent">
-                        <VList>
-                          <VListItem @click="removeDealItem(item.id)">
-                            <template #prepend>
-                              <VIcon icon="tabler-trash" color="error" />
-                            </template>
-                            <VListItemTitle>Remove</VListItemTitle>
-                          </VListItem>
-                        </VList>
-                      </VMenu>
-                    </VBtn>
-                  </div>
+                    </template>
+                  </VTooltip>
+                  <VChip size="small" variant="text" color="primary">
+                    {{ itemTypeLabel(item) }}
+                  </VChip>
                 </div>
-              </VExpansionPanelTitle>
+                <div class="text-caption text-medium-emphasis">
+                  {{ childCountLabel(item) }}
+                  <span v-if="item.category"> | {{ item.category }}</span>
+                  | Qty {{ item.quantity }}
+                  <span
+                    v-if="
+                      item.unitPrice !== null && item.unitPrice !== undefined
+                    "
+                  >
+                    | {{ formatMoney(item.unitPrice) }}
+                  </span>
+                </div>
+                <div class="text-body-2 text-medium-emphasis mt-1">
+                  {{ item.note || "No item notes." }}
+                </div>
+              </div>
 
-              <VExpansionPanelText v-if="item.isExpandable">
-                <VCard variant="flat" class="pa-4 milestone-panel-body">
-                  <div class="d-flex flex-column gap-3">
-                    <VCard
-                      v-for="section in item.derivedSections"
-                      :key="section.id"
-                      variant="tonal"
-                      class="item-plan-card"
-                    >
-                      <VCardText>
-                        <div
-                          v-if="shouldShowSectionHeader(item, section)"
-                          class="d-flex justify-space-between align-center gap-2 flex-wrap"
-                        >
-                          <div>
-                            <div class="font-weight-medium">
-                              {{ section.name }}
-                            </div>
-                            <div class="text-sm text-medium-emphasis">
-                              {{ section.note || "No item notes." }}
-                            </div>
-                          </div>
+              <div
+                v-if="item.actionsEnabled"
+                class="d-flex align-center gap-2 milestone-actions"
+                @click.stop
+              >
+                <VBtn icon variant="text" size="x-small">
+                  <VIcon icon="tabler-dots-vertical" size="18" />
+                  <VMenu activator="parent">
+                    <VList>
+                      <VListItem @click="removeDealItem(item)">
+                        <template #prepend>
+                          <VIcon icon="tabler-trash" color="error" />
+                        </template>
+                        <VListItemTitle>Remove</VListItemTitle>
+                      </VListItem>
+                    </VList>
+                  </VMenu>
+                </VBtn>
+              </div>
+            </div>
+          </VExpansionPanelTitle>
 
-                          <div class="text-sm text-medium-emphasis">
-                            {{ formatMoney(section.price) }}
-                          </div>
+          <VExpansionPanelText v-if="item.isExpandable">
+            <VCard variant="flat" class="pa-4 milestone-panel-body">
+              <VExpansionPanels
+                v-if="derivedGoalsForItem(item).length"
+                v-model="expandedGoals"
+                variant="accordion"
+                multiple
+                class="expansion-panels-width-border goal-panels"
+              >
+                <VExpansionPanel
+                  v-for="goal in derivedGoalsForItem(item)"
+                  :key="goal.id"
+                  :value="goal.id"
+                  class="goal-panel"
+                >
+                  <VExpansionPanelTitle>
+                    <div class="d-flex align-center gap-3 w-100">
+                      <VIcon
+                        icon="tabler-target-arrow"
+                        size="16"
+                        class="goal-icon"
+                      />
+
+                      <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex align-center gap-2 flex-wrap">
+                          <VTooltip :text="goal.name" location="top">
+                            <template #activator="{ props: tooltipProps }">
+                              <div
+                                v-bind="tooltipProps"
+                                class="font-weight-medium truncate-title truncate-title--header"
+                              >
+                                {{ goal.name }}
+                              </div>
+                            </template>
+                          </VTooltip>
+                          <VChip
+                            color="primary"
+                            size="x-small"
+                            variant="text"
+                          >
+                            {{ goal.typeLabel }}
+                          </VChip>
                         </div>
-
-                        <div
-                          v-if="section.goals.length"
-                          class="d-flex align-center gap-2 flex-wrap text-caption text-medium-emphasis"
-                          :class="{
-                            'mt-4': shouldShowSectionHeader(item, section),
-                          }"
-                        >
-                          <span class="font-weight-medium">
-                            {{
-                              `${section.goals.length} ${
-                                section.goals.length === 1
-                                  ? childLabelForItem(item).singular
-                                  : childLabelForItem(item).plural
-                              }`
-                            }}
+                        <div class="text-caption text-medium-emphasis">
+                          0 Tasks | Due {{ formatDate(goal.dueDate) }}
+                          <span v-if="goal.price !== null">
+                            | {{ formatMoney(goal.price) }}
                           </span>
                         </div>
-
-                        <div
-                          v-if="section.goals.length"
-                          class="d-flex flex-column gap-2"
-                          :class="{
-                            'mt-3': shouldShowSectionHeader(item, section),
-                          }"
-                        >
-                          <VCard
-                            v-for="goal in section.goals"
-                            :key="goal.id"
-                            variant="tonal"
-                            class="child-static-row"
-                          >
-                            <div class="d-flex align-center gap-3 w-100">
-                              <VIcon
-                                icon="tabler-target-arrow"
-                                size="16"
-                                class="goal-icon"
-                              />
-
-                              <div class="flex-grow-1 min-w-0">
-                                <div
-                                  class="font-weight-medium truncate-title truncate-title--header"
-                                >
-                                  {{ goal.name }}
-                                </div>
-                                <div
-                                  class="text-body-2 text-medium-emphasis mt-1"
-                                >
-                                  {{ goal.note || "No notes." }}
-                                </div>
-                              </div>
-
-                              <div class="text-sm text-medium-emphasis">
-                                {{ formatMoney(goal.price) }}
-                              </div>
-                            </div>
-                          </VCard>
+                        <div class="text-body-2 text-medium-emphasis mt-1">
+                          {{ goal.note || "No notes." }}
                         </div>
-                      </VCardText>
+                      </div>
+                    </div>
+                  </VExpansionPanelTitle>
+
+                  <VExpansionPanelText>
+                    <VCard variant="flat" class="pa-4 goal-panel-body">
+                      <div class="text-body-2 text-medium-emphasis empty-tasks">
+                        {{ goal.emptyLabel }}
+                      </div>
                     </VCard>
-                  </div>
-                </VCard>
-              </VExpansionPanelText>
-            </VExpansionPanel>
-          </VExpansionPanels>
-        </template>
-      </div>
+                  </VExpansionPanelText>
+                </VExpansionPanel>
+              </VExpansionPanels>
+
+              <div v-else class="text-body-2 text-medium-emphasis">
+                No {{ item.childTypePlural.toLowerCase() }} under this item yet.
+              </div>
+            </VCard>
+          </VExpansionPanelText>
+        </VExpansionPanel>
+      </VExpansionPanels>
     </VCardText>
   </VCard>
 
@@ -544,12 +670,23 @@ const totalChildrenCount = (item: DealItemWithPlan) =>
 
         <VForm ref="addItemFormRef" @submit.prevent="saveSelectedCatalogueItem">
           <VRow>
-            <VCol cols="12">
+            <VCol cols="12" md="8">
               <AppSelect
                 v-model="selectedCatalogueItemId"
                 label="Catalogue Item"
                 placeholder="Select catalogue item"
                 :items="catalogueOptions"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="4">
+              <AppTextField
+                v-model="addItemDraft.quantity"
+                type="number"
+                min="1"
+                label="Quantity"
+                placeholder="1"
                 :rules="[requiredValidator]"
               />
             </VCol>
@@ -569,25 +706,6 @@ const totalChildrenCount = (item: DealItemWithPlan) =>
               </VCard>
             </VCol>
 
-            <VCol cols="12" md="6">
-              <AppTextField
-                v-model="addItemDraft.quantity"
-                type="number"
-                min="1"
-                label="Quantity"
-                placeholder="1"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppTextField
-                v-model="addItemDraft.status"
-                label="Status"
-                placeholder="Planned"
-              />
-            </VCol>
-
             <VCol cols="12">
               <DialogActionBar
                 save-type="submit"
@@ -603,21 +721,25 @@ const totalChildrenCount = (item: DealItemWithPlan) =>
 </template>
 
 <style scoped>
-.milestone-panels :deep(.v-expansion-panel) {
+.milestone-panels :deep(.v-expansion-panel),
+.goal-panels :deep(.v-expansion-panel) {
   background: transparent;
 }
 
-.milestone-panels :deep(.v-expansion-panel-title) {
+.milestone-panels :deep(.v-expansion-panel-title),
+.goal-panels :deep(.v-expansion-panel-title) {
   padding-block: 1rem;
   padding-inline: 1.25rem;
 }
 
-.milestone-panels :deep(.v-expansion-panel-text__wrapper) {
+.milestone-panels :deep(.v-expansion-panel-text__wrapper),
+.goal-panels :deep(.v-expansion-panel-text__wrapper) {
   padding-block: 0 1rem;
   padding-inline: 1rem;
 }
 
-.milestone-panels :deep(.v-expansion-panel__shadow) {
+.milestone-panels :deep(.v-expansion-panel__shadow),
+.goal-panels :deep(.v-expansion-panel__shadow) {
   box-shadow: none;
 }
 
@@ -649,12 +771,47 @@ const totalChildrenCount = (item: DealItemWithPlan) =>
   gap: 1rem;
 }
 
-.milestone-actions {
+.goal-panels :deep(.v-expansion-panel) {
+  border: 0;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-info), 0.035);
+}
+
+.goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
+  margin-block-start: 0.625rem;
+}
+
+.goal-panels :deep(.v-expansion-panel-title) {
+  min-block-size: auto;
+}
+
+.goal-panel-body {
+  background: rgba(var(--v-theme-surface), 0.14);
+  box-shadow: none;
+}
+
+.goal-panels {
+  margin-block-start: 0;
+}
+
+.milestone-actions,
+.goal-actions {
   min-inline-size: 0;
 }
 
-.milestone-actions :deep(.v-btn) {
+.milestone-actions,
+.goal-actions {
+  gap: 0.25rem !important;
+}
+
+.milestone-actions :deep(.v-btn),
+.goal-actions :deep(.v-btn) {
   margin: 0;
+}
+
+.milestone-panel :deep(.v-expansion-panel-title__icon),
+.goal-panel :deep(.v-expansion-panel-title__icon) {
+  margin-inline-start: 0.25rem;
 }
 
 .truncate-title {
@@ -673,20 +830,45 @@ const totalChildrenCount = (item: DealItemWithPlan) =>
   color: rgb(var(--v-theme-info));
 }
 
-.child-static-row {
-  border: 0;
-  border-radius: 10px;
-  background: rgba(var(--v-theme-info), 0.035);
-  padding-block: 1rem;
-  padding-inline: 1.25rem;
-}
-
-.item-plan-card {
-  border: 1px solid rgba(255, 255, 255, 6%);
-}
-
 .empty-tasks {
   padding-block: 0.5rem;
   padding-inline: 0;
+}
+
+@media (max-width: 767px) {
+  .milestone-panels :deep(.v-expansion-panel-title),
+  .goal-panels :deep(.v-expansion-panel-title) {
+    padding-block: 0.875rem;
+    padding-inline: 1rem;
+  }
+
+  .milestone-panels :deep(.v-expansion-panel-text__wrapper),
+  .goal-panels :deep(.v-expansion-panel-text__wrapper) {
+    padding-block: 0 0.875rem;
+    padding-inline: 0.875rem;
+  }
+
+  .milestone-panel-body,
+  .goal-panel-body {
+    padding: 0.75rem !important;
+  }
+
+  .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
+    margin-block-start: 0.5rem;
+  }
+
+  .milestone-actions,
+  .goal-actions {
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.375rem;
+  }
+
+  .milestone-actions :deep(.v-btn),
+  .goal-actions :deep(.v-btn) {
+    max-inline-size: 100%;
+    min-block-size: 30px;
+  }
 }
 </style>
