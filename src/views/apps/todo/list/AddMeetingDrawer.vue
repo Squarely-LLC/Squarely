@@ -13,7 +13,7 @@ export type ContactRef = {
   avatarUrl?: string | null;
   group?: string;
   type?: "contact" | "employee" | "employee_contact";
-  roles?: ("contact" | "employee")[];
+  roles?: readonly ("contact" | "employee")[];
   contactId?: number | string;
   employeeId?: number | string;
   // internal value used by the autocomplete to disambiguate same ids across sources
