@@ -2540,6 +2540,10 @@ const saveItem = async () => {
   const validation = await itemFormRef.value?.validate();
   if (validation && !validation.valid) return;
 
+  const didFlushTaskDraft =
+    await taskTemplateDrawerRef.value?.submitIfNeeded?.();
+  if (didFlushTaskDraft === false) return;
+
   const payload = {
     type: selectedType.value as CatalogueItemType,
     name: itemName.value.trim(),
@@ -2704,6 +2708,114 @@ watch(
     }
 
     applySharedRecord(record);
+
+    if (record.type === "Product" || record.type === "Rental") {
+      salesTasks.value = (record.salesTasks || []).map((task) => ({
+        id: task.id,
+        title: task.title,
+        collaborators: task.collaborators ? [...task.collaborators] : [],
+        afterWhen:
+          (
+            task as {
+              afterWhen?: string | null;
+              dueAt?: string | null;
+            }
+          ).afterWhen ??
+          (task as { dueAt?: string | null }).dueAt ??
+          null,
+        startTrigger: normalizeStartTrigger(task.startTrigger),
+        manhours: task.manhours ?? null,
+        notes: task.notes ?? "",
+        status: task.status ?? "pending",
+        important: task.important ?? false,
+        attachment: task.attachment ?? null,
+        relatedTo: task.relatedTo ?? null,
+        steps: cloneTaskSteps(task.steps),
+      }));
+      salesTaskId.value =
+        salesTasks.value.reduce((max, task) => Math.max(max, task.id), 0) + 1;
+
+      const milestones: JobConfigMilestone[] = record.jobConfiguration
+        ?.milestones?.length
+        ? record.jobConfiguration.milestones.map((milestone) => ({
+            id: milestone.id,
+            name: milestone.name,
+            dueDate: milestone.dueDate,
+            priority: milestone.priority,
+            note: milestone.note,
+            tasks: (milestone.tasks || []).map((task) => ({
+              ...task,
+              afterWhen:
+                (
+                  task as {
+                    afterWhen?: string | null;
+                    dueAt?: string | null;
+                  }
+                ).afterWhen ??
+                (task as { dueAt?: string | null }).dueAt ??
+                null,
+              startTrigger: normalizeStartTrigger(task.startTrigger),
+              steps: cloneTaskSteps(task.steps),
+            })),
+            goals: (milestone.goals || []).map((goal) => ({
+              ...goal,
+              retainerServiceId: goal.retainerServiceId ?? null,
+              reccurentServiceId: goal.reccurentServiceId ?? null,
+              startTrigger: normalizeStartTrigger(goal.startTrigger),
+              tasks: (goal.tasks || []).map((task) => ({
+                ...task,
+                afterWhen:
+                  (
+                    task as {
+                      afterWhen?: string | null;
+                      dueAt?: string | null;
+                    }
+                  ).afterWhen ??
+                  (task as { dueAt?: string | null }).dueAt ??
+                  null,
+                startTrigger: normalizeStartTrigger(task.startTrigger),
+                steps: cloneTaskSteps(task.steps),
+              })),
+            })),
+          }))
+        : [
+            {
+              id: 1,
+              name: record.name || defaultMilestoneName.value,
+              dueDate: null,
+              priority: "Normal" as JobConfigPriority,
+              note: "",
+              tasks: [],
+              goals: [],
+            },
+          ];
+
+      jobConfigMilestones.value = milestones;
+      expandedMilestones.value = milestones.map((milestone) => milestone.id);
+      syncExpandedGoals();
+      hasCustomMilestoneName.value =
+        milestones[0]?.name !== defaultMilestoneName.value;
+      jobConfigGoalId.value =
+        milestones.reduce(
+          (max, milestone) =>
+            Math.max(max, ...milestone.goals.map((goal) => goal.id), 0),
+          0,
+        ) + 1;
+      jobConfigTaskId.value =
+        milestones.reduce((max, milestone) => {
+          const directTaskMax = Math.max(
+            0,
+            ...milestone.tasks.map((task) => task.id),
+          );
+          const goalTaskMax = Math.max(
+            0,
+            ...milestone.goals.flatMap((goal) =>
+              goal.tasks.map((task) => task.id),
+            ),
+          );
+          return Math.max(max, directTaskMax, goalTaskMax);
+        }, 0) + 1;
+    }
   },
   { immediate: true },
 );

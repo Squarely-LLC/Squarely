@@ -75,7 +75,11 @@ type JobTodo = ToDo & {
 const jobTodos = computed<JobTodo[]>(() => {
   const jobId = String(props.jobId);
   return (todosStore.items || []).filter((todo: any) => {
-    return todo?.relatedTo && String(todo.relatedTo.id) === jobId;
+    return (
+      todo?.relatedTo &&
+      String(todo.relatedTo.id) === jobId &&
+      (todo.relatedTo.type ? todo.relatedTo.type === "job" : true)
+    );
   }) as JobTodo[];
 });
 

@@ -599,6 +599,28 @@ function normalizeRecord(
     } as CatalogueRecord;
   }
 
+  if (mappedType === "Product" || mappedType === "Rental") {
+    const salesTasks = Array.isArray(payload.salesTasks)
+      ? payload.salesTasks
+      : [];
+    const milestones = Array.isArray(payload.jobConfiguration?.milestones)
+      ? payload.jobConfiguration.milestones
+      : [];
+
+    return {
+      ...base,
+      qty: qty ?? 0,
+      salesTasks: salesTasks.map((task, index) => ({
+        ...normalizeSalesTask(task, index + 1),
+      })),
+      jobConfiguration: {
+        milestones: milestones.map((milestone, index) =>
+          normalizeJobMilestone(milestone, index + 1),
+        ),
+      },
+    } as CatalogueRecord;
+  }
+
   if (qty === null) {
     return base as CatalogueRecord;
   }
@@ -607,6 +629,32 @@ function normalizeRecord(
     ...base,
     qty,
   } as CatalogueRecord;
+}
+
+function migrateTables(tables: CatalogueTables): CatalogueTables {
+  return {
+    products: tables.products.map((record) =>
+      normalizeRecord(record, "products", record.id),
+    ) as CatalogueTables["products"],
+    producedProducts: tables.producedProducts.map((record) =>
+      normalizeRecord(record, "producedProducts", record.id),
+    ) as CatalogueTables["producedProducts"],
+    rentals: tables.rentals.map((record) =>
+      normalizeRecord(record, "rentals", record.id),
+    ) as CatalogueTables["rentals"],
+    onetimeServices: tables.onetimeServices.map((record) =>
+      normalizeRecord(record, "onetimeServices", record.id),
+    ) as CatalogueTables["onetimeServices"],
+    contractualServices: tables.contractualServices.map((record) =>
+      normalizeRecord(record, "contractualServices", record.id),
+    ) as CatalogueTables["contractualServices"],
+    retainerServices: tables.retainerServices.map((record) =>
+      normalizeRecord(record, "retainerServices", record.id),
+    ) as CatalogueTables["retainerServices"],
+    reccurentServices: tables.reccurentServices.map((record) =>
+      normalizeRecord(record, "reccurentServices", record.id),
+    ) as CatalogueTables["reccurentServices"],
+  };
 }
 
 function extractSkuSequence(sku?: string | null) {
@@ -812,11 +860,17 @@ export const useCataloguesStore = defineStore("catalogues", {
   },
   actions: {
     init(force = false) {
-      if (this.initialized && !force) return;
+      if (this.initialized && !force) {
+        this.tables = migrateTables(cloneTables(this.tables));
+        saveToStorage(this.tables);
+        return;
+      }
 
       const stored = loadFromStorage();
-      this.tables = stored ? cloneTables(stored) : seedTables();
-      if (!stored) saveToStorage(this.tables);
+      this.tables = stored
+        ? migrateTables(stored)
+        : migrateTables(seedTables());
+      saveToStorage(this.tables);
       this.initialized = true;
 
       if (typeof window !== "undefined") {

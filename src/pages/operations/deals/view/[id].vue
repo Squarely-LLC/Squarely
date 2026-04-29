@@ -4,11 +4,25 @@ import { useRouter } from "vue-router";
 
 import CatalogueTaskTemplateDrawer from "@/components/catalogues/CatalogueTaskTemplateDrawer.vue";
 import type { ToDo } from "@/data/schema";
-import type { CatalogueTaskStartTrigger } from "@/plugins/fake-api/handlers/catalogues/types";
-import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import type {
+  CatalogueJobConfigTask,
+  CatalogueRecord,
+  CatalogueTaskStartTrigger,
+} from "@/plugins/fake-api/handlers/catalogues/types";
+import type {
+  DealItem,
+  DealProperties,
+} from "@/plugins/fake-api/handlers/operations/deals/types";
+import type {
+  JobFlag,
+  JobProperties,
+  JobType,
+} from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useCataloguesStore } from "@/stores/catalogues";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
+import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -26,15 +40,19 @@ import DealTimelineTab from "@/views/operations/deals/view/DealTimelineTab.vue";
 const route = useRoute("operations-deals-view-id");
 const router = useRouter();
 
+const cataloguesStore = useCataloguesStore();
 const dealsStore = useDealsStore();
 const contactsStore = useContactsStore();
 const employeesStore = useEmployeesStore();
+const jobsStore = useJobsStore();
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
 
+cataloguesStore.init();
 dealsStore.init();
 contactsStore.init();
 employeesStore.init();
+jobsStore.init();
 todosStore.init();
 
 const loading = ref(true);
@@ -62,6 +80,10 @@ const isAddTodoDrawerVisible = ref(false);
 const addTodoInitial = ref<Partial<ToDo> | null>(null);
 const editingTodo = ref<ToDo | null>(null);
 const isEditTodoDrawerVisible = ref(false);
+const isExecutePreviewDialogVisible = ref(false);
+const isExecutingDeal = ref(false);
+const executePreviewError = ref<string | null>(null);
+const executePreview = ref<DealExecutionPreview | null>(null);
 
 const tabKeys = [
   "items",
@@ -77,6 +99,472 @@ const tabs = [
   { icon: "tabler-credit-card", title: "Invoicing" },
   { icon: "tabler-timeline", title: "Timeline" },
 ] as const;
+
+type ExecutionPreviewTaskKind = "sales" | "milestone" | "goal";
+
+type ExecutionPreviewTask = {
+  key: string;
+  title: string;
+  dueAt: string;
+  notes: string;
+  status: ToDo["status"];
+  important: boolean;
+  collaborators: ToDo["collaborators"];
+  attachment: ToDo["attachment"];
+  steps: ToDo["steps"];
+  sourceLabel: string;
+  kind: ExecutionPreviewTaskKind;
+  afterWhen: string | null;
+  milestoneKey: string | null;
+  goalKey: string | null;
+  startTriggerType: CatalogueTaskStartTrigger["type"] | null;
+  startTriggerGoalKey: string | null;
+  startTriggerTaskSourceId: string | null;
+  startTriggerTaskKey: string | null;
+};
+
+type ExecutionPreviewGoal = {
+  key: string;
+  milestoneKey: string;
+  name: string;
+  startDate: string;
+  dueDate: string | null;
+  priority: JobFlag;
+  note: string | null;
+  sourceLabel: string;
+  tasks: ExecutionPreviewTask[];
+};
+
+type ExecutionPreviewMilestone = {
+  key: string;
+  name: string;
+  startDate: string;
+  dueDate: string | null;
+  priority: JobFlag;
+  note: string | null;
+  sourceLabel: string;
+  isFallback: boolean;
+  tasks: ExecutionPreviewTask[];
+  goals: ExecutionPreviewGoal[];
+};
+
+type ExecutionPreviewSummary = {
+  milestoneCount: number;
+  goalCount: number;
+  jobTaskCount: number;
+  keptDealSalesTaskCount: number;
+  customMilestoneCount: number;
+};
+
+type ExecutionPreviewJob = Pick<
+  JobProperties,
+  | "name"
+  | "code"
+  | "startDate"
+  | "location"
+  | "stage"
+  | "type"
+  | "flag"
+  | "relatedTo"
+  | "collaborators"
+  | "note"
+>;
+
+type DealExecutionPreview = {
+  executedAt: string;
+  job: ExecutionPreviewJob;
+  milestones: ExecutionPreviewMilestone[];
+  generalTasks: ExecutionPreviewTask[];
+  keptDealSalesTasks: Array<{
+    id: number | string;
+    title: string;
+    dueAt: string;
+    status: ToDo["status"];
+  }>;
+  summary: ExecutionPreviewSummary;
+};
+
+const validJobTypes: JobType[] = [
+  "Architecture",
+  "Interior",
+  "Architecture & Interior",
+  "Stands & Events",
+  "Master Plan",
+  "Full Scope",
+  "Internal",
+  "Other",
+];
+
+const isJobType = (value: string | null | undefined): value is JobType =>
+  validJobTypes.includes((value || "") as JobType);
+
+const formatPreviewDate = (value?: string | null) => {
+  if (!value) return "--";
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+};
+
+const resolveScheduledDate = (
+  raw: string | null | undefined,
+  baselineIso: string,
+) => {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+
+  const directDate = new Date(value);
+  if (!Number.isNaN(directDate.getTime())) return directDate.toISOString();
+
+  const match = value.match(
+    /^([+-]?\d+)\s*(day|days|week|weeks|month|months)$/i,
+  );
+  if (!match) return null;
+
+  const amount = Number(match[1] || 0);
+  const unit = String(match[2] || "").toLowerCase();
+  const next = new Date(baselineIso);
+
+  if (unit.startsWith("day")) next.setDate(next.getDate() + amount);
+  else if (unit.startsWith("week")) next.setDate(next.getDate() + amount * 7);
+  else if (unit.startsWith("month")) next.setMonth(next.getMonth() + amount);
+
+  return next.toISOString();
+};
+
+const resolveTaskDueAt = (
+  raw: string | null | undefined,
+  baselineIso: string,
+) => resolveScheduledDate(raw, baselineIso) || baselineIso;
+
+const resolveJobConfigMilestones = (record: CatalogueRecord | null) => {
+  if (!record || !("jobConfiguration" in record)) return [];
+
+  return Array.isArray(record.jobConfiguration?.milestones)
+    ? record.jobConfiguration.milestones
+    : [];
+};
+
+const resolveSalesTasks = (record: CatalogueRecord | null) => {
+  if (!record || !("salesTasks" in record)) return [];
+
+  return Array.isArray(record.salesTasks) ? record.salesTasks : [];
+};
+
+const isDraftDealItem = (item: DealItem, record: CatalogueRecord | null) => {
+  if (item.parentItemId) return false;
+  if (!record) return true;
+
+  return (
+    String((record as { activeState?: string }).activeState || "")
+      .trim()
+      .toLowerCase() === "draft"
+  );
+};
+
+const flattenPreviewTasks = (preview: DealExecutionPreview) => [
+  ...preview.milestones.flatMap((milestone) => [
+    ...milestone.tasks,
+    ...milestone.goals.flatMap((goal) => goal.tasks),
+  ]),
+  ...preview.generalTasks,
+];
+
+const buildExecutionPreview = (
+  currentDeal: DealProperties,
+  executedAt: string,
+): DealExecutionPreview => {
+  const milestones: ExecutionPreviewMilestone[] = [];
+  const generalTasks: ExecutionPreviewTask[] = [];
+  const rootItems = (currentDeal.items || []).filter(
+    (item) => !item.parentItemId,
+  );
+  const keptDealSalesTasks = rootItems
+    .flatMap((item) => item.generatedTaskIds || [])
+    .map((taskId) => todosStore.byId(taskId))
+    .filter((task): task is ToDo => Boolean(task))
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      dueAt: task.dueAt,
+      status: task.status,
+    }));
+
+  const job: ExecutionPreviewJob = {
+    name:
+      currentDeal.code?.trim() ||
+      currentDeal.name?.trim() ||
+      `Job for Deal #${currentDeal.id}`,
+    code: currentDeal.code?.trim() || null,
+    startDate: executedAt,
+    location: currentDeal.location?.trim() || null,
+    stage: "Project | In Progress",
+    type: isJobType(currentDeal.type) ? currentDeal.type : "Other",
+    flag: currentDeal.important ? "High" : "Normal",
+    relatedTo: currentDeal.id,
+    collaborators: [...(currentDeal.collaborators || [])],
+    note: currentDeal.note?.trim() || null,
+  };
+
+  rootItems.forEach((item) => {
+    const record = item.catalogueItemId
+      ? cataloguesStore.recordById(
+          item.catalogueItemId,
+          item.catalogueType || undefined,
+        )
+      : null;
+    const configMilestones = resolveJobConfigMilestones(record);
+    const salesTasks = resolveSalesTasks(record);
+    const goalTemplateMap = new Map<string, string>();
+    const goalMilestoneMap = new Map<string, string>();
+    const taskTemplateMap = new Map<string, string | null>();
+    const itemTasks: ExecutionPreviewTask[] = [];
+
+    const registerTaskTemplate = (
+      taskId: number | string | null | undefined,
+      previewKey: string,
+    ) => {
+      const lookupKey = String(taskId ?? "").trim();
+      if (!lookupKey) return;
+
+      if (!taskTemplateMap.has(lookupKey)) {
+        taskTemplateMap.set(lookupKey, previewKey);
+        return;
+      }
+
+      taskTemplateMap.set(lookupKey, null);
+    };
+
+    const createPreviewTask = (
+      rawTask: CatalogueJobConfigTask,
+      options: {
+        key: string;
+        kind: ExecutionPreviewTaskKind;
+        sourceLabel: string;
+        milestoneKey?: string | null;
+        goalKey?: string | null;
+      },
+    ): ExecutionPreviewTask => {
+      const triggerGoalKey =
+        rawTask.startTrigger?.type === "goal" ||
+        rawTask.startTrigger?.type === "task"
+          ? (goalTemplateMap.get(
+              String(rawTask.startTrigger.goalId ?? "").trim(),
+            ) ?? null)
+          : null;
+      const goalKey = options.goalKey ?? triggerGoalKey ?? null;
+      const milestoneKey =
+        options.milestoneKey ??
+        (goalKey ? (goalMilestoneMap.get(goalKey) ?? null) : null);
+      const previewTask: ExecutionPreviewTask = {
+        key: options.key,
+        title: String(rawTask.title || "").trim() || "Untitled Task",
+        dueAt: resolveTaskDueAt(rawTask.afterWhen, executedAt),
+        notes: String(rawTask.notes || "").trim(),
+        status:
+          rawTask.status === "in_progress" ||
+          rawTask.status === "for_review" ||
+          rawTask.status === "completed"
+            ? rawTask.status
+            : "pending",
+        important: Boolean(rawTask.important),
+        collaborators: Array.isArray(rawTask.collaborators)
+          ? rawTask.collaborators.map((collaborator) => ({ ...collaborator }))
+          : [],
+        attachment: rawTask.attachment ? { ...rawTask.attachment } : null,
+        steps: Array.isArray(rawTask.steps)
+          ? rawTask.steps.map((step) => ({ ...step }))
+          : [],
+        sourceLabel: options.sourceLabel,
+        kind: options.kind,
+        afterWhen: rawTask.afterWhen ?? null,
+        milestoneKey,
+        goalKey,
+        startTriggerType: rawTask.startTrigger?.type ?? null,
+        startTriggerGoalKey: triggerGoalKey,
+        startTriggerTaskSourceId:
+          rawTask.startTrigger?.type === "task"
+            ? String(rawTask.startTrigger.taskId ?? "").trim() || null
+            : null,
+        startTriggerTaskKey: null,
+      };
+
+      registerTaskTemplate(rawTask.id, previewTask.key);
+      itemTasks.push(previewTask);
+
+      return previewTask;
+    };
+
+    configMilestones.forEach((milestone, milestoneIndex) => {
+      const milestoneKey = `milestone:${item.id}:${milestone.id}:${milestoneIndex}`;
+      const previewMilestone: ExecutionPreviewMilestone = {
+        key: milestoneKey,
+        name: String(milestone.name || item.name).trim() || item.name,
+        startDate: executedAt,
+        dueDate:
+          resolveScheduledDate(
+            milestone.afterWhen ?? milestone.dueDate,
+            executedAt,
+          ) ?? null,
+        priority: milestone.priority ?? "Normal",
+        note: String(milestone.note || "").trim() || null,
+        sourceLabel: item.name,
+        isFallback: false,
+        tasks: [],
+        goals: [],
+      };
+
+      previewMilestone.goals = (milestone.goals || []).map(
+        (goal, goalIndex) => {
+          const goalKey = `goal:${item.id}:${milestone.id}:${goal.id}:${goalIndex}`;
+
+          goalTemplateMap.set(String(goal.id), goalKey);
+          goalMilestoneMap.set(goalKey, milestoneKey);
+
+          return {
+            key: goalKey,
+            milestoneKey,
+            name: String(goal.name || "").trim() || "Untitled Goal",
+            startDate: executedAt,
+            dueDate:
+              resolveScheduledDate(
+                goal.afterWhen ?? goal.dueDate,
+                executedAt,
+              ) ?? null,
+            priority: goal.priority ?? "Normal",
+            note: String(goal.note || "").trim() || null,
+            sourceLabel: item.name,
+            tasks: [],
+          };
+        },
+      );
+
+      previewMilestone.tasks = (milestone.tasks || []).map((task, taskIndex) =>
+        createPreviewTask(task, {
+          key: `task:milestone:${item.id}:${milestone.id}:${task.id}:${taskIndex}`,
+          kind: "milestone",
+          sourceLabel: `${item.name} / ${previewMilestone.name}`,
+          milestoneKey,
+        }),
+      );
+
+      previewMilestone.goals.forEach((goalPreview, goalIndex) => {
+        const goalConfig = milestone.goals?.[goalIndex];
+        goalPreview.tasks = (goalConfig?.tasks || []).map((task, taskIndex) =>
+          createPreviewTask(task, {
+            key: `task:goal:${item.id}:${goalConfig?.id}:${task.id}:${taskIndex}`,
+            kind: "goal",
+            sourceLabel: `${item.name} / ${goalPreview.name}`,
+            milestoneKey,
+            goalKey: goalPreview.key,
+          }),
+        );
+      });
+
+      milestones.push(previewMilestone);
+    });
+
+    if (!configMilestones.length && isDraftDealItem(item, record)) {
+      milestones.push({
+        key: `milestone:fallback:${item.id}`,
+        name: item.name,
+        startDate: executedAt,
+        dueDate: resolveScheduledDate(
+          currentDeal.estimatedDeliveryDate,
+          executedAt,
+        ),
+        priority: "Normal",
+        note: item.note?.trim() || null,
+        sourceLabel: item.name,
+        isFallback: true,
+        tasks: [],
+        goals: [],
+      });
+    }
+
+    salesTasks.forEach((task, taskIndex) => {
+      const previewTask = createPreviewTask(task, {
+        key: `task:sales:${item.id}:${task.id}:${taskIndex}`,
+        kind: "sales",
+        sourceLabel: `${item.name} / Sales Task`,
+      });
+
+      if (previewTask.goalKey) {
+        const milestoneKey = previewTask.milestoneKey;
+        const milestoneTarget = milestones.find(
+          (entry) => entry.key === milestoneKey,
+        );
+        const goalTarget = milestoneTarget?.goals.find(
+          (entry) => entry.key === previewTask.goalKey,
+        );
+
+        if (goalTarget) {
+          goalTarget.tasks.push(previewTask);
+          return;
+        }
+      }
+
+      generalTasks.push(previewTask);
+    });
+
+    itemTasks.forEach((task) => {
+      if (task.startTriggerType !== "task" || !task.startTriggerTaskSourceId)
+        return;
+
+      const lookupKey = task.startTriggerTaskSourceId;
+      if (!lookupKey) return;
+
+      task.startTriggerTaskKey = taskTemplateMap.get(lookupKey) ?? null;
+    });
+  });
+
+  const summary: ExecutionPreviewSummary = {
+    milestoneCount: milestones.length,
+    goalCount: milestones.reduce(
+      (sum, milestone) => sum + milestone.goals.length,
+      0,
+    ),
+    jobTaskCount: flattenPreviewTasks({
+      executedAt,
+      job,
+      milestones,
+      generalTasks,
+      keptDealSalesTasks,
+      summary: {
+        milestoneCount: 0,
+        goalCount: 0,
+        jobTaskCount: 0,
+        keptDealSalesTaskCount: 0,
+        customMilestoneCount: 0,
+      },
+    }).length,
+    keptDealSalesTaskCount: keptDealSalesTasks.length,
+    customMilestoneCount: milestones.filter((milestone) => milestone.isFallback)
+      .length,
+  };
+
+  return {
+    executedAt,
+    job,
+    milestones,
+    generalTasks,
+    keptDealSalesTasks,
+    summary,
+  };
+};
+
+const closeExecutePreviewDialog = () => {
+  isExecutePreviewDialogVisible.value = false;
+  isExecutingDeal.value = false;
+  executePreview.value = null;
+  executePreviewError.value = null;
+};
 
 const cloneDeal = (value: DealProperties | null) => {
   if (!value) return null;
@@ -194,6 +682,184 @@ const goalTriggerOptions = computed(
 const openEditDialog = () => {
   dialogError.value = null;
   isDealEditDialogVisible.value = true;
+};
+
+const openExecutePreviewDialog = () => {
+  if (!deal.value) return;
+
+  const executedAt = new Date().toISOString();
+
+  try {
+    executePreview.value = buildExecutionPreview(deal.value, executedAt);
+    executePreviewError.value = null;
+  } catch (previewError) {
+    console.error("Failed to build deal execution preview", previewError);
+    executePreview.value = null;
+    executePreviewError.value = "Unable to build execution preview.";
+  }
+
+  isExecutePreviewDialogVisible.value = true;
+};
+
+const confirmDealExecution = () => {
+  if (!deal.value || !executePreview.value || isExecutingDeal.value) return;
+
+  isExecutingDeal.value = true;
+  const currentDealId = deal.value.id;
+  const previousRelatedTo = deal.value.relatedTo ?? null;
+  const createdTodoIds: Array<number | string> = [];
+  let createdJobId: number | string | null = null;
+
+  try {
+    const preview = executePreview.value;
+    const createdJob = jobsStore.addJob({
+      name: preview.job.name,
+      code: preview.job.code,
+      startDate: preview.job.startDate,
+      location: preview.job.location,
+      stage: preview.job.stage,
+      type: preview.job.type,
+      flag: preview.job.flag,
+      relatedTo: preview.job.relatedTo,
+      collaborators: [...preview.job.collaborators],
+      note: preview.job.note,
+      milestones: [],
+      goals: [],
+      stakeholders: [],
+    });
+    createdJobId = createdJob.id;
+    const relatedTo = {
+      id: createdJob.id,
+      name: createdJob.name,
+      type: "job",
+    };
+    const milestoneIdByKey = new Map<string, number>();
+    const goalIdByKey = new Map<string, number>();
+    const taskIdByKey = new Map<string, number | string>();
+
+    preview.milestones.forEach((milestone) => {
+      const createdMilestone = jobsStore.addMilestone(createdJob.id, {
+        name: milestone.name,
+        startDate: milestone.startDate,
+        dueDate: milestone.dueDate,
+        priority: milestone.priority,
+        note: milestone.note,
+      });
+
+      if (createdMilestone)
+        milestoneIdByKey.set(milestone.key, createdMilestone.id);
+    });
+
+    preview.milestones.forEach((milestone) => {
+      const milestoneId = milestoneIdByKey.get(milestone.key);
+      if (!milestoneId) return;
+
+      milestone.goals.forEach((goal) => {
+        const createdGoal = jobsStore.addGoal(createdJob.id, {
+          milestoneId,
+          name: goal.name,
+          startDate: goal.startDate,
+          dueDate: goal.dueDate,
+          priority: goal.priority,
+          note: goal.note,
+        });
+
+        if (createdGoal) goalIdByKey.set(goal.key, createdGoal.id);
+      });
+    });
+
+    const previewTasks = flattenPreviewTasks(preview);
+
+    previewTasks.forEach((task) => {
+      const createdTodo = todosStore.addTodo({
+        title: task.title,
+        collaborators: task.collaborators.map((collaborator) => ({
+          ...collaborator,
+        })),
+        dueAt: task.dueAt,
+        afterWhen: task.afterWhen,
+        startTrigger:
+          task.startTriggerType === "goal" && task.startTriggerGoalKey
+            ? {
+                type: "goal",
+                goalId: goalIdByKey.get(task.startTriggerGoalKey) ?? null,
+                taskId: null,
+              }
+            : task.startTriggerType === "task"
+              ? {
+                  type: "task",
+                  goalId: task.startTriggerGoalKey
+                    ? (goalIdByKey.get(task.startTriggerGoalKey) ?? null)
+                    : null,
+                  taskId: null,
+                }
+              : task.startTriggerType === "time"
+                ? {
+                    type: "time",
+                    goalId: null,
+                    taskId: null,
+                  }
+                : null,
+        status: task.status,
+        notes: task.notes,
+        important: task.important,
+        attachment: task.attachment ? { ...task.attachment } : null,
+        relatedTo,
+        milestoneId: task.milestoneKey
+          ? (milestoneIdByKey.get(task.milestoneKey) ?? null)
+          : null,
+        goalId: task.goalKey ? (goalIdByKey.get(task.goalKey) ?? null) : null,
+        steps: task.steps.map((step) => ({ ...step })),
+      });
+
+      taskIdByKey.set(task.key, createdTodo.id);
+      createdTodoIds.push(createdTodo.id);
+    });
+
+    previewTasks.forEach((task) => {
+      if (task.startTriggerType !== "task" || !task.startTriggerTaskKey) return;
+
+      const createdTaskId = taskIdByKey.get(task.key);
+      const triggerTaskId = taskIdByKey.get(task.startTriggerTaskKey);
+      if (!createdTaskId || !triggerTaskId) return;
+
+      todosStore.updateTodo(createdTaskId, {
+        startTrigger: {
+          type: "task",
+          goalId: task.startTriggerGoalKey
+            ? (goalIdByKey.get(task.startTriggerGoalKey) ?? null)
+            : null,
+          taskId: triggerTaskId,
+        } as any,
+      } as any);
+    });
+
+    const updatedDeal = dealsStore.updateDeal(currentDealId, {
+      relatedTo: createdJob.id,
+    });
+    if (updatedDeal) deal.value = cloneDeal(updatedDeal);
+
+    notifications.push(
+      `Deal executed into ${createdJob.name} with ${preview.summary.jobTaskCount} tasks`,
+      "success",
+      4000,
+    );
+    closeExecutePreviewDialog();
+  } catch (executionError) {
+    createdTodoIds.forEach((todoId) => todosStore.removeTodo(todoId));
+    if (createdJobId !== null) jobsStore.removeJob(createdJobId);
+
+    const revertedDeal = dealsStore.updateDeal(currentDealId, {
+      relatedTo: previousRelatedTo,
+    });
+    if (revertedDeal) deal.value = cloneDeal(revertedDeal);
+
+    console.error("Failed to execute deal", executionError);
+    executePreviewError.value =
+      "Execution failed. Created changes were rolled back.";
+    notifications.push("Failed to execute deal", "error", 4000);
+    isExecutingDeal.value = false;
+  }
 };
 
 const saveDeal = (payload: Partial<DealProperties>) => {
@@ -655,6 +1321,7 @@ watch(
           :linked-to-name="linkedToName"
           :collaborator-names="collaboratorNames"
           @edit="openEditDialog"
+          @execute="openExecutePreviewDialog"
         />
       </VCol>
 
@@ -745,6 +1412,204 @@ watch(
       :goal-trigger-options="goalTriggerOptions"
       @save="onTaskTemplateSaved"
     />
+
+    <VDialog v-model="isExecutePreviewDialogVisible" max-width="840">
+      <VCard>
+        <VCardItem>
+          <VCardTitle>Confirm Deal Execution</VCardTitle>
+          <VCardSubtitle>
+            Review job creation, milestones, goals, and tasks before confirming.
+          </VCardSubtitle>
+        </VCardItem>
+
+        <VCardText>
+          <VAlert
+            v-if="executePreviewError"
+            type="error"
+            variant="tonal"
+            class="mb-4"
+          >
+            {{ executePreviewError }}
+          </VAlert>
+
+          <template v-else-if="executePreview">
+            <VRow class="mb-2">
+              <VCol cols="12" md="6">
+                <VCard variant="tonal" class="pa-4 h-100">
+                  <div class="text-overline mb-2">New Job</div>
+                  <div class="text-h6 mb-2">{{ executePreview.job.name }}</div>
+                  <div class="text-body-2 text-medium-emphasis">
+                    {{ executePreview.job.type }} |
+                    {{ executePreview.job.stage }}
+                  </div>
+                  <div class="text-body-2 text-medium-emphasis">
+                    Start: {{ formatPreviewDate(executePreview.executedAt) }}
+                  </div>
+                  <div class="text-body-2 text-medium-emphasis">
+                    Location: {{ executePreview.job.location || "--" }}
+                  </div>
+                </VCard>
+              </VCol>
+
+              <VCol cols="12" md="6">
+                <VCard variant="tonal" class="pa-4 h-100">
+                  <div class="text-overline mb-2">Execution Summary</div>
+                  <div class="d-flex flex-column gap-1 text-body-2">
+                    <span>
+                      {{ executePreview.summary.milestoneCount }} milestones
+                    </span>
+                    <span>{{ executePreview.summary.goalCount }} goals</span>
+                    <span>
+                      {{ executePreview.summary.jobTaskCount }} new job tasks
+                    </span>
+                    <span>
+                      {{
+                        executePreview.summary.keptDealSalesTaskCount
+                      }}
+                      existing deal sales tasks stay on deal
+                    </span>
+                    <span>
+                      {{ executePreview.summary.customMilestoneCount }} custom
+                      item milestones
+                    </span>
+                  </div>
+                </VCard>
+              </VCol>
+            </VRow>
+
+            <VExpansionPanels multiple>
+              <VExpansionPanel
+                v-for="milestone in executePreview.milestones"
+                :key="milestone.key"
+              >
+                <VExpansionPanelTitle>
+                  <div>
+                    <div class="font-weight-medium">
+                      {{ milestone.name }}
+                      <VChip
+                        v-if="milestone.isFallback"
+                        size="x-small"
+                        color="warning"
+                        class="ms-2"
+                        label
+                      >
+                        Custom Item
+                      </VChip>
+                    </div>
+                    <div class="text-body-2 text-medium-emphasis">
+                      {{ milestone.sourceLabel }} | Due
+                      {{ formatPreviewDate(milestone.dueDate) }}
+                    </div>
+                  </div>
+                </VExpansionPanelTitle>
+
+                <VExpansionPanelText>
+                  <div class="text-body-2 mb-3">
+                    {{ milestone.note || "No milestone note." }}
+                  </div>
+
+                  <div v-if="milestone.tasks.length" class="mb-4">
+                    <div class="text-subtitle-2 mb-2">Milestone Tasks</div>
+                    <VList density="compact">
+                      <VListItem
+                        v-for="task in milestone.tasks"
+                        :key="task.key"
+                        :title="task.title"
+                        :subtitle="`${formatPreviewDate(task.dueAt)} | ${task.sourceLabel}`"
+                      />
+                    </VList>
+                  </div>
+
+                  <div
+                    v-if="milestone.goals.length"
+                    class="d-flex flex-column gap-3"
+                  >
+                    <VCard
+                      v-for="goal in milestone.goals"
+                      :key="goal.key"
+                      variant="outlined"
+                      class="pa-4"
+                    >
+                      <div class="font-weight-medium">{{ goal.name }}</div>
+                      <div class="text-body-2 text-medium-emphasis mb-2">
+                        Due {{ formatPreviewDate(goal.dueDate) }}
+                      </div>
+                      <div class="text-body-2 mb-3">
+                        {{ goal.note || "No goal note." }}
+                      </div>
+                      <VList v-if="goal.tasks.length" density="compact">
+                        <VListItem
+                          v-for="task in goal.tasks"
+                          :key="task.key"
+                          :title="task.title"
+                          :subtitle="`${formatPreviewDate(task.dueAt)} | ${task.sourceLabel}`"
+                        />
+                      </VList>
+                      <div v-else class="text-body-2 text-medium-emphasis">
+                        No goal tasks.
+                      </div>
+                    </VCard>
+                  </div>
+                </VExpansionPanelText>
+              </VExpansionPanel>
+            </VExpansionPanels>
+
+            <VCard
+              v-if="executePreview.generalTasks.length"
+              variant="outlined"
+              class="pa-4 mt-4"
+            >
+              <div class="text-subtitle-1 mb-2">General Job Tasks</div>
+              <VList density="compact">
+                <VListItem
+                  v-for="task in executePreview.generalTasks"
+                  :key="task.key"
+                  :title="task.title"
+                  :subtitle="`${formatPreviewDate(task.dueAt)} | ${task.sourceLabel}`"
+                />
+              </VList>
+            </VCard>
+
+            <VCard variant="outlined" class="pa-4 mt-4">
+              <div class="text-subtitle-1 mb-2">Existing Deal Sales Tasks</div>
+              <VList
+                v-if="executePreview.keptDealSalesTasks.length"
+                density="compact"
+              >
+                <VListItem
+                  v-for="task in executePreview.keptDealSalesTasks"
+                  :key="task.id"
+                  :title="task.title"
+                  :subtitle="`${formatPreviewDate(task.dueAt)} | ${task.status}`"
+                />
+              </VList>
+              <div v-else class="text-body-2 text-medium-emphasis">
+                No existing deal sales tasks will be kept.
+              </div>
+            </VCard>
+          </template>
+        </VCardText>
+
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="text"
+            color="secondary"
+            :disabled="isExecutingDeal"
+            @click="closeExecutePreviewDialog"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :loading="isExecutingDeal"
+            :disabled="!executePreview || Boolean(executePreviewError)"
+            @click="confirmDealExecution"
+          >
+            Confirm Execution
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <EmailDialog
       ref="composeDialogRef"

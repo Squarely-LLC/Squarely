@@ -13,6 +13,7 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (e: "edit"): void;
+  (e: "execute"): void;
 }>();
 
 const formatDate = (value?: string | null) => {
@@ -161,7 +162,7 @@ const noteText = computed(
   </VCard>
 
   <VCardText class="d-flex flex-column align-center pb-2">
-    <VBtn variant="elevated">
+    <VBtn variant="elevated" @click="emit('execute')">
       <VIcon left>tabler-play</VIcon>
       Execute Deal
     </VBtn>

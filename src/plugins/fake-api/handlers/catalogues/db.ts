@@ -30,6 +30,10 @@ export const db: DB = {
         description:
           "Compact upholstered lounge chair for reception and waiting areas.",
         createdAt: "2026-01-19T11:15:00Z",
+        salesTasks: [],
+        jobConfiguration: {
+          milestones: [],
+        },
       },
       {
         id: "product-2",
@@ -45,6 +49,10 @@ export const db: DB = {
         description:
           "Indoor planter set with liners for lobbies, corridors, and breakout spaces.",
         createdAt: "2026-03-02T09:45:00Z",
+        salesTasks: [],
+        jobConfiguration: {
+          milestones: [],
+        },
       },
     ],
     producedProducts: [
@@ -114,6 +122,7 @@ export const db: DB = {
             values: ["Centered", "Offset Left", "Offset Right"],
           },
         ],
+        subItems: [],
         salesTasks: [
           {
             id: 1,
@@ -184,6 +193,10 @@ export const db: DB = {
         description:
           "Short-term pendant lighting kit available for staged events and temporary installs.",
         createdAt: "2026-01-08T08:20:00Z",
+        salesTasks: [],
+        jobConfiguration: {
+          milestones: [],
+        },
       },
     ],
     onetimeServices: [

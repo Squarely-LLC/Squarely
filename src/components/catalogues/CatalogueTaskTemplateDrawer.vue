@@ -219,9 +219,7 @@ const parseAfterWhenValue = (value?: string | null) => {
     );
     const diffDays = Math.max(
       1,
-      Math.round(
-        (startOfTarget.getTime() - startOfToday.getTime()) / 86400000,
-      ),
+      Math.round((startOfTarget.getTime() - startOfToday.getTime()) / 86400000),
     );
 
     return {
@@ -298,10 +296,7 @@ const loadInitial = () => {
     initialCollaborators.value = Array.isArray(init.collaborators)
       ? init.collaborators.map((collaborator) => ({ ...collaborator }))
       : [];
-    startMode.value =
-      init.startTrigger?.type === "goal"
-        ? "goal"
-        : "time";
+    startMode.value = init.startTrigger?.type === "goal" ? "goal" : "time";
     selectedGoalTriggerId.value = init.startTrigger?.goalId
       ? String(init.startTrigger.goalId)
       : null;
@@ -418,7 +413,27 @@ const openWith = (initial?: CatalogueTaskTemplatePayload) => {
   else emit("update:isDrawerOpen", true);
 };
 
-defineExpose({ openWith });
+const hasDraftChanges = computed(() => {
+  if (title.value.trim()) return true;
+  if (notes.value.trim()) return true;
+  if (selectedCollaboratorIds.value.length) return true;
+  if (steps.value.length) return true;
+  if (important.value) return true;
+  if (selectedStatus.value !== "pending") return true;
+  if (attachmentFile.value) return true;
+  if (attachmentInput.value.trim()) return true;
+  if (startMode.value !== "time") return true;
+
+  return false;
+});
+
+const submitIfNeeded = async () => {
+  if (!hasDraftChanges.value) return true;
+
+  return onSubmit();
+};
+
+defineExpose({ openWith, submitIfNeeded });
 
 const buildAfterWhen = () => {
   const presetValueMap = {
@@ -473,7 +488,10 @@ const canSaveTask = computed(() => {
   if (!title.value.trim()) return false;
   if (startMode.value === "goal") return Boolean(selectedGoalTriggerId.value);
   if (afterWhenPreset.value === "custom") {
-    return Number.isFinite(Number(afterWhenValue.value)) && Number(afterWhenValue.value) > 0;
+    return (
+      Number.isFinite(Number(afterWhenValue.value)) &&
+      Number(afterWhenValue.value) > 0
+    );
   }
   return true;
 });
@@ -608,7 +626,7 @@ const formatStepDate = (value?: string | null) => {
 const onSubmit = async () => {
   const { valid } = await (refForm.value?.validate() ??
     Promise.resolve({ valid: true }));
-  if (!valid) return;
+  if (!valid) return false;
 
   const trimmedTitle = title.value.trim();
   const trimmedNotes = notes.value.trim();
@@ -643,6 +661,8 @@ const onSubmit = async () => {
   });
 
   emit("update:isDrawerOpen", false);
+
+  return true;
 };
 
 const drawerTitle = computed(() =>

@@ -167,6 +167,8 @@ export interface CatalogueJobConfiguration {
 
 export interface CatalogueProductRecord extends CatalogueInventoryRecord {
   type: "Product";
+  salesTasks: CatalogueSalesTask[];
+  jobConfiguration: CatalogueJobConfiguration;
 }
 
 export interface CatalogueProducedProductRecord extends CatalogueBaseRecord {
@@ -181,6 +183,8 @@ export interface CatalogueProducedProductRecord extends CatalogueBaseRecord {
 
 export interface CatalogueRentalRecord extends CatalogueInventoryRecord {
   type: "Rental";
+  salesTasks: CatalogueSalesTask[];
+  jobConfiguration: CatalogueJobConfiguration;
 }
 
 export interface CatalogueOnetimeServiceRecord extends CatalogueServiceRecord {
