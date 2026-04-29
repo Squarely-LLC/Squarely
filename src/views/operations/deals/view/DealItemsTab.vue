@@ -525,7 +525,8 @@ const openEditItem = (item: DealItemWithPlan) => {
     editLine.quantity = override.quantity ?? item.quantity ?? 1;
     editLine.unitPrice = override.unitPrice ?? item.unitPrice ?? 0;
     editLine.discountPercent = override.discountPercent ?? 0;
-    editLine.taxApplicable = override.taxApplicable ?? item.taxApplicable ?? null;
+    editLine.taxApplicable =
+      override.taxApplicable ?? item.taxApplicable ?? null;
     editLine.note = override.note ?? item.note ?? "";
     setEditFieldConstraints({
       quantity: true,
@@ -574,7 +575,8 @@ const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   editLine.category = override.category ?? goal.category ?? "";
   editLine.quantity = override.quantity ?? goal.quantity ?? 1;
   editLine.unitPrice = override.unitPrice ?? goal.price ?? 0;
-  editLine.discountPercent = override.discountPercent ?? goal.discountPercent ?? 0;
+  editLine.discountPercent =
+    override.discountPercent ?? goal.discountPercent ?? 0;
   editLine.taxApplicable = override.taxApplicable ?? goal.taxApplicable ?? null;
   editLine.note = override.note ?? goal.note ?? "";
   setEditFieldConstraints({
@@ -582,7 +584,7 @@ const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
     price: goal.showPrice,
     discount: goal.showDiscount,
     tax: goal.showTaxApplicable,
-    info: goal.typeLabel !== "Retainer Service",
+    info: true, // Always allow editing info (Name/Note) for all goal types
   });
   editLineDialogVisible.value = true;
 };
@@ -695,7 +697,8 @@ const applySubItemOverride = (
     quantity: override.quantity ?? goal.quantity,
     discountPercent: override.discountPercent ?? goal.discountPercent,
     discountLabel:
-      override.discountPercent === null || override.discountPercent === undefined
+      override.discountPercent === null ||
+      override.discountPercent === undefined
         ? goal.discountLabel
         : formatPercent(override.discountPercent),
     taxApplicable: override.taxApplicable ?? goal.taxApplicable,
@@ -1419,7 +1422,9 @@ watch(
                           </div>
                           <div v-if="goal.showDiscount" class="product-metric">
                             <span>Discount</span>
-                            <strong>{{ formatGoalDiscount(goal) || "--" }}</strong>
+                            <strong>{{
+                              formatGoalDiscount(goal) || "--"
+                            }}</strong>
                           </div>
                           <div
                             v-if="goal.showTaxApplicable"
@@ -2042,9 +2047,9 @@ watch(
 .item-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.78rem;
+  gap: 0.25rem 0.75rem;
   line-height: 1.2;
   margin-block-start: 0.15rem;
 }
@@ -2056,7 +2061,7 @@ watch(
 .item-card-meta span + span::before {
   position: absolute;
   border-radius: 999px;
-  background: currentColor;
+  background: currentcolor;
   block-size: 0.25rem;
   content: "";
   inline-size: 0.25rem;
@@ -2115,25 +2120,25 @@ watch(
 }
 
 .phase-edit-btn {
-  align-self: flex-start;
   flex: 0 0 auto;
+  align-self: flex-start;
   margin-block-start: -0.25rem;
 }
 
 .item-card-note {
   display: -webkit-box;
   overflow: hidden;
-  margin-block-start: 0.45rem;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+  margin-block-start: 0.45rem;
 }
 
 .milestone-actions {
   display: grid;
   flex: 0 0 3.75rem;
+  justify-content: end;
   grid-template-columns: 1.75rem 1.75rem;
   inline-size: 3.75rem;
-  justify-content: end;
   justify-items: center;
   margin-inline-start: auto;
 }
@@ -2282,8 +2287,8 @@ watch(
   }
 
   .item-card-header {
-    align-items: flex-start;
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .product-metrics,
