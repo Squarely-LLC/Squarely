@@ -1,120 +1,140 @@
-import { defineStore } from 'pinia'
-import { toRaw } from 'vue'
+import { defineStore } from "pinia";
+import { toRaw } from "vue";
 
-import { db } from '@/plugins/fake-api/handlers/operations/deals/db'
+import { db } from "@/plugins/fake-api/handlers/operations/deals/db";
 import type {
-  DealFinancialEntry,
   DealFieldValue,
+  DealFinancialEntry,
   DealItem,
   DealProperties,
-} from '@/plugins/fake-api/handlers/operations/deals/types'
+} from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useTodos } from "@/stores/todos";
 
-const STORAGE_KEY = 'app.deals.v3'
+const STORAGE_KEY = "app.deals.v3";
 
 function cloneDeal(deal: DealProperties): DealProperties {
-  const raw = toRaw(deal) as DealProperties
+  const raw = toRaw(deal) as DealProperties;
 
   try {
-    return JSON.parse(JSON.stringify(raw)) as DealProperties
-  }
-  catch (error) {
+    return JSON.parse(JSON.stringify(raw)) as DealProperties;
+  } catch (error) {
     return {
       ...raw,
-      collaborators: Array.isArray(raw.collaborators) ? [...raw.collaborators] : [],
+      collaborators: Array.isArray(raw.collaborators)
+        ? [...raw.collaborators]
+        : [],
       customFieldValues: { ...(raw.customFieldValues || {}) },
-      items: Array.isArray(raw.items) ? raw.items.map(item => ({ ...item })) : [],
-      documents: Array.isArray(raw.documents) ? raw.documents.map(document => ({ ...document })) : [],
-      financials: Array.isArray(raw.financials) ? raw.financials.map(entry => ({ ...entry })) : [],
-    }
+      items: Array.isArray(raw.items)
+        ? raw.items.map((item) => ({ ...item }))
+        : [],
+      documents: Array.isArray(raw.documents)
+        ? raw.documents.map((document) => ({ ...document }))
+        : [],
+      financials: Array.isArray(raw.financials)
+        ? raw.financials.map((entry) => ({ ...entry }))
+        : [],
+    };
   }
 }
 
 function cloneDealsArray(deals: DealProperties[]) {
-  return deals.map(deal => cloneDeal(deal))
+  return deals.map((deal) => cloneDeal(deal));
 }
 
 function loadFromStorage(): DealProperties[] | null {
-  if (typeof window === 'undefined')
-    return null
+  if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw)
-      return null
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
 
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(raw);
 
-    return Array.isArray(parsed) ? parsed as DealProperties[] : null
-  }
-  catch (error) {
-    console.warn('Failed to load deals from storage:', error)
+    return Array.isArray(parsed) ? (parsed as DealProperties[]) : null;
+  } catch (error) {
+    console.warn("Failed to load deals from storage:", error);
 
-    return null
+    return null;
   }
 }
 
 function saveToStorage(deals: DealProperties[]) {
-  if (typeof window === 'undefined')
-    return
+  if (typeof window === "undefined") return;
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(deals))
-  }
-  catch (error) {
-    console.warn('Failed to save deals to storage:', error)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(deals));
+  } catch (error) {
+    console.warn("Failed to save deals to storage:", error);
   }
 }
 
 function nextDealId(items: DealProperties[]) {
   const ids = items
-    .map(deal => Number(deal.id))
-    .filter(value => Number.isFinite(value) && value > 0)
+    .map((deal) => Number(deal.id))
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-  return ids.length ? Math.max(...ids) + 1 : 1
+  return ids.length ? Math.max(...ids) + 1 : 1;
 }
 
 function nextDealCode(items: DealProperties[]) {
-  const nextSequence = items.reduce((maxValue, deal) => {
-    const match = String(deal.code ?? '').match(/DL-(\d+)/i)
-    if (!match)
-      return maxValue
+  const nextSequence =
+    items.reduce((maxValue, deal) => {
+      const match = String(deal.code ?? "").match(/DL-(\d+)/i);
+      if (!match) return maxValue;
 
-    const numeric = Number(match[1])
+      const numeric = Number(match[1]);
 
-    return Number.isFinite(numeric) ? Math.max(maxValue, numeric) : maxValue
-  }, 1000) + 1
+      return Number.isFinite(numeric) ? Math.max(maxValue, numeric) : maxValue;
+    }, 1000) + 1;
 
-  return `DL-${nextSequence}`
+  return `DL-${nextSequence}`;
 }
 
 function normalizeCustomFieldValues(
   values: Record<string, DealFieldValue> | undefined | null,
 ): Record<string, DealFieldValue> {
-  if (!values || typeof values !== 'object')
-    return {}
+  if (!values || typeof values !== "object") return {};
 
-  return Object.fromEntries(Object.entries(values))
+  return Object.fromEntries(Object.entries(values));
 }
 
 function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
-  if (!Array.isArray(items))
-    return []
+  if (!Array.isArray(items)) return [];
 
-  return items.map(item => ({ ...item }))
+  return items.map(({ generatedTaskIds: _generatedTaskIds, ...item }) => ({
+    ...item,
+  }));
 }
 
-function normalizeDocuments(documents: DealProperties['documents'] | undefined | null) {
-  if (!Array.isArray(documents))
-    return []
-
-  return documents.map(document => ({ ...document }))
+function collectLegacyGeneratedTaskIds(deals: DealProperties[]) {
+  return deals.flatMap((deal) =>
+    (deal.items || []).flatMap((item) => item.generatedTaskIds || []),
+  );
 }
 
-function normalizeFinancials(financials: DealFinancialEntry[] | undefined | null): DealFinancialEntry[] {
-  if (!Array.isArray(financials))
-    return []
+function sanitizeDeals(deals: DealProperties[]) {
+  return deals.map((deal) => ({
+    ...deal,
+    items: normalizeItems(deal.items),
+    documents: normalizeDocuments(deal.documents),
+    financials: normalizeFinancials(deal.financials),
+  }));
+}
 
-  return financials.map(entry => ({ ...entry }))
+function normalizeDocuments(
+  documents: DealProperties["documents"] | undefined | null,
+) {
+  if (!Array.isArray(documents)) return [];
+
+  return documents.map((document) => ({ ...document }));
+}
+
+function normalizeFinancials(
+  financials: DealFinancialEntry[] | undefined | null,
+): DealFinancialEntry[] {
+  if (!Array.isArray(financials)) return [];
+
+  return financials.map((entry) => ({ ...entry }));
 }
 
 function normaliseDeal(
@@ -122,8 +142,8 @@ function normaliseDeal(
   assignedId: number,
   generatedCode: string,
 ): DealProperties {
-  const now = new Date().toISOString()
-  const code = payload.code?.trim() || generatedCode
+  const now = new Date().toISOString();
+  const code = payload.code?.trim() || generatedCode;
 
   return {
     id: assignedId,
@@ -136,7 +156,9 @@ function normaliseDeal(
     important: Boolean(payload.important),
     location: payload.location?.trim() || null,
     collaborators: Array.isArray(payload.collaborators)
-      ? payload.collaborators.map(value => Number(value)).filter(Number.isFinite)
+      ? payload.collaborators
+          .map((value) => Number(value))
+          .filter(Number.isFinite)
       : [],
     note: payload.note?.trim() || null,
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
@@ -144,7 +166,7 @@ function normaliseDeal(
     documents: normalizeDocuments(payload.documents),
     financials: normalizeFinancials(payload.financials),
     createdAt: payload.createdAt || now,
-  }
+  };
 }
 
 function mergeDeal(
@@ -156,95 +178,115 @@ function mergeDeal(
     ...patch,
     code: patch.code === undefined ? original.code : patch.code?.trim() || null,
     type: patch.type === undefined ? original.type : patch.type?.trim() || null,
-    stage: patch.stage === undefined ? original.stage : patch.stage?.trim() || null,
-    location: patch.location === undefined ? original.location : patch.location?.trim() || null,
+    stage:
+      patch.stage === undefined ? original.stage : patch.stage?.trim() || null,
+    location:
+      patch.location === undefined
+        ? original.location
+        : patch.location?.trim() || null,
     note: patch.note === undefined ? original.note : patch.note?.trim() || null,
     collaborators: Array.isArray(patch.collaborators)
-      ? patch.collaborators.map(value => Number(value)).filter(Number.isFinite)
+      ? patch.collaborators
+          .map((value) => Number(value))
+          .filter(Number.isFinite)
       : original.collaborators,
-    customFieldValues: patch.customFieldValues === undefined
-      ? { ...(original.customFieldValues || {}) }
-      : normalizeCustomFieldValues(patch.customFieldValues),
-    items: patch.items === undefined
-      ? normalizeItems(original.items)
-      : normalizeItems(patch.items),
-    documents: patch.documents === undefined
-      ? normalizeDocuments(original.documents)
-      : normalizeDocuments(patch.documents),
-    financials: patch.financials === undefined
-      ? normalizeFinancials(original.financials)
-      : normalizeFinancials(patch.financials),
-  })
+    customFieldValues:
+      patch.customFieldValues === undefined
+        ? { ...(original.customFieldValues || {}) }
+        : normalizeCustomFieldValues(patch.customFieldValues),
+    items:
+      patch.items === undefined
+        ? normalizeItems(original.items)
+        : normalizeItems(patch.items),
+    documents:
+      patch.documents === undefined
+        ? normalizeDocuments(original.documents)
+        : normalizeDocuments(patch.documents),
+    financials:
+      patch.financials === undefined
+        ? normalizeFinancials(original.financials)
+        : normalizeFinancials(patch.financials),
+  });
 }
 
-const seedDeals = () => cloneDealsArray(db.deals)
+const seedDeals = () => cloneDealsArray(db.deals);
 
-export const useDealsStore = defineStore('deals', {
+export const useDealsStore = defineStore("deals", {
   state: () => ({
     items: [] as DealProperties[],
     initialized: false,
   }),
   getters: {
-    all: state => state.items,
-    byId: state => (id: number | string) =>
-      state.items.find(deal => String(deal.id) === String(id)) ?? null,
+    all: (state) => state.items,
+    byId: (state) => (id: number | string) =>
+      state.items.find((deal) => String(deal.id) === String(id)) ?? null,
   },
   actions: {
     init(force = false) {
-      if (this.initialized && !force)
-        return
+      if (this.initialized && !force) return;
 
-      const stored = loadFromStorage()
+      const stored = loadFromStorage();
+      const sourceDeals = stored && stored.length ? stored : seedDeals();
+      const legacyGeneratedTaskIds = collectLegacyGeneratedTaskIds(sourceDeals);
+      this.items = sanitizeDeals(cloneDealsArray(sourceDeals));
 
-      if (stored && stored.length) {
-        this.items = cloneDealsArray(stored)
+      if (legacyGeneratedTaskIds.length) {
+        const todosStore = useTodos();
+        todosStore.init();
+        legacyGeneratedTaskIds.forEach((taskId) =>
+          todosStore.removeTodo(taskId),
+        );
       }
-      else {
-        this.items = seedDeals()
-        saveToStorage(this.items)
-      }
 
-      this.initialized = true
+      saveToStorage(this.items);
 
-      if (typeof window !== 'undefined') {
-        this.$subscribe((_mutation, state) => {
-          saveToStorage(cloneDealsArray(state.items))
-        }, { detached: true })
+      this.initialized = true;
+
+      if (typeof window !== "undefined") {
+        this.$subscribe(
+          (_mutation, state) => {
+            saveToStorage(cloneDealsArray(state.items));
+          },
+          { detached: true },
+        );
       }
     },
 
     addDeal(payload: Partial<DealProperties>) {
-      const incomingId = payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined
-      const id = incomingId ?? nextDealId(this.items)
-      const normalised = normaliseDeal(payload, id, nextDealCode(this.items))
+      const incomingId =
+        payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
+      const id = incomingId ?? nextDealId(this.items);
+      const normalised = normaliseDeal(payload, id, nextDealCode(this.items));
 
-      this.items.unshift(normalised)
+      this.items.unshift(normalised);
 
-      return normalised
+      return normalised;
     },
 
     updateDeal(id: number | string, patch: Partial<DealProperties>) {
-      const index = this.items.findIndex(deal => String(deal.id) === String(id))
-      if (index === -1)
-        return null
+      const index = this.items.findIndex(
+        (deal) => String(deal.id) === String(id),
+      );
+      if (index === -1) return null;
 
-      const updated = mergeDeal(this.items[index], patch)
+      const updated = mergeDeal(this.items[index], patch);
 
-      this.items.splice(index, 1, updated)
+      this.items.splice(index, 1, updated);
 
-      return updated
+      return updated;
     },
 
     removeDeal(id: number | string) {
-      const index = this.items.findIndex(deal => String(deal.id) === String(id))
-      if (index === -1)
-        return
+      const index = this.items.findIndex(
+        (deal) => String(deal.id) === String(id),
+      );
+      if (index === -1) return;
 
-      this.items.splice(index, 1)
+      this.items.splice(index, 1);
     },
 
     replaceAll(deals: DealProperties[]) {
-      this.items = cloneDealsArray(deals)
+      this.items = cloneDealsArray(deals);
     },
   },
-})
+});

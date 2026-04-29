@@ -152,7 +152,6 @@ type ExecutionPreviewSummary = {
   milestoneCount: number;
   goalCount: number;
   jobTaskCount: number;
-  keptDealSalesTaskCount: number;
   customMilestoneCount: number;
 };
 
@@ -175,12 +174,6 @@ type DealExecutionPreview = {
   job: ExecutionPreviewJob;
   milestones: ExecutionPreviewMilestone[];
   generalTasks: ExecutionPreviewTask[];
-  keptDealSalesTasks: Array<{
-    id: number | string;
-    title: string;
-    dueAt: string;
-    status: ToDo["status"];
-  }>;
   summary: ExecutionPreviewSummary;
 };
 
@@ -285,16 +278,6 @@ const buildExecutionPreview = (
   const rootItems = (currentDeal.items || []).filter(
     (item) => !item.parentItemId,
   );
-  const keptDealSalesTasks = rootItems
-    .flatMap((item) => item.generatedTaskIds || [])
-    .map((taskId) => todosStore.byId(taskId))
-    .filter((task): task is ToDo => Boolean(task))
-    .map((task) => ({
-      id: task.id,
-      title: task.title,
-      dueAt: task.dueAt,
-      status: task.status,
-    }));
 
   const job: ExecutionPreviewJob = {
     name:
@@ -307,7 +290,7 @@ const buildExecutionPreview = (
     stage: "Project | In Progress",
     type: isJobType(currentDeal.type) ? currentDeal.type : "Other",
     flag: currentDeal.important ? "High" : "Normal",
-    relatedTo: currentDeal.id,
+    relatedTo: currentDeal.relatedTo ?? null,
     collaborators: [...(currentDeal.collaborators || [])],
     note: currentDeal.note?.trim() || null,
   };
@@ -535,16 +518,13 @@ const buildExecutionPreview = (
       job,
       milestones,
       generalTasks,
-      keptDealSalesTasks,
       summary: {
         milestoneCount: 0,
         goalCount: 0,
         jobTaskCount: 0,
-        keptDealSalesTaskCount: 0,
         customMilestoneCount: 0,
       },
     }).length,
-    keptDealSalesTaskCount: keptDealSalesTasks.length,
     customMilestoneCount: milestones.filter((milestone) => milestone.isFallback)
       .length,
   };
@@ -554,7 +534,6 @@ const buildExecutionPreview = (
     job,
     milestones,
     generalTasks,
-    keptDealSalesTasks,
     summary,
   };
 };
@@ -712,6 +691,16 @@ const confirmDealExecution = () => {
 
   try {
     const preview = executePreview.value;
+    const stakeholderContactId = Number(preview.job.relatedTo ?? NaN);
+    const stakeholders = Number.isFinite(stakeholderContactId)
+      ? [
+          {
+            id: 1,
+            contactId: stakeholderContactId,
+            role: "Client",
+          },
+        ]
+      : [];
     const createdJob = jobsStore.addJob({
       name: preview.job.name,
       code: preview.job.code,
@@ -725,7 +714,7 @@ const confirmDealExecution = () => {
       note: preview.job.note,
       milestones: [],
       goals: [],
-      stakeholders: [],
+      stakeholders,
     });
     createdJobId = createdJob.id;
     const relatedTo = {
@@ -1463,12 +1452,6 @@ watch(
                       {{ executePreview.summary.jobTaskCount }} new job tasks
                     </span>
                     <span>
-                      {{
-                        executePreview.summary.keptDealSalesTaskCount
-                      }}
-                      existing deal sales tasks stay on deal
-                    </span>
-                    <span>
                       {{ executePreview.summary.customMilestoneCount }} custom
                       item milestones
                     </span>
@@ -1568,24 +1551,6 @@ watch(
                   :subtitle="`${formatPreviewDate(task.dueAt)} | ${task.sourceLabel}`"
                 />
               </VList>
-            </VCard>
-
-            <VCard variant="outlined" class="pa-4 mt-4">
-              <div class="text-subtitle-1 mb-2">Existing Deal Sales Tasks</div>
-              <VList
-                v-if="executePreview.keptDealSalesTasks.length"
-                density="compact"
-              >
-                <VListItem
-                  v-for="task in executePreview.keptDealSalesTasks"
-                  :key="task.id"
-                  :title="task.title"
-                  :subtitle="`${formatPreviewDate(task.dueAt)} | ${task.status}`"
-                />
-              </VList>
-              <div v-else class="text-body-2 text-medium-emphasis">
-                No existing deal sales tasks will be kept.
-              </div>
             </VCard>
           </template>
         </VCardText>

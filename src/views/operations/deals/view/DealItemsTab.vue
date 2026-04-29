@@ -23,7 +23,7 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useDealsStore } from "@/stores/deals";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
@@ -245,34 +245,6 @@ const extractSalesTasks = (record: unknown): CatalogueSalesTask[] => {
   return Array.isArray(salesTasks) ? salesTasks : [];
 };
 
-const createTodosFromSalesTasks = (
-  item: Pick<DealItem, "id" | "name">,
-  salesTasks: CatalogueSalesTask[],
-) =>
-  salesTasks.map((task) =>
-    todosStore.addTodo({
-      title: task.title,
-      collaborators: (task.collaborators || []).map((collaborator) => ({
-        ...collaborator,
-      })),
-      dueAt: parseAfterWhen(task.afterWhen),
-      afterWhen: task.afterWhen ?? null,
-      startTrigger: task.startTrigger ?? {
-        type: "time",
-        goalId: null,
-        taskId: null,
-      },
-      status: (task.status as Status) || "pending",
-      notes: [item.name, task.notes].filter(Boolean).join(" | "),
-      important: Boolean(task.important),
-      attachment: task.attachment ?? null,
-      relatedTo: buildDealRelatedTo(),
-      steps: Array.isArray(task.steps)
-        ? task.steps.map((step) => ({ ...step }))
-        : [],
-    }),
-  );
-
 const nextItemId = () => {
   const ids = (props.deal.items || [])
     .map((item) => Number(item.id))
@@ -291,13 +263,6 @@ const addDealItemsFromCatalogueItem = (
   },
 ) => {
   const baseId = nextItemId();
-  const generatedTaskIds = createTodosFromSalesTasks(
-    {
-      id: baseId,
-      name: catalogueItem.name,
-    },
-    extractSalesTasks(cataloguesStore.recordById(catalogueItem.id)),
-  ).map((todo) => todo.id);
   const catalogueRecord = cataloguesStore.recordById(catalogueItem.id);
   const relatedItems =
     catalogueRecord?.type === "Onetime Service"
@@ -316,7 +281,6 @@ const addDealItemsFromCatalogueItem = (
       parentItemId: null,
       sourceRelatedItemId: null,
       excludedRelatedItemIds: null,
-      generatedTaskIds,
       discountPercent: options?.discountPercent ?? 0,
       taxApplicable: options?.taxApplicable ?? null,
       quantity,
@@ -1081,6 +1045,18 @@ type DealTodo = ToDo & {
   milestoneId?: number | string | null;
 };
 
+type DealSalesTaskRow = {
+  id: number | string;
+  title: string;
+  afterWhen: string | null;
+  startTrigger: ToDo["startTrigger"];
+  notes: string;
+  collaborators: ToDo["collaborators"];
+  important: boolean;
+  status: Status;
+  isImported: boolean;
+};
+
 const dealTodos = computed<DealTodo[]>(
   () =>
     (todosStore.items || []).filter((todo) => {
@@ -1093,14 +1069,62 @@ const dealTodos = computed<DealTodo[]>(
     }) as DealTodo[],
 );
 
-const salesTasks = computed(() =>
-  dealTodos.value.filter((todo) => {
-    const milestoneId = String(todo.milestoneId ?? "").trim();
-    const goalId = String(todo.goalId ?? "").trim();
+const importedSalesTasks = computed<DealSalesTaskRow[]>(() =>
+  (props.deal.items || [])
+    .filter((item) => !item.parentItemId)
+    .flatMap((item) => {
+      const record = item.catalogueItemId
+        ? cataloguesStore.recordById(
+            item.catalogueItemId,
+            item.catalogueType || undefined,
+          )
+        : null;
 
-    return !milestoneId && !goalId;
-  }),
+      return extractSalesTasks(record).map((task, index) => ({
+        id: `catalogue-sales-task:${item.id}:${task.id ?? index}`,
+        title: task.title,
+        afterWhen: task.afterWhen ?? null,
+        startTrigger: task.startTrigger ?? {
+          type: "time",
+          goalId: null,
+          taskId: null,
+        },
+        notes: [item.name, task.notes].filter(Boolean).join(" | "),
+        collaborators: Array.isArray(task.collaborators)
+          ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+          : [],
+        important: Boolean(task.important),
+        status: (task.status as Status) || "pending",
+        isImported: true,
+      }));
+    }),
 );
+
+const manualSalesTasks = computed<DealSalesTaskRow[]>(() =>
+  dealTodos.value
+    .filter((todo) => {
+      const milestoneId = String(todo.milestoneId ?? "").trim();
+      const goalId = String(todo.goalId ?? "").trim();
+
+      return !milestoneId && !goalId;
+    })
+    .map((todo) => ({
+      id: todo.id,
+      title: todo.title,
+      afterWhen: todo.afterWhen ?? null,
+      startTrigger: todo.startTrigger ?? null,
+      notes: todo.notes || "",
+      collaborators: todo.collaborators || [],
+      important: Boolean(todo.important),
+      status: todo.status || "pending",
+      isImported: false,
+    })),
+);
+
+const salesTasks = computed<DealSalesTaskRow[]>(() => [
+  ...importedSalesTasks.value,
+  ...manualSalesTasks.value,
+]);
 
 const collaboratorInitials = (name?: string) =>
   name
@@ -1165,45 +1189,6 @@ const openAddTask = () => {
 const openEditTask = (taskId: number | string) => {
   emit("open-edit-task", taskId);
 };
-
-const ensureGeneratedSalesTasks = () => {
-  const currentItems = props.deal.items || [];
-  let changed = false;
-
-  const nextItems = currentItems.map((item) => {
-    if (item.parentItemId || Array.isArray(item.generatedTaskIds)) return item;
-
-    const record = item.catalogueItemId
-      ? cataloguesStore.recordById(
-          item.catalogueItemId,
-          item.catalogueType || undefined,
-        )
-      : null;
-
-    const salesTaskItems = extractSalesTasks(record);
-    const generatedTaskIds = createTodosFromSalesTasks(
-      item,
-      salesTaskItems,
-    ).map((todo) => todo.id);
-
-    changed = true;
-
-    return {
-      ...item,
-      generatedTaskIds,
-    };
-  });
-
-  if (changed) dealsStore.updateDeal(props.deal.id, { items: nextItems });
-};
-
-watch(
-  () => props.deal.items,
-  () => {
-    ensureGeneratedSalesTasks();
-  },
-  { immediate: true, deep: true },
-);
 </script>
 
 <template>
@@ -1515,7 +1500,7 @@ watch(
             :key="task.id"
             class="task-row"
             variant="tonal"
-            @click="openEditTask(task.id)"
+            @click="!task.isImported && openEditTask(task.id)"
           >
             <div class="task-row-main">
               <div class="task-row-left">
@@ -1532,6 +1517,9 @@ watch(
                   </VTooltip>
                   <span class="text-sm">
                     {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
+                  </span>
+                  <span v-if="task.isImported" class="text-sm text-info">
+                    From catalogue item
                   </span>
                   <span v-if="task.notes" class="text-sm text-medium-emphasis">
                     {{ task.notes }}
@@ -1578,6 +1566,7 @@ watch(
                   size="18"
                 />
                 <VBtn
+                  v-if="!task.isImported"
                   icon
                   variant="text"
                   size="x-small"
