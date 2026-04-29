@@ -401,8 +401,7 @@ export const db: DB = {
             id: 1,
             name: "Monthly Acoustic Review",
             category: "Acoustic Panels",
-            price: 1500,
-            chargeTax: true,
+            qty: 1,
             description:
               "Scheduled workplace acoustic review and recommendations for active projects.",
           },
@@ -468,8 +467,6 @@ export const db: DB = {
             id: 1,
             name: "Monthly Pod Cleaning Visit",
             category: "",
-            price: 260,
-            chargeTax: false,
             description: "Recurring scheduled cleaning visit for meeting pods.",
           },
         ],

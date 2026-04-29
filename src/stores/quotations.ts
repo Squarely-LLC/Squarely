@@ -330,6 +330,9 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    lineConstraints: product.lineConstraints
+      ? { ...product.lineConstraints }
+      : null,
     title: product.title?.trim() || "",
     cost: Number(product.cost) || 0,
     hours: Number(product.hours) || 1,

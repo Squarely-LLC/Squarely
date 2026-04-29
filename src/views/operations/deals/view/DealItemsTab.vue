@@ -127,6 +127,11 @@ const editLine = reactive({
   discountPercent: 0 as number | null,
   taxApplicable: null as boolean | null,
   note: "",
+  canEditQuantity: true,
+  canEditPrice: true,
+  canEditDiscount: true,
+  canEditTax: true,
+  canEditInfo: true,
 });
 
 const itemTypeChoices: ItemTypeChoice[] = [
@@ -463,15 +468,40 @@ const normalizeEditableNumber = (value: unknown, fallback: number | null) => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
-const buildOverridePayload = (): DealItemOverride => ({
-  name: editLine.name.trim(),
-  category: editLine.category.trim() || null,
-  quantity: normalizeEditableNumber(editLine.quantity, null),
-  unitPrice: normalizeEditableNumber(editLine.unitPrice, null),
-  discountPercent: normalizeEditableNumber(editLine.discountPercent, 0),
-  taxApplicable: editLine.taxApplicable,
-  note: editLine.note.trim() || null,
-});
+const buildOverridePayload = (): DealItemOverride => {
+  const payload: DealItemOverride = {
+    name: editLine.name.trim(),
+    category: editLine.category.trim() || null,
+    note: editLine.note.trim() || null,
+  };
+
+  if (editLine.canEditQuantity)
+    payload.quantity = normalizeEditableNumber(editLine.quantity, null);
+  if (editLine.canEditPrice)
+    payload.unitPrice = normalizeEditableNumber(editLine.unitPrice, null);
+  if (editLine.canEditDiscount)
+    payload.discountPercent = normalizeEditableNumber(
+      editLine.discountPercent,
+      0,
+    );
+  if (editLine.canEditTax) payload.taxApplicable = editLine.taxApplicable;
+
+  return payload;
+};
+
+const setEditFieldConstraints = (options: {
+  quantity: boolean;
+  price: boolean;
+  discount: boolean;
+  tax: boolean;
+  info?: boolean;
+}) => {
+  editLine.canEditQuantity = options.quantity;
+  editLine.canEditPrice = options.price;
+  editLine.canEditDiscount = options.discount;
+  editLine.canEditTax = options.tax;
+  editLine.canEditInfo = options.info ?? true;
+};
 
 const openEditItem = (item: DealItemWithPlan) => {
   const isGeneratedRelatedItem =
@@ -497,6 +527,13 @@ const openEditItem = (item: DealItemWithPlan) => {
     editLine.discountPercent = override.discountPercent ?? 0;
     editLine.taxApplicable = override.taxApplicable ?? item.taxApplicable ?? null;
     editLine.note = override.note ?? item.note ?? "";
+    setEditFieldConstraints({
+      quantity: true,
+      price: true,
+      discount: true,
+      tax: true,
+      info: true,
+    });
     editLineDialogVisible.value = true;
 
     return;
@@ -514,6 +551,13 @@ const openEditItem = (item: DealItemWithPlan) => {
   editLine.discountPercent = item.discountPercent ?? 0;
   editLine.taxApplicable = item.taxApplicable ?? null;
   editLine.note = item.note ?? "";
+  setEditFieldConstraints({
+    quantity: true,
+    price: true,
+    discount: true,
+    tax: true,
+    info: true,
+  });
   editLineDialogVisible.value = true;
 };
 
@@ -533,6 +577,13 @@ const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   editLine.discountPercent = override.discountPercent ?? goal.discountPercent ?? 0;
   editLine.taxApplicable = override.taxApplicable ?? goal.taxApplicable ?? null;
   editLine.note = override.note ?? goal.note ?? "";
+  setEditFieldConstraints({
+    quantity: goal.showQuantity,
+    price: goal.showPrice,
+    discount: goal.showDiscount,
+    tax: goal.showTaxApplicable,
+    info: goal.typeLabel !== "Retainer Service",
+  });
   editLineDialogVisible.value = true;
 };
 
@@ -550,9 +601,16 @@ const saveEditedLine = async () => {
         name: payload.name || item.name,
         category: payload.category,
         quantity: payload.quantity ?? item.quantity,
-        unitPrice: payload.unitPrice,
-        discountPercent: payload.discountPercent,
-        taxApplicable: payload.taxApplicable,
+        unitPrice:
+          payload.unitPrice === undefined ? item.unitPrice : payload.unitPrice,
+        discountPercent:
+          payload.discountPercent === undefined
+            ? item.discountPercent
+            : payload.discountPercent,
+        taxApplicable:
+          payload.taxApplicable === undefined
+            ? item.taxApplicable
+            : payload.taxApplicable,
         note: payload.note,
       };
     }
@@ -665,6 +723,7 @@ const makeDerivedGoal = (
     description?: string | null;
     note?: string | null;
     price?: number | null;
+    qty?: number | null;
     chargeTax?: boolean | null;
   },
 ): DerivedGoal => ({
@@ -761,14 +820,13 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
               "retainer",
               "Retainer Service",
               {
-                quantity: item.quantity,
-                discountPercent: 0,
-                discountLabel: "0%",
-                taxApplicable: service.chargeTax,
+                quantity: service.qty ?? item.quantity,
+                discountLabel: null,
+                taxApplicable: null,
                 showQuantity: true,
-                showPrice: true,
-                showDiscount: true,
-                showTaxApplicable: true,
+                showPrice: false,
+                showDiscount: false,
+                showTaxApplicable: false,
               },
               service,
             ),
@@ -797,14 +855,13 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
               "recurrent",
               "Recurrent Service",
               {
-                quantity: item.quantity,
-                discountPercent: 0,
-                discountLabel: "0%",
-                taxApplicable: service.chargeTax,
-                showQuantity: true,
-                showPrice: true,
-                showDiscount: true,
-                showTaxApplicable: true,
+                quantity: null,
+                discountLabel: null,
+                taxApplicable: null,
+                showQuantity: false,
+                showPrice: false,
+                showDiscount: false,
+                showTaxApplicable: false,
               },
               service,
             ),
@@ -975,6 +1032,22 @@ const childCountLabel = (item: DealItemWithPlan) => {
   return `${count} ${
     count === 1 ? item.childTypeSingular : item.childTypePlural
   }`;
+};
+
+const toggleItemExpanded = (panelId: number | string) => {
+  const index = expandedItems.value.findIndex(
+    (value) => String(value) === String(panelId),
+  );
+
+  if (index >= 0) {
+    expandedItems.value = expandedItems.value.filter(
+      (value) => String(value) !== String(panelId),
+    );
+
+    return;
+  }
+
+  expandedItems.value = [...expandedItems.value, panelId];
 };
 
 const itemsSubtotal = computed(() =>
@@ -1192,7 +1265,7 @@ watch(
             :readonly="!item.isExpandable"
           >
             <VExpansionPanelTitle>
-              <div class="item-card-shell">
+              <div class="item-card-shell" @click.stop="openEditItem(item)">
                 <div class="flex-grow-1 min-w-0">
                   <div class="item-card-header">
                     <VTooltip :text="item.name" location="top">
@@ -1252,7 +1325,7 @@ watch(
 
                 <div
                   v-if="item.actionsEnabled"
-                  class="d-flex align-center gap-2 milestone-actions"
+                  class="milestone-actions"
                   @click.stop
                 >
                   <VBtn icon variant="text" size="x-small">
@@ -1274,6 +1347,25 @@ watch(
                       </VList>
                     </VMenu>
                   </VBtn>
+
+                  <VBtn
+                    v-if="item.isExpandable"
+                    icon
+                    variant="text"
+                    size="x-small"
+                    class="item-expand-btn"
+                    @click.stop="toggleItemExpanded(item.panelId)"
+                  >
+                    <VIcon
+                      :icon="
+                        expandedItems.includes(item.panelId)
+                          ? 'tabler-chevron-up'
+                          : 'tabler-chevron-down'
+                      "
+                      size="18"
+                    />
+                  </VBtn>
+                  <div v-else class="item-expand-placeholder" />
                 </div>
               </div>
             </VExpansionPanelTitle>
@@ -1574,7 +1666,7 @@ watch(
 
         <VForm ref="editLineFormRef" @submit.prevent="saveEditedLine">
           <VRow>
-            <VCol cols="12" md="8">
+            <VCol v-if="editLine.canEditInfo" cols="12" md="8">
               <AppTextField
                 v-model="editLine.name"
                 label="Name"
@@ -1583,7 +1675,7 @@ watch(
               />
             </VCol>
 
-            <VCol cols="12" md="4">
+            <VCol v-if="editLine.canEditInfo" cols="12" md="4">
               <AppTextField
                 v-model="editLine.category"
                 label="Category"
@@ -1591,7 +1683,7 @@ watch(
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol v-if="editLine.canEditPrice" cols="12" md="3">
               <AppTextField
                 v-model="editLine.unitPrice"
                 type="number"
@@ -1601,7 +1693,7 @@ watch(
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol v-if="editLine.canEditQuantity" cols="12" md="3">
               <AppTextField
                 v-model="editLine.quantity"
                 type="number"
@@ -1611,7 +1703,7 @@ watch(
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol v-if="editLine.canEditDiscount" cols="12" md="3">
               <AppTextField
                 v-model="editLine.discountPercent"
                 type="number"
@@ -1621,7 +1713,7 @@ watch(
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol v-if="editLine.canEditTax" cols="12" md="3">
               <div class="d-flex flex-column gap-2">
                 <span class="text-sm text-medium-emphasis">Tax?</span>
                 <VSwitch
@@ -1634,7 +1726,7 @@ watch(
               </div>
             </VCol>
 
-            <VCol cols="12">
+            <VCol v-if="editLine.canEditInfo" cols="12">
               <AppTextarea
                 v-model="editLine.note"
                 label="Note"
@@ -1874,10 +1966,6 @@ watch(
   cursor: default;
 }
 
-.milestone-panel--static :deep(.v-expansion-panel-title__icon) {
-  display: none;
-}
-
 .milestone-panel-body {
   display: flex;
   flex-direction: column;
@@ -1926,6 +2014,7 @@ watch(
 }
 
 .item-card-shell {
+  cursor: pointer;
   padding-block: 0.125rem;
 }
 
@@ -2039,24 +2128,27 @@ watch(
   -webkit-line-clamp: 1;
 }
 
-.milestone-actions,
-.goal-actions {
-  min-inline-size: 0;
+.milestone-actions {
+  display: grid;
+  flex: 0 0 3.75rem;
+  grid-template-columns: 1.75rem 1.75rem;
+  inline-size: 3.75rem;
+  justify-content: end;
+  justify-items: center;
+  margin-inline-start: auto;
 }
 
-.milestone-actions,
-.goal-actions {
-  gap: 0.25rem !important;
-}
-
-.milestone-actions :deep(.v-btn),
-.goal-actions :deep(.v-btn) {
+.milestone-actions :deep(.v-btn) {
   margin: 0;
 }
 
-.milestone-panel :deep(.v-expansion-panel-title__icon),
-.goal-panel :deep(.v-expansion-panel-title__icon) {
-  margin-inline-start: 0.25rem;
+.item-expand-placeholder {
+  block-size: 1.75rem;
+  inline-size: 1.75rem;
+}
+
+.milestone-panel :deep(.v-expansion-panel-title__icon) {
+  display: none;
 }
 
 .truncate-title {
@@ -2173,16 +2265,13 @@ watch(
     margin-block-start: 0.5rem;
   }
 
-  .milestone-actions,
-  .goal-actions {
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 0.375rem;
+  .milestone-actions {
+    flex-basis: 3.5rem;
+    grid-template-columns: 1.625rem 1.625rem;
+    inline-size: 3.5rem;
   }
 
-  .milestone-actions :deep(.v-btn),
-  .goal-actions :deep(.v-btn) {
+  .milestone-actions :deep(.v-btn) {
     max-inline-size: 100%;
     min-block-size: 30px;
   }

@@ -467,14 +467,12 @@ function normalizeRecord(
           : index + 1,
         name: String(service.name ?? "").trim(),
         category: String(service.category ?? "").trim(),
-        price:
-          service.price === null || service.price === undefined
+        qty:
+          service.qty === null || service.qty === undefined
             ? null
-            : Number.isFinite(Number(service.price))
-              ? Number(service.price)
+            : Number.isFinite(Number(service.qty))
+              ? Number(service.qty)
               : null,
-        chargeTax:
-          service.chargeTax === undefined ? true : Boolean(service.chargeTax),
         description: String(service.description ?? "").trim(),
       })),
       salesTasks: salesTasks.map((task, index) => ({
@@ -508,14 +506,6 @@ function normalizeRecord(
           : index + 1,
         name: String(service.name ?? "").trim(),
         category: String(service.category ?? "").trim(),
-        price:
-          service.price === null || service.price === undefined
-            ? null
-            : Number.isFinite(Number(service.price))
-              ? Number(service.price)
-              : null,
-        chargeTax:
-          service.chargeTax === undefined ? true : Boolean(service.chargeTax),
         description: String(service.description ?? "").trim(),
       })),
       salesTasks: salesTasks.map((task, index) => ({

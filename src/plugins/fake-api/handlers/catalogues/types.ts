@@ -44,8 +44,7 @@ export interface CatalogueRetainerLinkedService {
   id: number;
   name: string;
   category: string;
-  price: number | null;
-  chargeTax: boolean;
+  qty: number | null;
   description: string;
 }
 
@@ -53,8 +52,6 @@ export interface CatalogueReccurentLinkedService {
   id: number;
   name: string;
   category: string;
-  price: number | null;
-  chargeTax: boolean;
   description: string;
 }
 

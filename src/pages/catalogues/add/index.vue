@@ -36,6 +36,7 @@ type RelatedItemDraft = {
   name: string;
   category: string;
   price: number | null;
+  qty: number | null;
   chargeTax: boolean;
   description: string;
 };
@@ -200,6 +201,7 @@ const relatedItemEditId = ref<number | null>(null);
 const relatedItemName = ref("");
 const relatedItemCategory = ref("");
 const relatedItemPrice = ref<number | null>(null);
+const relatedItemQty = ref<number | null>(null);
 const isRelatedItemChargeTax = ref(true);
 const relatedItemDescription = ref("");
 const relatedItemErrors = ref({
@@ -393,6 +395,13 @@ const relatedButtonLabel = computed(() =>
 const shouldShowRetainerCategoryField = computed(
   () => !usesRecurringLinkedServicesUi.value,
 );
+const shouldShowRelatedPriceField = computed(
+  () => !usesRecurringLinkedServicesUi.value,
+);
+const shouldShowRelatedQtyField = computed(() => isRetainerService.value);
+const shouldShowRelatedDescriptionField = computed(
+  () => !isRetainerService.value,
+);
 const shouldShowRetainerChargeTaxField = computed(
   () => !usesRecurringLinkedServicesUi.value,
 );
@@ -422,9 +431,7 @@ const relatedDialogSaveLabel = computed(() =>
         ? "Add Reccurent Service"
         : "Save Related Item",
 );
-const retainerLinkedServicesTotalPrice = computed(() =>
-  relatedItems.value.reduce((sum, item) => sum + (Number(item.price) || 0), 0),
-);
+const linkedServicesCount = computed(() => relatedItems.value.length);
 
 const contractualPhaseTotalPrice = computed(() =>
   phases.value.reduce((sum, phase) => sum + (Number(phase.price) || 0), 0),
@@ -1122,6 +1129,7 @@ const resetRelatedItemDraft = () => {
   relatedItemName.value = "";
   relatedItemCategory.value = "";
   relatedItemPrice.value = null;
+  relatedItemQty.value = null;
   isRelatedItemChargeTax.value = true;
   relatedItemDescription.value = "";
   relatedItemErrors.value = {
@@ -1143,6 +1151,7 @@ const openEditRelatedItemDialog = (item: RelatedItemDraft) => {
     ? ""
     : item.category;
   relatedItemPrice.value = item.price;
+  relatedItemQty.value = item.qty ?? null;
   isRelatedItemChargeTax.value = usesRecurringLinkedServicesUi.value
     ? false
     : item.chargeTax;
@@ -1179,15 +1188,27 @@ const saveRelatedItem = () => {
     name: trimmedName,
     category: trimmedCategory,
     price:
-      relatedItemPrice.value === null || relatedItemPrice.value === undefined
+      !shouldShowRelatedPriceField.value ||
+      relatedItemPrice.value === null ||
+      relatedItemPrice.value === undefined
         ? null
         : Number.isFinite(Number(relatedItemPrice.value))
           ? Number(relatedItemPrice.value)
           : null,
+    qty:
+      !shouldShowRelatedQtyField.value ||
+      relatedItemQty.value === null ||
+      relatedItemQty.value === undefined
+        ? null
+        : Number.isFinite(Number(relatedItemQty.value))
+          ? Number(relatedItemQty.value)
+          : null,
     chargeTax: usesRecurringLinkedServicesUi.value
       ? false
       : isRelatedItemChargeTax.value,
-    description: relatedItemDescription.value.trim(),
+    description: shouldShowRelatedDescriptionField.value
+      ? relatedItemDescription.value.trim()
+      : "",
   };
 
   if (
@@ -2130,6 +2151,7 @@ const applyServiceTemplateRecord = (
       name: item.name,
       category: item.category,
       price: item.price ?? null,
+      qty: null,
       chargeTax: item.chargeTax ?? true,
       description: item.description,
     }));
@@ -2151,7 +2173,8 @@ const applyServiceTemplateRecord = (
       id: item.id,
       name: item.name,
       category: "",
-      price: item.price ?? null,
+      price: null,
+      qty: "qty" in item ? (item.qty ?? null) : null,
       chargeTax: false,
       description: item.description,
     }));
@@ -2559,14 +2582,13 @@ const saveItem = async () => {
           id: item.id,
           name: item.name.trim(),
           category: "",
-          price:
-            item.price === null || item.price === undefined
+          qty:
+            item.qty === null || item.qty === undefined
               ? null
-              : Number.isFinite(Number(item.price))
-                ? Number(item.price)
+              : Number.isFinite(Number(item.qty))
+                ? Number(item.qty)
                 : null,
-          chargeTax: false,
-          description: item.description.trim(),
+          description: "",
         }))
       : undefined,
     reccurentServices: isReccurentService.value
@@ -2574,13 +2596,6 @@ const saveItem = async () => {
           id: item.id,
           name: item.name.trim(),
           category: "",
-          price:
-            item.price === null || item.price === undefined
-              ? null
-              : Number.isFinite(Number(item.price))
-                ? Number(item.price)
-                : null,
-          chargeTax: false,
           description: item.description.trim(),
         }))
       : undefined,
@@ -2815,6 +2830,14 @@ watch(
                           ${{ relatedItem.price }}
                         </VChip>
                         <VChip
+                          v-if="isRetainerService && relatedItem.qty !== null"
+                          color="primary"
+                          size="small"
+                          variant="text"
+                        >
+                          Qty {{ relatedItem.qty }}
+                        </VChip>
+                        <VChip
                           v-if="!usesRecurringLinkedServicesUi"
                           size="small"
                           :color="
@@ -2831,6 +2854,14 @@ watch(
                         class="text-body-2 text-medium-emphasis"
                       >
                         {{ relatedItem.category || "Uncategorized" }}
+                      </div>
+                      <div
+                        v-else-if="
+                          isReccurentService && relatedItem.description
+                        "
+                        class="text-body-2 text-medium-emphasis"
+                      >
+                        {{ relatedItem.description }}
                       </div>
                     </div>
 
@@ -4591,7 +4622,7 @@ watch(
               v-if="usesRecurringLinkedServicesUi"
               class="text-body-2 text-medium-emphasis mb-6"
             >
-              Linked services total: ${{ retainerLinkedServicesTotalPrice }}
+              Linked services: {{ linkedServicesCount }}
             </div>
             <template v-else-if="!isContractualService">
               <AppTextField
@@ -4732,7 +4763,16 @@ watch(
 
         <VCardText>
           <VRow>
-            <VCol cols="12" :md="shouldShowRetainerCategoryField ? 12 : 6">
+            <VCol
+              cols="12"
+              :md="
+                shouldShowRetainerCategoryField ||
+                shouldShowRelatedQtyField ||
+                shouldShowRelatedPriceField
+                  ? 6
+                  : 12
+              "
+            >
               <AppTextField
                 v-model="relatedItemName"
                 label="Name"
@@ -4755,7 +4795,7 @@ watch(
                 {{ relatedItemErrors.category }}
               </div>
             </VCol>
-            <VCol :cols="shouldShowRetainerCategoryField ? '6' : '12'" md="6">
+            <VCol v-if="shouldShowRelatedPriceField" cols="12" md="6">
               <AppTextField
                 v-model.number="relatedItemPrice"
                 label="Price"
@@ -4765,13 +4805,23 @@ watch(
                 step="0.01"
               />
             </VCol>
+            <VCol v-if="shouldShowRelatedQtyField" cols="12" md="6">
+              <AppTextField
+                v-model.number="relatedItemQty"
+                label="Quantity"
+                placeholder="1"
+                type="number"
+                min="0"
+                step="1"
+              />
+            </VCol>
             <VCol v-if="shouldShowRetainerChargeTaxField" cols="12" md="6">
               <VCheckbox
                 v-model="isRelatedItemChargeTax"
                 label="Charge Tax on this  item"
               />
             </VCol>
-            <VCol cols="12">
+            <VCol v-if="shouldShowRelatedDescriptionField" cols="12">
               <AppTextarea
                 v-model="relatedItemDescription"
                 label="Description (optional)"

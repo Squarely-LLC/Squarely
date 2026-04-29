@@ -11,6 +11,11 @@ interface Props {
   id: number;
   data: {
     catalogueItemId?: string | null;
+    lineConstraints?: {
+      quantity?: boolean;
+      price?: boolean;
+      discount?: boolean;
+    } | null;
     title: string;
     cost: number;
     hours: number;
@@ -89,6 +94,14 @@ const discountOptions = [
   { title: "%", value: "percent" },
   { title: "Currency", value: "currency" },
 ] as const;
+
+const canEditPrice = computed(() => props.data.lineConstraints?.price !== false);
+const canEditQuantity = computed(
+  () => props.data.lineConstraints?.quantity !== false,
+);
+const canEditDiscount = computed(
+  () => props.data.lineConstraints?.discount !== false,
+);
 const lineBaseTotal = computed(
   () => Number(props.data.cost || 0) * Number(props.data.hours || 0),
 );
@@ -108,6 +121,19 @@ watch(
       Math.max(0, Number(props.data.discountValue || 0)),
       discountValueMax.value,
     );
+  },
+  { immediate: true },
+);
+
+watch(
+  [canEditPrice, canEditQuantity, canEditDiscount],
+  () => {
+    if (!canEditPrice.value) props.data.cost = 0;
+    if (!canEditQuantity.value) props.data.hours = 1;
+    if (!canEditDiscount.value) {
+      props.data.discountType = "none";
+      props.data.discountValue = 0;
+    }
   },
   { immediate: true },
 );
@@ -142,13 +168,13 @@ const totalPrice = computed(() => getLineTotal(props.data));
       <VCol cols="12" md="6">
         <h6 class="text-h6">Item</h6>
       </VCol>
-      <VCol cols="12" md="2">
+      <VCol v-if="canEditPrice" cols="12" md="2">
         <h6 class="text-h6 ps-2">Price</h6>
       </VCol>
-      <VCol cols="12" md="2">
+      <VCol v-if="canEditQuantity" cols="12" md="2">
         <h6 class="text-h6 ps-2">Quantity</h6>
       </VCol>
-      <VCol cols="12" md="2">
+      <VCol v-if="canEditDiscount" cols="12" md="2">
         <h6 class="text-h6">Discount</h6>
       </VCol>
     </VRow>
@@ -175,7 +201,7 @@ const totalPrice = computed(() => getLineTotal(props.data));
           />
         </VCol>
 
-        <VCol cols="12" md="2" sm="4">
+        <VCol v-if="canEditPrice" cols="12" md="2" sm="4">
           <AppTextField
             id="item-cost"
             v-model="props.data.cost"
@@ -184,7 +210,7 @@ const totalPrice = computed(() => getLineTotal(props.data));
           />
         </VCol>
 
-        <VCol cols="12" md="2" sm="4">
+        <VCol v-if="canEditQuantity" cols="12" md="2" sm="4">
           <AppTextField
             id="item-hours"
             v-model="props.data.hours"
@@ -193,7 +219,7 @@ const totalPrice = computed(() => getLineTotal(props.data));
           />
         </VCol>
 
-        <VCol cols="12" md="2" sm="4">
+        <VCol v-if="canEditDiscount" cols="12" md="2" sm="4">
           <AppSelect
             id="item-discount-type"
             v-model="props.data.discountType"
