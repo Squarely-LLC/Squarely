@@ -1616,7 +1616,7 @@ watch(
         <VForm ref="addItemFormRef" @submit.prevent="saveSelectedCatalogueItem">
           <VRow>
             <VCol cols="12" md="8">
-              <AppSelect
+              <AppAutocomplete
                 v-model="selectedCatalogueItemId"
                 label="Catalogue Item"
                 placeholder="Select catalogue item"
