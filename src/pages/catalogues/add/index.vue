@@ -2174,7 +2174,10 @@ const applyServiceTemplateRecord = (
       name: item.name,
       category: "",
       price: null,
-      qty: "qty" in item ? (item.qty ?? null) : null,
+      qty:
+        "qty" in item && Number.isFinite(Number(item.qty))
+          ? Number(item.qty)
+          : null,
       chargeTax: false,
       description: item.description,
     }));
