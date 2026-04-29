@@ -7,6 +7,7 @@ import type {
   DealFinancialEntry,
   DealItem,
   DealProperties,
+  DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useTodos } from "@/stores/todos";
 
@@ -106,6 +107,51 @@ function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
   }));
 }
 
+function normalizeSalesTasks(
+  salesTasks: DealSalesTaskTemplate[] | undefined | null,
+): DealSalesTaskTemplate[] {
+  if (!Array.isArray(salesTasks)) return [];
+
+  return salesTasks.map((task, index) => ({
+    ...task,
+    id: Number(task.id) > 0 ? Number(task.id) : index + 1,
+    title: String(task.title ?? "").trim(),
+    collaborators: Array.isArray(task.collaborators)
+      ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+      : [],
+    afterWhen: task.afterWhen ?? null,
+    startTrigger: task.startTrigger
+      ? {
+          type: task.startTrigger.type,
+          goalId: task.startTrigger.goalId ?? null,
+          taskId: task.startTrigger.taskId ?? null,
+        }
+      : null,
+    manhours: task.manhours ?? null,
+    notes: String(task.notes ?? "").trim(),
+    status:
+      task.status === "in_progress" ||
+      task.status === "for_review" ||
+      task.status === "completed"
+        ? task.status
+        : "pending",
+    important: Boolean(task.important),
+    attachment: task.attachment ? { ...task.attachment } : null,
+    relatedTo: task.relatedTo ? { ...task.relatedTo } : null,
+    steps: Array.isArray(task.steps)
+      ? task.steps.map((step, stepIndex) => ({
+          ...step,
+          id: step.id ?? stepIndex + 1,
+          collaborators: Array.isArray(step.collaborators)
+            ? step.collaborators.map((collaborator) => ({ ...collaborator }))
+            : [],
+        }))
+      : [],
+    sourceItemId: task.sourceItemId ?? null,
+    sourceTaskId: task.sourceTaskId ?? null,
+  }));
+}
+
 function collectLegacyGeneratedTaskIds(deals: DealProperties[]) {
   return deals.flatMap((deal) =>
     (deal.items || []).flatMap((item) => item.generatedTaskIds || []),
@@ -116,6 +162,7 @@ function sanitizeDeals(deals: DealProperties[]) {
   return deals.map((deal) => ({
     ...deal,
     items: normalizeItems(deal.items),
+    salesTasks: normalizeSalesTasks(deal.salesTasks),
     documents: normalizeDocuments(deal.documents),
     financials: normalizeFinancials(deal.financials),
   }));
@@ -163,6 +210,7 @@ function normaliseDeal(
     note: payload.note?.trim() || null,
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
     items: normalizeItems(payload.items),
+    salesTasks: normalizeSalesTasks(payload.salesTasks),
     documents: normalizeDocuments(payload.documents),
     financials: normalizeFinancials(payload.financials),
     createdAt: payload.createdAt || now,
@@ -198,6 +246,10 @@ function mergeDeal(
       patch.items === undefined
         ? normalizeItems(original.items)
         : normalizeItems(patch.items),
+    salesTasks:
+      patch.salesTasks === undefined
+        ? normalizeSalesTasks(original.salesTasks)
+        : normalizeSalesTasks(patch.salesTasks),
     documents:
       patch.documents === undefined
         ? normalizeDocuments(original.documents)

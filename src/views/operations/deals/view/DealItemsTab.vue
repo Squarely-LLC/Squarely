@@ -18,6 +18,7 @@ import type {
   DealItem,
   DealItemOverride,
   DealProperties,
+  DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useDealsStore } from "@/stores/deals";
@@ -245,6 +246,71 @@ const extractSalesTasks = (record: unknown): CatalogueSalesTask[] => {
   return Array.isArray(salesTasks) ? salesTasks : [];
 };
 
+const cloneDealSalesTaskTemplate = (
+  task: DealSalesTaskTemplate,
+): DealSalesTaskTemplate => ({
+  ...task,
+  collaborators: Array.isArray(task.collaborators)
+    ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+    : [],
+  startTrigger: task.startTrigger
+    ? {
+        type: task.startTrigger.type,
+        goalId: task.startTrigger.goalId ?? null,
+        taskId: task.startTrigger.taskId ?? null,
+      }
+    : null,
+  attachment: task.attachment ? { ...task.attachment } : null,
+  relatedTo: task.relatedTo ? { ...task.relatedTo } : null,
+  steps: Array.isArray(task.steps)
+    ? task.steps.map((step, index) => ({
+        ...step,
+        id: step.id ?? index + 1,
+        collaborators: Array.isArray(step.collaborators)
+          ? step.collaborators.map((collaborator) => ({ ...collaborator }))
+          : [],
+      }))
+    : [],
+  sourceItemId: task.sourceItemId ?? null,
+  sourceTaskId: task.sourceTaskId ?? null,
+});
+
+const nextDealSalesTaskId = (tasks: DealSalesTaskTemplate[]) => {
+  const ids = tasks
+    .map((task) => Number(task.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  return ids.length ? Math.max(...ids) + 1 : 1;
+};
+
+const buildImportedSalesTaskTemplates = (
+  items: DealItem[],
+  startingId = 1,
+): DealSalesTaskTemplate[] => {
+  let nextId = startingId;
+
+  return items
+    .filter((item) => !item.parentItemId)
+    .flatMap((item) => {
+      const record = item.catalogueItemId
+        ? cataloguesStore.recordById(
+            item.catalogueItemId,
+            item.catalogueType || undefined,
+          )
+        : null;
+
+      return extractSalesTasks(record).map((task, index) =>
+        cloneDealSalesTaskTemplate({
+          ...task,
+          id: nextId++,
+          relatedTo: buildDealRelatedTo(),
+          sourceItemId: item.id,
+          sourceTaskId: task.id ?? index + 1,
+        }),
+      );
+    });
+};
+
 const nextItemId = () => {
   const ids = (props.deal.items || [])
     .map((item) => Number(item.id))
@@ -305,7 +371,16 @@ const addDealItemsFromCatalogueItem = (
     })),
   ];
 
-  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+  const existingSalesTasks = buildEditableSalesTasks();
+  const importedSalesTasks = buildImportedSalesTaskTemplates(
+    nextItems.filter((item) => item.id === baseId),
+    nextDealSalesTaskId(existingSalesTasks),
+  );
+
+  dealsStore.updateDeal(props.deal.id, {
+    items: nextItems,
+    salesTasks: [...existingSalesTasks, ...importedSalesTasks],
+  });
 };
 
 const itemTypeLabel = (item: DealItem) =>
@@ -415,7 +490,16 @@ const removeDealItem = (item: DealItemWithPlan) => {
     .flatMap((existingItem) => existingItem.generatedTaskIds || [])
     .forEach((taskId) => todosStore.removeTodo(taskId));
 
-  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+  const nextSalesTasks = isRelatedItemChild
+    ? buildEditableSalesTasks()
+    : buildEditableSalesTasks().filter(
+        (task) => Number(task.sourceItemId ?? 0) !== Number(item.id),
+      );
+
+  dealsStore.updateDeal(props.deal.id, {
+    items: nextItems,
+    salesTasks: nextSalesTasks,
+  });
   notifications.push("Item removed", "success", 2500);
 };
 
@@ -1069,62 +1153,91 @@ const dealTodos = computed<DealTodo[]>(
     }) as DealTodo[],
 );
 
-const importedSalesTasks = computed<DealSalesTaskRow[]>(() =>
-  (props.deal.items || [])
-    .filter((item) => !item.parentItemId)
-    .flatMap((item) => {
-      const record = item.catalogueItemId
-        ? cataloguesStore.recordById(
-            item.catalogueItemId,
-            item.catalogueType || undefined,
-          )
-        : null;
-
-      return extractSalesTasks(record).map((task, index) => ({
-        id: `catalogue-sales-task:${item.id}:${task.id ?? index}`,
-        title: task.title,
-        afterWhen: task.afterWhen ?? null,
-        startTrigger: task.startTrigger ?? {
-          type: "time",
-          goalId: null,
-          taskId: null,
-        },
-        notes: [item.name, task.notes].filter(Boolean).join(" | "),
-        collaborators: Array.isArray(task.collaborators)
-          ? task.collaborators.map((collaborator) => ({ ...collaborator }))
-          : [],
-        important: Boolean(task.important),
-        status: (task.status as Status) || "pending",
-        isImported: true,
-      }));
-    }),
-);
-
-const manualSalesTasks = computed<DealSalesTaskRow[]>(() =>
-  dealTodos.value
+const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
+  const storedSalesTasks = Array.isArray(props.deal.salesTasks)
+    ? props.deal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
+    : [];
+  const importedSalesTasks = buildImportedSalesTaskTemplates(
+    props.deal.items || [],
+    nextDealSalesTaskId(storedSalesTasks),
+  );
+  const missingImportedSalesTasks = importedSalesTasks.filter(
+    (task) =>
+      !storedSalesTasks.some(
+        (existingTask) =>
+          Number(existingTask.sourceItemId ?? 0) ===
+            Number(task.sourceItemId ?? 0) &&
+          Number(existingTask.sourceTaskId ?? 0) ===
+            Number(task.sourceTaskId ?? 0),
+      ),
+  );
+  const legacyManualSalesTasks = dealTodos.value
     .filter((todo) => {
       const milestoneId = String(todo.milestoneId ?? "").trim();
       const goalId = String(todo.goalId ?? "").trim();
 
       return !milestoneId && !goalId;
     })
-    .map((todo) => ({
-      id: todo.id,
-      title: todo.title,
-      afterWhen: todo.afterWhen ?? null,
-      startTrigger: todo.startTrigger ?? null,
-      notes: todo.notes || "",
-      collaborators: todo.collaborators || [],
-      important: Boolean(todo.important),
-      status: todo.status || "pending",
-      isImported: false,
-    })),
-);
+    .map((todo, index) =>
+      cloneDealSalesTaskTemplate({
+        id:
+          nextDealSalesTaskId([...storedSalesTasks, ...importedSalesTasks]) +
+          index,
+        title: todo.title,
+        collaborators: todo.collaborators || [],
+        afterWhen: todo.afterWhen ?? null,
+        startTrigger: (todo.startTrigger as any) ?? {
+          type: "time",
+          goalId: null,
+          taskId: null,
+        },
+        manhours: null,
+        notes: todo.notes || "",
+        status: (todo.status as Status) || "pending",
+        important: Boolean(todo.important),
+        attachment: todo.attachment ?? null,
+        relatedTo: buildDealRelatedTo(),
+        steps: Array.isArray(todo.steps)
+          ? todo.steps.map((step) => ({ ...step }))
+          : [],
+        sourceItemId: null,
+        sourceTaskId: null,
+      }),
+    )
+    .filter(
+      (task) =>
+        !storedSalesTasks.some(
+          (existingTask) =>
+            Number(existingTask.sourceItemId ?? 0) === 0 &&
+            existingTask.title === task.title &&
+            existingTask.notes === task.notes,
+        ),
+    );
 
-const salesTasks = computed<DealSalesTaskRow[]>(() => [
-  ...importedSalesTasks.value,
-  ...manualSalesTasks.value,
-]);
+  return [
+    ...storedSalesTasks,
+    ...missingImportedSalesTasks,
+    ...legacyManualSalesTasks,
+  ];
+};
+
+const salesTasks = computed<DealSalesTaskRow[]>(() =>
+  buildEditableSalesTasks().map((task) => ({
+    id: task.id,
+    title: task.title,
+    afterWhen: task.afterWhen ?? null,
+    startTrigger: task.startTrigger ?? {
+      type: "time",
+      goalId: null,
+      taskId: null,
+    },
+    notes: task.notes || "",
+    collaborators: task.collaborators || [],
+    important: Boolean(task.important),
+    status: (task.status as Status) || "pending",
+    isImported: task.sourceItemId !== null && task.sourceItemId !== undefined,
+  })),
+);
 
 const collaboratorInitials = (name?: string) =>
   name
@@ -1500,7 +1613,7 @@ const openEditTask = (taskId: number | string) => {
             :key="task.id"
             class="task-row"
             variant="tonal"
-            @click="!task.isImported && openEditTask(task.id)"
+            @click="openEditTask(task.id)"
           >
             <div class="task-row-main">
               <div class="task-row-left">
@@ -1566,7 +1679,6 @@ const openEditTask = (taskId: number | string) => {
                   size="18"
                 />
                 <VBtn
-                  v-if="!task.isImported"
                   icon
                   variant="text"
                   size="x-small"

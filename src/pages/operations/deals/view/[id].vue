@@ -12,6 +12,7 @@ import type {
 import type {
   DealItem,
   DealProperties,
+  DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import type {
   JobFlag,
@@ -250,6 +251,139 @@ const resolveSalesTasks = (record: CatalogueRecord | null) => {
   return Array.isArray(record.salesTasks) ? record.salesTasks : [];
 };
 
+const cloneDealSalesTaskTemplate = (
+  task: DealSalesTaskTemplate,
+): DealSalesTaskTemplate => ({
+  ...task,
+  collaborators: Array.isArray(task.collaborators)
+    ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+    : [],
+  startTrigger: task.startTrigger
+    ? {
+        type: task.startTrigger.type,
+        goalId: task.startTrigger.goalId ?? null,
+        taskId: task.startTrigger.taskId ?? null,
+      }
+    : null,
+  attachment: task.attachment ? { ...task.attachment } : null,
+  relatedTo: task.relatedTo ? { ...task.relatedTo } : null,
+  steps: Array.isArray(task.steps)
+    ? task.steps.map((step, index) => ({
+        ...step,
+        id: step.id ?? index + 1,
+        collaborators: Array.isArray(step.collaborators)
+          ? step.collaborators.map((collaborator) => ({ ...collaborator }))
+          : [],
+      }))
+    : [],
+  sourceItemId: task.sourceItemId ?? null,
+  sourceTaskId: task.sourceTaskId ?? null,
+});
+
+const nextDealSalesTaskId = (tasks: DealSalesTaskTemplate[]) => {
+  const ids = tasks
+    .map((task) => Number(task.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  return ids.length ? Math.max(...ids) + 1 : 1;
+};
+
+const resolveDealSalesTasks = (
+  currentDeal: DealProperties,
+): DealSalesTaskTemplate[] => {
+  const storedSalesTasks = Array.isArray(currentDeal.salesTasks)
+    ? currentDeal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
+    : [];
+  let nextId = nextDealSalesTaskId(storedSalesTasks);
+  const importedFallbackTasks = (currentDeal.items || [])
+    .filter((item) => !item.parentItemId)
+    .flatMap((item) => {
+      const record = item.catalogueItemId
+        ? cataloguesStore.recordById(
+            item.catalogueItemId,
+            item.catalogueType || undefined,
+          )
+        : null;
+
+      return resolveSalesTasks(record).map((task, index) =>
+        cloneDealSalesTaskTemplate({
+          ...task,
+          id: nextId++,
+          relatedTo: {
+            id: currentDeal.id,
+            name: currentDeal.code || `Deal #${currentDeal.id}`,
+            type: "deal",
+          },
+          sourceItemId: item.id,
+          sourceTaskId: task.id ?? index + 1,
+        }),
+      );
+    });
+  const missingImportedTasks = importedFallbackTasks.filter(
+    (task) =>
+      !storedSalesTasks.some(
+        (existingTask) =>
+          Number(existingTask.sourceItemId ?? 0) ===
+            Number(task.sourceItemId ?? 0) &&
+          Number(existingTask.sourceTaskId ?? 0) ===
+            Number(task.sourceTaskId ?? 0),
+      ),
+  );
+  const legacyManualTasks = (todosStore.items || [])
+    .filter((todo) => {
+      if (!todo?.relatedTo) return false;
+      if (String(todo.relatedTo.id) !== String(currentDeal.id)) return false;
+      if (todo.relatedTo.type !== "deal") return false;
+
+      return (
+        !String(todo.milestoneId ?? "").trim() &&
+        !String(todo.goalId ?? "").trim()
+      );
+    })
+    .map((todo, index) =>
+      cloneDealSalesTaskTemplate({
+        id: nextId + index,
+        title: todo.title,
+        collaborators: todo.collaborators || [],
+        afterWhen: todo.afterWhen ?? null,
+        startTrigger: (todo.startTrigger as
+          | CatalogueTaskStartTrigger
+          | null
+          | undefined) ?? {
+          type: "time",
+          goalId: null,
+          taskId: null,
+        },
+        manhours: null,
+        notes: todo.notes || "",
+        status: todo.status || "pending",
+        important: Boolean(todo.important),
+        attachment: todo.attachment ?? null,
+        relatedTo: todo.relatedTo ?? {
+          id: currentDeal.id,
+          name: currentDeal.code || `Deal #${currentDeal.id}`,
+          type: "deal",
+        },
+        steps: Array.isArray(todo.steps)
+          ? todo.steps.map((step) => ({ ...step }))
+          : [],
+        sourceItemId: null,
+        sourceTaskId: null,
+      }),
+    )
+    .filter(
+      (task) =>
+        !storedSalesTasks.some(
+          (existingTask) =>
+            Number(existingTask.sourceItemId ?? 0) === 0 &&
+            existingTask.title === task.title &&
+            existingTask.notes === task.notes,
+        ),
+    );
+
+  return [...storedSalesTasks, ...missingImportedTasks, ...legacyManualTasks];
+};
+
 const isDraftDealItem = (item: DealItem, record: CatalogueRecord | null) => {
   if (item.parentItemId) return false;
   if (!record) return true;
@@ -278,6 +412,7 @@ const buildExecutionPreview = (
   const rootItems = (currentDeal.items || []).filter(
     (item) => !item.parentItemId,
   );
+  const dealSalesTasks = resolveDealSalesTasks(currentDeal);
 
   const job: ExecutionPreviewJob = {
     name:
@@ -303,7 +438,9 @@ const buildExecutionPreview = (
         )
       : null;
     const configMilestones = resolveJobConfigMilestones(record);
-    const salesTasks = resolveSalesTasks(record);
+    const salesTasks = dealSalesTasks.filter(
+      (task) => Number(task.sourceItemId ?? 0) === Number(item.id),
+    );
     const goalTemplateMap = new Map<string, string>();
     const goalMilestoneMap = new Map<string, string>();
     const taskTemplateMap = new Map<string, string | null>();
@@ -507,6 +644,49 @@ const buildExecutionPreview = (
     });
   });
 
+  dealSalesTasks
+    .filter(
+      (task) => task.sourceItemId === null || task.sourceItemId === undefined,
+    )
+    .forEach((task, taskIndex) => {
+      generalTasks.push({
+        key: `task:deal-sales:${task.id}:${taskIndex}`,
+        title: String(task.title || "").trim() || "Untitled Task",
+        dueAt: resolveTaskDueAt(task.afterWhen, executedAt),
+        notes: String(task.notes || "").trim(),
+        status:
+          task.status === "in_progress" ||
+          task.status === "for_review" ||
+          task.status === "completed"
+            ? task.status
+            : "pending",
+        important: Boolean(task.important),
+        collaborators: Array.isArray(task.collaborators)
+          ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+          : [],
+        attachment: task.attachment ? { ...task.attachment } : null,
+        steps: Array.isArray(task.steps)
+          ? task.steps.map((step) => ({ ...step }))
+          : [],
+        sourceLabel: "Deal / Sales Task",
+        kind: "sales",
+        afterWhen: task.afterWhen ?? null,
+        milestoneKey: null,
+        goalKey: null,
+        startTriggerType: task.startTrigger?.type ?? null,
+        startTriggerGoalKey:
+          task.startTrigger?.type === "goal" ||
+          task.startTrigger?.type === "task"
+            ? String(task.startTrigger.goalId ?? "").trim() || null
+            : null,
+        startTriggerTaskSourceId:
+          task.startTrigger?.type === "task"
+            ? String(task.startTrigger.taskId ?? "").trim() || null
+            : null,
+        startTriggerTaskKey: null,
+      });
+    });
+
   const summary: ExecutionPreviewSummary = {
     milestoneCount: milestones.length,
     goalCount: milestones.reduce(
@@ -549,6 +729,18 @@ const cloneDeal = (value: DealProperties | null) => {
   if (!value) return null;
 
   return JSON.parse(JSON.stringify(value)) as DealProperties;
+};
+
+const resolveLatestDealState = () => {
+  const currentId = deal.value?.id ?? route.params.id;
+  const latest = dealsStore.byId(currentId);
+
+  if (latest) {
+    deal.value = cloneDeal(latest);
+    return latest;
+  }
+
+  return deal.value;
 };
 
 const resolveDeal = () => {
@@ -664,12 +856,13 @@ const openEditDialog = () => {
 };
 
 const openExecutePreviewDialog = () => {
-  if (!deal.value) return;
+  const currentDeal = resolveLatestDealState();
+  if (!currentDeal) return;
 
   const executedAt = new Date().toISOString();
 
   try {
-    executePreview.value = buildExecutionPreview(deal.value, executedAt);
+    executePreview.value = buildExecutionPreview(currentDeal, executedAt);
     executePreviewError.value = null;
   } catch (previewError) {
     console.error("Failed to build deal execution preview", previewError);
@@ -681,11 +874,12 @@ const openExecutePreviewDialog = () => {
 };
 
 const confirmDealExecution = () => {
-  if (!deal.value || !executePreview.value || isExecutingDeal.value) return;
+  const currentDeal = resolveLatestDealState();
+  if (!currentDeal || !executePreview.value || isExecutingDeal.value) return;
 
   isExecutingDeal.value = true;
-  const currentDealId = deal.value.id;
-  const previousRelatedTo = deal.value.relatedTo ?? null;
+  const currentDealId = currentDeal.id;
+  const previousRelatedTo = currentDeal.relatedTo ?? null;
   const createdTodoIds: Array<number | string> = [];
   let createdJobId: number | string | null = null;
 
@@ -1013,34 +1207,33 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
 };
 
 const openEditTask = (todoId: number | string) => {
-  const todo = todosStore.byId(todoId);
-  if (!todo) return;
+  if (!deal.value) return;
+
+  const task = resolveDealSalesTasks(deal.value).find(
+    (entry) => String(entry.id) === String(todoId),
+  );
+  if (!task) return;
 
   taskTemplateMode.value = "edit";
   taskTemplateTodoId.value = todoId;
   nextTick(() => {
     try {
       taskTemplateDrawerRef.value?.openWith?.({
-        title: todo.title,
-        collaborators: todo.collaborators,
-        afterWhen: todo.afterWhen ?? todo.dueAt ?? "+1 day",
-        startTrigger: (todo.startTrigger as
-          | CatalogueTaskStartTrigger
-          | null
-          | undefined) ?? {
+        title: task.title,
+        collaborators: task.collaborators,
+        afterWhen: task.afterWhen ?? "+1 day",
+        startTrigger: task.startTrigger ?? {
           type: "time",
           goalId: null,
           taskId: null,
         },
-        notes: todo.notes ?? "",
-        important: todo.important,
-        status: todo.status,
-        attachment: todo.attachment ?? null,
-        relatedTo: todo.relatedTo ?? null,
-        goalId: todo.goalId ?? null,
-        milestoneId: todo.milestoneId ?? null,
-        steps: Array.isArray(todo.steps)
-          ? todo.steps.map((step) => ({ ...step }))
+        notes: task.notes ?? "",
+        important: task.important,
+        status: task.status,
+        attachment: task.attachment ?? null,
+        relatedTo: task.relatedTo ?? null,
+        steps: Array.isArray(task.steps)
+          ? task.steps.map((step) => ({ ...step }))
           : [],
       });
     } catch {}
@@ -1049,7 +1242,14 @@ const openEditTask = (todoId: number | string) => {
 };
 
 const deleteTask = (todoId: number | string) => {
-  todosStore.removeTodo(todoId);
+  if (!deal.value) return;
+
+  const updatedDeal = dealsStore.updateDeal(deal.value.id, {
+    salesTasks: resolveDealSalesTasks(deal.value).filter(
+      (task) => String(task.id) !== String(todoId),
+    ),
+  });
+  if (updatedDeal) deal.value = cloneDeal(updatedDeal);
   notifications.push("Task deleted", "success", 3000);
 };
 
@@ -1100,12 +1300,19 @@ const onTaskTemplateSaved = (
     name: deal.value.code || `Deal #${deal.value.id}`,
     type: "deal",
   };
-  const normalized: Partial<ToDo> = {
+  const existingTasks = resolveDealSalesTasks(deal.value);
+  const editingTask =
+    taskTemplateMode.value === "edit" && taskTemplateTodoId.value !== null
+      ? (existingTasks.find(
+          (task) => String(task.id) === String(taskTemplateTodoId.value),
+        ) ?? null)
+      : null;
+  const normalized: DealSalesTaskTemplate = {
+    id: editingTask?.id ?? nextDealSalesTaskId(existingTasks),
     title: String(payload.title ?? "").trim(),
     collaborators: Array.isArray(payload.collaborators)
       ? payload.collaborators.map((collaborator) => ({ ...collaborator }))
       : [],
-    dueAt: String(payload.afterWhen ?? payload.dueAt ?? "+1 day"),
     afterWhen: payload.afterWhen ?? payload.dueAt ?? null,
     startTrigger:
       payload.startTrigger?.type === "goal" ||
@@ -1120,6 +1327,7 @@ const onTaskTemplateSaved = (
             goalId: null,
             taskId: null,
           },
+    manhours: editingTask?.manhours ?? null,
     status:
       payload.status === "in_progress" ||
       payload.status === "for_review" ||
@@ -1130,23 +1338,34 @@ const onTaskTemplateSaved = (
     important: Boolean(payload.important),
     attachment: payload.attachment ?? null,
     relatedTo,
-    goalId: payload.goalId ?? null,
-    milestoneId: payload.milestoneId ?? null,
     steps: Array.isArray(payload.steps)
       ? payload.steps.map((step, index) => ({
           ...step,
           id: step.id ?? index + 1,
         }))
       : [],
+    sourceItemId: editingTask?.sourceItemId ?? null,
+    sourceTaskId: editingTask?.sourceTaskId ?? null,
   };
 
-  if (taskTemplateMode.value === "edit" && taskTemplateTodoId.value !== null) {
-    todosStore.updateTodo(taskTemplateTodoId.value, normalized);
-    notifications.push("Task updated", "success", 3000);
-  } else {
-    todosStore.addTodo(normalized);
-    notifications.push("Task created", "success", 3000);
-  }
+  const nextSalesTasks =
+    taskTemplateMode.value === "edit" && taskTemplateTodoId.value !== null
+      ? existingTasks.map((task) =>
+          String(task.id) === String(taskTemplateTodoId.value)
+            ? normalized
+            : task,
+        )
+      : [...existingTasks, normalized];
+  const updatedDeal = dealsStore.updateDeal(deal.value.id, {
+    salesTasks: nextSalesTasks,
+  });
+  if (updatedDeal) deal.value = cloneDeal(updatedDeal);
+
+  notifications.push(
+    taskTemplateMode.value === "edit" ? "Task updated" : "Task created",
+    "success",
+    3000,
+  );
 
   isTaskTemplateDrawerOpen.value = false;
   taskTemplateTodoId.value = null;
