@@ -2,6 +2,16 @@ export type DealFieldValue = string | number | boolean | null
 
 import type { JobDocument } from '@/plugins/fake-api/handlers/operations/jobs/types'
 
+export interface DealItemOverride {
+  name?: string | null
+  category?: string | null
+  quantity?: number | null
+  unitPrice?: number | null
+  discountPercent?: number | null
+  taxApplicable?: boolean | null
+  note?: string | null
+}
+
 export interface DealItem {
   id: number
   name: string
@@ -13,6 +23,7 @@ export interface DealItem {
   sourceRelatedItemId?: number | null
   excludedRelatedItemIds?: number[] | null
   generatedTaskIds?: Array<number | string> | null
+  subItemOverrides?: Record<string, DealItemOverride> | null
   discountPercent?: number | null
   taxApplicable?: boolean | null
   quantity: number

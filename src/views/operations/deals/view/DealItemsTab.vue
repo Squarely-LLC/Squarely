@@ -16,6 +16,7 @@ import type {
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
   DealItem,
+  DealItemOverride,
   DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
@@ -45,11 +46,14 @@ todosStore.init();
 
 type DerivedGoal = {
   id: string;
+  overrideKey: string;
   name: string;
+  category: string | null;
   note: string | null;
   price: number | null;
   typeLabel: string;
   quantity: number | null;
+  discountPercent: number | null;
   discountLabel: string | null;
   taxApplicable: boolean | null;
   showQuantity: boolean;
@@ -89,8 +93,10 @@ type ItemTypeChoice = {
 const addItemDialogVisible = ref(false);
 const createItemTypeDialogVisible = ref(false);
 const createDraftItemDialogVisible = ref(false);
+const editLineDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const createDraftItemFormRef = ref<VForm>();
+const editLineFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
 const selectedCatalogueItemId = ref<string | null>(null);
 const selectedCreateItemType = ref<CatalogueItemType | null>(null);
@@ -105,6 +111,21 @@ const createDraftItem = reactive({
   price: 0,
   discountPercent: 0,
   taxApplicable: true,
+  note: "",
+});
+
+const editLine = reactive({
+  mode: "item" as "item" | "sub",
+  itemId: null as number | null,
+  parentItemId: null as number | null,
+  overrideKey: "",
+  title: "",
+  name: "",
+  category: "",
+  quantity: 1 as number | null,
+  unitPrice: 0 as number | null,
+  discountPercent: 0 as number | null,
+  taxApplicable: null as boolean | null,
   note: "",
 });
 
@@ -429,6 +450,131 @@ const removeDealItem = (item: DealItemWithPlan) => {
   notifications.push("Item removed", "success", 2500);
 };
 
+const getItemById = (itemId: number | string | null | undefined) =>
+  (props.deal.items || []).find(
+    (item) => String(item.id) === String(itemId ?? ""),
+  ) ?? null;
+
+const normalizeEditableNumber = (value: unknown, fallback: number | null) => {
+  if (value === null || value === undefined || value === "") return fallback;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const buildOverridePayload = (): DealItemOverride => ({
+  name: editLine.name.trim(),
+  category: editLine.category.trim() || null,
+  quantity: normalizeEditableNumber(editLine.quantity, null),
+  unitPrice: normalizeEditableNumber(editLine.unitPrice, null),
+  discountPercent: normalizeEditableNumber(editLine.discountPercent, 0),
+  taxApplicable: editLine.taxApplicable,
+  note: editLine.note.trim() || null,
+});
+
+const openEditItem = (item: DealItemWithPlan) => {
+  const isGeneratedRelatedItem =
+    item.catalogueType === "Related Item" &&
+    !!item.parentItemId &&
+    !!item.sourceRelatedItemId &&
+    !getItemById(item.panelId);
+
+  if (isGeneratedRelatedItem) {
+    const overrideKey = `related-${item.sourceRelatedItemId}`;
+    const parent = getItemById(item.parentItemId);
+    const override = parent?.subItemOverrides?.[overrideKey] || {};
+
+    editLine.mode = "sub";
+    editLine.itemId = null;
+    editLine.parentItemId = Number(item.parentItemId);
+    editLine.overrideKey = overrideKey;
+    editLine.title = item.name;
+    editLine.name = override.name ?? item.name;
+    editLine.category = override.category ?? item.category ?? "";
+    editLine.quantity = override.quantity ?? item.quantity ?? 1;
+    editLine.unitPrice = override.unitPrice ?? item.unitPrice ?? 0;
+    editLine.discountPercent = override.discountPercent ?? 0;
+    editLine.taxApplicable = override.taxApplicable ?? item.taxApplicable ?? null;
+    editLine.note = override.note ?? item.note ?? "";
+    editLineDialogVisible.value = true;
+
+    return;
+  }
+
+  editLine.mode = "item";
+  editLine.itemId = Number(item.id);
+  editLine.parentItemId = null;
+  editLine.overrideKey = "";
+  editLine.title = item.name;
+  editLine.name = item.name;
+  editLine.category = item.category ?? "";
+  editLine.quantity = item.quantity ?? 1;
+  editLine.unitPrice = item.unitPrice ?? 0;
+  editLine.discountPercent = item.discountPercent ?? 0;
+  editLine.taxApplicable = item.taxApplicable ?? null;
+  editLine.note = item.note ?? "";
+  editLineDialogVisible.value = true;
+};
+
+const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
+  const sourceItem = getItemById(parentItem.id);
+  const override = sourceItem?.subItemOverrides?.[goal.overrideKey] || {};
+
+  editLine.mode = "sub";
+  editLine.itemId = null;
+  editLine.parentItemId = Number(parentItem.id);
+  editLine.overrideKey = goal.overrideKey;
+  editLine.title = goal.name;
+  editLine.name = override.name ?? goal.name;
+  editLine.category = override.category ?? goal.category ?? "";
+  editLine.quantity = override.quantity ?? goal.quantity ?? 1;
+  editLine.unitPrice = override.unitPrice ?? goal.price ?? 0;
+  editLine.discountPercent = override.discountPercent ?? goal.discountPercent ?? 0;
+  editLine.taxApplicable = override.taxApplicable ?? goal.taxApplicable ?? null;
+  editLine.note = override.note ?? goal.note ?? "";
+  editLineDialogVisible.value = true;
+};
+
+const saveEditedLine = async () => {
+  const { valid } = (await editLineFormRef.value?.validate()) ?? {
+    valid: true,
+  };
+  if (!valid) return;
+
+  const payload = buildOverridePayload();
+  const nextItems = (props.deal.items || []).map((item) => {
+    if (editLine.mode === "item" && item.id === editLine.itemId) {
+      return {
+        ...item,
+        name: payload.name || item.name,
+        category: payload.category,
+        quantity: payload.quantity ?? item.quantity,
+        unitPrice: payload.unitPrice,
+        discountPercent: payload.discountPercent,
+        taxApplicable: payload.taxApplicable,
+        note: payload.note,
+      };
+    }
+
+    if (editLine.mode === "sub" && item.id === editLine.parentItemId) {
+      return {
+        ...item,
+        subItemOverrides: {
+          ...(item.subItemOverrides || {}),
+          [editLine.overrideKey]: payload,
+        },
+      };
+    }
+
+    return item;
+  });
+
+  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+  editLineDialogVisible.value = false;
+  notifications.push("Item updated for this deal", "success", 2500);
+};
+
 const isProductLike = (type?: string | null) =>
   type === "Product" ||
   type === "Produced Product" ||
@@ -467,7 +613,36 @@ const itemAmount = (item: DealItem) =>
   calculateAmount(item.unitPrice, item.quantity, item.discountPercent || 0);
 
 const goalAmount = (goal: DerivedGoal) =>
-  calculateAmount(goal.price, goal.quantity);
+  calculateAmount(goal.price, goal.quantity, goal.discountPercent || 0);
+
+const formatGoalDiscount = (goal: DerivedGoal) =>
+  goal.discountPercent === null || goal.discountPercent === undefined
+    ? goal.discountLabel
+    : formatPercent(goal.discountPercent);
+
+const applySubItemOverride = (
+  item: DealItem,
+  overrideKey: string,
+  goal: DerivedGoal,
+): DerivedGoal => {
+  const override = item.subItemOverrides?.[overrideKey];
+  if (!override) return goal;
+
+  return {
+    ...goal,
+    name: override.name ?? goal.name,
+    category: override.category ?? goal.category,
+    note: override.note ?? goal.note,
+    price: override.unitPrice ?? goal.price,
+    quantity: override.quantity ?? goal.quantity,
+    discountPercent: override.discountPercent ?? goal.discountPercent,
+    discountLabel:
+      override.discountPercent === null || override.discountPercent === undefined
+        ? goal.discountLabel
+        : formatPercent(override.discountPercent),
+    taxApplicable: override.taxApplicable ?? goal.taxApplicable,
+  };
+};
 
 const makeDerivedGoal = (
   item: DealItem,
@@ -475,6 +650,7 @@ const makeDerivedGoal = (
   typeLabel: string,
   display: {
     quantity: number | null;
+    discountPercent?: number | null;
     discountLabel: string | null;
     taxApplicable: boolean | null;
     showQuantity: boolean;
@@ -485,6 +661,7 @@ const makeDerivedGoal = (
   source: {
     id: number | string;
     name: string;
+    category?: string | null;
     description?: string | null;
     note?: string | null;
     price?: number | null;
@@ -492,10 +669,13 @@ const makeDerivedGoal = (
   },
 ): DerivedGoal => ({
   id: `${prefix}-${item.id}-${source.id}`,
+  overrideKey: `${prefix}-${source.id}`,
   name: source.name,
+  category: source.category ?? null,
   note: source.note ?? source.description ?? null,
   price: source.price ?? null,
   typeLabel,
+  discountPercent: display.discountPercent ?? null,
   ...display,
 });
 
@@ -536,23 +716,28 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
         name: contractual.name,
         note: contractual.description || null,
         price: contractual.bestPrice,
-        goals: (contractual.phases || []).map((phase) => ({
-          ...makeDerivedGoal(
+        goals: (contractual.phases || []).map((phase) =>
+          applySubItemOverride(
             item,
-            "phase",
-            "Phase",
-            {
-              quantity: item.quantity,
-              discountLabel: "0%",
-              taxApplicable: contractual.chargeTax,
-              showQuantity: true,
-              showPrice: true,
-              showDiscount: true,
-              showTaxApplicable: true,
-            },
-            phase,
+            `phase-${phase.id}`,
+            makeDerivedGoal(
+              item,
+              "phase",
+              "Phase",
+              {
+                quantity: item.quantity,
+                discountPercent: 0,
+                discountLabel: "0%",
+                taxApplicable: contractual.chargeTax,
+                showQuantity: true,
+                showPrice: true,
+                showDiscount: true,
+                showTaxApplicable: true,
+              },
+              phase,
+            ),
           ),
-        })),
+        ),
         goalTypeSingular: "Phase",
         goalTypePlural: "Phases",
       }),
@@ -568,20 +753,25 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
         note: retainer.description || null,
         price: retainer.bestPrice,
         goals: (retainer.retainerServices || []).map((service) =>
-          makeDerivedGoal(
+          applySubItemOverride(
             item,
-            "retainer",
-            "Retainer Service",
-            {
-              quantity: item.quantity,
-              discountLabel: null,
-              taxApplicable: null,
-              showQuantity: true,
-              showPrice: false,
-              showDiscount: false,
-              showTaxApplicable: false,
-            },
-            service,
+            `retainer-${service.id}`,
+            makeDerivedGoal(
+              item,
+              "retainer",
+              "Retainer Service",
+              {
+                quantity: item.quantity,
+                discountPercent: 0,
+                discountLabel: "0%",
+                taxApplicable: service.chargeTax,
+                showQuantity: true,
+                showPrice: true,
+                showDiscount: true,
+                showTaxApplicable: true,
+              },
+              service,
+            ),
           ),
         ),
         goalTypeSingular: "Retainer Service",
@@ -599,20 +789,25 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
         note: recurrent.description || null,
         price: recurrent.bestPrice,
         goals: (recurrent.reccurentServices || []).map((service) =>
-          makeDerivedGoal(
+          applySubItemOverride(
             item,
-            "recurrent",
-            "Recurrent Service",
-            {
-              quantity: null,
-              discountLabel: null,
-              taxApplicable: null,
-              showQuantity: false,
-              showPrice: false,
-              showDiscount: false,
-              showTaxApplicable: false,
-            },
-            service,
+            `recurrent-${service.id}`,
+            makeDerivedGoal(
+              item,
+              "recurrent",
+              "Recurrent Service",
+              {
+                quantity: item.quantity,
+                discountPercent: 0,
+                discountLabel: "0%",
+                taxApplicable: service.chargeTax,
+                showQuantity: true,
+                showPrice: true,
+                showDiscount: true,
+                showTaxApplicable: true,
+              },
+              service,
+            ),
           ),
         ),
         goalTypeSingular: "Recurrent Service",
@@ -703,36 +898,43 @@ const deriveRelatedItemMilestones = (item: DealItem): DealItemWithPlan[] => {
 
   return (service.relatedItems || [])
     .filter((relatedItem) => !excluded.has(relatedItem.id))
-    .map((relatedItem) => ({
-      id: item.id,
-      panelId: `related-${item.id}-${relatedItem.id}`,
-      name: relatedItem.name,
-      itemTypeLabel: "Related Item",
-      category: relatedItem.category,
-      catalogueItemId: item.catalogueItemId,
-      catalogueType: "Related Item",
-      parentItemId: item.id,
-      sourceRelatedItemId: relatedItem.id,
-      quantity: item.quantity,
-      unitPrice: relatedItem.price ?? null,
-      status: item.status,
-      note: relatedItem.description || null,
-      isExpandable: false,
-      derivedSections: [
-        makeSection(item, {
-          name: relatedItem.name,
-          note: relatedItem.description || null,
-          price: relatedItem.price ?? null,
-          goals: [],
-          goalTypeSingular: "Related Item",
-          goalTypePlural: "Related Items",
-        }),
-      ],
-      childTypeSingular: "Related Item",
-      childTypePlural: "Related Items",
-      childCount: 0,
-      actionsEnabled: true,
-    }));
+    .map((relatedItem) => {
+      const overrideKey = `related-${relatedItem.id}`;
+      const override = item.subItemOverrides?.[overrideKey] || {};
+
+      return {
+        id: item.id,
+        panelId: `related-${item.id}-${relatedItem.id}`,
+        name: override.name ?? relatedItem.name,
+        itemTypeLabel: "Related Item",
+        category: override.category ?? relatedItem.category,
+        catalogueItemId: item.catalogueItemId,
+        catalogueType: "Related Item",
+        parentItemId: item.id,
+        sourceRelatedItemId: relatedItem.id,
+        quantity: override.quantity ?? item.quantity,
+        unitPrice: override.unitPrice ?? relatedItem.price ?? null,
+        discountPercent: override.discountPercent ?? 0,
+        taxApplicable: override.taxApplicable ?? relatedItem.chargeTax,
+        status: item.status,
+        note: override.note ?? relatedItem.description ?? null,
+        isExpandable: false,
+        derivedSections: [
+          makeSection(item, {
+            name: override.name ?? relatedItem.name,
+            note: override.note ?? relatedItem.description ?? null,
+            price: override.unitPrice ?? relatedItem.price ?? null,
+            goals: [],
+            goalTypeSingular: "Related Item",
+            goalTypePlural: "Related Items",
+          }),
+        ],
+        childTypeSingular: "Related Item",
+        childTypePlural: "Related Items",
+        childCount: 0,
+        actionsEnabled: true,
+      };
+    });
 };
 
 const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
@@ -1057,6 +1259,12 @@ watch(
                     <VIcon icon="tabler-dots-vertical" size="18" />
                     <VMenu activator="parent">
                       <VList>
+                        <VListItem @click="openEditItem(item)">
+                          <template #prepend>
+                            <VIcon icon="tabler-pencil" />
+                          </template>
+                          <VListItemTitle>Edit</VListItemTitle>
+                        </VListItem>
                         <VListItem @click="removeDealItem(item)">
                           <template #prepend>
                             <VIcon icon="tabler-trash" color="error" />
@@ -1119,7 +1327,7 @@ watch(
                           </div>
                           <div v-if="goal.showDiscount" class="product-metric">
                             <span>Discount</span>
-                            <strong>{{ goal.discountLabel || "--" }}</strong>
+                            <strong>{{ formatGoalDiscount(goal) || "--" }}</strong>
                           </div>
                           <div
                             v-if="goal.showTaxApplicable"
@@ -1143,6 +1351,16 @@ watch(
                           {{ goal.note }}
                         </div>
                       </div>
+
+                      <VBtn
+                        icon
+                        variant="text"
+                        size="x-small"
+                        class="phase-edit-btn"
+                        @click.stop="openEditGoal(item, goal)"
+                      >
+                        <VIcon icon="tabler-pencil" size="16" />
+                      </VBtn>
                     </div>
                   </VCard>
                 </div>
@@ -1349,6 +1567,96 @@ watch(
     </VCard>
   </VDialog>
 
+  <VDialog v-model="editLineDialogVisible" max-width="760">
+    <VCard>
+      <VCardText>
+        <h5 class="text-h5 mb-4">Edit {{ editLine.title || "Item" }}</h5>
+
+        <VForm ref="editLineFormRef" @submit.prevent="saveEditedLine">
+          <VRow>
+            <VCol cols="12" md="8">
+              <AppTextField
+                v-model="editLine.name"
+                label="Name"
+                placeholder="Item name"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="4">
+              <AppTextField
+                v-model="editLine.category"
+                label="Category"
+                placeholder="Category"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="editLine.unitPrice"
+                type="number"
+                min="0"
+                label="Price"
+                placeholder="0"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="editLine.quantity"
+                type="number"
+                min="0"
+                label="Quantity"
+                placeholder="1"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="editLine.discountPercent"
+                type="number"
+                min="0"
+                label="Discount %"
+                placeholder="0"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <div class="d-flex flex-column gap-2">
+                <span class="text-sm text-medium-emphasis">Tax?</span>
+                <VSwitch
+                  v-model="editLine.taxApplicable"
+                  inset
+                  hide-details
+                  color="primary"
+                  label="Applicable"
+                />
+              </div>
+            </VCol>
+
+            <VCol cols="12">
+              <AppTextarea
+                v-model="editLine.note"
+                label="Note"
+                placeholder="Short note"
+                rows="2"
+                auto-grow
+              />
+            </VCol>
+
+            <VCol cols="12">
+              <DialogActionBar
+                save-type="submit"
+                @save="() => undefined"
+                @cancel="editLineDialogVisible = false"
+              />
+            </VCol>
+          </VRow>
+        </VForm>
+      </VCardText>
+    </VCard>
+  </VDialog>
+
   <VDialog v-model="createItemTypeDialogVisible" max-width="920">
     <VCard class="pa-sm-6 pa-4">
       <VCardTitle class="text-h4 pb-2">Choose Item Type</VCardTitle>
@@ -1521,19 +1829,27 @@ watch(
 
 .milestone-panels :deep(.v-expansion-panel),
 .goal-panels :deep(.v-expansion-panel) {
-  background: transparent;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-surface), 0.12);
+}
+
+.milestone-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 }
 
 .milestone-panels :deep(.v-expansion-panel-title),
 .goal-panels :deep(.v-expansion-panel-title) {
-  padding-block: 0.7rem;
-  padding-inline: 1.25rem;
+  min-block-size: auto;
+  padding-block: 0.65rem;
+  padding-inline: 1rem;
 }
 
 .milestone-panels :deep(.v-expansion-panel-text__wrapper),
 .goal-panels :deep(.v-expansion-panel-text__wrapper) {
-  padding-block: 0 1rem;
-  padding-inline: 1rem;
+  padding-block: 0 0.75rem;
+  padding-inline: 0.75rem;
 }
 
 .milestone-panels :deep(.v-expansion-panel__shadow),
@@ -1542,7 +1858,16 @@ watch(
 }
 
 .milestone-panel {
-  border-radius: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+
+.milestone-panel:hover {
+  border-color: rgba(var(--v-theme-primary), 0.24);
+  background: rgba(var(--v-theme-surface), 0.18);
 }
 
 .milestone-panel--static {
@@ -1556,9 +1881,9 @@ watch(
 .milestone-panel-body {
   display: flex;
   flex-direction: column;
-  background: rgba(var(--v-theme-surface), 0.14);
+  background: transparent;
   box-shadow: none;
-  gap: 1rem;
+  gap: 0.5rem;
 }
 
 .goal-panels :deep(.v-expansion-panel) {
@@ -1568,11 +1893,10 @@ watch(
 }
 
 .goal-panel--static {
-  border: 0;
-  border-radius: 10px;
-  background: rgba(var(--v-theme-info), 0.035);
-  padding-block: 0.7rem;
-  padding-inline: 1rem;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.18);
+  padding-block: 0.65rem;
+  padding-inline: 0.8rem;
 }
 
 .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
@@ -1701,6 +2025,12 @@ watch(
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
+.phase-edit-btn {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  margin-block-start: -0.25rem;
+}
+
 .item-card-note {
   display: -webkit-box;
   overflow: hidden;
@@ -1739,10 +2069,6 @@ watch(
 
 .truncate-title--header {
   max-inline-size: min(28rem, 100%);
-}
-
-.goal-icon {
-  color: rgb(var(--v-theme-info));
 }
 
 .items-summary {
