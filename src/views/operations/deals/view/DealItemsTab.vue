@@ -445,6 +445,30 @@ const formatTaxApplicable = (value: boolean | null) => {
   return value ? "Yes" : "No";
 };
 
+const formatPercent = (value?: number | null) =>
+  value === null || value === undefined ? "--" : `${Number(value)}%`;
+
+const calculateAmount = (
+  price?: number | null,
+  quantity?: number | null,
+  discountPercent = 0,
+) => {
+  if (price === null || price === undefined) return null;
+
+  const normalizedQuantity =
+    quantity === null || quantity === undefined ? 1 : Number(quantity);
+  const subtotal = Number(price) * normalizedQuantity;
+  const discount = subtotal * (Number(discountPercent || 0) / 100);
+
+  return subtotal - discount;
+};
+
+const itemAmount = (item: DealItem) =>
+  calculateAmount(item.unitPrice, item.quantity, item.discountPercent || 0);
+
+const goalAmount = (goal: DerivedGoal) =>
+  calculateAmount(goal.price, goal.quantity);
+
 const makeDerivedGoal = (
   item: DealItem,
   prefix: string,
@@ -966,39 +990,61 @@ watch(
             :readonly="!item.isExpandable"
           >
             <VExpansionPanelTitle>
-              <div class="d-flex align-center gap-3 w-100">
-                <div class="rounded-circle milestone-status-dot" />
-
+              <div class="item-card-shell">
                 <div class="flex-grow-1 min-w-0">
-                  <div class="d-flex align-center gap-2 flex-wrap">
+                  <div class="item-card-header">
                     <VTooltip :text="item.name" location="top">
                       <template #activator="{ props: tooltipProps }">
                         <div
                           v-bind="tooltipProps"
-                          class="font-weight-medium truncate-title truncate-title--header"
+                          class="item-card-title truncate-title"
                         >
                           {{ item.name }}
                         </div>
                       </template>
                     </VTooltip>
-                    <VChip size="small" variant="text" color="primary">
+                    <VChip size="small" variant="tonal" color="primary">
                       {{ itemTypeLabel(item) }}
                     </VChip>
                   </div>
-                  <div class="text-caption text-medium-emphasis">
-                    {{ childCountLabel(item) }}
-                    <span v-if="item.category"> | {{ item.category }}</span>
-                    | Qty {{ item.quantity }}
-                    <span
-                      v-if="
-                        item.unitPrice !== null && item.unitPrice !== undefined
-                      "
-                    >
-                      | {{ formatMoney(item.unitPrice) }}
-                    </span>
+
+                  <div class="item-card-meta">
+                    <span v-if="item.category">{{ item.category }}</span>
+                    <span>{{ childCountLabel(item) }}</span>
                   </div>
-                  <div class="text-body-2 text-medium-emphasis mt-1">
-                    {{ item.note || "No item notes." }}
+
+                  <div class="product-metrics">
+                    <div class="product-metric">
+                      <span>Price</span>
+                      <strong>{{ formatMoney(item.unitPrice) }}</strong>
+                    </div>
+                    <div class="product-metric">
+                      <span>Qty</span>
+                      <strong>{{ item.quantity ?? "--" }}</strong>
+                    </div>
+                    <div class="product-metric">
+                      <span>Discount</span>
+                      <strong>
+                        {{ formatPercent(item.discountPercent || 0) }}
+                      </strong>
+                    </div>
+                    <div class="product-metric">
+                      <span>Tax</span>
+                      <strong>
+                        {{ formatTaxApplicable(item.taxApplicable ?? null) }}
+                      </strong>
+                    </div>
+                    <div class="product-metric product-metric--amount">
+                      <span>Amount</span>
+                      <strong>{{ formatMoney(itemAmount(item)) }}</strong>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="item.note"
+                    class="item-card-note text-body-2 text-medium-emphasis"
+                  >
+                    {{ item.note }}
                   </div>
                 </div>
 
@@ -1025,7 +1071,7 @@ watch(
             </VExpansionPanelTitle>
 
             <VExpansionPanelText v-if="item.isExpandable">
-              <VCard variant="flat" class="pa-4 milestone-panel-body">
+              <VCard variant="flat" class="pa-3 milestone-panel-body">
                 <div
                   v-if="derivedGoalsForItem(item).length"
                   class="d-flex flex-column gap-2 goal-panels"
@@ -1036,29 +1082,24 @@ watch(
                     variant="tonal"
                     class="goal-panel goal-panel--static"
                   >
-                    <div class="d-flex align-center gap-3 w-100">
-                      <VIcon
-                        icon="tabler-target-arrow"
-                        size="16"
-                        class="goal-icon"
-                      />
-
+                    <div class="phase-card-shell">
                       <div class="flex-grow-1 min-w-0">
-                        <div class="d-flex align-center gap-2 flex-wrap">
+                        <div class="item-card-header">
                           <VTooltip :text="goal.name" location="top">
                             <template #activator="{ props: tooltipProps }">
                               <div
                                 v-bind="tooltipProps"
-                                class="font-weight-medium truncate-title truncate-title--header"
+                                class="item-card-title item-card-title--phase truncate-title"
                               >
                                 {{ goal.name }}
                               </div>
                             </template>
                           </VTooltip>
-                          <VChip color="primary" size="x-small" variant="text">
+                          <VChip color="primary" size="x-small" variant="tonal">
                             {{ goal.typeLabel }}
                           </VChip>
                         </div>
+
                         <div
                           v-if="
                             goal.showQuantity ||
@@ -1066,24 +1107,40 @@ watch(
                             goal.showDiscount ||
                             goal.showTaxApplicable
                           "
-                          class="text-caption text-medium-emphasis"
+                          class="product-metrics product-metrics--phase"
                         >
-                          <span v-if="goal.showQuantity">
-                            Qty {{ goal.quantity ?? "--" }}
-                          </span>
-                          <span v-if="goal.showPrice">
-                            | Price {{ formatMoney(goal.price) }}
-                          </span>
-                          <span v-if="goal.showDiscount">
-                            | Discount {{ goal.discountLabel || "--" }}
-                          </span>
-                          <span v-if="goal.showTaxApplicable">
-                            | Tax Applicable
-                            {{ formatTaxApplicable(goal.taxApplicable) }}
-                          </span>
+                          <div v-if="goal.showPrice" class="product-metric">
+                            <span>Price</span>
+                            <strong>{{ formatMoney(goal.price) }}</strong>
+                          </div>
+                          <div v-if="goal.showQuantity" class="product-metric">
+                            <span>Qty</span>
+                            <strong>{{ goal.quantity ?? "--" }}</strong>
+                          </div>
+                          <div v-if="goal.showDiscount" class="product-metric">
+                            <span>Discount</span>
+                            <strong>{{ goal.discountLabel || "--" }}</strong>
+                          </div>
+                          <div
+                            v-if="goal.showTaxApplicable"
+                            class="product-metric"
+                          >
+                            <span>Tax</span>
+                            <strong>
+                              {{ formatTaxApplicable(goal.taxApplicable) }}
+                            </strong>
+                          </div>
+                          <div v-if="goal.showPrice" class="product-metric">
+                            <span>Amount</span>
+                            <strong>{{ formatMoney(goalAmount(goal)) }}</strong>
+                          </div>
                         </div>
-                        <div class="text-body-2 text-medium-emphasis mt-1">
-                          {{ goal.note || "No notes." }}
+
+                        <div
+                          v-if="goal.note"
+                          class="item-card-note text-body-2 text-medium-emphasis"
+                        >
+                          {{ goal.note }}
                         </div>
                       </div>
                     </div>
@@ -1469,7 +1526,7 @@ watch(
 
 .milestone-panels :deep(.v-expansion-panel-title),
 .goal-panels :deep(.v-expansion-panel-title) {
-  padding-block: 1rem;
+  padding-block: 0.7rem;
   padding-inline: 1.25rem;
 }
 
@@ -1496,14 +1553,6 @@ watch(
   display: none;
 }
 
-.milestone-status-dot {
-  border-radius: 999px;
-  background: rgb(var(--v-theme-primary));
-  block-size: 10px;
-  inline-size: 10px;
-  min-inline-size: 10px;
-}
-
 .milestone-panel-body {
   display: flex;
   flex-direction: column;
@@ -1522,8 +1571,8 @@ watch(
   border: 0;
   border-radius: 10px;
   background: rgba(var(--v-theme-info), 0.035);
-  padding-block: 1rem;
-  padding-inline: 1.25rem;
+  padding-block: 0.7rem;
+  padding-inline: 1rem;
 }
 
 .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
@@ -1541,6 +1590,123 @@ watch(
 
 .goal-panels {
   margin-block-start: 0;
+}
+
+.item-card-shell,
+.phase-card-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.item-card-shell {
+  padding-block: 0.125rem;
+}
+
+.phase-card-shell {
+  padding-block: 0.125rem;
+}
+
+.item-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.item-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.item-card-title--phase {
+  font-size: 0.9rem;
+}
+
+.item-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.78rem;
+  line-height: 1.2;
+  margin-block-start: 0.15rem;
+}
+
+.item-card-meta span + span {
+  position: relative;
+}
+
+.item-card-meta span + span::before {
+  position: absolute;
+  border-radius: 999px;
+  background: currentColor;
+  block-size: 0.25rem;
+  content: "";
+  inline-size: 0.25rem;
+  inset-block-start: 50%;
+  inset-inline-start: -0.5rem;
+  transform: translateY(-50%);
+}
+
+.product-metrics {
+  display: grid;
+  gap: 0.375rem;
+  grid-template-columns: repeat(5, minmax(5rem, 1fr));
+  margin-block-start: 0.5rem;
+}
+
+.product-metrics--phase {
+  grid-template-columns: repeat(5, minmax(4.75rem, 1fr));
+}
+
+.product-metric {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.18);
+  min-inline-size: 0;
+  padding-block: 0.35rem;
+  padding-inline: 0.5rem;
+}
+
+.product-metric span,
+.product-metric strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-metric span {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.product-metric strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.82rem;
+  line-height: 1.25;
+  margin-block-start: 0.1rem;
+}
+
+.product-metric--amount {
+  border-color: rgba(var(--v-theme-primary), 0.2);
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.item-card-note {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-block-start: 0.45rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .milestone-actions,
@@ -1693,6 +1859,21 @@ watch(
   .goal-actions :deep(.v-btn) {
     max-inline-size: 100%;
     min-block-size: 30px;
+  }
+
+  .item-card-shell,
+  .phase-card-shell {
+    gap: 0.75rem;
+  }
+
+  .item-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .product-metrics,
+  .product-metrics--phase {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .items-summary {
