@@ -413,12 +413,13 @@ const buildExecutionPreview = (
     (item) => !item.parentItemId,
   );
   const dealSalesTasks = resolveDealSalesTasks(currentDeal);
+  const dealReference =
+    currentDeal.code?.trim() ||
+    currentDeal.name?.trim() ||
+    `Deal #${currentDeal.id}`;
 
   const job: ExecutionPreviewJob = {
-    name:
-      currentDeal.code?.trim() ||
-      currentDeal.name?.trim() ||
-      `Job for Deal #${currentDeal.id}`,
+    name: `Job for ${dealReference}`,
     code: currentDeal.code?.trim() || null,
     startDate: executedAt,
     location: currentDeal.location?.trim() || null,
@@ -879,7 +880,6 @@ const confirmDealExecution = () => {
 
   isExecutingDeal.value = true;
   const currentDealId = currentDeal.id;
-  const previousRelatedTo = currentDeal.relatedTo ?? null;
   const createdTodoIds: Array<number | string> = [];
   let createdJobId: number | string | null = null;
 
@@ -1017,25 +1017,19 @@ const confirmDealExecution = () => {
       } as any);
     });
 
-    const updatedDeal = dealsStore.updateDeal(currentDealId, {
-      relatedTo: createdJob.id,
-    });
-    if (updatedDeal) deal.value = cloneDeal(updatedDeal);
-
     notifications.push(
       `Deal executed into ${createdJob.name} with ${preview.summary.jobTaskCount} tasks`,
       "success",
       4000,
     );
     closeExecutePreviewDialog();
+    void router.push({
+      name: "operations-jobs-view-id",
+      params: { id: createdJob.id },
+    });
   } catch (executionError) {
     createdTodoIds.forEach((todoId) => todosStore.removeTodo(todoId));
     if (createdJobId !== null) jobsStore.removeJob(createdJobId);
-
-    const revertedDeal = dealsStore.updateDeal(currentDealId, {
-      relatedTo: previousRelatedTo,
-    });
-    if (revertedDeal) deal.value = cloneDeal(revertedDeal);
 
     console.error("Failed to execute deal", executionError);
     executePreviewError.value =

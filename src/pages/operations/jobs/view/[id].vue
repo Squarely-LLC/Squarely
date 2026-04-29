@@ -3,8 +3,10 @@ import { computed, nextTick, onMounted, ref, toRaw, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import AddStakeholderDialog from "@/components/dialogs/AddStakeholderDialog.vue";
+import type { ToDo, ToDoStep } from "@/data/schema";
 import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
+import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
@@ -20,7 +22,6 @@ import JobDocumentsTab from "@/views/operations/jobs/view/JobDocumentsTab.vue";
 import JobMilestonesGoalsTab from "@/views/operations/jobs/view/JobMilestonesGoalsTab.vue";
 import JobStakeholdersCard from "@/views/operations/jobs/view/JobStakeholdersCard.vue";
 import JobSummaryCard from "@/views/operations/jobs/view/JobSummaryCard.vue";
-import type { ToDo, ToDoStep } from "@/data/schema";
 
 const route = useRoute("operations-jobs-view-id");
 const router = useRouter();
@@ -30,6 +31,9 @@ jobsStore.init();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
+
+const employeesStore = useEmployeesStore();
+employeesStore.init();
 
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
@@ -75,6 +79,18 @@ const contactDirectory = computed(() => {
     map.set(Number(contact.id), {
       name: contact.fullName,
       picture: contact.picture || null,
+    });
+  });
+  return map;
+});
+
+const employeeDirectory = computed(() => {
+  const map = new Map<number, { name: string; picture: string | null }>();
+  employeesStore.all.forEach((employee) => {
+    if (employee?.id === null || employee?.id === undefined) return;
+    map.set(Number(employee.id), {
+      name: employee.fullName,
+      picture: employee.picture || null,
     });
   });
   return map;
@@ -667,7 +683,10 @@ const onTodoEdited = (payload: any) => {
   isEditTodoDrawerVisible.value = false;
 };
 
-const onTodoStepsEdited = (payload: { id: number | string; steps: ToDoStep[] }) => {
+const onTodoStepsEdited = (payload: {
+  id: number | string;
+  steps: ToDoStep[];
+}) => {
   todosStore.updateTodo(payload.id, {
     steps: payload.steps.map((step) => ({ ...step })),
   });
@@ -732,6 +751,7 @@ const closeSnagDrawer = () => {
         <JobSummaryCard
           :job="job"
           :contact-directory="contactDirectory"
+          :employee-directory="employeeDirectory"
           @edit="handleEditJob"
         />
 

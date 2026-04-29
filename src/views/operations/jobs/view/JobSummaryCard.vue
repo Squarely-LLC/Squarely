@@ -5,6 +5,7 @@ import { computed } from "vue";
 interface Props {
   job: JobProperties;
   contactDirectory: Map<number, { name: string; picture: string | null }>;
+  employeeDirectory: Map<number, { name: string; picture: string | null }>;
 }
 const props = defineProps<Props>();
 const emit = defineEmits<{
@@ -59,7 +60,7 @@ const decoratedCollaborators = computed(() => {
   return props.job.collaborators.map((collaboratorId, index) => {
     const numericId = Number(collaboratorId);
     const entry = Number.isFinite(numericId)
-      ? (props.contactDirectory.get(numericId) ?? null)
+      ? (props.employeeDirectory.get(numericId) ?? null)
       : null;
     const fallbackName = `Collaborator ${index + 1}`;
     return {
@@ -105,7 +106,12 @@ const collaboratorNames = computed(() => {
           {{ job.type }}
         </VChip>
 
-        <VChip label size="small" :color="resolveFlagColor(job.flag)" variant="text">
+        <VChip
+          label
+          size="small"
+          :color="resolveFlagColor(job.flag)"
+          variant="text"
+        >
           {{ job.flag }}
         </VChip>
       </div>
