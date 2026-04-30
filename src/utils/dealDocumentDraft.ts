@@ -71,6 +71,11 @@ export interface DealDocumentSelectableItem extends DealItem {
   isAutoBillable: boolean;
   isBillableRoot: boolean;
   isGenerated: boolean;
+  lineConstraintsOverride?: {
+    discount?: boolean;
+    price?: boolean;
+    quantity?: boolean;
+  } | null;
   parentName: string | null;
 }
 
@@ -152,12 +157,16 @@ function formatCountLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function buildSelectionKey(item: DealItem, isGenerated: boolean) {
+function buildSelectionKey(
+  item: DealItem,
+  isGenerated: boolean,
+  suffix?: string,
+) {
   if (isGenerated) {
-    return `generated-${item.parentItemId ?? item.id}-${item.sourceRelatedItemId ?? item.id}`;
+    return `generated-${item.parentItemId ?? item.id}-${item.sourceRelatedItemId ?? item.id}${suffix ? `-${suffix}` : ""}`;
   }
 
-  return `item-${item.id}`;
+  return `item-${item.id}${suffix ? `-${suffix}` : ""}`;
 }
 
 function buildExpansionSummary(
@@ -232,8 +241,15 @@ function toSelectableItem(
   item: DealItem,
   options: {
     isGenerated: boolean;
+    isRootReplacement?: boolean;
+    lineConstraintsOverride?: {
+      discount?: boolean;
+      price?: boolean;
+      quantity?: boolean;
+    } | null;
     parentName: string | null;
     resolveCatalogueRecord?: CatalogueRecordResolver;
+    selectionKeySuffix?: string;
   },
 ): DealDocumentSelectableItem {
   const expansionSummary = buildExpansionSummary(
@@ -243,18 +259,135 @@ function toSelectableItem(
 
   return {
     ...item,
-    selectionKey: buildSelectionKey(item, options.isGenerated),
+    selectionKey: buildSelectionKey(
+      item,
+      options.isGenerated,
+      options.selectionKeySuffix,
+    ),
     expansionSummary,
-    groupKey: isBillableRootDealItem(item) ? "billable-root" : "child-items",
-    groupLabel: isBillableRootDealItem(item)
-      ? "Billable Root Items"
-      : "Child Items",
+    groupKey:
+      options.isRootReplacement || isBillableRootDealItem(item)
+        ? "billable-root"
+        : "child-items",
+    groupLabel:
+      options.isRootReplacement || isBillableRootDealItem(item)
+        ? "Billable Root Items"
+        : "Child Items",
     hint: buildItemHint(item, expansionSummary, options.parentName),
     isAutoBillable: isAutoBillableDealItem(item),
-    isBillableRoot: isBillableRootDealItem(item),
+    isBillableRoot: options.isRootReplacement || isBillableRootDealItem(item),
     isGenerated: options.isGenerated,
+    lineConstraintsOverride: options.lineConstraintsOverride || undefined,
     parentName: options.parentName,
   };
+}
+
+function buildDerivedSelectableLines(
+  item: DealItem,
+  resolveCatalogueRecord?: CatalogueRecordResolver,
+) {
+  if (!item.catalogueItemId || !resolveCatalogueRecord || item.parentItemId) {
+    return [] as DealDocumentSelectableItem[];
+  }
+
+  const record = resolveCatalogueRecord(
+    item.catalogueItemId,
+    item.catalogueType || undefined,
+  );
+
+  if (!record) return [] as DealDocumentSelectableItem[];
+
+  if (record.type === "Contractual Service") {
+    const contractual = record as CatalogueContractualServiceRecord;
+
+    return (contractual.phases || []).map((phase) => {
+      const override = item.subItemOverrides?.[`phase-${phase.id}`] || {};
+
+      return toSelectableItem(
+        {
+          ...item,
+          catalogueType: "Phase",
+          discountPercent: override.discountPercent ?? 0,
+          name: override.name ?? phase.name,
+          note: override.note ?? item.note ?? record.description ?? null,
+          quantity: override.quantity ?? item.quantity,
+          unitPrice: override.unitPrice ?? phase.price ?? null,
+        },
+        {
+          isGenerated: false,
+          isRootReplacement: true,
+          parentName: item.name,
+          resolveCatalogueRecord,
+          selectionKeySuffix: `phase-${phase.id}`,
+        },
+      );
+    });
+  }
+
+  if (record.type === "Retainer Service") {
+    const retainer = record as CatalogueRetainerServiceRecord;
+
+    return (retainer.retainerServices || []).map((service) => {
+      const override = item.subItemOverrides?.[`retainer-${service.id}`] || {};
+
+      return toSelectableItem(
+        {
+          ...item,
+          catalogueType: "Retainer Service Line",
+          discountPercent: override.discountPercent ?? 0,
+          name: override.name ?? service.name,
+          note: override.note ?? service.description ?? item.note ?? null,
+          quantity: override.quantity ?? service.qty ?? item.quantity,
+          unitPrice: override.unitPrice ?? item.unitPrice ?? null,
+        },
+        {
+          isGenerated: false,
+          isRootReplacement: true,
+          lineConstraintsOverride: {
+            discount: false,
+            price: false,
+          },
+          parentName: item.name,
+          resolveCatalogueRecord,
+          selectionKeySuffix: `retainer-${service.id}`,
+        },
+      );
+    });
+  }
+
+  if (record.type === "Reccurent Service") {
+    const recurrent = record as CatalogueReccurentServiceRecord;
+
+    return (recurrent.reccurentServices || []).map((service) => {
+      const override = item.subItemOverrides?.[`recurrent-${service.id}`] || {};
+
+      return toSelectableItem(
+        {
+          ...item,
+          catalogueType: "Recurrent Service Line",
+          discountPercent: override.discountPercent ?? 0,
+          name: override.name ?? service.name,
+          note: override.note ?? service.description ?? item.note ?? null,
+          quantity: override.quantity ?? item.quantity,
+          unitPrice: override.unitPrice ?? item.unitPrice ?? null,
+        },
+        {
+          isGenerated: false,
+          isRootReplacement: true,
+          lineConstraintsOverride: {
+            discount: false,
+            price: false,
+            quantity: false,
+          },
+          parentName: item.name,
+          resolveCatalogueRecord,
+          selectionKeySuffix: `recurrent-${service.id}`,
+        },
+      );
+    });
+  }
+
+  return [] as DealDocumentSelectableItem[];
 }
 
 function deriveGeneratedRelatedItems(
@@ -323,14 +456,22 @@ export function getSelectableDealItems(
   );
 
   return actualItems.flatMap((item) => {
+    const derivedSelectableLines = buildDerivedSelectableLines(
+      item,
+      resolveCatalogueRecord,
+    );
     const parentName = item.parentItemId
       ? parentNames.get(String(item.parentItemId)) || null
       : null;
-    const baseItem = toSelectableItem(item, {
-      isGenerated: false,
-      parentName,
-      resolveCatalogueRecord,
-    });
+    const baseItems = derivedSelectableLines.length
+      ? []
+      : [
+          toSelectableItem(item, {
+            isGenerated: false,
+            parentName,
+            resolveCatalogueRecord,
+          }),
+        ];
     const generatedRelatedItems = deriveGeneratedRelatedItems(
       item,
       materializedRelatedKeys,
@@ -343,14 +484,32 @@ export function getSelectableDealItems(
       }),
     );
 
-    return [baseItem, ...generatedRelatedItems];
+    return [...baseItems, ...derivedSelectableLines, ...generatedRelatedItems];
   });
 }
 
 export function getBillableRootDealItems(
-  items: DealDocumentSelectableItem[] | null | undefined,
+  items: DealItem[] | null | undefined,
+  resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
-  return (items || []).filter((item) => item.isBillableRoot);
+  return getSelectableDealItems(items, resolveCatalogueRecord).filter(
+    (item) => item.isBillableRoot,
+  );
+}
+
+export function getQuotationTopLevelDealItems(
+  items: DealItem[] | null | undefined,
+  resolveCatalogueRecord?: CatalogueRecordResolver,
+) {
+  return (items || [])
+    .filter((item) => !item.parentItemId)
+    .map((item) =>
+      toSelectableItem(item, {
+        isGenerated: false,
+        parentName: null,
+        resolveCatalogueRecord,
+      }),
+    );
 }
 
 function buildDistributedCost(totalCost: number, count: number, index: number) {
@@ -399,6 +558,7 @@ function buildStandardPurchasedProduct(item: DealDocumentSelectableItem) {
     description: item.note?.trim() || item.category?.trim() || "",
     discountPercent: item.discountPercent ?? 0,
     hours: item.quantity,
+    lineConstraints: item.lineConstraintsOverride,
     title: item.name,
   });
 }
@@ -483,7 +643,12 @@ function expandDealItemToPurchasedProducts(
   item: DealDocumentSelectableItem,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
-  if (item.catalogueType === "Related Item") {
+  if (
+    item.catalogueType === "Related Item" ||
+    item.catalogueType === "Phase" ||
+    item.catalogueType === "Retainer Service Line" ||
+    item.catalogueType === "Recurrent Service Line"
+  ) {
     return [buildStandardPurchasedProduct(item)];
   }
 
@@ -545,10 +710,18 @@ function buildQuotationDraftRecord({
   resolveCatalogueRecord,
   selectedItems,
 }: DealDocumentDraftContext): QuotationRecord {
-  const purchasedProducts = buildPurchasedProducts(
-    selectedItems,
-    resolveCatalogueRecord,
-  );
+  const purchasedProducts = selectedItems.length
+    ? selectedItems.map((item) => buildStandardPurchasedProduct(item))
+    : [
+        createPurchasedProduct({
+          catalogueItemId: null,
+          cost: 0,
+          description: "",
+          discountPercent: 0,
+          hours: 1,
+          title: "",
+        }),
+      ];
   const total = getQuotationGrandTotal(purchasedProducts);
 
   return {

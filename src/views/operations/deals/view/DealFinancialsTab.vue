@@ -12,6 +12,7 @@ import { useQuotationsStore } from "@/stores/quotations";
 import {
   buildDealDocumentDraftRecord,
   getBillableRootDealItems,
+  getQuotationTopLevelDealItems,
   getSelectableDealItems,
   isAutoBillableDealItem,
   saveDealDocumentDraft,
@@ -46,7 +47,14 @@ const selectableItems = computed(() =>
   ),
 );
 const billableRootItems = computed(() =>
-  getBillableRootDealItems(selectableItems.value),
+  getBillableRootDealItems(dealItems.value, (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
+);
+const quotationItems = computed(() =>
+  getQuotationTopLevelDealItems(dealItems.value, (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
 );
 const selectedDocumentKind = ref<DealDocumentKind | null>(null);
 const selectedItemIds = ref<string[]>([]);
@@ -206,7 +214,7 @@ const openSelectionDialog = (kind: DealDocumentKind) => {
 };
 
 const handleCreateQuotation = async () => {
-  await saveAndNavigateToDraft("quotation", billableRootItems.value);
+  await saveAndNavigateToDraft("quotation", quotationItems.value);
 };
 
 const handleCreateBillingDocument = async (kind: "invoice" | "proforma") => {
@@ -290,7 +298,7 @@ const formatDate = (value?: string | null) => {
             color="primary"
             variant="elevated"
             class="d-flex align-center gap-2"
-            :disabled="!billableRootItems.length"
+            :disabled="!quotationItems.length"
             @click="handleCreateQuotation"
           >
             <VIcon>tabler-file-text</VIcon>

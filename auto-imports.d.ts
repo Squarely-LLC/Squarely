@@ -87,6 +87,7 @@ declare global {
   const getQuotationDiscountTotal: typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']
   const getQuotationGrandTotal: typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']
   const getQuotationSubtotal: typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']
+  const getQuotationTopLevelDealItems: typeof import('./src/utils/dealDocumentDraft')['getQuotationTopLevelDealItems']
   const getSelectableDealItems: typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
@@ -503,6 +504,7 @@ declare module 'vue' {
     readonly getQuotationDiscountTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']>
     readonly getQuotationGrandTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']>
     readonly getQuotationSubtotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']>
+    readonly getQuotationTopLevelDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getQuotationTopLevelDealItems']>
     readonly getSelectableDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']>
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
