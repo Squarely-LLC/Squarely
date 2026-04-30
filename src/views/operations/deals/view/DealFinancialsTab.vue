@@ -1,13 +1,76 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useConfigStore } from "@/stores/config";
+import { useContactsStore } from "@/stores/contacts";
+import { useInvoicesStore } from "@/stores/invoices";
+import { useNotificationsStore } from "@/stores/notifications";
+import { useProformasStore } from "@/stores/proformas";
+import { useQuotationsStore } from "@/stores/quotations";
+import {
+  buildDealDocumentDraftRecord,
+  getBillableRootDealItems,
+  getSelectableDealItems,
+  isAutoBillableDealItem,
+  saveDealDocumentDraft,
+  type DealDocumentKind,
+} from "@/utils/dealDocumentDraft";
 
 const props = defineProps<{
   deal: DealProperties;
 }>();
 
+const router = useRouter();
+const configStore = useConfigStore();
+configStore.init();
+const contactsStore = useContactsStore();
+contactsStore.init();
+const quotationsStore = useQuotationsStore();
+quotationsStore.init();
+const proformasStore = useProformasStore();
+proformasStore.init();
+const invoicesStore = useInvoicesStore();
+invoicesStore.init();
+const notifications = useNotificationsStore();
+
 const rows = computed(() => props.deal.financials || []);
+const dealItems = computed(() => props.deal.items || []);
+const billableRootItems = computed(() =>
+  getBillableRootDealItems(dealItems.value),
+);
+const selectableItems = computed(() => getSelectableDealItems(dealItems.value));
+const selectedDocumentKind = ref<DealDocumentKind | null>(null);
+const selectedItemIds = ref<Array<number | string>>([]);
+const selectionDialogVisible = ref(false);
+
+const contact = computed(() => {
+  if (!props.deal.relatedTo) return null;
+
+  return contactsStore.byId(props.deal.relatedTo) ?? null;
+});
+
+const canAutoCreateBillingDocument = computed(
+  () =>
+    billableRootItems.value.length > 0 &&
+    billableRootItems.value.every(isAutoBillableDealItem),
+);
+
+const selectedItems = computed(() => {
+  const selected = new Set(selectedItemIds.value.map((value) => String(value)));
+
+  return selectableItems.value.filter((item) => selected.has(String(item.id)));
+});
+
+const itemParentNames = computed(() => {
+  const names = new Map<string, string>();
+
+  for (const item of dealItems.value) {
+    names.set(String(item.id), item.name);
+  }
+
+  return names;
+});
 
 const headers = [
   { title: "Title", key: "title" },
@@ -35,8 +98,99 @@ const totalPaid = computed(() =>
 
 const balance = computed(() => totalQuoted.value - totalPaid.value);
 
+const selectionDialogTitle = computed(() => {
+  if (selectedDocumentKind.value === "invoice")
+    return "Select Items for Invoice";
+  if (selectedDocumentKind.value === "proforma")
+    return "Select Items for Proforma";
+
+  return "Select Items";
+});
+
 const formatMoney = (value?: number | null) =>
   Number(value || 0).toLocaleString();
+
+const formatItemType = (value?: string | null) => value || "Unknown";
+
+const parentLabel = (parentItemId?: number | null) => {
+  if (!parentItemId) return null;
+
+  return itemParentNames.value.get(String(parentItemId)) || null;
+};
+
+const nextIdForDocument = (kind: DealDocumentKind) => {
+  if (kind === "quotation") return quotationsStore.nextId();
+  if (kind === "proforma") return proformasStore.nextId();
+
+  return invoicesStore.nextId();
+};
+
+const routeNameForDocument = (kind: DealDocumentKind) => {
+  if (kind === "quotation") return "apps-quotation-add";
+  if (kind === "proforma") return "apps-proforma-add";
+
+  return "apps-invoice-add";
+};
+
+const saveAndNavigateToDraft = async (
+  kind: DealDocumentKind,
+  itemsToSend = billableRootItems.value,
+) => {
+  if (!itemsToSend.length) {
+    notifications.push("This deal has no billable items yet", "warning", 2500);
+    return;
+  }
+
+  const draft = buildDealDocumentDraftRecord(kind, {
+    contact: contact.value,
+    deal: props.deal,
+    financial: configStore.financial,
+    legal: configStore.legal,
+    nextId: nextIdForDocument(kind),
+    selectedItems: itemsToSend,
+  });
+
+  saveDealDocumentDraft(kind, draft);
+
+  await router.push({
+    name: routeNameForDocument(kind),
+    query: { dealDraft: "1" },
+  });
+};
+
+const openSelectionDialog = (kind: DealDocumentKind) => {
+  selectedDocumentKind.value = kind;
+  selectedItemIds.value = [];
+  selectionDialogVisible.value = true;
+};
+
+const handleCreateQuotation = async () => {
+  await saveAndNavigateToDraft("quotation", billableRootItems.value);
+};
+
+const handleCreateBillingDocument = async (kind: "invoice" | "proforma") => {
+  if (canAutoCreateBillingDocument.value) {
+    await saveAndNavigateToDraft(kind, billableRootItems.value);
+    return;
+  }
+
+  openSelectionDialog(kind);
+};
+
+const confirmSelectedItems = async () => {
+  if (!selectedDocumentKind.value || !selectedItems.value.length) return;
+
+  const kind = selectedDocumentKind.value;
+
+  selectionDialogVisible.value = false;
+  await saveAndNavigateToDraft(kind, selectedItems.value);
+};
+
+const closeSelectionDialog = () => {
+  selectionDialogVisible.value = false;
+  selectedDocumentKind.value = null;
+  selectedItemIds.value = [];
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return "--";
@@ -95,6 +249,8 @@ const formatDate = (value?: string | null) => {
             color="primary"
             variant="elevated"
             class="d-flex align-center gap-2"
+            :disabled="!billableRootItems.length"
+            @click="handleCreateQuotation"
           >
             <VIcon>tabler-file-text</VIcon>
             +Quotation
@@ -103,6 +259,8 @@ const formatDate = (value?: string | null) => {
             color="primary"
             variant="elevated"
             class="d-flex align-center gap-2"
+            :disabled="!selectableItems.length"
+            @click="handleCreateBillingDocument('proforma')"
           >
             <VIcon>tabler-file-certificate</VIcon>
             +Proforma
@@ -111,6 +269,8 @@ const formatDate = (value?: string | null) => {
             color="primary"
             variant="elevated"
             class="d-flex align-center gap-2"
+            :disabled="!selectableItems.length"
+            @click="handleCreateBillingDocument('invoice')"
           >
             <VIcon>tabler-file-invoice</VIcon>
             +Invoice
@@ -162,4 +322,90 @@ const formatDate = (value?: string | null) => {
       </VCard>
     </VCol>
   </VRow>
+
+  <VDialog v-model="selectionDialogVisible" max-width="760">
+    <VCard>
+      <VCardItem>
+        <VCardTitle>{{ selectionDialogTitle }}</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          Select one or more items to include in this document.
+        </div>
+
+        <div v-if="selectableItems.length" class="d-flex flex-column gap-3">
+          <label
+            v-for="item in selectableItems"
+            :key="item.id"
+            class="border rounded pa-3 d-flex align-start gap-3"
+          >
+            <VCheckbox
+              v-model="selectedItemIds"
+              :value="item.id"
+              color="primary"
+              hide-details
+              class="mt-0 pt-0"
+            />
+
+            <div class="flex-grow-1 min-w-0">
+              <div class="d-flex flex-wrap align-center gap-2 mb-1">
+                <div class="text-body-1 font-weight-medium">
+                  {{ item.name }}
+                </div>
+
+                <VChip size="x-small" label color="primary" variant="tonal">
+                  {{ formatItemType(item.catalogueType) }}
+                </VChip>
+
+                <VChip
+                  v-if="item.parentItemId"
+                  size="x-small"
+                  label
+                  color="secondary"
+                  variant="tonal"
+                >
+                  Child of
+                  {{ parentLabel(item.parentItemId) || item.parentItemId }}
+                </VChip>
+              </div>
+
+              <div class="text-sm text-medium-emphasis mb-1">
+                Qty {{ item.quantity || 1 }}
+                <span
+                  v-if="item.unitPrice !== null && item.unitPrice !== undefined"
+                >
+                  · Price {{ formatMoney(item.unitPrice) }}
+                </span>
+                <span v-if="item.discountPercent">
+                  · Discount {{ item.discountPercent }}%
+                </span>
+              </div>
+
+              <div v-if="item.note" class="text-sm text-medium-emphasis">
+                {{ item.note }}
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div v-else class="text-medium-emphasis">No items available.</div>
+      </VCardText>
+
+      <VDivider />
+
+      <VCardActions class="justify-end pa-4">
+        <VBtn variant="text" @click="closeSelectionDialog">Cancel</VBtn>
+        <VBtn
+          color="primary"
+          :disabled="!selectedItems.length"
+          @click="confirmSelectedItems"
+        >
+          Continue
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
 </template>

@@ -25,6 +25,10 @@ import {
   loadQuotationPreviewDraft,
   saveQuotationPreviewDraft,
 } from "@/utils/quotationPreviewDraft";
+import {
+  clearDealDocumentDraft,
+  loadDealDocumentDraft,
+} from "@/utils/dealDocumentDraft";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import type {
@@ -215,6 +219,12 @@ const buildInitialQuotation = (): QuotationData => {
     return buildDuplicateDraft(duplicateOf);
   }
 
+  const dealDraft = loadDealDocumentDraft("quotation");
+  if (route.query.dealDraft === "1" && dealDraft?.source === "deal") {
+    clearDealDocumentDraft("quotation");
+    return cloneQuotationRecord(dealDraft.quotation);
+  }
+
   const previewDraft = loadQuotationPreviewDraft();
   if (route.query.restoreDraft === "1" && previewDraft?.source === "add") {
     return cloneQuotationRecord(previewDraft.quotation);
@@ -269,7 +279,12 @@ const employeeOptions = computed(() =>
 );
 
 watch(
-  () => [route.query.revisionOf, route.query.duplicateOf, route.query.restoreDraft],
+  () => [
+    route.query.revisionOf,
+    route.query.duplicateOf,
+    route.query.dealDraft,
+    route.query.restoreDraft,
+  ],
   () => {
     quotationData.value = buildInitialQuotation();
     initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);

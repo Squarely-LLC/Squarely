@@ -16,12 +16,14 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
   const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
   const buildProformaNote: typeof import('./src/utils/quotationConfig')['buildProformaNote']
   const buildQuotationNote: typeof import('./src/utils/quotationConfig')['buildQuotationNote']
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
+  const clearDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']
   const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
   const clearQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']
@@ -67,6 +69,7 @@ declare global {
   const formatSystemDateTime: typeof import('./src/@core/utils/formatters')['formatSystemDateTime']
   const formatSystemMonthYear: typeof import('./src/@core/utils/formatters')['formatSystemMonthYear']
   const getActivePinia: typeof import('pinia')['getActivePinia']
+  const getBillableRootDealItems: typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
@@ -84,6 +87,7 @@ declare global {
   const getQuotationDiscountTotal: typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']
   const getQuotationGrandTotal: typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']
   const getQuotationSubtotal: typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']
+  const getSelectableDealItems: typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
@@ -91,9 +95,12 @@ declare global {
   const inject: typeof import('vue')['inject']
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
+  const isAutoBillableDealItem: typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']
+  const isBillableRootDealItem: typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
+  const isLiteralRelatedDealItem: typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']
   const isNullOrUndefined: typeof import('./src/@core/utils/helpers')['isNullOrUndefined']
   const isObject: typeof import('./src/@core/utils/helpers')['isObject']
   const isProxy: typeof import('vue')['isProxy']
@@ -105,6 +112,7 @@ declare global {
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
   const loadActiveAppConfigurations: typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']
+  const loadDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['loadDealDocumentDraft']
   const loadInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['loadInvoicePreviewDraft']
   const loadProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['loadProformaPreviewDraft']
   const loadQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['loadQuotationPreviewDraft']
@@ -170,6 +178,7 @@ declare global {
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
   const richTextToPlainText: typeof import('./src/utils/richText')['richTextToPlainText']
+  const saveDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['saveDealDocumentDraft']
   const saveFile: typeof import('./src/utils/fileStore')['saveFile']
   const saveInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']
   const saveProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']
@@ -423,12 +432,14 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
     readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
     readonly buildProformaNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildProformaNote']>
     readonly buildQuotationNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationNote']>
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
+    readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
     readonly clearQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']>
@@ -474,6 +485,7 @@ declare module 'vue' {
     readonly formatSystemDateTime: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemDateTime']>
     readonly formatSystemMonthYear: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemMonthYear']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
+    readonly getBillableRootDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']>
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
@@ -491,6 +503,7 @@ declare module 'vue' {
     readonly getQuotationDiscountTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationDiscountTotal']>
     readonly getQuotationGrandTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']>
     readonly getQuotationSubtotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']>
+    readonly getSelectableDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']>
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
@@ -498,9 +511,12 @@ declare module 'vue' {
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
+    readonly isAutoBillableDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']>
+    readonly isBillableRootDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>
+    readonly isLiteralRelatedDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']>
     readonly isNullOrUndefined: UnwrapRef<typeof import('./src/@core/utils/helpers')['isNullOrUndefined']>
     readonly isObject: UnwrapRef<typeof import('./src/@core/utils/helpers')['isObject']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
@@ -512,6 +528,7 @@ declare module 'vue' {
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
     readonly loadActiveAppConfigurations: UnwrapRef<typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']>
+    readonly loadDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['loadDealDocumentDraft']>
     readonly loadInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['loadInvoicePreviewDraft']>
     readonly loadProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['loadProformaPreviewDraft']>
     readonly loadQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['loadQuotationPreviewDraft']>
@@ -577,6 +594,7 @@ declare module 'vue' {
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
     readonly richTextToPlainText: UnwrapRef<typeof import('./src/utils/richText')['richTextToPlainText']>
+    readonly saveDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['saveDealDocumentDraft']>
     readonly saveFile: UnwrapRef<typeof import('./src/utils/fileStore')['saveFile']>
     readonly saveInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']>
     readonly saveProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']>

@@ -18,6 +18,10 @@ import {
   saveProformaPreviewDraft,
 } from "@/utils/proformaPreviewDraft";
 import {
+  clearDealDocumentDraft,
+  loadDealDocumentDraft,
+} from "@/utils/dealDocumentDraft";
+import {
   buildProformaNote,
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
@@ -216,6 +220,12 @@ const buildInitialQuotation = (): ProformaData => {
     return buildDuplicateDraft(duplicateOf);
   }
 
+  const dealDraft = loadDealDocumentDraft("proforma");
+  if (route.query.dealDraft === "1" && dealDraft?.source === "deal") {
+    clearDealDocumentDraft("proforma");
+    return cloneProformaRecord(dealDraft.quotation);
+  }
+
   const previewDraft = loadProformaPreviewDraft();
   if (route.query.restoreDraft === "1" && previewDraft?.source === "add") {
     return cloneProformaRecord(previewDraft.quotation);
@@ -270,7 +280,12 @@ const employeeOptions = computed(() =>
 );
 
 watch(
-  () => [route.query.revisionOf, route.query.duplicateOf, route.query.restoreDraft],
+  () => [
+    route.query.revisionOf,
+    route.query.duplicateOf,
+    route.query.dealDraft,
+    route.query.restoreDraft,
+  ],
   () => {
     quotationData.value = buildInitialQuotation();
     initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
