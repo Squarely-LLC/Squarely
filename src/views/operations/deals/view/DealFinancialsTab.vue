@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 
 import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useInvoicesStore } from "@/stores/invoices";
@@ -15,6 +16,7 @@ import {
   isAutoBillableDealItem,
   saveDealDocumentDraft,
   type DealDocumentKind,
+  type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
 
 const props = defineProps<{
@@ -22,6 +24,8 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
 const configStore = useConfigStore();
 configStore.init();
 const contactsStore = useContactsStore();
@@ -36,12 +40,16 @@ const notifications = useNotificationsStore();
 
 const rows = computed(() => props.deal.financials || []);
 const dealItems = computed(() => props.deal.items || []);
-const billableRootItems = computed(() =>
-  getBillableRootDealItems(dealItems.value),
+const selectableItems = computed(() =>
+  getSelectableDealItems(dealItems.value, (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
 );
-const selectableItems = computed(() => getSelectableDealItems(dealItems.value));
+const billableRootItems = computed(() =>
+  getBillableRootDealItems(selectableItems.value),
+);
 const selectedDocumentKind = ref<DealDocumentKind | null>(null);
-const selectedItemIds = ref<Array<number | string>>([]);
+const selectedItemIds = ref<string[]>([]);
 const selectionDialogVisible = ref(false);
 
 const contact = computed(() => {
@@ -59,17 +67,43 @@ const canAutoCreateBillingDocument = computed(
 const selectedItems = computed(() => {
   const selected = new Set(selectedItemIds.value.map((value) => String(value)));
 
-  return selectableItems.value.filter((item) => selected.has(String(item.id)));
+  return selectableItems.value.filter((item) =>
+    selected.has(String(item.selectionKey)),
+  );
 });
 
-const itemParentNames = computed(() => {
-  const names = new Map<string, string>();
+const selectableGroups = computed(() => {
+  const groups = new Map<
+    string,
+    {
+      description: string;
+      items: DealDocumentSelectableItem[];
+      key: string;
+      label: string;
+    }
+  >();
 
-  for (const item of dealItems.value) {
-    names.set(String(item.id), item.name);
+  for (const item of selectableItems.value) {
+    const description =
+      item.groupKey === "billable-root"
+        ? "These rows drive quotation and direct invoice/proforma eligibility."
+        : "Nested rows are available only through manual selection.";
+    const existing = groups.get(item.groupKey);
+
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+
+    groups.set(item.groupKey, {
+      description,
+      items: [item],
+      key: item.groupKey,
+      label: item.groupLabel,
+    });
   }
 
-  return names;
+  return Array.from(groups.values());
 });
 
 const headers = [
@@ -107,15 +141,20 @@ const selectionDialogTitle = computed(() => {
   return "Select Items";
 });
 
+const selectionDialogHint = computed(
+  () => "No rows are preselected. Choose only the rows you want billed.",
+);
+
 const formatMoney = (value?: number | null) =>
   Number(value || 0).toLocaleString();
 
 const formatItemType = (value?: string | null) => value || "Unknown";
 
-const parentLabel = (parentItemId?: number | null) => {
-  if (!parentItemId) return null;
+const itemRowOffset = (item: DealDocumentSelectableItem) => {
+  if (item.parentName && item.groupKey === "billable-root") return "16px";
+  if (item.parentName) return "28px";
 
-  return itemParentNames.value.get(String(parentItemId)) || null;
+  return "0px";
 };
 
 const nextIdForDocument = (kind: DealDocumentKind) => {
@@ -147,6 +186,8 @@ const saveAndNavigateToDraft = async (
     financial: configStore.financial,
     legal: configStore.legal,
     nextId: nextIdForDocument(kind),
+    resolveCatalogueRecord: (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
     selectedItems: itemsToSend,
   });
 
@@ -336,59 +377,114 @@ const formatDate = (value?: string | null) => {
           Select one or more items to include in this document.
         </div>
 
+        <div class="text-sm text-medium-emphasis mb-4">
+          {{ selectionDialogHint }}
+        </div>
+
         <div v-if="selectableItems.length" class="d-flex flex-column gap-3">
-          <label
-            v-for="item in selectableItems"
-            :key="item.id"
-            class="border rounded pa-3 d-flex align-start gap-3"
+          <div
+            v-for="group in selectableGroups"
+            :key="group.key"
+            class="d-flex flex-column gap-3"
           >
-            <VCheckbox
-              v-model="selectedItemIds"
-              :value="item.id"
-              color="primary"
-              hide-details
-              class="mt-0 pt-0"
-            />
-
-            <div class="flex-grow-1 min-w-0">
-              <div class="d-flex flex-wrap align-center gap-2 mb-1">
-                <div class="text-body-1 font-weight-medium">
-                  {{ item.name }}
-                </div>
-
-                <VChip size="x-small" label color="primary" variant="tonal">
-                  {{ formatItemType(item.catalogueType) }}
-                </VChip>
-
-                <VChip
-                  v-if="item.parentItemId"
-                  size="x-small"
-                  label
-                  color="secondary"
-                  variant="tonal"
-                >
-                  Child of
-                  {{ parentLabel(item.parentItemId) || item.parentItemId }}
-                </VChip>
+            <div>
+              <div class="text-subtitle-2 font-weight-medium">
+                {{ group.label }}
               </div>
-
-              <div class="text-sm text-medium-emphasis mb-1">
-                Qty {{ item.quantity || 1 }}
-                <span
-                  v-if="item.unitPrice !== null && item.unitPrice !== undefined"
-                >
-                  · Price {{ formatMoney(item.unitPrice) }}
-                </span>
-                <span v-if="item.discountPercent">
-                  · Discount {{ item.discountPercent }}%
-                </span>
-              </div>
-
-              <div v-if="item.note" class="text-sm text-medium-emphasis">
-                {{ item.note }}
+              <div class="text-sm text-medium-emphasis">
+                {{ group.description }}
               </div>
             </div>
-          </label>
+
+            <label
+              v-for="item in group.items"
+              :key="item.selectionKey"
+              class="border rounded pa-3 d-flex align-start gap-3"
+              :style="{ marginInlineStart: itemRowOffset(item) }"
+            >
+              <VCheckbox
+                v-model="selectedItemIds"
+                :value="item.selectionKey"
+                color="primary"
+                hide-details
+                class="mt-0 pt-0"
+              />
+
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex flex-wrap align-center gap-2 mb-1">
+                  <div class="text-body-1 font-weight-medium">
+                    {{ item.name }}
+                  </div>
+
+                  <VChip size="x-small" label color="primary" variant="tonal">
+                    {{ formatItemType(item.catalogueType) }}
+                  </VChip>
+
+                  <VChip
+                    v-if="item.parentName"
+                    size="x-small"
+                    label
+                    color="secondary"
+                    variant="tonal"
+                  >
+                    Parent: {{ item.parentName }}
+                  </VChip>
+
+                  <VChip
+                    v-if="item.isBillableRoot && item.isAutoBillable"
+                    size="x-small"
+                    label
+                    color="success"
+                    variant="tonal"
+                  >
+                    Auto-flow eligible
+                  </VChip>
+
+                  <VChip
+                    v-else-if="item.isBillableRoot"
+                    size="x-small"
+                    label
+                    color="warning"
+                    variant="tonal"
+                  >
+                    Selection flow
+                  </VChip>
+
+                  <VChip
+                    v-if="item.expansionSummary"
+                    size="x-small"
+                    label
+                    color="info"
+                    variant="tonal"
+                  >
+                    {{ item.expansionSummary }}
+                  </VChip>
+                </div>
+
+                <div class="text-sm text-medium-emphasis mb-1">
+                  Qty {{ item.quantity || 1 }}
+                  <span
+                    v-if="
+                      item.unitPrice !== null && item.unitPrice !== undefined
+                    "
+                  >
+                    · Price {{ formatMoney(item.unitPrice) }}
+                  </span>
+                  <span v-if="item.discountPercent">
+                    · Discount {{ item.discountPercent }}%
+                  </span>
+                </div>
+
+                <div v-if="item.hint" class="text-sm text-medium-emphasis mb-1">
+                  {{ item.hint }}
+                </div>
+
+                <div v-if="item.note" class="text-sm text-medium-emphasis">
+                  {{ item.note }}
+                </div>
+              </div>
+            </label>
+          </div>
         </div>
 
         <div v-else class="text-medium-emphasis">No items available.</div>
