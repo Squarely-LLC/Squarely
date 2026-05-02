@@ -1,8 +1,16 @@
-import type { User } from "@db/auth/types";
+import type {
+  Center,
+  PasswordResetRecord,
+  User,
+  VerificationRecord,
+} from "@db/auth/types";
 
 interface DB {
   userTokens: string[];
+  centers: Center[];
   users: User[];
+  verifications: VerificationRecord[];
+  passwordResets: PasswordResetRecord[];
 }
 export const db: DB = {
   // TODO: Use jsonwebtoken pkg
@@ -21,16 +29,40 @@ export const db: DB = {
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTB9.txWLuN4QT5PqTtgHmlOiNerIu5Do51PpYOiZutkyXYg",
   ],
 
+  centers: [
+    {
+      id: 1,
+      name: "Squarely Demo Center",
+      slug: "squarely-demo-center",
+    },
+  ],
+
   users: [
     {
       id: 1,
       fullName: "John Doe",
       username: "johndoe",
-      password: "TedKarimPamela1",
+      password: "admin",
 
       avatar: `${import.meta.env.BASE_URL ?? "/"}images/avatars/avatar-1.png`,
       email: "admin@demo.com",
       role: "admin",
+      emailVerified: true,
+      authProviders: ["password", "google"],
+      currentCenterId: 1,
+      memberships: [
+        {
+          centerId: 1,
+          role: "super-admin",
+          status: "active",
+          abilityRules: [
+            {
+              action: "manage",
+              subject: "all",
+            },
+          ],
+        },
+      ],
       abilityRules: [
         {
           action: "manage",
@@ -47,6 +79,22 @@ export const db: DB = {
       avatar: `${import.meta.env.BASE_URL ?? "/"}images/avatars/avatar-2.png`,
       email: "client@demo.com",
       role: "client",
+      emailVerified: true,
+      authProviders: ["password"],
+      currentCenterId: 1,
+      memberships: [
+        {
+          centerId: 1,
+          role: "employee",
+          status: "active",
+          abilityRules: [
+            {
+              action: "read",
+              subject: "AclDemo",
+            },
+          ],
+        },
+      ],
       abilityRules: [
         {
           action: "read",
@@ -55,4 +103,38 @@ export const db: DB = {
       ],
     },
   ],
+
+  verifications: [
+    {
+      email: "admin@demo.com",
+      code: "111111",
+      expiresAt: new Date(Date.now() + 1000 * 60 * 30).toISOString(),
+    },
+    {
+      email: "client@demo.com",
+      code: "222222",
+      expiresAt: new Date(Date.now() + 1000 * 60 * 30).toISOString(),
+    },
+  ],
+
+  passwordResets: [],
+};
+
+export const getTokenForUserId = (userId: number) => {
+  const index = Math.max(0, userId - 1);
+  const existingToken = db.userTokens[index];
+  if (existingToken) return existingToken;
+
+  const token = `mock-token-${userId}`;
+  db.userTokens[index] = token;
+  return token;
+};
+
+export const getUserByAccessToken = (token?: string | null) => {
+  if (!token) return null;
+
+  const index = db.userTokens.findIndex((entry) => entry === token);
+  if (index === -1) return null;
+
+  return db.users.find((user) => user.id === index + 1) ?? null;
 };

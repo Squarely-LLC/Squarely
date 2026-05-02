@@ -1,23 +1,78 @@
 <script setup lang="ts">
-import authV1BottomShape from '@images/svg/auth-v1-bottom-shape.svg?raw'
-import authV1TopShape from '@images/svg/auth-v1-top-shape.svg?raw'
-import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
-import { themeConfig } from '@themeConfig'
+import { useAuthStore } from "@/stores/auth";
+import authV1BottomShape from "@images/svg/auth-v1-bottom-shape.svg?raw";
+import authV1TopShape from "@images/svg/auth-v1-top-shape.svg?raw";
+import { VNodeRenderer } from "@layouts/components/VNodeRenderer";
+import { themeConfig } from "@themeConfig";
 
 definePage({
   meta: {
-    layout: 'blank',
+    layout: "blank",
     public: true,
   },
-})
+});
 
 const form = ref({
-  newPassword: '',
-  confirmPassword: '',
-})
+  newPassword: "",
+  confirmPassword: "",
+});
 
-const isPasswordVisible = ref(false)
-const isConfirmPasswordVisible = ref(false)
+const authStore = useAuthStore();
+const route = useRoute();
+const router = useRouter();
+const errors = ref<Record<string, string | undefined>>({
+  password: undefined,
+  confirmPassword: undefined,
+  email: undefined,
+  token: undefined,
+});
+
+const resetEmail = computed(() =>
+  route.query.email ? String(route.query.email) : "",
+);
+const resetToken = computed(() =>
+  route.query.token ? String(route.query.token) : "",
+);
+
+const isPasswordVisible = ref(false);
+const isConfirmPasswordVisible = ref(false);
+
+const submitResetPassword = async () => {
+  try {
+    errors.value = {
+      password: undefined,
+      confirmPassword: undefined,
+      email: undefined,
+      token: undefined,
+    };
+
+    if (!resetEmail.value || !resetToken.value) {
+      errors.value.email = "Missing reset email or token";
+      return;
+    }
+
+    if (form.value.newPassword !== form.value.confirmPassword) {
+      errors.value.confirmPassword = "Passwords do not match";
+      return;
+    }
+
+    const response = await authStore.resetPassword({
+      email: resetEmail.value,
+      token: resetToken.value,
+      password: form.value.newPassword,
+    });
+
+    await router.replace({
+      name: "login",
+      query: { email: response.email },
+    });
+  } catch (err) {
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        password: "Could not reset password",
+      };
+  }
+};
 </script>
 
 <template>
@@ -55,16 +110,17 @@ const isConfirmPasswordVisible = ref(false)
         </VCardItem>
 
         <VCardText>
-          <h4 class="text-h4 mb-1">
-            Reset Password 🔒
-          </h4>
+          <h4 class="text-h4 mb-1">Reset Password 🔒</h4>
           <p class="mb-0">
             Your new password must be different from previously used passwords
+          </p>
+          <p v-if="resetEmail" class="mt-2 mb-0 text-body-2">
+            Resetting password for <strong>{{ resetEmail }}</strong>
           </p>
         </VCardText>
 
         <VCardText>
-          <VForm @submit.prevent="() => {}">
+          <VForm @submit.prevent="submitResetPassword">
             <VRow>
               <!-- password -->
               <VCol cols="12">
@@ -73,9 +129,13 @@ const isConfirmPasswordVisible = ref(false)
                   autofocus
                   label="New Password"
                   placeholder="············"
+                  :rules="[requiredValidator]"
+                  :error-messages="errors.password"
                   :type="isPasswordVisible ? 'text' : 'password'"
                   autocomplete="password"
-                  :append-inner-icon="isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
+                  :append-inner-icon="
+                    isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'
+                  "
                   @click:append-inner="isPasswordVisible = !isPasswordVisible"
                 />
               </VCol>
@@ -87,27 +147,28 @@ const isConfirmPasswordVisible = ref(false)
                   label="Confirm Password"
                   autocomplete="confirm-password"
                   placeholder="············"
+                  :rules="[requiredValidator]"
+                  :error-messages="errors.confirmPassword"
                   :type="isConfirmPasswordVisible ? 'text' : 'password'"
-                  :append-inner-icon="isConfirmPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
-                  @click:append-inner="isConfirmPasswordVisible = !isConfirmPasswordVisible"
+                  :append-inner-icon="
+                    isConfirmPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'
+                  "
+                  @click:append-inner="
+                    isConfirmPasswordVisible = !isConfirmPasswordVisible
+                  "
                 />
               </VCol>
 
               <!-- reset password -->
               <VCol cols="12">
-                <VBtn
-                  block
-                  type="submit"
-                >
-                  Set New Password
-                </VBtn>
+                <VBtn block type="submit"> Set New Password </VBtn>
               </VCol>
 
               <!-- back to login -->
               <VCol cols="12">
                 <RouterLink
                   class="d-flex align-center justify-center"
-                  :to="{ name: 'pages-authentication-login-v1' }"
+                  :to="{ name: 'login' }"
                 >
                   <VIcon
                     icon="tabler-chevron-left"

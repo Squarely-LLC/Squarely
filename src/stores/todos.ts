@@ -3,32 +3,46 @@ import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { useContactsStore } from "@/stores/contacts";
 import { defineStore } from "pinia";
 
-const STORAGE_KEY_MEETINGS = "app.meetings.v2";
-const STORAGE_KEY_MEETINGS_SEEDED = "app.meetings.seeded.v2";
+function getCurrentScope() {
+  const user = useCookie<{ id?: number } | null>("userData").value;
+  const centerId = useCookie<number | null>("activeCenterId").value;
+  const userId = user?.id ?? "guest";
+  const scopedCenterId = centerId ?? "none";
 
-function loadMeetingsFromStorage(): Meeting[] | null {
+  return {
+    userId,
+    centerId,
+    todosKey: `app.todos.v3.user.${userId}.center.${scopedCenterId}`,
+    meetingsKey: `app.meetings.v3.user.${userId}.center.${scopedCenterId}`,
+    meetingsSeededKey: `app.meetings.seeded.v3.user.${userId}.center.${scopedCenterId}`,
+  };
+}
+
+function loadMeetingsFromStorage(storageKey: string): Meeting[] | null {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY_MEETINGS) || "null");
+    return JSON.parse(localStorage.getItem(storageKey) || "null");
   } catch {
     return null;
   }
 }
-function saveMeetingsToStorage(items: Meeting[]) {
-  localStorage.setItem(STORAGE_KEY_MEETINGS, JSON.stringify(items));
-  localStorage.setItem(STORAGE_KEY_MEETINGS_SEEDED, "1");
+function saveMeetingsToStorage(
+  items: Meeting[],
+  storageKey: string,
+  seededKey: string,
+) {
+  localStorage.setItem(storageKey, JSON.stringify(items));
+  localStorage.setItem(seededKey, "1");
 }
 
-const STORAGE_KEY = "app.todos.v2";
-
-function loadFromStorage(): ToDo[] | null {
+function loadFromStorage(storageKey: string): ToDo[] | null {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    return JSON.parse(localStorage.getItem(storageKey) || "null");
   } catch {
     return null;
   }
 }
-function saveToStorage(items: ToDo[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+function saveToStorage(items: ToDo[], storageKey: string) {
+  localStorage.setItem(storageKey, JSON.stringify(items));
 }
 
 function toDateOnlyISOString(value?: string | null): string {
@@ -74,6 +88,7 @@ export const useTodos = defineStore("todos", {
     items: [] as ToDo[],
     meetings: [] as Meeting[],
     initialized: false,
+    scopeKey: null as string | null,
   }),
   getters: {
     all: (s) => s.items,
@@ -103,7 +118,7 @@ export const useTodos = defineStore("todos", {
       return s.items.filter(
         (t) =>
           t.title.toLowerCase().includes(ql) ||
-          (t.notes || "").toLowerCase().includes(ql)
+          (t.notes || "").toLowerCase().includes(ql),
       );
     },
     meetingsAll: (s) => s.meetings,
@@ -116,12 +131,14 @@ export const useTodos = defineStore("todos", {
         (m) =>
           m.subject.toLowerCase().includes(ql) ||
           (m.location || "").toLowerCase().includes(ql) ||
-          (m.note || "").toLowerCase().includes(ql)
+          (m.note || "").toLowerCase().includes(ql),
       );
     },
   },
   actions: {
     init() {
+      const scope = getCurrentScope();
+
       // ensure contacts are seeded/initialized first so we can resolve collaborator refs
       try {
         const contactsStore = useContactsStore();
@@ -130,15 +147,16 @@ export const useTodos = defineStore("todos", {
         // swallow — if pinia isn't ready yet this will be retried later when UI initializes
         // console.warn('contacts store init failed during todos init:', error)
       }
-      const seeded = localStorage.getItem(STORAGE_KEY_MEETINGS_SEEDED) === "1";
-      const stored = loadMeetingsFromStorage();
+      const seeded = localStorage.getItem(scope.meetingsSeededKey) === "1";
+      const stored = loadMeetingsFromStorage(scope.meetingsKey);
       this.meetings =
         seeded && Array.isArray(stored) ? stored : [...SeedMeetings];
-      localStorage.setItem(STORAGE_KEY_MEETINGS_SEEDED, "1");
-      if (this.initialized) return;
+      localStorage.setItem(scope.meetingsSeededKey, "1");
+      if (this.initialized && this.scopeKey === scope.todosKey) return;
+      this.scopeKey = scope.todosKey;
 
       // todos: load and normalize collaborator references to use canonical contact refs
-      const storedTodos = loadFromStorage();
+      const storedTodos = loadFromStorage(scope.todosKey);
       const rawTodos =
         storedTodos && Array.isArray(storedTodos)
           ? storedTodos
@@ -167,6 +185,8 @@ export const useTodos = defineStore("todos", {
 
       const normalizeTodo = (t: any) => {
         const copy = { ...t } as any;
+        copy.centerId = t.centerId ?? scope.centerId ?? 1;
+        copy.ownerUserId = t.ownerUserId ?? scope.userId;
         copy.dueAt = toDateOnlyISOString(t.dueAt);
         copy.collaborators = Array.isArray(t.collaborators)
           ? t.collaborators.map((c: any) => resolveRef(c))
@@ -212,27 +232,40 @@ export const useTodos = defineStore("todos", {
       this.items = rawTodos.map(normalizeTodo);
 
       // meetings
-      const storedMeetings = loadMeetingsFromStorage();
+      const storedMeetings = loadMeetingsFromStorage(scope.meetingsKey);
       this.meetings =
         Array.isArray(storedMeetings) && storedMeetings.length > 0
-          ? storedMeetings
-          : [...SeedMeetings];
+          ? storedMeetings.map((meeting: any) => ({
+              ...meeting,
+              centerId: meeting.centerId ?? scope.centerId ?? 1,
+              ownerUserId: meeting.ownerUserId ?? scope.userId,
+            }))
+          : [...SeedMeetings].map((meeting: any) => ({
+              ...meeting,
+              centerId: meeting.centerId ?? scope.centerId ?? 1,
+              ownerUserId: meeting.ownerUserId ?? scope.userId,
+            }));
 
       this.initialized = true;
 
       // persist both
       this.$subscribe(
         (_mutation, state) => {
-          saveToStorage(state.items);
-          saveMeetingsToStorage(state.meetings);
+          const nextScope = getCurrentScope();
+          saveToStorage(state.items, nextScope.todosKey);
+          saveMeetingsToStorage(
+            state.meetings,
+            nextScope.meetingsKey,
+            nextScope.meetingsSeededKey,
+          );
         },
-        { detached: true }
+        { detached: true },
       );
-
     },
 
     addTodo(todo: Partial<ToDo>) {
       const now = new Date().toISOString();
+      const scope = getCurrentScope();
       const maxExistingId = this.items.reduce<number>((max, item) => {
         const numericId = Number(item.id);
         return Number.isFinite(numericId) && numericId > max ? numericId : max;
@@ -255,6 +288,8 @@ export const useTodos = defineStore("todos", {
         relatedTo: (todo as any).relatedTo || null,
         goalId: (todo as any).goalId ?? null,
         milestoneId: (todo as any).milestoneId ?? null,
+        centerId: (todo as any).centerId ?? scope.centerId ?? 1,
+        ownerUserId: (todo as any).ownerUserId ?? scope.userId,
         createdAt: now,
         updatedAt: now,
       };
@@ -265,7 +300,8 @@ export const useTodos = defineStore("todos", {
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx === -1) return;
       const nextPatch = { ...patch } as any;
-      if ("dueAt" in nextPatch) nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
+      if ("dueAt" in nextPatch)
+        nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
       if (Array.isArray(nextPatch.steps)) {
         nextPatch.steps = nextPatch.steps.map((step: any) => {
           const nextStep = { ...step, dueAt: toDateOnlyISOString(step?.dueAt) };
@@ -308,6 +344,7 @@ export const useTodos = defineStore("todos", {
     // === Meetings actions ==================================================
     addMeeting(meeting: Partial<Meeting>) {
       const now = new Date().toISOString();
+      const scope = getCurrentScope();
       const nextId = (this.meetings.at(-1)?.id as number | undefined)
         ? Number(this.meetings.at(-1)!.id) + 1
         : 1;
@@ -333,6 +370,8 @@ export const useTodos = defineStore("todos", {
           ? (meeting as any).notes
           : [],
         summary: (meeting as any).summary,
+        centerId: (meeting as any).centerId ?? scope.centerId ?? 1,
+        ownerUserId: (meeting as any).ownerUserId ?? scope.userId,
         createdAt: now,
         updatedAt: now,
       };
@@ -346,21 +385,21 @@ export const useTodos = defineStore("todos", {
       if (idx === -1) return;
       const prev = this.meetings[idx];
       const startAt = patch.startAt ?? prev.startAt;
-        const duration =
-          typeof patch.duration === "number" ? patch.duration : prev.duration;
+      const duration =
+        typeof patch.duration === "number" ? patch.duration : prev.duration;
 
-        const next: Meeting = {
-          ...prev,
-          ...patch,
-          relatedTo:
-            patch.relatedTo !== undefined
-              ? (patch.relatedTo as any)
-              : prev.relatedTo ?? null,
-          endAt: computeEndAt(startAt, duration),
-          updatedAt: new Date().toISOString(),
-        };
-        this.meetings.splice(idx, 1, next);
-        return next;
+      const next: Meeting = {
+        ...prev,
+        ...patch,
+        relatedTo:
+          patch.relatedTo !== undefined
+            ? (patch.relatedTo as any)
+            : (prev.relatedTo ?? null),
+        endAt: computeEndAt(startAt, duration),
+        updatedAt: new Date().toISOString(),
+      };
+      this.meetings.splice(idx, 1, next);
+      return next;
     },
 
     removeMeeting(id: number | string) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuthStore } from "@/stores/auth";
 import { VForm } from "vuetify/components/VForm";
 
 import { VNodeRenderer } from "@layouts/components/VNodeRenderer";
@@ -18,12 +19,14 @@ const imageVariant = useGenerateImageVariant(
   authV2RegisterIllustrationDark,
   authV2RegisterIllustrationBorderedLight,
   authV2RegisterIllustrationBorderedDark,
-  true
+  true,
 );
 
 const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark);
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
+const ability = useAbility();
 definePage({
   meta: {
     layout: "blank",
@@ -40,11 +43,63 @@ const form = ref({
   privacyPolicies: false,
 });
 
+const errors = ref<Record<string, string | undefined>>({
+  username: undefined,
+  email: undefined,
+  password: undefined,
+});
+
 const isPasswordVisible = ref(false);
+
+const submitRegister = async () => {
+  try {
+    errors.value = {
+      username: undefined,
+      email: undefined,
+      password: undefined,
+    };
+
+    const response = await authStore.register({
+      username: form.value.username,
+      email: form.value.email,
+      password: form.value.password,
+    });
+
+    await router.replace({
+      name: "verify",
+      query: {
+        email: response.email,
+        mockCode: response.verificationCode,
+      },
+    });
+  } catch (err) {
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        email: "Registration failed",
+      };
+  }
+};
+
+const signUpWithGoogle = async () => {
+  try {
+    const response = await authStore.loginWithGoogle({
+      email: form.value.email || "google-admin@demo.com",
+      fullName: form.value.username || "Google Super Admin",
+    });
+    ability.update(response.userAbilityRules);
+    isDialogVisible.value = false;
+    await router.replace(route.query.to ? String(route.query.to) : "/");
+  } catch (err) {
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        email: "Google sign-up failed",
+      };
+  }
+};
 
 const onSubmit = () => {
   refVForm.value?.validate().then(({ valid: isValid }) => {
-    if (isValid) router.replace("/verify");
+    if (isValid) submitRegister();
   });
 };
 </script>
@@ -106,6 +161,7 @@ const onSubmit = () => {
                   autofocus
                   label="Username"
                   placeholder="Johndoe"
+                  :error-messages="errors.username"
                 />
               </VCol>
 
@@ -117,6 +173,7 @@ const onSubmit = () => {
                   label="Email"
                   type="email"
                   placeholder="johndoe@email.com"
+                  :error-messages="errors.email"
                 />
               </VCol>
 
@@ -129,6 +186,7 @@ const onSubmit = () => {
                   placeholder="············"
                   :type="isPasswordVisible ? 'text' : 'password'"
                   autocomplete="password"
+                  :error-messages="errors.password"
                   :append-inner-icon="
                     isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'
                   "
@@ -221,10 +279,15 @@ const onSubmit = () => {
 
             <!-- Dialog Content -->
             <VCard title="GOOGLE SIGN UP">
-              <VCardText> To be added </VCardText>
+              <VCardText>
+                Mock Google sign-up creates verified super admin and center.
+              </VCardText>
 
               <VCardText class="d-flex justify-end">
-                <VBtn @click="isDialogVisible = false"> I accept </VBtn>
+                <VBtn variant="text" @click="isDialogVisible = false">
+                  Cancel
+                </VBtn>
+                <VBtn @click="signUpWithGoogle"> Continue </VBtn>
               </VCardText>
             </VCard>
           </VDialog>
@@ -260,7 +323,10 @@ const onSubmit = () => {
   padding-block: 0;
   padding-inline: 12px;
   text-align: center;
-  transition: background-color 0.218s, border-color 0.218s, box-shadow 0.218s;
+  transition:
+    background-color 0.218s,
+    border-color 0.218s,
+    box-shadow 0.218s;
   user-select: none;
   vertical-align: middle;
   white-space: nowrap;
@@ -320,7 +386,8 @@ const onSubmit = () => {
 }
 
 .gsi-material-button:not(:disabled):hover {
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 30%),
+  box-shadow:
+    0 1px 2px 0 rgba(60, 64, 67, 30%),
     0 1px 3px 1px rgba(60, 64, 67, 15%);
 }
 

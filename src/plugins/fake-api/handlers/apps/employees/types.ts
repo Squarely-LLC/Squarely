@@ -335,4 +335,6 @@ export interface EmployeeProperties {
   paymentMethods?: EmployeePaymentMethod[];
   attendance?: EmployeeAttendance;
   requests?: EmployeeRequest[];
+  centerId?: number | null;
+  ownerUserId?: number | string | null;
 }

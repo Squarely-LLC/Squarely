@@ -2,6 +2,8 @@ import { createApp } from "vue";
 
 import App from "@/App.vue";
 import { store } from "@/plugins/2.pinia";
+import { useAuthStore } from "@/stores/auth";
+import { useCenterStore } from "@/stores/center";
 import { registerPlugins } from "@core/utils/plugins";
 
 // Styles
@@ -16,6 +18,11 @@ async function bootstrap() {
 
   // Wait for async plugins like MSW before any startup fetches can run.
   await registerPlugins(app);
+
+  const centerStore = useCenterStore(store);
+  const authStore = useAuthStore(store);
+  centerStore.bootstrap();
+  authStore.bootstrap();
 
   // Centralized contacts initialization (seed canonical DB only if store is empty)
   // Keep this here so pages don't perform destructive seeding.

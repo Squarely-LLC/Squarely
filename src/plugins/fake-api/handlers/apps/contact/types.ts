@@ -110,4 +110,6 @@ export interface ContactProperties {
   birthdate?: string;
   worksInSales: boolean;
   createdAt?: string;
+  centerId?: number | null;
+  ownerUserId?: number | string | null;
 }

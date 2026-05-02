@@ -1,4 +1,8 @@
 import { paginateArray } from "@api-utils/paginateArray";
+import {
+  getRequestScope,
+  inCenterScope,
+} from "@/plugins/fake-api/handlers/utils/requestScope";
 import { database } from "@db/apps/quotation/db";
 import is from "@sindresorhus/is";
 import { destr } from "destr";
@@ -6,12 +10,16 @@ import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 
 export const handlerAppsQuotation = [
-  http.get("/api/apps/quotation/clients", () => {
-    const clients = database.map((record) => record.quotation.client);
+  http.get("/api/apps/quotation/clients", ({ request }) => {
+    const scope = getRequestScope(request);
+    const clients = database
+      .filter((record) => inCenterScope(record, scope.centerId))
+      .map((record) => record.quotation.client);
     return HttpResponse.json(clients.slice(0, 5), { status: 200 });
   }),
 
   http.get("/api/apps/quotation", ({ request }) => {
+    const scope = getRequestScope(request);
     const url = new URL(request.url);
     const q = url.searchParams.get("q");
     const status = url.searchParams.get("status");
@@ -34,6 +42,8 @@ export const handlerAppsQuotation = [
     const pageLocal = is.number(parsedPage) ? parsedPage : 1;
 
     let filteredRecords = database.filter((record) => {
+      if (!inCenterScope(record, scope.centerId)) return false;
+
       const quotation = record.quotation;
       const matchesQuery =
         !queryLowered ||
@@ -90,9 +100,12 @@ export const handlerAppsQuotation = [
     );
   }),
 
-  http.get<PathParams>("/api/apps/quotation/:id", ({ params }) => {
+  http.get<PathParams>("/api/apps/quotation/:id", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const record = database.find(
-      (entry) => entry.quotation.id === Number(params.id),
+      (entry) =>
+        entry.quotation.id === Number(params.id) &&
+        inCenterScope(entry, scope.centerId),
     );
 
     if (!record) {
@@ -104,9 +117,12 @@ export const handlerAppsQuotation = [
     return HttpResponse.json(record, { status: 200 });
   }),
 
-  http.delete("/api/apps/quotation/:id", ({ params }) => {
+  http.delete("/api/apps/quotation/:id", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const index = database.findIndex(
-      (entry) => entry.quotation.id === Number(params.id),
+      (entry) =>
+        entry.quotation.id === Number(params.id) &&
+        inCenterScope(entry, scope.centerId),
     );
 
     if (index >= 0) {

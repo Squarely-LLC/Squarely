@@ -1,5 +1,9 @@
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import {
+  buildScopedStorageKey,
+  getCurrentSessionScope,
+} from "@/utils/sessionScope";
 
 import { db } from "../plugins/fake-api/handlers/apps/employees/db";
 import type {
@@ -15,7 +19,7 @@ import type {
 import type { EmployeeRecord } from "../plugins/fake-api/handlers/apps/employees/types";
 import { useConfigStore } from "./config";
 
-const STORAGE_KEY = "app.employees.v2";
+const STORAGE_KEY_BASE = "app.employees.v3";
 
 // Vue wraps store state with reactive proxies; we need a plain object before
 // cloning to avoid structuredClone DataCloneError for Proxy arrays.
@@ -69,11 +73,11 @@ function cloneEmployeesArray(employees: EmployeeProperties[]) {
   return employees.map((contact) => cloneEmployee(contact));
 }
 
-function loadFromStorage(): EmployeeProperties[] | null {
+function loadFromStorage(storageKey: string): EmployeeProperties[] | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
@@ -84,14 +88,25 @@ function loadFromStorage(): EmployeeProperties[] | null {
   }
 }
 
-function saveToStorage(employees: EmployeeProperties[]) {
+function saveToStorage(employees: EmployeeProperties[], storageKey: string) {
   if (typeof window === "undefined") return;
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(employees));
+    localStorage.setItem(storageKey, JSON.stringify(employees));
   } catch (error) {
     console.warn("Failed to save employees to storage:", error);
   }
+}
+
+function applyScopeToEmployee(
+  employee: EmployeeProperties,
+  scope = getCurrentSessionScope(),
+) {
+  return cloneEmployee({
+    ...employee,
+    centerId: employee.centerId ?? scope.centerId ?? 1,
+    ownerUserId: employee.ownerUserId ?? scope.userId,
+  });
 }
 
 function ensureAccounting(
@@ -303,12 +318,17 @@ function nextEmployeeId(items: EmployeeProperties[]) {
   return Math.max(...numericIds) + 1;
 }
 
-const seedEmployees = () => cloneEmployeesArray(db.users);
+const seedEmployees = () =>
+  cloneEmployeesArray(db.users).map((employee) =>
+    applyScopeToEmployee(employee),
+  );
 
 export const useEmployeesStore = defineStore("employees", {
   state: () => ({
     items: [] as EmployeeProperties[],
     initialized: false,
+    scopeKey: null as string | null,
+    persistenceBound: false,
   }),
   getters: {
     all: (state) => state.items,
@@ -337,26 +357,37 @@ export const useEmployeesStore = defineStore("employees", {
   },
   actions: {
     init(force = false) {
-      if (this.initialized && !force) return;
+      const scope = getCurrentSessionScope();
+      const storageKey = buildScopedStorageKey(STORAGE_KEY_BASE);
 
-      const stored = loadFromStorage();
+      if (this.initialized && this.scopeKey === storageKey && !force) return;
+
+      const stored = loadFromStorage(storageKey);
 
       if (stored && stored.length) {
-        this.items = cloneEmployeesArray(stored);
+        this.items = cloneEmployeesArray(stored).map((employee) =>
+          applyScopeToEmployee(employee, scope),
+        );
       } else {
         this.items = seedEmployees();
-        saveToStorage(this.items);
+        saveToStorage(this.items, storageKey);
       }
 
+      this.scopeKey = storageKey;
       this.initialized = true;
 
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && !this.persistenceBound) {
         this.$subscribe(
           (_mutation, state) => {
-            saveToStorage(cloneEmployeesArray(state.items));
+            saveToStorage(
+              cloneEmployeesArray(state.items),
+              buildScopedStorageKey(STORAGE_KEY_BASE),
+            );
           },
           { detached: true },
         );
+
+        this.persistenceBound = true;
       }
     },
 
@@ -364,7 +395,7 @@ export const useEmployeesStore = defineStore("employees", {
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextEmployeeId(this.items);
-      const normalised = normaliseEmployee(payload, id);
+      const normalised = applyScopeToEmployee(normaliseEmployee(payload, id));
       this.items.unshift(normalised);
       return normalised;
     },
@@ -534,7 +565,10 @@ export const useEmployeesStore = defineStore("employees", {
     },
 
     replaceAll(employees: EmployeeProperties[]) {
-      this.items = cloneEmployeesArray(employees);
+      const scope = getCurrentSessionScope();
+      this.items = cloneEmployeesArray(employees).map((employee) =>
+        applyScopeToEmployee(employee, scope),
+      );
     },
   },
 });

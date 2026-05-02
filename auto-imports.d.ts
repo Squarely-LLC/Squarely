@@ -23,6 +23,7 @@ declare global {
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
+  const buildScopedStorageKey: typeof import('./src/utils/sessionScope')['buildScopedStorageKey']
   const clearDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']
   const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
@@ -73,6 +74,7 @@ declare global {
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getCurrentSessionScope: typeof import('./src/utils/sessionScope')['getCurrentSessionScope']
   const getDocumentSequencePrefix: typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']
   const getFileInfo: typeof import('./src/utils/fileStore')['getFileInfo']
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
@@ -440,6 +442,7 @@ declare module 'vue' {
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
+    readonly buildScopedStorageKey: UnwrapRef<typeof import('./src/utils/sessionScope')['buildScopedStorageKey']>
     readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
@@ -490,6 +493,7 @@ declare module 'vue' {
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getCurrentSessionScope: UnwrapRef<typeof import('./src/utils/sessionScope')['getCurrentSessionScope']>
     readonly getDocumentSequencePrefix: UnwrapRef<typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']>
     readonly getFileInfo: UnwrapRef<typeof import('./src/utils/fileStore')['getFileInfo']>
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>

@@ -1,5 +1,6 @@
 <!-- ❗Errors in the form are set on line 60 -->
 <script setup lang="ts">
+import { useAuthStore } from "@/stores/auth";
 import { useGenerateImageVariant } from "@core/composable/useGenerateImageVariant";
 import authV2LoginIllustrationBorderedDark from "@images/pages/auth-v2-login-illustration-bordered-dark.png";
 import authV2LoginIllustrationBorderedLight from "@images/pages/auth-v2-login-illustration-bordered-light.png";
@@ -16,7 +17,7 @@ const authThemeImg = useGenerateImageVariant(
   authV2LoginIllustrationDark,
   authV2LoginIllustrationBorderedLight,
   authV2LoginIllustrationBorderedDark,
-  true
+  true,
 );
 
 const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark);
@@ -32,6 +33,7 @@ const isPasswordVisible = ref(false);
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const ability = useAbility();
 
@@ -51,24 +53,17 @@ const rememberMe = ref(false);
 
 const login = async () => {
   try {
-    const res = await $api("/auth/login", {
-      method: "POST",
-      body: {
-        email: credentials.value.email,
-        password: credentials.value.password,
-      },
-      onResponseError({ response }) {
-        errors.value = response._data.errors;
-      },
+    errors.value = {
+      email: undefined,
+      password: undefined,
+    };
+
+    const res = await authStore.login({
+      email: credentials.value.email,
+      password: credentials.value.password,
     });
 
-    const { accessToken, userData, userAbilityRules } = res;
-
-    useCookie("userAbilityRules").value = userAbilityRules;
-    ability.update(userAbilityRules);
-
-    useCookie("userData").value = userData;
-    useCookie("accessToken").value = accessToken;
+    ability.update(res.userAbilityRules);
 
     // Redirect to `to` query if exist or redirect to index route
     // ❗ nextTick is required to wait for DOM updates and later redirect
@@ -76,7 +71,27 @@ const login = async () => {
       router.replace(route.query.to ? String(route.query.to) : "/");
     });
   } catch (err) {
-    console.error(err);
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        email: "Login failed",
+      };
+  }
+};
+
+const loginWithGoogle = async () => {
+  try {
+    const response = await authStore.loginWithGoogle({
+      email: credentials.value.email || "google-admin@demo.com",
+      fullName: "Google Super Admin",
+    });
+    ability.update(response.userAbilityRules);
+    isDialogVisible.value = false;
+    await router.replace(route.query.to ? String(route.query.to) : "/");
+  } catch (err) {
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        email: "Google sign-in failed",
+      };
   }
 };
 
@@ -266,10 +281,16 @@ const onSubmit = () => {
 
             <!-- Dialog Content -->
             <VCard title="GOOGLE SIGN IN">
-              <VCardText> To be added </VCardText>
+              <VCardText>
+                Mock Google login creates or signs in super admin for entered
+                email.
+              </VCardText>
 
               <VCardText class="d-flex justify-end">
-                <VBtn @click="isDialogVisible = false"> I accept </VBtn>
+                <VBtn variant="text" @click="isDialogVisible = false">
+                  Cancel
+                </VBtn>
+                <VBtn @click="loginWithGoogle"> Continue </VBtn>
               </VCardText>
             </VCard>
           </VDialog>
@@ -305,7 +326,10 @@ const onSubmit = () => {
   padding-block: 0;
   padding-inline: 12px;
   text-align: center;
-  transition: background-color 0.218s, border-color 0.218s, box-shadow 0.218s;
+  transition:
+    background-color 0.218s,
+    border-color 0.218s,
+    box-shadow 0.218s;
   user-select: none;
   vertical-align: middle;
   white-space: nowrap;
@@ -365,7 +389,8 @@ const onSubmit = () => {
 }
 
 .gsi-material-button:not(:disabled):hover {
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 30%),
+  box-shadow:
+    0 1px 2px 0 rgba(60, 64, 67, 30%),
     0 1px 3px 1px rgba(60, 64, 67, 15%);
 }
 

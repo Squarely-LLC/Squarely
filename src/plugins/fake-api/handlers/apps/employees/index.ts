@@ -1,4 +1,8 @@
 import { paginateArray } from "@api-utils/paginateArray";
+import {
+  getRequestScope,
+  inCenterScope,
+} from "@/plugins/fake-api/handlers/utils/requestScope";
 import { db } from "@db/apps/employees/db";
 import is from "@sindresorhus/is";
 import { destr } from "destr";
@@ -10,6 +14,7 @@ db.users = db.users.map((employee) => ({ ...employee }));
 
 export const handlerAppsEmployees = [
   http.get("/api/apps/employees", ({ request }) => {
+    const scope = getRequestScope(request);
     const url = new URL(request.url);
 
     const q = url.searchParams.get("q");
@@ -38,6 +43,8 @@ export const handlerAppsEmployees = [
     const pageLocal = is.number(parsedPage) ? parsedPage : 1;
 
     let filteredUsers = db.users.filter((user) => {
+      if (!inCenterScope(user, scope.centerId)) return false;
+
       const matchesQuery =
         !queryLower ||
         user.fullName.toLowerCase().includes(queryLower) ||
@@ -133,10 +140,13 @@ export const handlerAppsEmployees = [
     );
   }),
 
-  http.get<PathParams>("/api/apps/employees/:id", ({ params }) => {
+  http.get<PathParams>("/api/apps/employees/:id", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
 
-    const user = db.users.find((entry) => entry.id === userId);
+    const user = db.users.find(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
 
     if (!user) {
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
@@ -150,10 +160,13 @@ export const handlerAppsEmployees = [
     );
   }),
 
-  http.delete("/api/apps/employees/:id", ({ params }) => {
+  http.delete("/api/apps/employees/:id", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
 
     if (index === -1)
       return HttpResponse.json("User not found", { status: 404 });
@@ -164,12 +177,15 @@ export const handlerAppsEmployees = [
   }),
 
   http.put("/api/apps/employees/:id", async ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<EmployeeProperties>;
 
     const { accounting: incomingAccounting, ...restBody } = body;
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
@@ -193,10 +209,13 @@ export const handlerAppsEmployees = [
   }),
 
   http.post("/api/apps/employees/:id/records", async ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
     const payload = (await request.json()) as any;
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
@@ -230,11 +249,14 @@ export const handlerAppsEmployees = [
   http.put(
     "/api/apps/employees/:id/records/:rid",
     async ({ params, request }) => {
+      const scope = getRequestScope(request);
       const userId = Number(params.id);
       const recordId = Number(params.rid);
       const payload = (await request.json()) as any;
 
-      const index = db.users.findIndex((entry) => entry.id === userId);
+      const index = db.users.findIndex(
+        (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+      );
       if (index === -1)
         return HttpResponse.json(
           { message: "User not found" },
@@ -269,11 +291,14 @@ export const handlerAppsEmployees = [
     }
   ),
 
-  http.delete("/api/apps/employees/:id/records/:rid", ({ params }) => {
+  http.delete("/api/apps/employees/:id/records/:rid", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
     const recordId = Number(params.rid);
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
@@ -294,6 +319,7 @@ export const handlerAppsEmployees = [
   }),
 
   http.post("/api/apps/employees", async ({ request }) => {
+    const scope = getRequestScope(request);
     const payload = (await request.json()) as any;
 
     const { accounting: incomingAccounting, ...restPayload } = payload;
@@ -308,6 +334,8 @@ export const handlerAppsEmployees = [
       ...restPayload,
       id: db.users.length + 1,
       accounting,
+      centerId: payload.centerId ?? scope.centerId ?? 1,
+      ownerUserId: payload.ownerUserId ?? scope.userId,
     };
 
     db.users.push(newEmployee);

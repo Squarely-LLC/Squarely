@@ -1,26 +1,22 @@
 <script setup lang="ts">
+import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@core/stores/ui";
 const router = useRouter();
 const ability = useAbility();
 const ui = useUiStore();
+const authStore = useAuthStore();
 
 // TODO: Get type from backend
 const userData = useCookie<any>("userData");
 
 const logout = async () => {
-  // Remove "accessToken" from cookie
-  useCookie("accessToken").value = null;
-
-  // Remove "userData" from cookie
+  authStore.logout();
   userData.value = null;
 
   // Redirect to login page
   await router.push("/login");
 
   // ℹ️ We had to remove abilities in then block because if we don't nav menu items mutation is visible while redirecting user to login page
-  // Remove "userAbilities" from cookie
-  useCookie("userAbilityRules").value = null;
-
   // Reset ability to initial ability
   ability.update([]);
 };
@@ -163,12 +159,12 @@ const handleNavItemClick = (item: any) => {
 <style lang="scss">
 .user-profile-scroll {
   overflow-y: auto;
-  scrollbar-width: thin;
   scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
+  scrollbar-width: thin;
 }
 
 .user-profile-scroll::-webkit-scrollbar {
-  width: 0.5rem;
+  inline-size: 0.5rem;
 }
 
 .user-profile-scroll::-webkit-scrollbar-track {

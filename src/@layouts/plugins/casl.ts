@@ -1,5 +1,5 @@
-import { useAbility } from '@casl/vue'
 import type { RouteLocationNormalized } from 'vue-router'
+import { ability } from '@/plugins/casl/ability'
 import type { NavGroup } from '@layouts/types'
 
 /**
@@ -41,8 +41,6 @@ export const canViewNavMenuGroup = (item: NavGroup) => {
 }
 
 export const canNavigate = (to: RouteLocationNormalized) => {
-  const ability = useAbility()
-
   // Get the most specific route (last one in the matched array)
   const targetRoute = to.matched[to.matched.length - 1]
 

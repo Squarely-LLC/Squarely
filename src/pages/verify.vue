@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuthStore } from "@/stores/auth";
 import { useGenerateImageVariant } from "@core/composable/useGenerateImageVariant";
 import authV2VerifyEmailIllustrationDark from "@images/pages/auth-v2-verify-email-illustration-dark.png";
 import authV2VerifyEmailIllustrationLight from "@images/pages/auth-v2-verify-email-illustration-light.png";
@@ -16,10 +17,71 @@ definePage({
 
 const authThemeImg = useGenerateImageVariant(
   authV2VerifyEmailIllustrationLight,
-  authV2VerifyEmailIllustrationDark
+  authV2VerifyEmailIllustrationDark,
 );
 
 const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark);
+const authStore = useAuthStore();
+const route = useRoute();
+const router = useRouter();
+const ability = useAbility();
+
+const verificationCode = ref("");
+const errors = ref<Record<string, string | undefined>>({
+  email: undefined,
+  code: undefined,
+});
+const infoMessage = ref<string | null>(null);
+const mockCode = ref<string | null>(
+  route.query.mockCode ? String(route.query.mockCode) : null,
+);
+
+const targetEmail = computed(
+  () =>
+    (route.query.email ? String(route.query.email) : null) ||
+    authStore.pendingVerificationEmail ||
+    authStore.user?.email ||
+    "hello@example.com",
+);
+
+const submitVerification = async () => {
+  try {
+    errors.value = {
+      email: undefined,
+      code: undefined,
+    };
+    infoMessage.value = null;
+
+    const response = await authStore.verifyEmail({
+      email: targetEmail.value,
+      code: verificationCode.value,
+    });
+    ability.update(response.userAbilityRules);
+    await router.replace("/");
+  } catch (err) {
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        code: "Verification failed",
+      };
+  }
+};
+
+const resendVerification = async () => {
+  try {
+    errors.value = {
+      email: undefined,
+      code: undefined,
+    };
+    const response = await authStore.resendVerification(targetEmail.value);
+    mockCode.value = response.verificationCode;
+    infoMessage.value = `Verification code resent to ${response.email}`;
+  } catch (err) {
+    errors.value = (err as any)?.data?.errors ||
+      (err as any)?.response?._data?.errors || {
+        email: "Could not resend verification code",
+      };
+  }
+};
 </script>
 
 <template>
@@ -66,19 +128,40 @@ const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark);
           <h4 class="text-h4 mb-1">Verify your email ✉️</h4>
           <p class="text-body-1 mb-0">
             Account activation link sent to your email address:
-            <span class="font-weight-medium text-high-emphasis"
-              >hello@example.com</span
-            >
+            <span class="font-weight-medium text-high-emphasis">{{
+              targetEmail
+            }}</span>
             Please follow the link inside to continue.
           </p>
 
-          <VBtn block :to="{ name: 'dashboards-analytics' }" class="my-5">
-            Skip for now
+          <AppTextField
+            v-model="verificationCode"
+            class="mt-6"
+            label="Verification code"
+            placeholder="Enter 6-digit code"
+            :error-messages="errors.code"
+          />
+
+          <VAlert v-if="mockCode" class="mt-4" color="info" variant="tonal">
+            Mock code: <strong>{{ mockCode }}</strong>
+          </VAlert>
+
+          <VAlert
+            v-if="infoMessage"
+            class="mt-4"
+            color="success"
+            variant="tonal"
+          >
+            {{ infoMessage }}
+          </VAlert>
+
+          <VBtn block class="my-5" @click="submitVerification">
+            Verify email
           </VBtn>
 
           <div class="d-flex align-center justify-center">
             <span class="me-1">Didn't get the mail? </span
-            ><a href="#">Resend</a>
+            ><a href="#" @click.prevent="resendVerification">Resend</a>
           </div>
         </VCardText>
       </VCard>

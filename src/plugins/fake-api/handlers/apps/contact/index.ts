@@ -1,4 +1,8 @@
 import { paginateArray } from "@api-utils/paginateArray";
+import {
+  getRequestScope,
+  inCenterScope,
+} from "@/plugins/fake-api/handlers/utils/requestScope";
 import { db } from "@db/apps/contact/db";
 import is from "@sindresorhus/is";
 import { destr } from "destr";
@@ -23,8 +27,8 @@ const normalizeConnections = (
   }));
 };
 
-const buildContactLookup = () =>
-  new Map(db.users.map((contact) => [contact.id, contact]));
+const buildContactLookup = (contacts: ContactProperties[] = db.users) =>
+  new Map(contacts.map((contact) => [contact.id, contact]));
 
 const hydrateConnections = (
   connections: ContactProperties["connections"],
@@ -46,6 +50,7 @@ db.users = db.users.map((contact) => ({
 
 export const handlerAppsContacts = [
   http.get("/api/apps/contacts", ({ request }) => {
+    const scope = getRequestScope(request);
     const url = new URL(request.url);
 
     const q = url.searchParams.get("q");
@@ -74,7 +79,11 @@ export const handlerAppsContacts = [
       : 10;
     const pageLocal = is.number(parsedPage) ? parsedPage : 1;
 
-    let filteredUsers = db.users.filter((user) => {
+    const scopedUsers = db.users.filter((user) =>
+      inCenterScope(user, scope.centerId),
+    );
+
+    let filteredUsers = scopedUsers.filter((user) => {
       const matchesQuery =
         !queryLower ||
         user.fullName.toLowerCase().includes(queryLower) ||
@@ -157,7 +166,7 @@ export const handlerAppsContacts = [
       }
     }
 
-    const contactLookup = buildContactLookup();
+    const contactLookup = buildContactLookup(scopedUsers);
 
     const hydratedUsers = filteredUsers.map((user) => ({
       ...user,
@@ -178,16 +187,21 @@ export const handlerAppsContacts = [
     );
   }),
 
-  http.get<PathParams>("/api/apps/contacts/:id", ({ params }) => {
+  http.get<PathParams>("/api/apps/contacts/:id", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
 
-    const user = db.users.find((entry) => entry.id === userId);
+    const user = db.users.find(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
 
     if (!user) {
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    const contactLookup = buildContactLookup();
+    const contactLookup = buildContactLookup(
+      db.users.filter((entry) => inCenterScope(entry, scope.centerId)),
+    );
 
     return HttpResponse.json(
       {
@@ -198,10 +212,13 @@ export const handlerAppsContacts = [
     );
   }),
 
-  http.delete("/api/apps/contacts/:id", ({ params }) => {
+  http.delete("/api/apps/contacts/:id", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
 
     if (index === -1)
       return HttpResponse.json("User not found", { status: 404 });
@@ -212,6 +229,7 @@ export const handlerAppsContacts = [
   }),
 
   http.put("/api/apps/contacts/:id", async ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<ContactProperties>;
 
@@ -221,7 +239,9 @@ export const handlerAppsContacts = [
       ...restBody
     } = body;
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
@@ -246,7 +266,9 @@ export const handlerAppsContacts = [
       connections: normalizedConnections,
     };
 
-    const contactLookup = buildContactLookup();
+    const contactLookup = buildContactLookup(
+      db.users.filter((entry) => inCenterScope(entry, scope.centerId)),
+    );
 
     return HttpResponse.json(
       {
@@ -261,10 +283,13 @@ export const handlerAppsContacts = [
   }),
 
   http.post("/api/apps/contacts/:id/records", async ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
     const payload = (await request.json()) as any;
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
@@ -284,7 +309,9 @@ export const handlerAppsContacts = [
     // prepend so newest first
     db.users[index].records.unshift(incomingRecord);
 
-    const contactLookup = buildContactLookup();
+    const contactLookup = buildContactLookup(
+      db.users.filter((entry) => inCenterScope(entry, scope.centerId)),
+    );
 
     return HttpResponse.json(
       {
@@ -304,11 +331,14 @@ export const handlerAppsContacts = [
   http.put(
     "/api/apps/contacts/:id/records/:rid",
     async ({ params, request }) => {
+      const scope = getRequestScope(request);
       const userId = Number(params.id);
       const recordId = Number(params.rid);
       const payload = (await request.json()) as any;
 
-      const index = db.users.findIndex((entry) => entry.id === userId);
+      const index = db.users.findIndex(
+        (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+      );
       if (index === -1)
         return HttpResponse.json(
           { message: "User not found" },
@@ -331,7 +361,9 @@ export const handlerAppsContacts = [
         ...payload,
       };
 
-      const contactLookup = buildContactLookup();
+      const contactLookup = buildContactLookup(
+        db.users.filter((entry) => inCenterScope(entry, scope.centerId)),
+      );
 
       return HttpResponse.json(
         {
@@ -349,11 +381,14 @@ export const handlerAppsContacts = [
     }
   ),
 
-  http.delete("/api/apps/contacts/:id/records/:rid", ({ params }) => {
+  http.delete("/api/apps/contacts/:id/records/:rid", ({ params, request }) => {
+    const scope = getRequestScope(request);
     const userId = Number(params.id);
     const recordId = Number(params.rid);
 
-    const index = db.users.findIndex((entry) => entry.id === userId);
+    const index = db.users.findIndex(
+      (entry) => entry.id === userId && inCenterScope(entry, scope.centerId),
+    );
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
@@ -374,6 +409,7 @@ export const handlerAppsContacts = [
   }),
 
   http.post("/api/apps/contacts", async ({ request }) => {
+    const scope = getRequestScope(request);
     const payload = (await request.json()) as any;
 
     const {
@@ -395,6 +431,8 @@ export const handlerAppsContacts = [
       id: db.users.length + 1,
       accounting,
       connections: normalizedConnections,
+      centerId: payload.centerId ?? scope.centerId ?? 1,
+      ownerUserId: payload.ownerUserId ?? scope.userId,
     });
 
     return HttpResponse.json({ body: payload }, { status: 201 });

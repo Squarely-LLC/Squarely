@@ -1,10 +1,13 @@
 import { createMongoAbility } from '@casl/ability'
 
-export type Actions = 'create' | 'read' | 'update' | 'delete' | 'manage'
+export type Actions = string
 
-// ex: Post, Comment, User, etc. We haven't used any of these in our demo though.
-export type Subjects = 'Post' | 'Comment' | 'all'
+export type Subjects = string
 
 export interface Rule { action: Actions; subject: Subjects }
 
 export const ability = createMongoAbility<[Actions, Subjects]>()
+
+export const syncAbilityRules = (rules?: Rule[] | null) => {
+	ability.update(rules ?? [])
+}

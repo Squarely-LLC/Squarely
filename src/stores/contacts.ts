@@ -1,5 +1,9 @@
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import {
+  buildScopedStorageKey,
+  getCurrentSessionScope,
+} from "@/utils/sessionScope";
 
 import { db } from "../plugins/fake-api/handlers/apps/contact/db";
 import type {
@@ -11,7 +15,7 @@ import type {
 
 import type { ContactRecord } from "../plugins/fake-api/handlers/apps/contact/types";
 
-const STORAGE_KEY = "app.contacts.v3";
+const STORAGE_KEY_BASE = "app.contacts.v4";
 
 function cloneConnection(connection: ContactConnection): ContactConnection {
   const raw = toRaw(connection) as ContactConnection;
@@ -80,11 +84,11 @@ function cloneContactsArray(contacts: ContactProperties[]) {
   return contacts.map((contact) => cloneContact(contact));
 }
 
-function loadFromStorage(): ContactProperties[] | null {
+function loadFromStorage(storageKey: string): ContactProperties[] | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
@@ -95,14 +99,25 @@ function loadFromStorage(): ContactProperties[] | null {
   }
 }
 
-function saveToStorage(contacts: ContactProperties[]) {
+function saveToStorage(contacts: ContactProperties[], storageKey: string) {
   if (typeof window === "undefined") return;
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts));
+    localStorage.setItem(storageKey, JSON.stringify(contacts));
   } catch (error) {
     console.warn("Failed to save contacts to storage:", error);
   }
+}
+
+function applyScopeToContact(
+  contact: ContactProperties,
+  scope = getCurrentSessionScope(),
+) {
+  return cloneContact({
+    ...contact,
+    centerId: contact.centerId ?? scope.centerId ?? 1,
+    ownerUserId: contact.ownerUserId ?? scope.userId,
+  });
 }
 
 function ensureConnections(
@@ -249,12 +264,15 @@ function nextContactId(items: ContactProperties[]) {
   return Math.max(...numericIds) + 1;
 }
 
-const seedContacts = () => cloneContactsArray(db.users);
+const seedContacts = () =>
+  cloneContactsArray(db.users).map((contact) => applyScopeToContact(contact));
 
 export const useContactsStore = defineStore("contacts", {
   state: () => ({
     items: [] as ContactProperties[],
     initialized: false,
+    scopeKey: null as string | null,
+    persistenceBound: false,
   }),
   getters: {
     all: (state) => state.items,
@@ -293,26 +311,37 @@ export const useContactsStore = defineStore("contacts", {
   },
   actions: {
     init(force = false) {
-      if (this.initialized && !force) return;
+      const scope = getCurrentSessionScope();
+      const storageKey = buildScopedStorageKey(STORAGE_KEY_BASE);
 
-      const stored = loadFromStorage();
+      if (this.initialized && this.scopeKey === storageKey && !force) return;
+
+      const stored = loadFromStorage(storageKey);
 
       if (stored && stored.length) {
-        this.items = cloneContactsArray(stored);
+        this.items = cloneContactsArray(stored).map((contact) =>
+          applyScopeToContact(contact, scope),
+        );
       } else {
         this.items = seedContacts();
-        saveToStorage(this.items);
+        saveToStorage(this.items, storageKey);
       }
 
+      this.scopeKey = storageKey;
       this.initialized = true;
 
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && !this.persistenceBound) {
         this.$subscribe(
           (_mutation, state) => {
-            saveToStorage(cloneContactsArray(state.items));
+            saveToStorage(
+              cloneContactsArray(state.items),
+              buildScopedStorageKey(STORAGE_KEY_BASE),
+            );
           },
-          { detached: true }
+          { detached: true },
         );
+
+        this.persistenceBound = true;
       }
     },
 
@@ -320,7 +349,7 @@ export const useContactsStore = defineStore("contacts", {
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextContactId(this.items);
-      const normalised = normaliseContact(payload, id);
+      const normalised = applyScopeToContact(normaliseContact(payload, id));
       this.items.unshift(normalised);
       return normalised;
     },
@@ -408,7 +437,10 @@ export const useContactsStore = defineStore("contacts", {
     },
 
     replaceAll(contacts: ContactProperties[]) {
-      this.items = cloneContactsArray(contacts);
+      const scope = getCurrentSessionScope();
+      this.items = cloneContactsArray(contacts).map((contact) =>
+        applyScopeToContact(contact, scope),
+      );
     },
   },
 });

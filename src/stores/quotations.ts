@@ -15,10 +15,14 @@ import {
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
+import {
+  buildScopedStorageKey,
+  getCurrentSessionScope,
+} from "@/utils/sessionScope";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.quotations.v6";
+const STORAGE_KEY_BASE = "app.quotations.v7";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
   quotation?: Partial<Quotation>;
 };
@@ -80,11 +84,11 @@ function cloneQuotationArray(records: QuotationRecord[]) {
   return records.map((record) => cloneQuotationRecord(record));
 }
 
-function loadFromStorage(): QuotationRecord[] | null {
+function loadFromStorage(storageKey: string): QuotationRecord[] | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
@@ -95,14 +99,25 @@ function loadFromStorage(): QuotationRecord[] | null {
   }
 }
 
-function saveToStorage(records: QuotationRecord[]) {
+function saveToStorage(records: QuotationRecord[], storageKey: string) {
   if (typeof window === "undefined") return;
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    localStorage.setItem(storageKey, JSON.stringify(records));
   } catch (error) {
     console.warn("Failed to save quotations to storage:", error);
   }
+}
+
+function applyScopeToQuotationRecord(
+  record: QuotationRecord,
+  scope = getCurrentSessionScope(),
+) {
+  return cloneQuotationRecord({
+    ...record,
+    centerId: record.centerId ?? scope.centerId ?? 1,
+    ownerUserId: record.ownerUserId ?? scope.userId,
+  });
 }
 
 function nextQuotationId(items: QuotationRecord[]) {
@@ -443,7 +458,7 @@ function normaliseQuotationRecord(
       payload.thanksNote?.trim() || buildQuotationThanksNote(config.legal),
   };
 
-  return syncQuotationFinancialState(record);
+  return applyScopeToQuotationRecord(syncQuotationFinancialState(record));
 }
 
 function mergeQuotationRecord(
@@ -536,12 +551,15 @@ function mergeQuotationRecord(
   return cloneQuotationRecord(syncQuotationFinancialState(merged));
 }
 
-const seedQuotations = () => cloneQuotationArray(database);
+const seedQuotations = () =>
+  cloneQuotationArray(database).map((record) => applyScopeToQuotationRecord(record));
 
 export const useQuotationsStore = defineStore("quotations", {
   state: () => ({
     items: [] as QuotationRecord[],
     initialized: false,
+    scopeKey: null as string | null,
+    persistenceBound: false,
   }),
   getters: {
     all: (state) => state.items,
@@ -577,40 +595,53 @@ export const useQuotationsStore = defineStore("quotations", {
   },
   actions: {
     init(force = false) {
-      if (this.initialized && !force) return;
+      const scope = getCurrentSessionScope();
+      const storageKey = buildScopedStorageKey(STORAGE_KEY_BASE);
+
+      if (this.initialized && this.scopeKey === storageKey && !force) return;
 
       // Migrate: remove all older storage versions
       if (typeof window !== "undefined") {
         for (const key of Object.keys(localStorage)) {
-          if (key.startsWith("app.quotations.") && key !== STORAGE_KEY) {
+          if (key.startsWith("app.quotations.") && key !== storageKey) {
             localStorage.removeItem(key);
           }
         }
       }
 
-      const stored = loadFromStorage();
+      const stored = loadFromStorage(storageKey);
 
       if (stored && stored.length) {
         this.items = resequenceRevisions(
-          stored.map((record) => sanitizeStoredRecord(record)),
+          stored.map((record) =>
+            applyScopeToQuotationRecord(sanitizeStoredRecord(record), scope),
+          ),
         );
-        saveToStorage(this.items);
+        saveToStorage(this.items, storageKey);
       } else {
         this.items = resequenceRevisions(
-          seedQuotations().map((record) => sanitizeStoredRecord(record)),
+          seedQuotations().map((record) =>
+            applyScopeToQuotationRecord(sanitizeStoredRecord(record), scope),
+          ),
         );
-        saveToStorage(this.items);
+        saveToStorage(this.items, storageKey);
       }
 
+      this.scopeKey = storageKey;
       this.initialized = true;
 
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && !this.persistenceBound) {
         this.$subscribe(
           (_mutation, state) => {
-            saveToStorage(cloneQuotationArray(state.items));
+            saveToStorage(
+              cloneQuotationArray(state.items),
+              buildScopedStorageKey(STORAGE_KEY_BASE),
+            );
           },
           { detached: true },
         );
+
+        this.persistenceBound = true;
       }
     },
 
@@ -670,7 +701,10 @@ export const useQuotationsStore = defineStore("quotations", {
     },
 
     replaceAll(records: QuotationRecord[]) {
-      this.items = resequenceRevisions(records);
+      const scope = getCurrentSessionScope();
+      this.items = resequenceRevisions(
+        records.map((record) => applyScopeToQuotationRecord(record, scope)),
+      );
     },
   },
 });

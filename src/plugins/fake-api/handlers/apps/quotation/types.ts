@@ -89,4 +89,6 @@ export interface QuotationRecord {
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;
+  centerId?: number | null;
+  ownerUserId?: number | string | null;
 }
