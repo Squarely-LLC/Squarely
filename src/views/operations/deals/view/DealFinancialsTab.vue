@@ -1,18 +1,26 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 
-import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import type {
+  DealBillingPeriod,
+  DealProperties,
+} from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useDealsStore } from "@/stores/deals";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
   buildDealDocumentDraftRecord,
+  buildMonthlyBillingPeriod,
   filterDealDocumentItemsByBillingMode,
   getBillableRootDealItems,
+  getDealBillingPeriodKey,
+  getDealBillingPeriodLabel,
+  getDealBillingPeriodMonthValue,
   getQuotationTopLevelDealItems,
   getSelectableDealItems,
   resolveDealDocumentBillingMode,
@@ -34,6 +42,8 @@ const configStore = useConfigStore();
 configStore.init();
 const contactsStore = useContactsStore();
 contactsStore.init();
+const dealsStore = useDealsStore();
+dealsStore.init();
 const quotationsStore = useQuotationsStore();
 quotationsStore.init();
 const proformasStore = useProformasStore();
@@ -63,14 +73,26 @@ const selectedDocumentKind = ref<DealDocumentKind | null>(null);
 const billingModeDialogVisible = ref(false);
 const billingPeriodDialogVisible = ref(false);
 const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
-const billingPeriodLabel = ref(
-  new Intl.DateTimeFormat(undefined, {
-    month: "long",
-    year: "numeric",
-  }).format(new Date()),
+const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
+const billingPeriodMonthValue = ref(
+  getDealBillingPeriodMonthValue(billingPeriod.value),
 );
+const billingPeriodPreview = computed(() =>
+  buildMonthlyBillingPeriod(billingPeriodMonthValue.value),
+);
+const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
+const billingPeriodPrices = reactive<Record<string, number>>({});
 const selectedItemIds = ref<string[]>([]);
 const selectionDialogVisible = ref(false);
+
+const commitBillingPeriod = () => {
+  billingPeriod.value = billingPeriodPreview.value;
+  billingPeriodMonthValue.value = getDealBillingPeriodMonthValue(
+    billingPeriod.value,
+  );
+
+  return billingPeriod.value;
+};
 
 const contact = computed(() => {
   if (!props.deal.relatedTo) return null;
@@ -197,11 +219,11 @@ const selectionDialogHint = computed(() => {
   }
 
   if (effectiveBillingMode.value === "retainer-period") {
-    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
   }
 
   if (effectiveBillingMode.value === "recurrent-period") {
-    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
   }
 
   if (effectiveBillingMode.value === "mixed-manual") {
@@ -283,6 +305,139 @@ const routeNameForDocument = (kind: DealDocumentKind) => {
   return "apps-invoice-add";
 };
 
+const selectionNeedsBillingPeriod = (items: DealDocumentSelectableItem[]) =>
+  items.some((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+    return itemMode === "retainer-period" || itemMode === "recurrent-period";
+  });
+
+const pendingBillingPeriodItems = computed(() =>
+  pendingDocumentItems.value.filter((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+    return itemMode === "retainer-period" || itemMode === "recurrent-period";
+  }),
+);
+
+const getOverrideKeyFromSelectionKey = (selectionKey: string) => {
+  const match = selectionKey.match(/^item-\d+-(.+)$/);
+
+  return match?.[1] ?? null;
+};
+
+const getStoredBillingPeriodPrice = (
+  item: DealDocumentSelectableItem,
+  period: DealBillingPeriod,
+) => {
+  const overrideKey = getOverrideKeyFromSelectionKey(item.selectionKey);
+  const periodKey = getDealBillingPeriodKey(period);
+  if (!overrideKey || !periodKey) return null;
+
+  const value =
+    item.subItemOverrides?.[overrideKey]?.periodUnitPrices?.[periodKey];
+  if (value === null || value === undefined) return null;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const resetBillingPeriodPrices = () => {
+  Object.keys(billingPeriodPrices).forEach((key) => {
+    delete billingPeriodPrices[key];
+  });
+};
+
+const initializeBillingPeriodPrices = (
+  items: DealDocumentSelectableItem[],
+  period = billingPeriod.value,
+) => {
+  resetBillingPeriodPrices();
+
+  items.forEach((item) => {
+    billingPeriodPrices[item.selectionKey] = Number(
+      getStoredBillingPeriodPrice(item, period) ?? item.unitPrice ?? 0,
+    );
+  });
+};
+
+const applyBillingPeriodPricing = (
+  items: DealDocumentSelectableItem[],
+  period: DealBillingPeriod,
+) => {
+  const periodKey = getDealBillingPeriodKey(period);
+  if (!periodKey) return items;
+
+  const updatedPrices = new Map<string, number>();
+
+  items.forEach((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+    if (itemMode !== "retainer-period" && itemMode !== "recurrent-period")
+      return;
+
+    const numeric = Number(billingPeriodPrices[item.selectionKey]);
+    updatedPrices.set(
+      item.selectionKey,
+      Number.isFinite(numeric) ? numeric : 0,
+    );
+  });
+
+  if (!updatedPrices.size) return items;
+
+  const nextItems = (props.deal.items || []).map((item) => {
+    const nextOverrides = { ...(item.subItemOverrides || {}) };
+    let hasChanges = false;
+
+    Object.keys(nextOverrides).forEach((overrideKey) => {
+      const selectionKey = `item-${item.id}-${overrideKey}`;
+      const nextPrice = updatedPrices.get(selectionKey);
+      if (nextPrice === undefined) return;
+
+      const currentOverride = nextOverrides[overrideKey] || {};
+      nextOverrides[overrideKey] = {
+        ...currentOverride,
+        unitPrice: nextPrice,
+        periodUnitPrices: {
+          ...(currentOverride.periodUnitPrices || {}),
+          [periodKey]: nextPrice,
+        },
+      };
+      hasChanges = true;
+    });
+
+    return hasChanges
+      ? {
+          ...item,
+          subItemOverrides: nextOverrides,
+        }
+      : item;
+  });
+
+  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+
+  return items.map((item) => {
+    const nextPrice = updatedPrices.get(item.selectionKey);
+    if (nextPrice === undefined) return item;
+
+    return {
+      ...item,
+      unitPrice: nextPrice,
+    };
+  });
+};
+
+const resetDocumentWorkflowState = () => {
+  billingModeDialogVisible.value = false;
+  billingPeriodDialogVisible.value = false;
+  selectionDialogVisible.value = false;
+  pendingDocumentItems.value = [];
+  resetBillingPeriodPrices();
+  selectedBillingMode.value = null;
+  selectedDocumentKind.value = null;
+  selectedItemIds.value = [];
+};
+
 const saveAndNavigateToDraft = async (
   kind: DealDocumentKind,
   itemsToSend = billableRootItems.value,
@@ -293,16 +448,14 @@ const saveAndNavigateToDraft = async (
   }
 
   const draft = buildDealDocumentDraftRecord(kind, {
+    billingPeriod: selectionNeedsBillingPeriod(itemsToSend)
+      ? billingPeriod.value
+      : null,
     contact: contact.value,
     deal: props.deal,
     financial: configStore.financial,
     legal: configStore.legal,
     nextId: nextIdForDocument(kind),
-    billingPeriodLabel:
-      effectiveBillingMode.value === "retainer-period" ||
-      effectiveBillingMode.value === "recurrent-period"
-        ? billingPeriodLabel.value
-        : null,
     resolveCatalogueRecord: (id, typeHint) =>
       cataloguesStore.recordById(id, typeHint),
     selectedItems: itemsToSend,
@@ -314,6 +467,8 @@ const saveAndNavigateToDraft = async (
     name: routeNameForDocument(kind),
     query: { dealDraft: "1" },
   });
+
+  resetDocumentWorkflowState();
 };
 
 const openSelectionDialog = (
@@ -335,28 +490,40 @@ const openBillingPeriodDialog = (
 ) => {
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
+  initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
   billingPeriodDialogVisible.value = true;
 };
 
 const confirmBillingPeriod = () => {
   if (!selectedDocumentKind.value) return;
 
-  const trimmed = billingPeriodLabel.value.trim();
-  if (!trimmed) {
-    notifications.push("Enter a billing period first", "warning", 2500);
+  const nextBillingPeriod = commitBillingPeriod();
+  if (!getDealBillingPeriodKey(nextBillingPeriod)) {
+    notifications.push("Select a billing month first", "warning", 2500);
     return;
   }
 
-  billingPeriodLabel.value = trimmed;
   billingPeriodDialogVisible.value = false;
+
+  if (pendingDocumentItems.value.length) {
+    const kind = selectedDocumentKind.value;
+    const items = applyBillingPeriodPricing(
+      [...pendingDocumentItems.value],
+      nextBillingPeriod,
+    );
+
+    pendingDocumentItems.value = [];
+    void saveAndNavigateToDraft(kind, items);
+    return;
+  }
+
   openSelectionDialog(selectedDocumentKind.value, effectiveBillingMode.value);
 };
 
 const closeBillingPeriodDialog = () => {
   billingPeriodDialogVisible.value = false;
   if (!selectionDialogVisible.value) {
-    selectedBillingMode.value = null;
-    selectedDocumentKind.value = null;
+    resetDocumentWorkflowState();
   }
 };
 
@@ -367,14 +534,6 @@ const confirmBillingModeSelection = () => {
   }
 
   billingModeDialogVisible.value = false;
-
-  if (
-    selectedBillingMode.value === "retainer-period" ||
-    selectedBillingMode.value === "recurrent-period"
-  ) {
-    billingPeriodDialogVisible.value = true;
-    return;
-  }
 
   openSelectionDialog(selectedDocumentKind.value, selectedBillingMode.value);
 };
@@ -403,12 +562,12 @@ const handleCreateBillingDocument = async (kind: "invoice" | "proforma") => {
   }
 
   if (billingMode.value === "retainer-period") {
-    openBillingPeriodDialog(kind, "retainer-period");
+    openSelectionDialog(kind, "retainer-period");
     return;
   }
 
   if (billingMode.value === "recurrent-period") {
-    openBillingPeriodDialog(kind, "recurrent-period");
+    openSelectionDialog(kind, "recurrent-period");
     return;
   }
 
@@ -421,16 +580,33 @@ const confirmSelectedItems = async () => {
   if (!selectedDocumentKind.value || !selectedItems.value.length) return;
 
   const kind = selectedDocumentKind.value;
+  const items = [...selectedItems.value];
+
+  if (selectionNeedsBillingPeriod(items)) {
+    pendingDocumentItems.value = items;
+    initializeBillingPeriodPrices(
+      items.filter((item) => {
+        const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+        return (
+          itemMode === "retainer-period" || itemMode === "recurrent-period"
+        );
+      }),
+    );
+    selectionDialogVisible.value = false;
+    billingPeriodDialogVisible.value = true;
+    return;
+  }
 
   selectionDialogVisible.value = false;
-  await saveAndNavigateToDraft(kind, selectedItems.value);
+  await saveAndNavigateToDraft(kind, items);
 };
 
 const closeSelectionDialog = () => {
   selectionDialogVisible.value = false;
   if (!billingModeDialogVisible.value && !billingPeriodDialogVisible.value) {
-    selectedBillingMode.value = null;
-    selectedDocumentKind.value = null;
+    resetDocumentWorkflowState();
+    return;
   }
   selectedItemIds.value = [];
 };
@@ -621,15 +797,46 @@ const formatDate = (value?: string | null) => {
 
       <VCardText>
         <div class="text-sm text-medium-emphasis mb-4">
-          Enter the billing period label that should appear on this document.
+          Enter the billing period and explicit prices for the selected
+          period-based lines.
         </div>
 
         <VTextField
-          v-model="billingPeriodLabel"
-          label="Billing Period"
-          placeholder="May 2026"
+          v-model="billingPeriodMonthValue"
+          type="month"
+          label="Billing Month"
           autofocus
         />
+
+        <div class="text-sm text-medium-emphasis mt-2">
+          Selected period: {{ billingPeriodPreview.label }}
+        </div>
+
+        <div
+          v-if="pendingBillingPeriodItems.length"
+          class="d-flex flex-column gap-3 mt-4"
+        >
+          <div
+            v-for="item in pendingBillingPeriodItems"
+            :key="item.selectionKey"
+            class="border rounded pa-3"
+          >
+            <div class="text-body-1 font-weight-medium mb-1">
+              {{ item.name }}
+            </div>
+            <div class="text-sm text-medium-emphasis mb-3">
+              Set the explicit billed amount for this period.
+            </div>
+
+            <VTextField
+              v-model.number="billingPeriodPrices[item.selectionKey]"
+              type="number"
+              min="0"
+              step="0.01"
+              label="Period Price"
+            />
+          </div>
+        </div>
       </VCardText>
 
       <VDivider />

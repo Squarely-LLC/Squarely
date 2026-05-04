@@ -368,6 +368,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    billingPeriodKey: product.billingPeriodKey?.trim() || null,
     dealSelectionKey: product.dealSelectionKey?.trim() || null,
     lineConstraints: product.lineConstraints
       ? { ...product.lineConstraints }

@@ -15,6 +15,7 @@ import type {
   CatalogueSalesTask,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
+  DealBillingPeriod,
   DealCustomPhase,
   DealItem,
   DealItemOverride,
@@ -32,11 +33,16 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
   buildDealDocumentDraftRecord,
+  buildMonthlyBillingPeriod,
   filterDealDocumentItemsByBillingMode,
   getBillableRootDealItems,
+  getDealBillingPeriodKey,
+  getDealBillingPeriodLabel,
+  getDealBillingPeriodMonthValue,
   getDealContractualPhaseLines,
   getQuotationTopLevelDealItems,
   getSelectableDealItems,
+  normalizeBillingPeriodKey,
   resolveDealDocumentBillingMode,
   resolveDealDocumentBillingModeForItem,
   saveDealDocumentDraft,
@@ -185,18 +191,22 @@ const selectedPreviewDocument = ref<{
 } | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
-
-const billingPeriodLabel = ref(
-  new Intl.DateTimeFormat(undefined, {
-    month: "long",
-    year: "numeric",
-  }).format(new Date()),
+const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
+const billingPeriodMonthValue = ref(
+  getDealBillingPeriodMonthValue(billingPeriod.value),
+);
+const billingPeriodPreview = computed(() =>
+  buildMonthlyBillingPeriod(billingPeriodMonthValue.value),
 );
 
-const normalizeBillingPeriodKey = (value?: string | null) =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase();
+const commitBillingPeriod = () => {
+  billingPeriod.value = billingPeriodPreview.value;
+  billingPeriodMonthValue.value = getDealBillingPeriodMonthValue(
+    billingPeriod.value,
+  );
+
+  return billingPeriod.value;
+};
 
 const addItemDraft = reactive({
   quantity: 1,
@@ -1015,7 +1025,7 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
                 discountLabel: null,
                 taxApplicable: null,
                 showQuantity: true,
-                showPrice: false,
+                showPrice: true,
                 showDiscount: false,
                 showTaxApplicable: false,
               },
@@ -1050,7 +1060,7 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
                 discountLabel: null,
                 taxApplicable: null,
                 showQuantity: false,
-                showPrice: false,
+                showPrice: true,
                 showDiscount: false,
                 showTaxApplicable: false,
               },
@@ -1397,6 +1407,7 @@ const openSelectedPreviewInPage = () => {
 };
 
 const resolveProductSelectionKey = (product: {
+  billingPeriodKey?: string | null;
   catalogueItemId?: string | null;
   cost?: number | null;
   dealSelectionKey?: string | null;
@@ -1420,6 +1431,38 @@ const resolveProductSelectionKey = (product: {
   return matches.length === 1 ? matches[0].selectionKey : "";
 };
 
+const buildDocumentUsageKey = (
+  selectionKey?: string | null,
+  billingPeriodKey?: string | null,
+) => {
+  const normalizedSelectionKey = String(selectionKey ?? "").trim();
+  if (!normalizedSelectionKey) return "";
+
+  const normalizedPeriodKey = normalizeBillingPeriodKey(billingPeriodKey);
+
+  return normalizedPeriodKey
+    ? `${normalizedSelectionKey}::${normalizedPeriodKey}`
+    : normalizedSelectionKey;
+};
+
+const resolveSelectableItemBillingPeriodKey = (
+  selectionKey?: string | null,
+) => {
+  const normalizedSelectionKey = String(selectionKey ?? "").trim();
+  if (!normalizedSelectionKey) return "";
+
+  const selectableItem = selectableDocumentItems.value.find(
+    (item) => item.selectionKey === normalizedSelectionKey,
+  );
+  if (!selectableItem) return "";
+
+  const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
+
+  return itemMode === "retainer-period" || itemMode === "recurrent-period"
+    ? getDealBillingPeriodKey(billingPeriod.value)
+    : "";
+};
+
 const proformaUsageBySelectionKey = computed(() => {
   const usage = new Map<string, number>();
 
@@ -1428,9 +1471,13 @@ const proformaUsageBySelectionKey = computed(() => {
 
     record.purchasedProducts.forEach((product) => {
       const selectionKey = resolveProductSelectionKey(product);
-      if (!selectionKey) return;
+      const usageKey = buildDocumentUsageKey(
+        selectionKey,
+        product.billingPeriodKey,
+      );
+      if (!usageKey) return;
 
-      usage.set(selectionKey, (usage.get(selectionKey) ?? 0) + 1);
+      usage.set(usageKey, (usage.get(usageKey) ?? 0) + 1);
     });
   });
 
@@ -1445,27 +1492,37 @@ const invoiceUsageBySelectionKey = computed(() => {
 
     record.purchasedProducts.forEach((product) => {
       const selectionKey = resolveProductSelectionKey(product);
-      if (!selectionKey) return;
+      const usageKey = buildDocumentUsageKey(
+        selectionKey,
+        product.billingPeriodKey,
+      );
+      if (!usageKey) return;
 
-      usage.set(selectionKey, (usage.get(selectionKey) ?? 0) + 1);
+      usage.set(usageKey, (usage.get(usageKey) ?? 0) + 1);
     });
   });
 
   return usage;
 });
 
-const getDocumentUsage = (selectionKey?: string | null) => {
-  const normalized = String(selectionKey ?? "").trim();
-  if (!normalized) return { invoiceCount: 0, proformaCount: 0 };
+const getDocumentUsage = (
+  selectionKey?: string | null,
+  billingPeriodKey?: string | null,
+) => {
+  const usageKey = buildDocumentUsageKey(selectionKey, billingPeriodKey);
+  if (!usageKey) return { invoiceCount: 0, proformaCount: 0 };
 
   return {
-    invoiceCount: invoiceUsageBySelectionKey.value.get(normalized) ?? 0,
-    proformaCount: proformaUsageBySelectionKey.value.get(normalized) ?? 0,
+    invoiceCount: invoiceUsageBySelectionKey.value.get(usageKey) ?? 0,
+    proformaCount: proformaUsageBySelectionKey.value.get(usageKey) ?? 0,
   };
 };
 
 const isSelectionDocumentActionDisabled = (selectionKey?: string | null) => {
-  const usage = getDocumentUsage(selectionKey);
+  const usage = getDocumentUsage(
+    selectionKey,
+    resolveSelectableItemBillingPeriodKey(selectionKey),
+  );
 
   if (selectedDocumentKind.value === "invoice") return usage.invoiceCount > 0;
   if (selectedDocumentKind.value === "proforma") return usage.proformaCount > 0;
@@ -1486,7 +1543,14 @@ const findGoalSelectableItem = (
 const getGoalDocumentUsage = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
-) => getDocumentUsage(findGoalSelectableItem(parentItem, goal)?.selectionKey);
+) => {
+  const selectableItem = findGoalSelectableItem(parentItem, goal);
+
+  return getDocumentUsage(
+    selectableItem?.selectionKey,
+    resolveSelectableItemBillingPeriodKey(selectableItem?.selectionKey),
+  );
+};
 
 const isGoalProformaActionDisabled = (
   parentItem: DealItemWithPlan,
@@ -1627,11 +1691,11 @@ const selectionDialogHint = computed(() => {
   }
 
   if (effectiveBillingMode.value === "retainer-period") {
-    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
   }
 
   if (effectiveBillingMode.value === "recurrent-period") {
-    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
   }
 
   if (effectiveBillingMode.value === "mixed-manual") {
@@ -1702,10 +1766,10 @@ const getOverrideKeyFromSelectionKey = (selectionKey: string) => {
 
 const getStoredBillingPeriodPrice = (
   item: DealDocumentSelectableItem,
-  periodLabel: string,
+  period: DealBillingPeriod,
 ) => {
   const overrideKey = getOverrideKeyFromSelectionKey(item.selectionKey);
-  const periodKey = normalizeBillingPeriodKey(periodLabel);
+  const periodKey = getDealBillingPeriodKey(period);
   if (!overrideKey || !periodKey) return null;
 
   const value =
@@ -1725,22 +1789,22 @@ const resetBillingPeriodPrices = () => {
 
 const initializeBillingPeriodPrices = (
   items: DealDocumentSelectableItem[],
-  periodLabel = billingPeriodLabel.value,
+  period = billingPeriod.value,
 ) => {
   resetBillingPeriodPrices();
 
   items.forEach((item) => {
     billingPeriodPrices[item.selectionKey] = Number(
-      getStoredBillingPeriodPrice(item, periodLabel) ?? item.unitPrice ?? 0,
+      getStoredBillingPeriodPrice(item, period) ?? item.unitPrice ?? 0,
     );
   });
 };
 
 const applyBillingPeriodPricing = (
   items: DealDocumentSelectableItem[],
-  periodLabel: string,
+  period: DealBillingPeriod,
 ) => {
-  const periodKey = normalizeBillingPeriodKey(periodLabel);
+  const periodKey = getDealBillingPeriodKey(period);
   if (!periodKey) return items;
 
   const updatedPrices = new Map<string, number>();
@@ -1811,14 +1875,14 @@ const saveAndNavigateDocumentDraft = async (
   }
 
   const draft = buildDealDocumentDraftRecord(kind, {
+    billingPeriod: selectionNeedsBillingPeriod(selectedItems)
+      ? billingPeriod.value
+      : null,
     contact: contact.value,
     deal: props.deal,
     financial: configStore.financial,
     legal: configStore.legal,
     nextId: nextIdForDocument(kind),
-    billingPeriodLabel: selectionNeedsBillingPeriod(selectedItems)
-      ? billingPeriodLabel.value
-      : null,
     resolveCatalogueRecord: (id, typeHint) =>
       cataloguesStore.recordById(id, typeHint),
     selectedItems,
@@ -1879,20 +1943,18 @@ const openBillingPeriodDialog = (
 const confirmBillingPeriod = () => {
   if (!selectedDocumentKind.value) return;
 
-  const trimmed = billingPeriodLabel.value.trim();
-  if (!trimmed) {
-    notifications.push("Enter a billing period first", "warning", 2500);
+  const nextBillingPeriod = commitBillingPeriod();
+  if (!getDealBillingPeriodKey(nextBillingPeriod)) {
+    notifications.push("Select a billing month first", "warning", 2500);
     return;
   }
-
-  billingPeriodLabel.value = trimmed;
   billingPeriodDialogVisible.value = false;
 
   if (pendingDocumentItems.value.length) {
     const kind = selectedDocumentKind.value;
     const items = applyBillingPeriodPricing(
       [...pendingDocumentItems.value],
-      trimmed,
+      nextBillingPeriod,
     );
 
     pendingDocumentItems.value = [];
@@ -3248,11 +3310,15 @@ const openEditTask = (taskId: number | string) => {
           period-based lines.
         </div>
 
-        <AppTextField
-          v-model="billingPeriodLabel"
-          label="Billing Period"
-          placeholder="May 2026"
+        <VTextField
+          v-model="billingPeriodMonthValue"
+          type="month"
+          label="Billing Month"
         />
+
+        <div class="text-sm text-medium-emphasis mt-2">
+          Selected period: {{ billingPeriodPreview.label }}
+        </div>
 
         <div
           v-if="pendingBillingPeriodItems.length"

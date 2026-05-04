@@ -1,5 +1,15 @@
 export type DealFieldValue = string | number | boolean | null;
 
+export type DealBillingPeriodKind = "monthly";
+
+export interface DealBillingPeriod {
+  kind: DealBillingPeriodKind;
+  key: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+}
+
 import type { CatalogueSalesTask } from "@/plugins/fake-api/handlers/catalogues/types";
 import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
 

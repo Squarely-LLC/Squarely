@@ -24,6 +24,7 @@ import type {
   LegalConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import type {
+  DealBillingPeriod,
   DealCustomPhase,
   DealItem,
   DealProperties,
@@ -116,7 +117,7 @@ export interface DealDocumentContractualPhaseLine {
 }
 
 export interface DealDocumentDraftContext {
-  billingPeriodLabel?: string | null;
+  billingPeriod?: DealBillingPeriod | null;
   contact?: ContactProperties | null;
   deal: DealProperties;
   financial?: FinancialConfig | null;
@@ -206,6 +207,69 @@ export const filterDealDocumentItemsByBillingMode = <
   return actualItems.filter(
     (item) => resolveDealDocumentBillingModeForItem(item) === mode,
   );
+};
+
+export const normalizeBillingPeriodKey = (value?: string | null) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+function formatBillingPeriodDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+export const buildMonthlyBillingPeriod = (
+  monthValue?: string | null,
+): DealBillingPeriod => {
+  const match = String(monthValue ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})$/);
+  const today = new Date();
+  const parsedYear = match ? Number(match[1]) : today.getFullYear();
+  const parsedMonthIndex = match ? Number(match[2]) - 1 : today.getMonth();
+  const year = Number.isFinite(parsedYear) ? parsedYear : today.getFullYear();
+  const monthIndex =
+    Number.isFinite(parsedMonthIndex) &&
+    parsedMonthIndex >= 0 &&
+    parsedMonthIndex <= 11
+      ? parsedMonthIndex
+      : today.getMonth();
+  const startDate = new Date(year, monthIndex, 1);
+  const endDate = new Date(year, monthIndex + 1, 0);
+  const key = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+
+  return {
+    endDate: formatBillingPeriodDateValue(endDate),
+    key,
+    kind: "monthly",
+    label: new Intl.DateTimeFormat(undefined, {
+      month: "long",
+      year: "numeric",
+    }).format(startDate),
+    startDate: formatBillingPeriodDateValue(startDate),
+  };
+};
+
+export const getDealBillingPeriodKey = (period?: DealBillingPeriod | null) =>
+  String(period?.key ?? "")
+    .trim()
+    .toLowerCase();
+
+export const getDealBillingPeriodLabel = (period?: DealBillingPeriod | null) =>
+  String(period?.label ?? "").trim();
+
+export const getDealBillingPeriodMonthValue = (
+  period?: DealBillingPeriod | null,
+) => {
+  const periodKey = getDealBillingPeriodKey(period);
+
+  if (/^\d{4}-\d{2}$/.test(periodKey)) return periodKey;
+
+  return buildMonthlyBillingPeriod().key;
 };
 
 function normalizeCustomPhases(item: DealItem) {
@@ -683,9 +747,9 @@ function buildDistributedCost(totalCost: number, count: number, index: number) {
 
 function appendBillingPeriodLabel(
   value: string | null | undefined,
-  billingPeriodLabel?: string | null,
+  billingPeriod?: DealBillingPeriod | null,
 ) {
-  const label = billingPeriodLabel?.trim();
+  const label = getDealBillingPeriodLabel(billingPeriod);
   if (!label) return value?.trim() || "";
 
   const base = value?.trim();
@@ -695,7 +759,23 @@ function appendBillingPeriodLabel(
     : `Billing Period: ${label}`;
 }
 
+function resolvePeriodUnitPrice(
+  unitPrices: Record<string, number | null> | null | undefined,
+  billingPeriod?: DealBillingPeriod | null,
+) {
+  const billingPeriodKey = getDealBillingPeriodKey(billingPeriod);
+  if (!billingPeriodKey || !unitPrices) return null;
+
+  const value = unitPrices[billingPeriodKey];
+  if (value === null || value === undefined) return null;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function createPurchasedProduct(input: {
+  billingPeriodKey?: string | null;
   catalogueItemId?: string | null;
   dealSelectionKey?: string | null;
   cost?: number | null;
@@ -712,6 +792,7 @@ function createPurchasedProduct(input: {
   const discountValue = Number(input.discountPercent || 0);
 
   return {
+    billingPeriodKey: input.billingPeriodKey ?? null,
     catalogueItemId: input.catalogueItemId ?? null,
     dealSelectionKey: input.dealSelectionKey ?? null,
     cost: normalizeLineCost(input.cost),
@@ -808,12 +889,27 @@ function buildQuotationDescription(
   return baseDescription;
 }
 
-function buildStandardPurchasedProduct(item: DealDocumentSelectableItem) {
+function buildStandardPurchasedProduct(
+  item: DealDocumentSelectableItem,
+  billingPeriod?: DealBillingPeriod | null,
+) {
+  const itemMode = resolveDealDocumentBillingModeForItem(item);
+  const isPeriodBasedLine =
+    itemMode === "retainer-period" || itemMode === "recurrent-period";
+
   return createPurchasedProduct({
+    billingPeriodKey: isPeriodBasedLine
+      ? getDealBillingPeriodKey(billingPeriod)
+      : null,
     catalogueItemId: item.catalogueItemId ?? null,
     dealSelectionKey: item.selectionKey,
     cost: item.unitPrice ?? 0,
-    description: item.note?.trim() || item.category?.trim() || "",
+    description: isPeriodBasedLine
+      ? appendBillingPeriodLabel(
+          item.note?.trim() || item.category?.trim() || "",
+          billingPeriod,
+        )
+      : item.note?.trim() || item.category?.trim() || "",
     discountPercent: item.discountPercent ?? 0,
     hours: item.quantity,
     lineConstraints: item.lineConstraintsOverride,
@@ -842,25 +938,32 @@ function buildContractualProducts(
 function buildRetainerProducts(
   item: DealDocumentSelectableItem,
   record: CatalogueRetainerServiceRecord,
-  billingPeriodLabel?: string | null,
+  billingPeriod?: DealBillingPeriod | null,
 ) {
   const services = record.retainerServices || [];
+  const billingPeriodKey = getDealBillingPeriodKey(billingPeriod);
   const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
 
   return services.map((service, index) => {
     const override = item.subItemOverrides?.[`retainer-${service.id}`] || {};
+    const periodUnitPrice = resolvePeriodUnitPrice(
+      override.periodUnitPrices,
+      billingPeriod,
+    );
 
     return createPurchasedProduct({
+      billingPeriodKey: billingPeriodKey || null,
       catalogueItemId: item.catalogueItemId ?? null,
       dealSelectionKey: item.selectionKey.endsWith(`retainer-${service.id}`)
         ? item.selectionKey
         : `item-${item.id}-retainer-${service.id}`,
       cost:
+        periodUnitPrice ??
         override.unitPrice ??
         buildDistributedCost(totalCost, services.length, index),
       description: appendBillingPeriodLabel(
         override.note ?? service.description ?? item.note ?? record.description,
-        billingPeriodLabel,
+        billingPeriod,
       ),
       discountPercent: override.discountPercent ?? 0,
       hours: override.quantity ?? service.qty ?? item.quantity,
@@ -876,25 +979,32 @@ function buildRetainerProducts(
 function buildRecurrentProducts(
   item: DealDocumentSelectableItem,
   record: CatalogueReccurentServiceRecord,
-  billingPeriodLabel?: string | null,
+  billingPeriod?: DealBillingPeriod | null,
 ) {
   const services = record.reccurentServices || [];
+  const billingPeriodKey = getDealBillingPeriodKey(billingPeriod);
   const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
 
   return services.map((service, index) => {
     const override = item.subItemOverrides?.[`recurrent-${service.id}`] || {};
+    const periodUnitPrice = resolvePeriodUnitPrice(
+      override.periodUnitPrices,
+      billingPeriod,
+    );
 
     return createPurchasedProduct({
+      billingPeriodKey: billingPeriodKey || null,
       catalogueItemId: item.catalogueItemId ?? null,
       dealSelectionKey: item.selectionKey.endsWith(`recurrent-${service.id}`)
         ? item.selectionKey
         : `item-${item.id}-recurrent-${service.id}`,
       cost:
+        periodUnitPrice ??
         override.unitPrice ??
         buildDistributedCost(totalCost, services.length, index),
       description: appendBillingPeriodLabel(
         override.note ?? service.description ?? item.note ?? record.description,
-        billingPeriodLabel,
+        billingPeriod,
       ),
       discountPercent: override.discountPercent ?? 0,
       hours: override.quantity ?? item.quantity,
@@ -910,7 +1020,7 @@ function buildRecurrentProducts(
 
 function expandDealItemToPurchasedProducts(
   item: DealDocumentSelectableItem,
-  billingPeriodLabel?: string | null,
+  billingPeriod?: DealBillingPeriod | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   if (
@@ -919,11 +1029,11 @@ function expandDealItemToPurchasedProducts(
     item.catalogueType === "Retainer Service Line" ||
     item.catalogueType === "Recurrent Service Line"
   ) {
-    return [buildStandardPurchasedProduct(item)];
+    return [buildStandardPurchasedProduct(item, billingPeriod)];
   }
 
   if (!item.catalogueItemId || !resolveCatalogueRecord) {
-    return [buildStandardPurchasedProduct(item)];
+    return [buildStandardPurchasedProduct(item, billingPeriod)];
   }
 
   const record = resolveCatalogueRecord(
@@ -931,29 +1041,29 @@ function expandDealItemToPurchasedProducts(
     item.catalogueType || undefined,
   );
 
-  if (!record) return [buildStandardPurchasedProduct(item)];
+  if (!record) return [buildStandardPurchasedProduct(item, billingPeriod)];
   if (record.type === "Contractual Service") {
     return buildContractualProducts(item, record);
   }
   if (record.type === "Retainer Service") {
-    return buildRetainerProducts(item, record, billingPeriodLabel);
+    return buildRetainerProducts(item, record, billingPeriod);
   }
   if (record.type === "Reccurent Service") {
-    return buildRecurrentProducts(item, record, billingPeriodLabel);
+    return buildRecurrentProducts(item, record, billingPeriod);
   }
 
-  return [buildStandardPurchasedProduct(item)];
+  return [buildStandardPurchasedProduct(item, billingPeriod)];
 }
 
 function buildPurchasedProducts(
   items: DealDocumentSelectableItem[],
-  billingPeriodLabel?: string | null,
+  billingPeriod?: DealBillingPeriod | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   const purchasedProducts = items.flatMap((item) =>
     expandDealItemToPurchasedProducts(
       item,
-      billingPeriodLabel,
+      billingPeriod,
       resolveCatalogueRecord,
     ),
   );
@@ -1046,7 +1156,7 @@ function buildQuotationDraftRecord({
 }
 
 function buildProformaDraftRecord({
-  billingPeriodLabel,
+  billingPeriod,
   contact,
   deal,
   financial,
@@ -1057,7 +1167,7 @@ function buildProformaDraftRecord({
 }: DealDocumentDraftContext): ProformaRecord {
   const purchasedProducts = buildPurchasedProducts(
     selectedItems,
-    billingPeriodLabel,
+    billingPeriod,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);
@@ -1100,7 +1210,7 @@ function buildProformaDraftRecord({
 }
 
 function buildInvoiceDraftRecord({
-  billingPeriodLabel,
+  billingPeriod,
   contact,
   deal,
   financial,
@@ -1111,7 +1221,7 @@ function buildInvoiceDraftRecord({
 }: DealDocumentDraftContext): InvoiceRecord {
   const purchasedProducts = buildPurchasedProducts(
     selectedItems,
-    billingPeriodLabel,
+    billingPeriod,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);

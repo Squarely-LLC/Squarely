@@ -18,6 +18,7 @@ declare global {
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
   const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
   const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
+  const buildMonthlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']
   const buildProformaNote: typeof import('./src/utils/quotationConfig')['buildProformaNote']
   const buildQuotationNote: typeof import('./src/utils/quotationConfig')['buildQuotationNote']
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
@@ -74,6 +75,9 @@ declare global {
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getDealBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodKey']
+  const getDealBillingPeriodLabel: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodLabel']
+  const getDealBillingPeriodMonthValue: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodMonthValue']
   const getDealContractualPhaseLines: typeof import('./src/utils/dealDocumentDraft')['getDealContractualPhaseLines']
   const getDealDiscountTotal: typeof import('./src/utils/dealValue')['getDealDiscountTotal']
   const getDealGrandTotal: typeof import('./src/utils/dealValue')['getDealGrandTotal']
@@ -133,6 +137,7 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const nextTick: typeof import('vue')['nextTick']
+  const normalizeBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
@@ -442,6 +447,7 @@ declare module 'vue' {
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
     readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
     readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
+    readonly buildMonthlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']>
     readonly buildProformaNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildProformaNote']>
     readonly buildQuotationNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationNote']>
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
@@ -498,6 +504,9 @@ declare module 'vue' {
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getDealBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodKey']>
+    readonly getDealBillingPeriodLabel: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodLabel']>
+    readonly getDealBillingPeriodMonthValue: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodMonthValue']>
     readonly getDealContractualPhaseLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealContractualPhaseLines']>
     readonly getDealDiscountTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealDiscountTotal']>
     readonly getDealGrandTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealGrandTotal']>
@@ -557,6 +566,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
+    readonly normalizeBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>

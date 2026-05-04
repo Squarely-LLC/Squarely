@@ -44,6 +44,7 @@ export interface PaymentDetails {
 
 export interface PurchasedProduct {
   catalogueItemId?: string | null;
+  billingPeriodKey?: string | null;
   dealSelectionKey?: string | null;
   lineConstraints?: {
     quantity?: boolean;

@@ -330,6 +330,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    billingPeriodKey: product.billingPeriodKey?.trim() || null,
     lineConstraints: product.lineConstraints
       ? { ...product.lineConstraints }
       : null,
@@ -420,7 +421,9 @@ function normaliseQuotationRecord(
       : defaultPaymentDetails(total),
     payments: [],
     purchasedProducts: ensureProducts(payload.purchasedProducts),
-    note: normalizeRichText(payload.note) || buildQuotationNote(config.financial, 7),
+    note:
+      normalizeRichText(payload.note) ||
+      buildQuotationNote(config.financial, 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     totalFx: payload.totalFx?.trim() || null,
@@ -499,7 +502,8 @@ function mergeQuotationRecord(
     purchasedProducts: ensureProducts(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
-    note: patch.note === undefined ? original.note : normalizeRichText(patch.note),
+    note:
+      patch.note === undefined ? original.note : normalizeRichText(patch.note),
     showClientNote: patch.showClientNote ?? original.showClientNote,
     totalFx:
       patch.totalFx === undefined
