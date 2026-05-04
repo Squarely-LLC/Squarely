@@ -218,6 +218,7 @@ export const db: ConfigDB = {
     deals: {
       leadLostIn: 30,
       quotationLostIn: 45,
+      dealPrefix: 'DL-',
       quotationStartsSeq: 'QTN-',
       proformaStartSeq: 'PF-',
       salesType: ['Retail', 'Wholesale'],

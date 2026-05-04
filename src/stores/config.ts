@@ -35,6 +35,21 @@ const mergeSection = <T>(current: T, incoming: T): T => {
   return incoming;
 };
 
+const normalizeConfigurations = (
+  cfg: AppConfigurations | null | undefined,
+): AppConfigurations => {
+  const next = (cfg || seedDb.configurations) as AppConfigurations;
+  const dealPrefix = String(next.deals?.dealPrefix ?? "DL-").trim() || "DL-";
+
+  return {
+    ...next,
+    deals: {
+      ...(next.deals || {}),
+      dealPrefix,
+    },
+  };
+};
+
 const normalizePatch = (
   current: AppConfigurations,
   patch: Partial<AppConfigurations>
@@ -52,7 +67,7 @@ const normalizePatch = (
 
 export const useConfigStore = defineStore("appConfigurations", {
   state: () => ({
-    configurations: seedDb.configurations as AppConfigurations,
+    configurations: normalizeConfigurations(seedDb.configurations),
     initialized: false,
   }),
   getters: {
@@ -65,9 +80,9 @@ export const useConfigStore = defineStore("appConfigurations", {
       if (this.initialized && !force) return;
       const stored = loadFromStorage();
       if (stored) {
-        this.configurations = stored;
+        this.configurations = normalizeConfigurations(stored);
       } else {
-        this.configurations = seedDb.configurations;
+        this.configurations = normalizeConfigurations(seedDb.configurations);
         saveToStorage(this.configurations);
       }
       this.initialized = true;
@@ -78,7 +93,7 @@ export const useConfigStore = defineStore("appConfigurations", {
         const res = await fetch("/api/configurations");
         if (!res.ok) throw new Error("Failed to fetch configurations");
         const data = await res.json();
-        this.configurations = data;
+        this.configurations = normalizeConfigurations(data);
         saveToStorage(this.configurations);
         return this.configurations;
       } catch (error) {
@@ -96,7 +111,7 @@ export const useConfigStore = defineStore("appConfigurations", {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("Failed to save configurations");
-        const data = (await res.json()) as AppConfigurations;
+        const data = normalizeConfigurations((await res.json()) as AppConfigurations);
         // Only update sections that were part of the payload to avoid
         // clobbering other in-memory edits from different tabs/views.
         const keys = Object.keys(payload || {}) as (keyof AppConfigurations)[];
@@ -117,7 +132,10 @@ export const useConfigStore = defineStore("appConfigurations", {
 
     updateLocal(patch: Partial<AppConfigurations>) {
       const merged = normalizePatch(this.configurations, patch || {});
-      this.configurations = { ...this.configurations, ...merged };
+      this.configurations = normalizeConfigurations({
+        ...this.configurations,
+        ...merged,
+      });
       saveToStorage(this.configurations);
     },
   },

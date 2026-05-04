@@ -1,4 +1,5 @@
 import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
+import { db as dealsDb } from "@/plugins/fake-api/handlers/operations/deals/db";
 import type { ContactRef, Meeting, ToDo } from "./schema";
 
 export const nowISO = () => new Date().toISOString();
@@ -60,6 +61,15 @@ const endAtFrom = (startISO: string, mins: number) => {
   d.setMinutes(d.getMinutes() + mins);
   return d.toISOString();
 };
+
+const dealCode = (id: number) =>
+  dealsDb.deals.find((deal) => Number(deal.id) === Number(id))?.code || `DL-${id}`;
+
+const dealRef = (id: number) => ({
+  id,
+  name: dealCode(id),
+  type: "deal" as const,
+});
 
 // 1 day in ms
 const DAY = 86400000;
@@ -2898,7 +2908,7 @@ export const SeedTodos: ToDo[] = [
     steps: [],
     notes: "Review mockups with client before production slot is locked.",
     activities: [],
-    relatedTo: { id: 1, name: "DL-1001", type: "deal" },
+    relatedTo: dealRef(1),
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
@@ -2926,7 +2936,7 @@ export const SeedTodos: ToDo[] = [
         createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
       },
     ],
-    relatedTo: { id: 1, name: "DL-1001", type: "deal" },
+    relatedTo: dealRef(1),
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
@@ -2942,7 +2952,7 @@ export const SeedTodos: ToDo[] = [
     steps: [],
     notes: "Need building management approval for after-hours service access.",
     activities: [],
-    relatedTo: { id: 2, name: "DL-1002", type: "deal" },
+    relatedTo: dealRef(2),
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
@@ -2964,7 +2974,7 @@ export const SeedTodos: ToDo[] = [
         createdAt: new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
       },
     ],
-    relatedTo: { id: 2, name: "DL-1002", type: "deal" },
+    relatedTo: dealRef(2),
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
@@ -2980,7 +2990,7 @@ export const SeedTodos: ToDo[] = [
     steps: [],
     notes: "Venue access, branding points, and acoustic treatment placement.",
     activities: [],
-    relatedTo: { id: 3, name: "DL-1003", type: "deal" },
+    relatedTo: dealRef(3),
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
@@ -3008,7 +3018,7 @@ export const SeedTodos: ToDo[] = [
         createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
     ],
-    relatedTo: { id: 3, name: "DL-1003", type: "deal" },
+    relatedTo: dealRef(3),
     createdAt: nowISO(),
     updatedAt: nowISO(),
   },
@@ -3169,12 +3179,12 @@ export const SeedMeetings: Meeting[] = [
   },
   {
     id: 11,
-    subject: "Deal review - DL-1001",
+    subject: `Deal review - ${dealCode(1)}`,
     startAt: atMin(6 * 60),
     duration: 45,
     type: "Sales",
     linkedTo: [C.ted, C.dana],
-    relatedTo: { id: 1, name: "DL-1001", type: "deal" },
+    relatedTo: dealRef(1),
     location: "Zoom",
     note: "Finalize decorative finish sequence and proposal exclusions.",
     attachments: [],
@@ -3185,12 +3195,12 @@ export const SeedMeetings: Meeting[] = [
   },
   {
     id: 12,
-    subject: "Client call - DL-1001",
+    subject: `Client call - ${dealCode(1)}`,
     startAt: atMin(-3 * 60),
     duration: 20,
     type: "Brief",
     linkedTo: [C.ted],
-    relatedTo: { id: 1, name: "DL-1001", type: "deal" },
+    relatedTo: dealRef(1),
     location: "Phone",
     note: "Quick confirmation on sample drop-off and pricing bracket.",
     attachments: [],
@@ -3201,12 +3211,12 @@ export const SeedMeetings: Meeting[] = [
   },
   {
     id: 13,
-    subject: "Maintenance scope check - DL-1002",
+    subject: `Maintenance scope check - ${dealCode(2)}`,
     startAt: atMin(26 * 60),
     duration: 30,
     type: "Operation",
     linkedTo: [C.omar, C.nora],
-    relatedTo: { id: 2, name: "DL-1002", type: "deal" },
+    relatedTo: dealRef(2),
     location: "Google Meet",
     note: "Review pendant rental handoff and annual lighting service scope.",
     attachments: [],
@@ -3217,12 +3227,12 @@ export const SeedMeetings: Meeting[] = [
   },
   {
     id: 14,
-    subject: "Venue readiness call - DL-1003",
+    subject: `Venue readiness call - ${dealCode(3)}`,
     startAt: atMin(9 * 60),
     duration: 25,
     type: "Brief",
     linkedTo: [C.lina, C.alex],
-    relatedTo: { id: 3, name: "DL-1003", type: "deal" },
+    relatedTo: dealRef(3),
     location: "Phone",
     note: "Confirm pod cleaning timing and planter placement around event access.",
     attachments: [],

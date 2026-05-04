@@ -100,6 +100,7 @@ interface CrmConfig {
 export interface DealsConfig {
   leadLostIn?: number // days
   quotationLostIn?: number // days
+  dealPrefix?: string // prefix used for generated deal codes
   quotationStartsSeq?: string // prefix or sequence
   proformaStartSeq?: string
   salesType?: string[]

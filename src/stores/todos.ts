@@ -69,6 +69,17 @@ function normalizeAttachment(attachment: any): ToDoAttachment | null {
   };
 }
 
+function replaceDealCodeText(
+  value: string | null | undefined,
+  previousCode: string,
+  nextCode: string,
+) {
+  if (!value || !previousCode || !nextCode || previousCode === nextCode)
+    return value ?? "";
+
+  return value.split(previousCode).join(nextCode);
+}
+
 export const useTodos = defineStore("todos", {
   state: () => ({
     items: [] as ToDo[],
@@ -291,6 +302,57 @@ export const useTodos = defineStore("todos", {
     removeTodo(id: number | string) {
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx !== -1) this.items.splice(idx, 1);
+    },
+    syncDealReferences(deals: Array<{ id: number | string; code?: string | null }>) {
+      const codeById = new Map(
+        deals
+          .map((deal) => [String(deal.id), String(deal.code ?? "").trim()] as const)
+          .filter(([, code]) => code.length),
+      );
+
+      const syncRelatedTo = (relatedTo: any) => {
+        if (!relatedTo || relatedTo.type !== "deal") return relatedTo;
+
+        const nextCode = codeById.get(String(relatedTo.id));
+        if (!nextCode) return relatedTo;
+
+        return {
+          ...relatedTo,
+          name: nextCode,
+        };
+      };
+
+      this.items = this.items.map((todo) => {
+        const previousCode = String(todo.relatedTo?.name ?? "").trim();
+        const nextRelatedTo = syncRelatedTo(todo.relatedTo);
+        const nextCode = String(nextRelatedTo?.name ?? "").trim();
+
+        return {
+          ...todo,
+          relatedTo: nextRelatedTo,
+          title: replaceDealCodeText(todo.title, previousCode, nextCode),
+          notes: replaceDealCodeText(todo.notes, previousCode, nextCode),
+          messages: Array.isArray(todo.messages)
+            ? todo.messages.map((message) => ({
+                ...message,
+                body: replaceDealCodeText(message.body, previousCode, nextCode),
+              }))
+            : todo.messages,
+        };
+      });
+
+      this.meetings = this.meetings.map((meeting) => {
+        const previousCode = String(meeting.relatedTo?.name ?? "").trim();
+        const nextRelatedTo = syncRelatedTo(meeting.relatedTo);
+        const nextCode = String(nextRelatedTo?.name ?? "").trim();
+
+        return {
+          ...meeting,
+          relatedTo: nextRelatedTo,
+          subject: replaceDealCodeText(meeting.subject, previousCode, nextCode),
+          note: replaceDealCodeText(meeting.note, previousCode, nextCode),
+        };
+      });
     },
     toggleImportant(id: number | string) {
       const todo = this.byId(id);

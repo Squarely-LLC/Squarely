@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import EditableChipList from "@/components/EditableChipList.vue";
 import type {
-  DealCustomFieldDefinition,
-  DealCustomFieldType,
+    DealCustomFieldDefinition,
+    DealCustomFieldType,
 } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
+import { useDealsStore } from "@/stores/deals";
 import { useNotificationsStore } from "@/stores/notifications";
 import { onMounted, ref } from "vue";
 
@@ -15,10 +16,12 @@ const notifications = useNotificationsStore();
 const salesType = ref<string[]>([]);
 const dealStages = ref<string[]>([]);
 const customFields = ref<DealCustomFieldDefinition[]>([]);
+const dealPrefix = ref("DL-");
 
 const isSavingSalesType = ref(false);
 const isSavingDealStages = ref(false);
 const isSavingCustomFields = ref(false);
+const isSavingDealPrefix = ref(false);
 
 const notifyWarn = (message: string) =>
   notifications.push(message, "warning", 2000);
@@ -71,6 +74,7 @@ const sanitizeCustomField = (
 
 const loadData = () => {
   const deals = store.configurations.deals || {};
+  dealPrefix.value = String(deals.dealPrefix ?? "DL-").trim() || "DL-";
   salesType.value = cleanEntries(deals.salesType || []);
   dealStages.value = cleanEntries(deals.dealStages || []);
 
@@ -88,6 +92,30 @@ const loadData = () => {
 };
 
 onMounted(loadData);
+
+const saveDealPrefix = async () => {
+  const cleaned = String(dealPrefix.value ?? "").trim() || "DL-";
+
+  isSavingDealPrefix.value = true;
+  const res = await store.saveRemote({
+    deals: {
+      ...(store.configurations.deals || {}),
+      dealPrefix: cleaned,
+    },
+  } as any);
+  isSavingDealPrefix.value = false;
+
+  if (res) {
+    const dealsStore = useDealsStore();
+    dealsStore.init();
+    dealsStore.syncCodePrefix();
+    dealPrefix.value = cleaned;
+    notifications.push("Deal prefix saved", "success", 2000);
+  } else {
+    notifications.push("Failed to save deal prefix", "error", 3000);
+    loadData();
+  }
+};
 
 type SavePayload = { values: string[]; action: "update" | "delete" };
 
@@ -219,6 +247,29 @@ const removeCustomField = (index: number) => {
 <template>
   <VCard class="mb-6" title="Deal Options">
     <VCardText>
+      <VRow class="mb-2">
+        <VCol cols="12" md="8">
+          <AppTextField
+            v-model="dealPrefix"
+            label="Deal prefix"
+            placeholder="DL-"
+            @keyup.enter="saveDealPrefix"
+          />
+        </VCol>
+
+        <VCol cols="12" md="4" class="d-flex align-end">
+          <VBtn
+            block
+            color="primary"
+            :loading="isSavingDealPrefix"
+            :disabled="isSavingDealPrefix"
+            @click="saveDealPrefix"
+          >
+            Save deal prefix
+          </VBtn>
+        </VCol>
+      </VRow>
+
       <div class="mb-4">
         <EditableChipList
           label="Sales type"

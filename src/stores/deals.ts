@@ -3,15 +3,17 @@ import { toRaw } from "vue";
 
 import { db } from "@/plugins/fake-api/handlers/operations/deals/db";
 import type {
-  DealFieldValue,
-  DealFinancialEntry,
-  DealItem,
-  DealProperties,
-  DealSalesTaskTemplate,
+    DealFieldValue,
+    DealFinancialEntry,
+    DealItem,
+    DealProperties,
+    DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useConfigStore } from "@/stores/config";
 import { useTodos } from "@/stores/todos";
 
 const STORAGE_KEY = "app.deals.v3";
+const DEFAULT_DEAL_PREFIX = "DL-";
 
 function cloneDeal(deal: DealProperties): DealProperties {
   const raw = toRaw(deal) as DealProperties;
@@ -77,18 +79,54 @@ function nextDealId(items: DealProperties[]) {
   return ids.length ? Math.max(...ids) + 1 : 1;
 }
 
+function extractDealSequence(code: string | null | undefined) {
+  const trimmed = String(code ?? "").trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/(\d+)$/);
+  if (!match) return null;
+
+  const numeric = Number(match[1]);
+  if (!Number.isFinite(numeric)) return null;
+
+  // Migrate legacy generated codes that previously started at 1001.
+  if (numeric >= 1001) return numeric - 1000;
+
+  return numeric;
+}
+
 function nextDealCode(items: DealProperties[]) {
+  const dealPrefix = getDealPrefix();
+
   const nextSequence =
     items.reduce((maxValue, deal) => {
-      const match = String(deal.code ?? "").match(/DL-(\d+)/i);
-      if (!match) return maxValue;
-
-      const numeric = Number(match[1]);
+      const numeric = extractDealSequence(deal.code);
+      if (numeric === null) return maxValue;
 
       return Number.isFinite(numeric) ? Math.max(maxValue, numeric) : maxValue;
-    }, 1000) + 1;
+    }, 0) + 1;
 
-  return `DL-${nextSequence}`;
+  return `${dealPrefix}${nextSequence}`;
+}
+
+function getDealPrefix() {
+  const configStore = useConfigStore();
+  configStore.init();
+
+  return (
+    String(configStore.configurations?.deals?.dealPrefix ?? DEFAULT_DEAL_PREFIX).trim()
+    || DEFAULT_DEAL_PREFIX
+  );
+}
+
+function applyPrefixToDealCode(code: string | null | undefined, prefix: string) {
+  const trimmed = String(code ?? "").trim();
+  if (!trimmed) return null;
+
+  const sequence = extractDealSequence(trimmed);
+  if (sequence === null) return trimmed;
+
+  return `${prefix}${sequence}`;
 }
 
 function normalizeCustomFieldValues(
@@ -179,6 +217,7 @@ const seedDealLookup = new Map(
 );
 
 function applyDealFieldMigrations(deal: DealProperties): DealProperties {
+  const dealPrefix = getDealPrefix();
   const seedMatch =
     (deal.code ? seedDealLookup.get(`code:${String(deal.code)}`) : null) ??
     seedDealLookup.get(`id:${String(deal.id)}`) ??
@@ -186,9 +225,20 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
   const quotationAmount = deal.financials?.find(
     (entry) => entry.type === "quotation",
   )?.amount;
+  const originalCode = String(deal.code ?? seedMatch?.code ?? "").trim();
+  const migratedCode = applyPrefixToDealCode(originalCode, dealPrefix);
+  const currentName = String(deal.name ?? "").trim();
+  const migratedName =
+    !currentName ||
+    currentName === originalCode ||
+    currentName === String(seedMatch?.code ?? "").trim()
+      ? migratedCode || currentName
+      : currentName;
 
   return {
     ...deal,
+    code: migratedCode,
+    name: migratedName || deal.name,
     amount:
       normalizeAmount(deal.amount) ??
       normalizeAmount(seedMatch?.amount) ??
@@ -340,6 +390,9 @@ export const useDealsStore = defineStore("deals", {
     init(force = false) {
       if (this.initialized && !force) return;
 
+      const configStore = useConfigStore();
+      configStore.init();
+
       const stored = loadFromStorage();
       const sourceDeals = stored && stored.length ? stored : seedDeals();
       const legacyGeneratedTaskIds = collectLegacyGeneratedTaskIds(sourceDeals);
@@ -352,6 +405,10 @@ export const useDealsStore = defineStore("deals", {
           todosStore.removeTodo(taskId),
         );
       }
+
+      const todosStore = useTodos();
+      todosStore.init();
+      todosStore.syncDealReferences(this.items);
 
       saveToStorage(this.items);
 
@@ -389,6 +446,17 @@ export const useDealsStore = defineStore("deals", {
       this.items.splice(index, 1, updated);
 
       return updated;
+    },
+
+    syncCodePrefix() {
+      const nextItems = sanitizeDeals(cloneDealsArray(this.items));
+      this.items = nextItems;
+
+      const todosStore = useTodos();
+      todosStore.init();
+      todosStore.syncDealReferences(nextItems);
+
+      return nextItems;
     },
 
     removeDeal(id: number | string) {
