@@ -1,137 +1,155 @@
-# Squarely —
+# Squarely
 
-built with Vue 3, Vite, Pinia and Vuetify.
+Squarely is a private internal web application for Squarely LLC. It supports day-to-day business workflows across operations, finance, HR, configuration, and related admin tooling.
 
-This repository contains a feature-rich UI scaffold used by the app. It includes a local fake API powered by MSW for development, a Pinia store layer, utilities for file storage, and a collection of views/components for common admin functionality (configuration panels, dashboards, forms, etc.).
+This repository is proprietary company software. It is not an open-source project, and the code, assets, seeded data, and business rules in this workspace should be treated as internal-only.
 
-This README explains how to set up, run, and contribute to the project.
+## What this repository contains
 
-## Quick facts
-- Framework: Vue 3 + Composition API
-- Bundler: Vite
-- UI: Vuetify 3
-- State: Pinia
-- Dev fake API: MSW (Mock Service Worker) under `public/` + `src/plugins/fake-api`
-- Package manager: pnpm (recommended)
+- Vue 3 single-page application built with Vite and Vuetify
+- Pinia stores for app state, seeded records, and browser persistence
+- Mock Service Worker (MSW) handlers for local fake API behavior during development
+- Feature areas for configuration, contacts, employees, quotations, invoices, receipts, expenses, logistics, and related admin screens
+- Docker files for local development and production-style container builds
+
+## Core stack
+
+- Vue 3
+- Vite
+- TypeScript
+- Pinia
+- Vuetify 3
+- Vue Router
+- MSW for local API mocking
+- pnpm for dependency management
+
+## Private repository notice
+
+- This repository is intended for authorized Squarely personnel and approved contractors only.
+- Do not publish code, screenshots, seed data, or internal documentation from this repository externally.
+- Do not add public-facing contribution, licensing, or community workflow language unless leadership explicitly asks for it.
 
 ## Prerequisites
-- Node.js (LTS) — recommended: 18.x or newer
-- pnpm (used in this workspace)
 
-Install pnpm globally if you don't have it:
+- Node.js 18 or newer
+- pnpm
+
+Install pnpm globally if needed:
 
 ```powershell
 npm install -g pnpm
 ```
 
-## Install
+## Local setup
 
-Install project dependencies (run from repository root):
+Install dependencies from the repository root:
 
 ```powershell
 pnpm install
 ```
 
-Notes:
-- The project uses a `postinstall` script to build icon assets and initialize MSW service worker files. If that step fails, re-run `pnpm run msw:init` and `pnpm run build:icons` manually.
+The install process runs `postinstall`, which builds icon assets and initializes the MSW worker in `public/`.
 
-## Useful scripts
+If postinstall fails, run these commands manually:
 
-- `pnpm run dev` — start dev server (Vite)
-- `pnpm run build` — build production bundle
-- `pnpm run preview` — preview the production build locally
-- `pnpm run typecheck` — run `vue-tsc` type-check
-- `pnpm run lint` — run ESLint and attempt autofixes
-- `pnpm run build:icons` — build icon assets
-- `pnpm run msw:init` — regenerate MSW service worker files in `public/`
+```powershell
+pnpm run build:icons
+pnpm run msw:init
+```
 
-Example: start dev server
+## Common commands
+
+- `pnpm run dev` starts the local Vite dev server
+- `pnpm run build` builds the production bundle
+- `pnpm run preview` previews the production build locally on port `5050`
+- `pnpm run typecheck` runs `vue-tsc --noEmit`
+- `pnpm run lint` runs ESLint with autofix enabled
+- `pnpm run build:icons` regenerates icon assets
+- `pnpm run msw:init` regenerates `public/mockServiceWorker.js`
+
+Start local development:
 
 ```powershell
 pnpm run dev
 ```
 
-If you see a `vite`/`esbuild` error during `pnpm run dev`, check the terminal output for the first error and the stack trace. Common fixes: missing environment values, port conflicts, or dependency mismatches.
+## Application areas
 
-## Development notes
+The current codebase includes feature surfaces and supporting stores for workflows such as:
 
-- The app uses MSW to mock API endpoints for local development. The fake API handlers are under `src/plugins/fake-api/handlers` and are wired to the client during boot in development mode.
-- Configuration data (used by the UI) is handled by a Pinia store at `src/stores/config.ts`. The store persists to localStorage and sends updates to the fake API in dev.
-- File uploads used for company logos are stored via a small IndexedDB-backed file store (`src/utils/fileStore`), which the fake API uses to return pointer strings (for example `idb:<key>|<encoded-filename>`).
-- Country/city helpers use the `country-state-city` package to populate `VAutocomplete` items for country and city selection.
+- Contacts and employee management
+- Quotations, invoices, receipts, credit notes, debit notes, and proformas
+- Expenses and payment vouchers
+- Jobs, deals, site surveys, snaglists, and logistics-related views
+- Configuration and catalog management
+- Calendar, chat, kanban, and other operational utility screens
+- Authentication, access-control, and role-oriented UI surfaces
 
-Recommended VS Code setup
+Some areas are fully business-specific, while others are shared admin utilities inherited from the broader app foundation.
 
-- VS Code + Volar extension (enable TypeScript plugin in Volar if you want richer typing for `.vue` files)
-- ESLint extension for linting integration
+## Development model
 
-## Project structure (high level)
+Local development relies heavily on browser-side persistence plus MSW-backed handlers instead of a required live backend.
 
-- `src/` — application source code
-	- `main.ts` — app entry
-	- `App.vue` — root component
-	- `@core/` — core utilities, types, components
-	- `plugins/` — Vue plugins and dev helpers (including `fake-api`)
-	- `stores/` — Pinia stores (`config.ts`, `notifications.ts`, etc.)
-	- `views/` — page-level views (including `apps/configuration/SettingsLegal.vue`)
-	- `components/` — shared UI components
-- `public/` — static assets and MSW worker files
-- `dev.Dockerfile`, `prod.Dockerfile` and `docker-compose.*.yml` — docker configs
+- MSW worker assets live in [public/mockServiceWorker.js](public/mockServiceWorker.js)
+- Handlers live under [src/plugins/fake-api/handlers](src/plugins/fake-api/handlers)
+- Many stores initialize from local storage and re-seed from fake API data when needed
+- App bootstrapping and store initialization start in [src/main.ts](src/main.ts)
 
-## Working with the fake API (MSW)
+This means local development is usually self-contained, but it also means storage state can affect behavior between sessions. When debugging, clear browser storage or re-seed affected stores if UI state looks stale.
 
-MSW provides local mocked endpoints which makes development faster and predictable.
+## Configuration and seeded data
 
-- The MSW worker file is generated into `public/` by the `msw init public/ --save` command, which runs automatically on `postinstall`.
-- Handlers live in `src/plugins/fake-api/handlers`. For example the configurations handler is at `src/plugins/fake-api/handlers/config/index.ts`.
+Several modules persist state locally for faster development and repeatable demos.
 
-If you modify or add handlers, regenerate the worker (only needed in some setups):
+- Application configuration is managed through [src/stores/config.ts](src/stores/config.ts)
+- Fake API records are defined under [src/plugins/fake-api/handlers](src/plugins/fake-api/handlers)
+- Static assets and MSW worker files are served from [public](public)
 
-```powershell
-pnpm run msw:init
-```
+Be careful when changing seed data or persistence keys. Small changes can affect multiple screens that depend on shared local state.
 
-## Running with Docker
+## Project structure
 
-There are Dockerfiles for dev and prod and docker-compose files for development and production-like environments. Example (dev compose):
+- [src](src) application source
+- [src/main.ts](src/main.ts) app bootstrap and plugin registration
+- [src/pages](src/pages) route-level pages
+- [src/views/apps](src/views/apps) business feature views
+- [src/stores](src/stores) Pinia stores and local persistence logic
+- [src/plugins](src/plugins) router, Pinia, fake API wiring, and other plugins
+- [public](public) static assets and MSW worker output
+- [dev.Dockerfile](dev.Dockerfile), [prod.Dockerfile](prod.Dockerfile), [docker-compose.dev.yml](docker-compose.dev.yml), and [docker-compose.prod.yml](docker-compose.prod.yml) container workflows
+
+## Docker
+
+Development example:
 
 ```powershell
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-## Key flows to be aware of
+Use the production Docker assets only in approved environments and with company-managed configuration.
 
-- Configuration editing (views under `src/views/apps/configuration`) uses a card-per-section UI where each card saves only its subset of fields. The fake API and the `config` store are implemented to accept partial updates.
-- File uploads for logos use the `saveFile` / `getFileObjectUrl` / `deleteFile` helpers in `src/utils/fileStore` — these interact with IndexedDB during development.
+## Validation
 
-## Linting & formatting
+Before opening an internal PR, run:
 
 ```powershell
 pnpm run lint
 pnpm run typecheck
 ```
 
-## Tests
-
-This repository does not ship with a test runner configured by default. If you want to add unit or E2E tests, consider adding Vitest for unit tests and Playwright or Cypress for browser flows. Keep MSW active during tests to stub network calls.
+This repository does not currently include a default automated unit or E2E test suite, so linting and type-checking are the minimum expected local validation steps.
 
 ## Troubleshooting
 
-- Dev server crashes with `esbuild` or `vite` errors:
-	- Check the terminal for the first error. Often it's a missing import, version mismatch, or a Node version incompatibility.
-	- Ensure `pnpm install` completed successfully and `pnpm run msw:init` was run (postinstall usually does this).
-- MSW handlers not applied: ensure `public/mockServiceWorker.js` exists and the app bootstraps MSW in dev mode.
+- If `pnpm run dev` fails, check the first Vite or esbuild error in the terminal rather than the later cascade.
+- If mocked endpoints are missing, regenerate the worker with `pnpm run msw:init`.
+- If screens show stale or unexpected data, clear the relevant browser storage and reload.
+- If a store appears empty, inspect its fake API seed data and initialization path before assuming the UI is at fault.
 
+## Internal workflow notes
 
-
-## Where to start reading the code
-
-- `src/main.ts` — application setup and plugin initialization
-- `src/plugins/fake-api` — MSW handlers and fake API wiring (dev-only)
-- `src/stores/config.ts` — configuration store; good entry point to see how config updates are persisted and merged
-- `src/views/apps/configuration/SettingsLegal.vue` — example view showing file uploads, per-card save logic, and country/city autocompletes
-
-## License & acknowledgements
-
-This project uses many OSS libraries — check `package.json` for dependency licenses. Include your preferred license file at the repo root if needed.
+- Treat this repository as proprietary company code.
+- Keep documentation focused on internal setup, architecture, and delivery workflow.
+- Avoid open-source sections such as community contributions, public issue filing, or repository licensing guidance unless the project direction changes.
 
