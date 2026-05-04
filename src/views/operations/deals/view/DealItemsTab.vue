@@ -1823,10 +1823,7 @@ const phaseDialogTitle = computed(() =>
 
 const formatItemType = (value?: string | null) => value || "Unknown";
 
-const itemRowOffset = (item: DealDocumentSelectableItem) => {
-  if (item.parentName && item.groupKey === "billable-root") return "16px";
-  if (item.parentName) return "28px";
-
+const itemRowOffset = (_item: DealDocumentSelectableItem) => {
   return "0px";
 };
 

@@ -1,35 +1,53 @@
 <script setup lang="ts">
-import { formatSystemDate } from "@core/utils/formatters";
+import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useTodos } from "@/stores/todos";
-import { computed } from "vue";
+import { formatSystemDate } from "@core/utils/formatters";
+import { computed, ref } from "vue";
 
-const props = defineProps<{ dealId: number | string; dealCode: string }>();
+type ActivityItem = {
+  id: string;
+  kind:
+    | "task"
+    | "email"
+    | "meeting"
+    | "call"
+    | "deal"
+    | "delivery"
+    | "item"
+    | "document"
+    | "financial";
+  title: string;
+  body: string;
+  date: string | null | undefined;
+  meta?: string;
+  duration?: number | null;
+  rawType?: string;
+  linkedTo: Array<{
+    id?: number | string;
+    name?: string;
+    avatarUrl?: string | null;
+    type?: string;
+  }>;
+};
 
-const emit = defineEmits<{
-  "open-add-task": [];
-  "open-add-email": [];
-  "open-add-meeting": [];
-  "open-add-call": [];
-}>();
+const props = defineProps<{ deal: DealProperties }>();
 
 const todosStore = useTodos();
-
 todosStore.init();
 
 const EMAIL_THREAD_NOTE = "__deal_email_thread__";
+const activityFilter = ref("");
 
 const dealTodos = computed(() => {
-  const id = props.dealId;
-  if (!id) return [] as any[];
-  const dealIdStr = String(id);
+  const dealId = String(props.deal.id ?? "").trim();
+  if (!dealId) return [] as any[];
 
   return (todosStore.items || []).filter((todo: any) => {
-    const relatedMatch =
+    return (
       todo?.relatedTo &&
-      String(todo.relatedTo.id) === dealIdStr &&
-      (todo.relatedTo.type ? todo.relatedTo.type === "deal" : true);
-
-    return relatedMatch;
+      String(todo.relatedTo.id) === dealId &&
+      (todo.relatedTo.type ? todo.relatedTo.type === "deal" : true)
+    );
   });
 });
 
@@ -38,21 +56,19 @@ const dealTaskTodos = computed(() =>
 );
 
 const dealMeetings = computed(() => {
-  const id = props.dealId;
-  if (!id) return [] as any[];
-  const dealIdStr = String(id);
+  const dealId = String(props.deal.id ?? "").trim();
+  if (!dealId) return [] as any[];
 
   return (todosStore.meetings || []).filter((meeting: any) => {
-    const relatedMatch =
+    return (
       meeting?.relatedTo &&
-      String(meeting.relatedTo.id) === dealIdStr &&
-      (meeting.relatedTo.type ? meeting.relatedTo.type === "deal" : true);
-
-    return relatedMatch;
+      String(meeting.relatedTo.id) === dealId &&
+      (meeting.relatedTo.type ? meeting.relatedTo.type === "deal" : true)
+    );
   });
 });
 
-function timeAgo(iso?: string) {
+function timeAgo(iso?: string | null) {
   if (!iso) return "";
 
   try {
@@ -84,17 +100,17 @@ function timeAgo(iso?: string) {
 
     return `on ${formatSystemDate(then)}`;
   } catch {
-    return iso;
+    return String(iso);
   }
 }
 
-function formatDuration(mins?: number) {
+function formatDuration(mins?: number | null) {
   if (!mins && mins !== 0) return "";
 
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
+  const hours = Math.floor(mins / 60);
+  const minutes = mins % 60;
 
-  return h ? `${h}h ${m}m` : `${m}m`;
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 function linkedParticipants(item: any) {
@@ -107,94 +123,190 @@ function taskStatusLabel(status?: string) {
   if (status === "in_progress") return "In Progress";
   if (status === "for_review") return "For Review";
   if (status === "completed") return "Completed";
+
   return "Pending";
 }
 
-function labelColorName(kind: string, rawType?: string) {
+function labelColorName(kind: ActivityItem["kind"], rawType?: string) {
   if (kind === "task") return "warning";
   if (kind === "email") return "primary";
   if (kind === "call") return "info";
+  if (kind === "deal") return "primary";
+  if (kind === "delivery") return "info";
+  if (kind === "item") return "success";
+  if (kind === "document") return "secondary";
+  if (kind === "financial") return "warning";
   if (rawType === "Sales") return "success";
+
   return "success";
 }
 
-function labelText(kind: string) {
+function labelText(kind: ActivityItem["kind"]) {
   if (kind === "task") return "Task";
   if (kind === "email") return "Email";
   if (kind === "call") return "Call";
+  if (kind === "deal") return "Deal";
+  if (kind === "delivery") return "Delivery";
+  if (kind === "item") return "Item";
+  if (kind === "document") return "Document";
+  if (kind === "financial") return "Financial";
+
   return "Meeting";
 }
 
-const communicationActivities = computed(() => {
-  const tasks = dealTaskTodos.value.map((todo: any) => ({
+const communicationActivities = computed<ActivityItem[]>(() => {
+  const tasks: ActivityItem[] = dealTaskTodos.value.map((todo: any) => ({
     id: `task-${todo.id}`,
     kind: "task",
     title: todo.title || "Task",
     body: todo.notes || "",
-    date: todo.updatedAt || todo.createdAt || todo.dueAt,
+    date: todo.updatedAt || todo.createdAt || todo.dueAt || null,
     meta: taskStatusLabel(todo.status),
-    linkedTo: todo.collaborators || [],
+    linkedTo: Array.isArray(todo.collaborators) ? todo.collaborators : [],
   }));
 
-  const emails = dealTodos.value.flatMap((todo: any) =>
+  const emails: ActivityItem[] = dealTodos.value.flatMap((todo: any) =>
     Array.isArray(todo.messages)
       ? todo.messages.map((message: any, index: number) => ({
           id: `email-${todo.id}-${message.id ?? index}`,
-          kind: "email",
+          kind: "email" as const,
           title: message.author?.name
             ? `Email from ${message.author.name}`
             : "Email",
           body: message.body || "",
-          date: message.createdAt || todo.updatedAt || todo.createdAt,
+          date: message.createdAt || todo.updatedAt || todo.createdAt || null,
           meta: todo.title || "Email thread",
-          linkedTo: todo.collaborators || [],
+          linkedTo: Array.isArray(todo.collaborators) ? todo.collaborators : [],
         }))
       : [],
   );
 
-  const meetings = dealMeetings.value.map((meeting: any) => {
+  const meetings: ActivityItem[] = dealMeetings.value.map((meeting: any) => {
     const isCall =
       meeting?.type === "Brief" ||
-      String(meeting?.location || "").toLowerCase().includes("phone");
+      String(meeting?.location || "")
+        .toLowerCase()
+        .includes("phone");
 
     return {
       id: `${isCall ? "call" : "meeting"}-${meeting.id}`,
       kind: isCall ? "call" : "meeting",
       title: meeting.subject || (isCall ? "Call" : "Meeting"),
       body: meeting.agenda || meeting.note || "",
-      date: meeting.startAt || meeting.createdAt,
+      date: meeting.startAt || meeting.createdAt || null,
       duration: meeting.duration,
       rawType: meeting.type,
       linkedTo: linkedParticipants(meeting),
     };
   });
 
-  return [...tasks, ...emails, ...meetings].sort((a, b) => {
-    const aTime = a.date ? new Date(a.date).getTime() : 0;
-    const bTime = b.date ? new Date(b.date).getTime() : 0;
+  return [...tasks, ...emails, ...meetings];
+});
 
-    return bTime - aTime;
+const timelineActivities = computed<ActivityItem[]>(() => {
+  const dealReference = props.deal.code || `Deal #${props.deal.id}`;
+
+  return [
+    {
+      id: `deal-${props.deal.id}`,
+      kind: "deal",
+      title: "Deal created",
+      body: dealReference,
+      date: props.deal.createdAt || null,
+      meta: props.deal.stage || "",
+      linkedTo: [],
+    },
+    ...(props.deal.estimatedDeliveryDate
+      ? [
+          {
+            id: `delivery-${props.deal.id}`,
+            kind: "delivery" as const,
+            title: "Estimated delivery date",
+            body: props.deal.estimatedDeliveryDate,
+            date: props.deal.estimatedDeliveryDate,
+            meta: "Delivery target",
+            linkedTo: [],
+          },
+        ]
+      : []),
+    ...(props.deal.items || []).map((item) => ({
+      id: `item-${item.id}`,
+      kind: "item" as const,
+      title: `Item added: ${item.name}`,
+      body: item.note || "",
+      date: item.createdAt || props.deal.createdAt || null,
+      meta: item.status || item.catalogueType || "",
+      linkedTo: [],
+    })),
+    ...(props.deal.documents || []).map((document) => ({
+      id: `document-${document.id}`,
+      kind: "document" as const,
+      title: `Document linked: ${document.name}`,
+      body: document.note || "",
+      date: document.createdAt || props.deal.createdAt || null,
+      meta: document.type || "",
+      linkedTo: [],
+    })),
+    ...(props.deal.financials || []).map((entry) => ({
+      id: `financial-${entry.id}`,
+      kind: "financial" as const,
+      title: entry.title || "Financial entry",
+      body: entry.note || "",
+      date: entry.createdAt || null,
+      meta: `${entry.type} - ${Number(entry.amount || 0).toLocaleString()}`,
+      linkedTo: [],
+    })),
+  ];
+});
+
+const allActivities = computed(() => {
+  return [...timelineActivities.value, ...communicationActivities.value].sort(
+    (a, b) => {
+      const aTime = a.date ? new Date(a.date).getTime() : 0;
+      const bTime = b.date ? new Date(b.date).getTime() : 0;
+
+      return bTime - aTime;
+    },
+  );
+});
+
+const filteredActivities = computed(() => {
+  const query = activityFilter.value.trim().toLowerCase();
+  if (!query) return allActivities.value;
+
+  return allActivities.value.filter((activity) => {
+    const haystack = [
+      activity.title,
+      activity.body,
+      activity.meta,
+      labelText(activity.kind),
+      ...activity.linkedTo.map((linked) => linked?.name || ""),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(query);
   });
 });
 
-const hasAnyActivities = computed(
-  () => communicationActivities.value.length > 0,
+const hasAnyActivities = computed(() => allActivities.value.length > 0);
+const hasFilteredActivities = computed(
+  () => filteredActivities.value.length > 0,
 );
 
-function openAddTask() {
-  emit("open-add-task");
+function activityTimeLabel(date?: string | null) {
+  return timeAgo(date);
 }
 
-function openAddEmail() {
-  emit("open-add-email");
-}
+function activityDateTooltip(date?: string | null) {
+  if (!date) return "";
 
-function openAddMeeting() {
-  emit("open-add-meeting");
-}
-
-function openAddCall() {
-  emit("open-add-call");
+  try {
+    return formatSystemDate(new Date(date).getTime());
+  } catch {
+    return date;
+  }
 }
 </script>
 
@@ -202,48 +314,26 @@ function openAddCall() {
   <VRow>
     <VCol cols="12">
       <VCard
-        :title="`${dealCode || 'Deal'} Communication Timeline`"
+        :title="`${deal.code || `Deal #${deal.id}`} Activity`"
         :class="hasAnyActivities ? 'activity-card' : ''"
       >
-        <template #append>
-          <VBtn icon variant="text" color="primary">
-            <VIcon icon="tabler-plus" />
-            <VTooltip activator="parent" location="top">Add</VTooltip>
-            <VMenu activator="parent">
-              <VList>
-                <VListItem @click="openAddTask">
-                  <template #prepend>
-                    <VIcon icon="tabler-checkbox" />
-                  </template>
-                  <VListItemTitle>Task</VListItemTitle>
-                </VListItem>
-                <VListItem @click="openAddEmail">
-                  <template #prepend>
-                    <VIcon icon="tabler-mail" />
-                  </template>
-                  <VListItemTitle>Email</VListItemTitle>
-                </VListItem>
-                <VListItem @click="openAddMeeting">
-                  <template #prepend>
-                    <VIcon icon="tabler-calendar-plus" />
-                  </template>
-                  <VListItemTitle>Meeting</VListItemTitle>
-                </VListItem>
-                <VListItem @click="openAddCall">
-                  <template #prepend>
-                    <VIcon icon="tabler-phone-call" />
-                  </template>
-                  <VListItemTitle>Call</VListItemTitle>
-                </VListItem>
-              </VList>
-            </VMenu>
-          </VBtn>
-        </template>
-
         <VCardText :class="hasAnyActivities ? 'activity-card__body' : ''">
+          <AppTextField
+            v-model="activityFilter"
+            class="mb-4"
+            prepend-inner-icon="tabler-search"
+            placeholder="Filter tasks, emails, meetings, documents, financials..."
+          />
+
           <template v-if="!hasAnyActivities">
             <div class="d-flex justify-center align-center pa-6">
-              <div class="text-subtitle-1">No communication activity yet</div>
+              <div class="text-subtitle-1">No activity yet</div>
+            </div>
+          </template>
+
+          <template v-else-if="!hasFilteredActivities">
+            <div class="d-flex justify-center align-center pa-6">
+              <div class="text-subtitle-1">No matching activity found</div>
             </div>
           </template>
 
@@ -256,7 +346,7 @@ function openAddCall() {
               density="compact"
             >
               <VTimelineItem
-                v-for="activity in communicationActivities"
+                v-for="activity in filteredActivities"
                 :key="activity.id"
                 :dot-color="labelColorName(activity.kind, activity.rawType)"
                 size="x-small"
@@ -276,9 +366,17 @@ function openAddCall() {
                     </VChip>
                   </div>
 
-                  <span class="app-timeline-meta">{{
-                    timeAgo(activity.date)
-                  }}</span>
+                  <VTooltip
+                    v-if="activity.date"
+                    :text="activityDateTooltip(activity.date)"
+                    location="top"
+                  >
+                    <template #activator="{ props: tooltipProps }">
+                      <span v-bind="tooltipProps" class="app-timeline-meta">{{
+                        activityTimeLabel(activity.date)
+                      }}</span>
+                    </template>
+                  </VTooltip>
                 </div>
 
                 <div v-if="activity.meta" class="app-timeline-meta mb-1">
@@ -315,7 +413,10 @@ function openAddCall() {
                             :size="32"
                             color="primary"
                           >
-                            <VImg v-if="linked.avatarUrl" :src="linked.avatarUrl" />
+                            <VImg
+                              v-if="linked.avatarUrl"
+                              :src="linked.avatarUrl"
+                            />
                             <span v-else class="text-xs font-weight-medium">{{
                               (linked.name?.match(/\b\w/g) || [])
                                 .slice(0, 2)

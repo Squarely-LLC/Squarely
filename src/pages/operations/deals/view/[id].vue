@@ -36,7 +36,6 @@ import DealDocumentsTab from "@/views/operations/deals/view/DealDocumentsTab.vue
 import DealFinancialsTab from "@/views/operations/deals/view/DealFinancialsTab.vue";
 import DealItemsTab from "@/views/operations/deals/view/DealItemsTab.vue";
 import DealSummaryCard from "@/views/operations/deals/view/DealSummaryCard.vue";
-import DealTimelineTab from "@/views/operations/deals/view/DealTimelineTab.vue";
 
 const route = useRoute("operations-deals-view-id");
 const router = useRouter();
@@ -86,19 +85,12 @@ const isExecutingDeal = ref(false);
 const executePreviewError = ref<string | null>(null);
 const executePreview = ref<DealExecutionPreview | null>(null);
 
-const tabKeys = [
-  "items",
-  "communication",
-  "documents",
-  "financials",
-  "timeline",
-] as const;
+const tabKeys = ["items", "activity", "documents", "financials"] as const;
 const tabs = [
   { icon: "tabler-package", title: "Items" },
-  { icon: "tabler-message", title: "Communication" },
+  { icon: "tabler-message", title: "Activity" },
   { icon: "tabler-folder", title: "Documents" },
   { icon: "tabler-credit-card", title: "Invoicing" },
-  { icon: "tabler-timeline", title: "Timeline" },
 ] as const;
 
 type ExecutionPreviewTaskKind = "sales" | "milestone" | "goal";
@@ -760,7 +752,11 @@ const resolveDeal = () => {
 };
 
 const setTabFromQuery = () => {
-  const queryTab = String(route.query.tab || tabKeys[0]);
+  const rawQueryTab = String(route.query.tab || tabKeys[0]);
+  const queryTab =
+    rawQueryTab === "communication" || rawQueryTab === "timeline"
+      ? "activity"
+      : rawQueryTab;
   const index = (tabKeys as readonly string[]).indexOf(queryTab);
   dealTab.value = index === -1 ? 0 : index;
 };
@@ -1555,14 +1551,7 @@ watch(
           </VWindowItem>
 
           <VWindowItem>
-            <DealCommunicationTab
-              :deal-id="deal.id"
-              :deal-code="deal.code || `Deal #${deal.id}`"
-              @open-add-task="handleAddTaskFromCommunication"
-              @open-add-email="openEmail"
-              @open-add-meeting="handleAddMeetingFromCommunication"
-              @open-add-call="handleAddCallFromCommunication"
-            />
+            <DealCommunicationTab :deal="deal" />
           </VWindowItem>
 
           <VWindowItem>
@@ -1574,10 +1563,6 @@ watch(
 
           <VWindowItem>
             <DealFinancialsTab :deal="deal" />
-          </VWindowItem>
-
-          <VWindowItem>
-            <DealTimelineTab :deal="deal" />
           </VWindowItem>
         </VWindow>
       </VCol>
