@@ -3,31 +3,43 @@ import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { Status, ToDo } from "@/data/schema";
 import type {
-  CatalogueActiveState,
-  CatalogueContractualServiceRecord,
-  CatalogueItem,
-  CatalogueItemType,
-  CatalogueOnetimeServiceRecord,
-  CatalogueProducedProductRecord,
-  CatalogueProductRecord,
-  CatalogueReccurentServiceRecord,
-  CatalogueRetainerServiceRecord,
-  CatalogueSalesTask,
+    CatalogueActiveState,
+    CatalogueContractualServiceRecord,
+    CatalogueItem,
+    CatalogueItemType,
+    CatalogueOnetimeServiceRecord,
+    CatalogueProducedProductRecord,
+    CatalogueProductRecord,
+    CatalogueReccurentServiceRecord,
+    CatalogueRetainerServiceRecord,
+    CatalogueSalesTask,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
-  DealItem,
-  DealItemOverride,
-  DealProperties,
-  DealSalesTaskTemplate,
+    DealItem,
+    DealItemOverride,
+    DealProperties,
+    DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
+import { useConfigStore } from "@/stores/config";
+import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
+import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useProformasStore } from "@/stores/proformas";
+import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
-  getDealDiscountTotal,
-  getDealGrandTotal,
-  getDealItemsSubtotal,
+    buildDealDocumentDraftRecord,
+    getBillableRootDealItems,
+    getQuotationTopLevelDealItems,
+    saveDealDocumentDraft,
+    type DealDocumentKind,
+} from "@/utils/dealDocumentDraft";
+import {
+    getDealDiscountTotal,
+    getDealGrandTotal,
+    getDealItemsSubtotal,
 } from "@/utils/dealValue";
 import { computed, reactive, ref } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -41,13 +53,24 @@ const emit = defineEmits<{
   (e: "delete-task", todoId: number | string): void;
 }>();
 
+const router = useRouter();
 const cataloguesStore = useCataloguesStore();
+const configStore = useConfigStore();
+const contactsStore = useContactsStore();
 const dealsStore = useDealsStore();
+const quotationsStore = useQuotationsStore();
+const proformasStore = useProformasStore();
+const invoicesStore = useInvoicesStore();
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
 
 cataloguesStore.init();
+configStore.init();
+contactsStore.init();
 dealsStore.init();
+quotationsStore.init();
+proformasStore.init();
+invoicesStore.init();
 todosStore.init();
 
 type DerivedGoal = {
@@ -388,8 +411,15 @@ const addDealItemsFromCatalogueItem = (
   });
 };
 
-const itemTypeLabel = (item: DealItem) =>
-  item.itemTypeLabel || item.catalogueType || "Item";
+const itemTypeLabel = (item: DealItem) => {
+  const raw = item.itemTypeLabel || item.catalogueType || "Item";
+
+  return raw
+    .replace(/\bitems?\b/gi, "")
+    .replace(/\bservices?\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim() || raw;
+};
 
 const openAddItemDialog = () => {
   selectedCatalogueItemId.value = null;
@@ -1077,18 +1107,8 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
   }),
 );
 
-const totalChildrenCount = (item: DealItemWithPlan) => item.childCount;
-
 const derivedGoalsForItem = (item: DealItemWithPlan) =>
   item.derivedSections.flatMap((section) => section.goals);
-
-const childCountLabel = (item: DealItemWithPlan) => {
-  const count = totalChildrenCount(item);
-
-  return `${count} ${
-    count === 1 ? item.childTypeSingular : item.childTypePlural
-  }`;
-};
 
 const toggleItemExpanded = (panelId: number | string) => {
   const index = expandedItems.value.findIndex(
@@ -1113,6 +1133,107 @@ const totalTax = computed(() => 0);
 const grandTotal = computed(
   () => getDealGrandTotal(props.deal) + totalTax.value,
 );
+const financialRows = computed(() => props.deal.financials || []);
+const totalQuoted = computed(() =>
+  financialRows.value
+    .filter((entry) => entry.type === "quotation" || entry.type === "invoice")
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+);
+const totalInvoiced = computed(() =>
+  financialRows.value
+    .filter((entry) => entry.type === "invoice")
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+);
+const totalPaid = computed(() =>
+  financialRows.value
+    .filter(
+      (entry) =>
+        entry.type === "payment"
+        && String(entry.status || "").toLowerCase() === "received",
+    )
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+);
+const remainingToInvoice = computed(() =>
+  Math.max(grandTotal.value - totalInvoiced.value, 0),
+);
+const dealItems = computed(() => props.deal.items || []);
+const billableRootItems = computed(() =>
+  getBillableRootDealItems(dealItems.value, (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
+);
+const quotationItems = computed(() =>
+  getQuotationTopLevelDealItems(dealItems.value, (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
+);
+const contact = computed(() => {
+  if (!props.deal.relatedTo) return null;
+
+  return contactsStore.byId(props.deal.relatedTo) ?? null;
+});
+const quotationCount = computed(
+  () =>
+    quotationsStore.items.filter(
+      (record) => String(record.quotation.dealId ?? "") === String(props.deal.id),
+    ).length,
+);
+const proformaCount = computed(
+  () =>
+    proformasStore.items.filter(
+      (record) => String(record.quotation.dealId ?? "") === String(props.deal.id),
+    ).length,
+);
+const invoiceCount = computed(
+  () =>
+    invoicesStore.items.filter(
+      (record) => String(record.quotation.dealId ?? "") === String(props.deal.id),
+    ).length,
+);
+
+const nextIdForDocument = (kind: DealDocumentKind) => {
+  if (kind === "quotation") return quotationsStore.nextId();
+  if (kind === "proforma") return proformasStore.nextId();
+
+  return invoicesStore.nextId();
+};
+
+const routeNameForDocument = (kind: DealDocumentKind) => {
+  if (kind === "quotation") return "apps-quotation-add";
+  if (kind === "proforma") return "apps-proforma-add";
+
+  return "apps-invoice-add";
+};
+
+const openDocumentPage = async (kind: DealDocumentKind) => {
+  const selectedItems = kind === "quotation"
+    ? quotationItems.value
+    : billableRootItems.value;
+
+  if (selectedItems.length) {
+    const draft = buildDealDocumentDraftRecord(kind, {
+      contact: contact.value,
+      deal: props.deal,
+      financial: configStore.financial,
+      legal: configStore.legal,
+      nextId: nextIdForDocument(kind),
+      resolveCatalogueRecord: (id, typeHint) =>
+        cataloguesStore.recordById(id, typeHint),
+      selectedItems,
+    });
+
+    saveDealDocumentDraft(kind, draft);
+
+    await router.push({
+      name: routeNameForDocument(kind),
+      query: { dealDraft: "1" },
+    });
+
+    return;
+  }
+
+  await router.push({ name: routeNameForDocument(kind) });
+};
 
 type DealTodo = ToDo & {
   goalId?: number | string | null;
@@ -1369,14 +1490,14 @@ const openEditTask = (taskId: number | string) => {
                         </div>
                       </template>
                     </VTooltip>
-                    <VChip size="small" variant="tonal" color="primary">
+                    <VChip
+                      size="small"
+                      variant="plain"
+                      color="primary"
+                      class="item-type-chip"
+                    >
                       {{ itemTypeLabel(item) }}
                     </VChip>
-                  </div>
-
-                  <div class="item-card-meta">
-                    <span v-if="item.category">{{ item.category }}</span>
-                    <span>{{ childCountLabel(item) }}</span>
                   </div>
 
                   <div class="product-metrics">
@@ -1486,7 +1607,12 @@ const openEditTask = (taskId: number | string) => {
                               </div>
                             </template>
                           </VTooltip>
-                          <VChip color="primary" size="x-small" variant="tonal">
+                          <VChip
+                            color="primary"
+                            size="x-small"
+                            variant="plain"
+                            class="item-type-chip item-type-chip--phase"
+                          >
                             {{ goal.typeLabel }}
                           </VChip>
                         </div>
@@ -1559,22 +1685,89 @@ const openEditTask = (taskId: number | string) => {
           </VExpansionPanel>
         </VExpansionPanels>
 
-        <div v-if="dealItemsWithPlan.length" class="items-summary mt-4 pt-4">
-          <div class="items-summary__row">
-            <span>Total</span>
-            <strong>{{ formatMoney(itemsSubtotal) }}</strong>
+        <div v-if="dealItemsWithPlan.length" class="items-overview mt-4">
+          <div class="items-overview__header">
+            <div class="items-overview__heading">
+              <div class="text-h6 mb-1">Invoicing Summary</div>
+              <p class="text-body-2 text-medium-emphasis mb-0">
+                Overview of total deal value, invoiced amount, remaining amount,
+                and linked billing documents.
+              </p>
+            </div>
+
+            <div class="items-overview__documents">
+              <div class="items-overview__document-pill">
+                <button
+                  type="button"
+                  class="items-overview__document-action"
+                  @click="openDocumentPage('quotation')"
+                >
+                  <VIcon icon="tabler-plus" size="14" />
+                  <span>QT</span>
+                </button>
+                <strong>{{ quotationCount }}</strong>
+              </div>
+              <div class="items-overview__document-pill">
+                <button
+                  type="button"
+                  class="items-overview__document-action"
+                  @click="openDocumentPage('proforma')"
+                >
+                  <VIcon icon="tabler-plus" size="14" />
+                  <span>PF</span>
+                </button>
+                <strong>{{ proformaCount }}</strong>
+              </div>
+              <div class="items-overview__document-pill">
+                <button
+                  type="button"
+                  class="items-overview__document-action"
+                  @click="openDocumentPage('invoice')"
+                >
+                  <VIcon icon="tabler-plus" size="14" />
+                  <span>INV</span>
+                </button>
+                <strong>{{ invoiceCount }}</strong>
+              </div>
+            </div>
           </div>
-          <div class="items-summary__row">
-            <span>Total Discount</span>
-            <strong>{{ formatMoney(totalDiscount) }}</strong>
+
+          <div class="items-overview__metrics">
+            <div class="items-overview__metric items-overview__metric--primary">
+              <span>Total</span>
+              <strong>{{ formatMoney(grandTotal) }}</strong>
+            </div>
+            <div class="items-overview__metric items-overview__metric--accent">
+              <span>Invoiced</span>
+              <strong>{{ formatMoney(totalInvoiced) }}</strong>
+            </div>
+            <div class="items-overview__metric items-overview__metric--accent">
+              <span>Remaining</span>
+              <strong>{{ formatMoney(remainingToInvoice) }}</strong>
+            </div>
           </div>
-          <div class="items-summary__row">
-            <span>Total Tax</span>
-            <strong>{{ formatMoney(totalTax) }}</strong>
-          </div>
-          <div class="items-summary__row items-summary__row--grand">
-            <span>Grand Total</span>
-            <strong>{{ formatMoney(grandTotal) }}</strong>
+
+          <div class="items-overview__details">
+            <div class="items-overview__detail">
+              <span>Subtotal</span>
+              <strong>{{ formatMoney(itemsSubtotal) }}</strong>
+            </div>
+            <div class="items-overview__detail">
+              <span>Discount</span>
+              <strong>{{ formatMoney(totalDiscount) }}</strong>
+            </div>
+            <div class="items-overview__detail">
+              <span>Tax</span>
+              <strong>{{ formatMoney(totalTax) }}</strong>
+            </div>
+            <div class="items-overview__detail">
+              <span>Quoted</span>
+              <strong>{{ formatMoney(totalQuoted) }}</strong>
+            </div>
+            <div class="items-overview__detail">
+              <span>Paid</span>
+              <strong>{{ formatMoney(totalPaid) }}</strong>
+            </div>
           </div>
         </div>
       </VCardText>
@@ -1882,7 +2075,7 @@ const openEditTask = (taskId: number | string) => {
                     v-if="choice.comingSoon"
                     size="small"
                     color="warning"
-                    variant="tonal"
+                    variant="outlined"
                   >
                     Coming Soon
                   </VChip>
@@ -2135,35 +2328,44 @@ const openEditTask = (taskId: number | string) => {
   font-size: 0.9rem;
 }
 
-.item-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.78rem;
-  gap: 0.25rem 0.75rem;
-  line-height: 1.2;
-  margin-block-start: 0.15rem;
-}
-
-.item-card-meta span + span {
+.item-type-chip {
   position: relative;
+  background: transparent !important;
+  box-shadow: none !important;
+  gap: 0.4rem;
+  margin-inline-start: 0.2rem;
+  min-block-size: auto;
+  opacity: 1 !important;
+  padding-inline-start: 0.85rem;
 }
 
-.item-card-meta span + span::before {
+.item-type-chip :deep(.v-chip__underlay) {
+  display: none;
+}
+
+.item-type-chip:hover {
+  opacity: 1 !important;
+}
+
+.item-type-chip::before {
   position: absolute;
   border-radius: 999px;
   background: currentcolor;
-  block-size: 0.25rem;
+  block-size: 1rem;
   content: "";
   inline-size: 0.25rem;
   inset-block-start: 50%;
-  inset-inline-start: -0.5rem;
+  inset-inline-start: 0.2rem;
   transform: translateY(-50%);
+}
+
+.item-type-chip--phase {
+  margin-inline-start: 0;
 }
 
 .product-metrics {
   display: grid;
-  gap: 0.375rem;
+  gap: 0;
   grid-template-columns: repeat(5, minmax(5rem, 1fr));
   margin-block-start: 0.5rem;
 }
@@ -2173,12 +2375,21 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .product-metric {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 8px;
-  background: rgba(var(--v-theme-surface), 0.18);
+  position: relative;
+  background: transparent;
   min-inline-size: 0;
   padding-block: 0.35rem;
   padding-inline: 0.5rem;
+}
+
+.product-metric:not(:last-child)::after {
+  position: absolute;
+  background: rgba(var(--v-theme-on-surface), 0.12);
+  block-size: calc(100% - 0.5rem);
+  content: "";
+  inline-size: 1px;
+  inset-block-start: 0.25rem;
+  inset-inline-end: 0;
 }
 
 .product-metric span,
@@ -2206,7 +2417,7 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .product-metric--amount {
-  border-color: rgba(var(--v-theme-primary), 0.2);
+  border-radius: 8px;
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
@@ -2221,6 +2432,7 @@ const openEditTask = (taskId: number | string) => {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
   margin-block-start: 0.45rem;
 }
 
@@ -2259,23 +2471,176 @@ const openEditTask = (taskId: number | string) => {
   max-inline-size: min(28rem, 100%);
 }
 
-.items-summary {
-  border-block-start: 1px solid rgba(255, 255, 255, 8%);
-  margin-inline-start: auto;
-  max-inline-size: 20rem;
+.items-overview {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.36), rgba(var(--v-theme-surface), 0.18)),
+    rgba(var(--v-theme-surface), 0.16);
+  gap: 1rem;
+  margin-block-start: 1rem;
+  padding-block: 1rem;
+  padding-inline: 1rem;
 }
 
-.items-summary__row {
+.items-overview__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding-block: 0.375rem;
 }
 
-.items-summary__row--grand {
+.items-overview__heading {
+  max-inline-size: 34rem;
+}
+
+.items-overview__documents {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.items-overview__document-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-primary), 0.06);
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.78rem;
+  font-weight: 600;
+  gap: 0.5rem;
+  letter-spacing: 0.04em;
+  padding-block: 0.4rem;
+  padding-inline: 0.7rem;
+}
+
+.items-overview__document-pill span {
+  color: rgba(var(--v-theme-primary), 0.92);
+}
+
+.items-overview__document-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  gap: 0.35rem;
+}
+
+.items-overview__document-action:hover {
+  color: rgba(var(--v-theme-primary), 0.96);
+}
+
+.items-overview__metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.items-overview__metric {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: rgba(var(--v-theme-surface), 0.24);
+  gap: 0.35rem;
+  padding-block: 0.95rem;
+  padding-inline: 1rem;
+}
+
+.items-overview__metric span {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.8rem;
+}
+
+.items-overview__metric strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 1.35rem;
   font-weight: 700;
-  padding-block-start: 0.75rem;
+  line-height: 1.1;
+}
+
+.items-overview__metric--primary {
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.items-overview__metric--accent {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.items-overview__details {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.items-overview__detail {
+  display: flex;
+  flex-direction: column;
+  border-inline-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  gap: 0.25rem;
+  min-inline-size: 0;
+  padding-inline-start: 0.75rem;
+}
+
+.items-overview__detail:first-child {
+  border-inline-start: 0;
+  padding-inline-start: 0;
+}
+
+.items-overview__detail span {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.78rem;
+}
+
+.items-overview__detail strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+@media (max-width: 959px) {
+  .items-overview__header {
+    flex-direction: column;
+  }
+
+  .items-overview__documents {
+    justify-content: flex-start;
+  }
+
+  .items-overview__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .items-overview__details {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .items-overview__metrics,
+  .items-overview__details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .items-overview__detail {
+    border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+    border-inline-start: 0;
+    padding-block-start: 0.6rem;
+    padding-inline-start: 0;
+  }
+
+  .items-overview__detail:first-child {
+    border-block-start: 0;
+    padding-block-start: 0;
+  }
 }
 
 .task-row {
