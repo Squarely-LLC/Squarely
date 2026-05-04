@@ -193,6 +193,7 @@ const selectedPreviewDocument = ref<{
   kind: DealPreviewKind;
   title: string;
 } | null>(null);
+const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -1455,6 +1456,27 @@ const dealDocumentPanels = computed<DealDocumentPanel[]>(() => [
     title: "Invoices",
   },
 ]);
+
+const resolvedActiveDocumentPanelKey = computed<DealPreviewKind | null>(() => {
+  if (
+    activeDocumentPanelKey.value &&
+    dealDocumentPanels.value.some(
+      (panel) => panel.key === activeDocumentPanelKey.value,
+    )
+  ) {
+    return activeDocumentPanelKey.value;
+  }
+
+  return null;
+});
+
+const isDocumentPanelExpanded = (key: DealPreviewKind) =>
+  resolvedActiveDocumentPanelKey.value === key;
+
+const setActiveDocumentPanel = (key: DealPreviewKind) => {
+  activeDocumentPanelKey.value =
+    activeDocumentPanelKey.value === key ? null : key;
+};
 
 const getPreviewRouteName = (kind: DealPreviewKind) => {
   if (kind === "quotation") return "apps-quotation-preview-id";
@@ -2826,8 +2848,7 @@ const openEditTask = (taskId: number | string) => {
             <div class="items-overview__heading">
               <div class="text-h6 mb-1">Invoicing Summary</div>
               <p class="text-body-2 text-medium-emphasis mb-0">
-                Overview of total deal value, invoiced amount, remaining amount,
-                and linked billing documents.
+                Totals, billed amount, remaining balance, and documents.
               </p>
             </div>
 
@@ -2907,19 +2928,23 @@ const openEditTask = (taskId: number | string) => {
           </div>
 
           <div class="items-overview__previews">
-            <button
+            <section
               v-for="panel in dealDocumentPanels"
               :key="panel.key"
-              type="button"
-              class="items-overview__preview-card"
-              :class="`items-overview__preview-card--${panel.key}`"
-              :disabled="!panel.latest"
-              @click="
-                panel.latest &&
-                openQuickDocumentPreview(panel.key, panel.latest)
-              "
+              class="items-overview__preview-panel"
+              :class="[
+                `items-overview__preview-panel--${panel.key}`,
+                {
+                  'items-overview__preview-panel--expanded':
+                    isDocumentPanelExpanded(panel.key),
+                },
+              ]"
             >
-              <div class="items-overview__preview-header">
+              <button
+                type="button"
+                class="items-overview__preview-summary"
+                @click="setActiveDocumentPanel(panel.key)"
+              >
                 <div>
                   <div class="items-overview__preview-kicker">
                     {{ panel.title }}
@@ -2932,45 +2957,68 @@ const openEditTask = (taskId: number | string) => {
                   </strong>
                 </div>
 
-                <div class="items-overview__preview-count">
-                  {{ panel.count }}
+                <div class="items-overview__preview-summary-side">
+                  <div class="items-overview__preview-count">
+                    {{ panel.count }}
+                  </div>
+                  <VIcon
+                    :icon="
+                      isDocumentPanelExpanded(panel.key)
+                        ? 'tabler-chevron-up'
+                        : 'tabler-chevron-down'
+                    "
+                    size="16"
+                  />
                 </div>
-              </div>
+              </button>
 
-              <template v-if="panel.latest">
-                <div class="items-overview__preview-meta">
-                  <span>{{ panel.latest.status }}</span>
-                  <span>{{ formatDocumentDate(panel.latest.issuedDate) }}</span>
-                </div>
-
-                <div class="items-overview__preview-total">
-                  {{ formatMoney(panel.latest.total) }}
-                </div>
-
-                <div class="items-overview__preview-list">
+              <div
+                v-if="isDocumentPanelExpanded(panel.key)"
+                class="items-overview__preview-body"
+              >
+                <template v-if="panel.latest">
                   <button
-                    v-for="record in panel.records.slice(0, 4)"
-                    :key="`${panel.key}-${record.id}`"
                     type="button"
-                    class="items-overview__preview-chip"
-                    @click.stop="openQuickDocumentPreview(panel.key, record)"
+                    class="items-overview__preview-primary"
+                    @click="openQuickDocumentPreview(panel.key, panel.latest)"
                   >
-                    {{ record.quoteNumber }}
+                    <div class="items-overview__preview-meta">
+                      <span>{{ panel.latest.status }}</span>
+                      <span>{{
+                        formatDocumentDate(panel.latest.issuedDate)
+                      }}</span>
+                    </div>
+
+                    <div class="items-overview__preview-total">
+                      {{ formatMoney(panel.latest.total) }}
+                    </div>
                   </button>
 
-                  <span
-                    v-if="panel.records.length > 4"
-                    class="items-overview__preview-more"
-                  >
-                    +{{ panel.records.length - 4 }} more
-                  </span>
-                </div>
-              </template>
+                  <div class="items-overview__preview-list">
+                    <button
+                      v-for="record in panel.records.slice(0, 4)"
+                      :key="`${panel.key}-${record.id}`"
+                      type="button"
+                      class="items-overview__preview-chip"
+                      @click="openQuickDocumentPreview(panel.key, record)"
+                    >
+                      {{ record.quoteNumber }}
+                    </button>
 
-              <p v-else class="items-overview__preview-empty mb-0">
-                {{ panel.emptyText }}
-              </p>
-            </button>
+                    <span
+                      v-if="panel.records.length > 4"
+                      class="items-overview__preview-more"
+                    >
+                      +{{ panel.records.length - 4 }} more
+                    </span>
+                  </div>
+                </template>
+
+                <p v-else class="items-overview__preview-empty mb-0 px-4">
+                  {{ panel.emptyText }}
+                </p>
+              </div>
+            </section>
           </div>
         </div>
       </VCardText>
@@ -4172,12 +4220,15 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .items-overview__heading {
+  flex: 1 1 auto;
   max-inline-size: 34rem;
+  min-inline-size: 0;
 }
 
 .items-overview__documents {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 0.5rem;
 }
@@ -4261,52 +4312,76 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .items-overview__previews {
-  display: grid;
+  display: flex;
+  overflow: auto;
+  flex-direction: column;
   gap: 0.75rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-block-size: 18rem;
+  min-inline-size: 0;
+  padding-inline-end: 0.25rem;
 }
 
-.items-overview__preview-card {
+.items-overview__preview-panel {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: stretch;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 14px;
   background: rgba(var(--v-theme-surface), 0.2);
   color: inherit;
-  cursor: pointer;
-  gap: 0.85rem;
   min-inline-size: 0;
-  padding-block: 0.95rem;
-  padding-inline: 1rem;
-  text-align: start;
   transition:
     border-color 0.18s ease,
     transform 0.18s ease,
     background 0.18s ease;
 }
 
-.items-overview__preview-card:disabled {
-  cursor: default;
-  opacity: 0.8;
-}
-
-.items-overview__preview-card:hover:not(:disabled) {
+.items-overview__preview-panel:hover {
   border-color: rgba(var(--v-theme-primary), 0.24);
   background: rgba(var(--v-theme-primary), 0.06);
   transform: translateY(-1px);
 }
 
-.items-overview__preview-card--quotation {
+.items-overview__preview-panel--quotation {
   box-shadow: inset 0 0 0 1px rgba(var(--v-theme-info), 0.08);
 }
 
-.items-overview__preview-card--proforma {
+.items-overview__preview-panel--proforma {
   box-shadow: inset 0 0 0 1px rgba(var(--v-theme-warning), 0.08);
 }
 
-.items-overview__preview-card--invoice {
+.items-overview__preview-panel--invoice {
   box-shadow: inset 0 0 0 1px rgba(var(--v-theme-success), 0.08);
+}
+
+.items-overview__preview-summary,
+.items-overview__preview-primary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  inline-size: 100%;
+  padding-block: 0.95rem;
+  padding-inline: 1rem;
+  text-align: start;
+}
+
+.items-overview__preview-summary-side {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.items-overview__preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-block-end: 0.95rem;
 }
 
 .items-overview__preview-header,
@@ -4366,9 +4441,15 @@ const openEditTask = (taskId: number | string) => {
   line-height: 1.1;
 }
 
+.items-overview__preview-primary {
+  align-items: center;
+  padding-block: 0;
+}
+
 .items-overview__preview-list {
   flex-wrap: wrap;
   justify-content: flex-start;
+  padding-inline: 1rem;
 }
 
 .items-overview__preview-chip {
@@ -4443,14 +4524,16 @@ const openEditTask = (taskId: number | string) => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .items-overview__previews,
   .items-overview__details {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .items-overview__previews {
+    max-block-size: none;
   }
 }
 
 @media (max-width: 639px) {
-  .items-overview__previews,
   .items-overview__metrics,
   .items-overview__details {
     grid-template-columns: minmax(0, 1fr);
