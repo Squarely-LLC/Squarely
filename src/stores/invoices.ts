@@ -1,21 +1,24 @@
 import { database } from "@/plugins/fake-api/handlers/apps/invoice/db";
 import type {
-  Client,
-  Invoice,
-  InvoicePaymentEntry,
-  InvoiceRecord,
-  InvoiceStatus,
-  PaymentDetails,
-  PurchasedProduct,
+    Client,
+    Invoice,
+    InvoicePaymentEntry,
+    InvoiceRecord,
+    InvoiceStatus,
+    PaymentDetails,
+    PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
-import { cloneDealBillingPeriod } from "@/utils/dealDocumentDraft";
 import {
-  buildDocumentNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  getDocumentSequencePrefix,
-  loadActiveAppConfigurations,
+    cloneDealBillingPeriod,
+    inferDealBillingPeriodFromKey,
+} from "@/utils/dealDocumentDraft";
+import {
+    buildDocumentNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    getDocumentSequencePrefix,
+    loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
@@ -369,7 +372,9 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
-    billingPeriod: cloneDealBillingPeriod(product.billingPeriod),
+    billingPeriod:
+      cloneDealBillingPeriod(product.billingPeriod) ||
+      inferDealBillingPeriodFromKey(product.billingPeriodKey),
     billingPeriodKey: product.billingPeriodKey?.trim() || null,
     dealSelectionKey: product.dealSelectionKey?.trim() || null,
     lineConstraints: product.lineConstraints

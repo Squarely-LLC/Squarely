@@ -1,43 +1,43 @@
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type {
-  PurchasedProduct as InvoicePurchasedProduct,
-  InvoiceRecord,
+    PurchasedProduct as InvoicePurchasedProduct,
+    InvoiceRecord,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import type {
-  PurchasedProduct as ProformaPurchasedProduct,
-  ProformaRecord,
+    PurchasedProduct as ProformaPurchasedProduct,
+    ProformaRecord,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
-  Client,
-  PurchasedProduct as QuotationPurchasedProduct,
-  QuotationRecord,
+    Client,
+    PurchasedProduct as QuotationPurchasedProduct,
+    QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import type {
-  CatalogueContractualServiceRecord,
-  CatalogueOnetimeServiceRecord,
-  CatalogueReccurentServiceRecord,
-  CatalogueRecord,
-  CatalogueRetainerServiceRecord,
+    CatalogueContractualServiceRecord,
+    CatalogueOnetimeServiceRecord,
+    CatalogueReccurentServiceRecord,
+    CatalogueRecord,
+    CatalogueRetainerServiceRecord,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
-  FinancialConfig,
-  LegalConfig,
+    FinancialConfig,
+    LegalConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import type {
-  DealBillingPeriod,
-  DealBillingPeriodKind,
-  DealCustomPhase,
-  DealItem,
-  DealProperties,
+    DealBillingPeriod,
+    DealBillingPeriodKind,
+    DealCustomPhase,
+    DealItem,
+    DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import {
-  buildDocumentNote,
-  buildProformaNote,
-  buildQuotationNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  getDocumentSequencePrefix,
+    buildDocumentNote,
+    buildProformaNote,
+    buildQuotationNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 
@@ -429,6 +429,44 @@ export const cloneDealBillingPeriod = (
   return null;
 };
 
+export const inferDealBillingPeriodFromKey = (
+  billingPeriodKey?: string | null,
+): DealBillingPeriod | null => {
+  const normalizedKey = normalizeBillingPeriodKey(billingPeriodKey);
+  if (!normalizedKey) return null;
+
+  if (/^\d{4}-\d{2}$/.test(normalizedKey)) {
+    return buildMonthlyBillingPeriod(normalizedKey);
+  }
+
+  const quarterMatch = normalizedKey.match(/^(\d{4})-q([1-4])$/);
+  if (quarterMatch) {
+    return buildQuarterlyBillingPeriod(
+      `${quarterMatch[1]}-Q${quarterMatch[2]}`,
+    );
+  }
+
+  if (/^\d{4}$/.test(normalizedKey)) {
+    return buildYearlyBillingPeriod(normalizedKey);
+  }
+
+  const customMatch = normalizedKey.match(
+    /^custom:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/,
+  );
+  if (customMatch) {
+    return buildCustomBillingPeriod({
+      endDate: customMatch[2],
+      key: normalizedKey,
+      startDate: customMatch[1],
+    });
+  }
+
+  return buildCustomBillingPeriod({
+    key: normalizedKey,
+    label: String(billingPeriodKey ?? "").trim() || normalizedKey,
+  });
+};
+
 export const getDealBillingPeriodKey = (period?: DealBillingPeriod | null) =>
   normalizeBillingPeriodKey(period?.key);
 
@@ -451,7 +489,10 @@ export const resolveStoredBillingPeriodKey = (
     billingPeriodKey?: string | null;
   } | null,
 ) =>
-  getDealBillingPeriodKey(cloneDealBillingPeriod(input?.billingPeriod)) ||
+  getDealBillingPeriodKey(
+    cloneDealBillingPeriod(input?.billingPeriod) ||
+      inferDealBillingPeriodFromKey(input?.billingPeriodKey),
+  ) ||
   normalizeBillingPeriodKey(input?.billingPeriodKey);
 
 export const buildDealDocumentUsageKey = (

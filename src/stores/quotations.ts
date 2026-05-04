@@ -1,19 +1,22 @@
 import { database } from "@/plugins/fake-api/handlers/apps/quotation/db";
 import type {
-  Client,
-  PaymentDetails,
-  PurchasedProduct,
-  Quotation,
-  QuotationRecord,
+    Client,
+    PaymentDetails,
+    PurchasedProduct,
+    Quotation,
+    QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
-import { cloneDealBillingPeriod } from "@/utils/dealDocumentDraft";
 import {
-  buildQuotationNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  getDocumentSequencePrefix,
-  loadActiveAppConfigurations,
+    cloneDealBillingPeriod,
+    inferDealBillingPeriodFromKey,
+} from "@/utils/dealDocumentDraft";
+import {
+    buildQuotationNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    getDocumentSequencePrefix,
+    loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
@@ -331,7 +334,9 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
-    billingPeriod: cloneDealBillingPeriod(product.billingPeriod),
+    billingPeriod:
+      cloneDealBillingPeriod(product.billingPeriod) ||
+      inferDealBillingPeriodFromKey(product.billingPeriodKey),
     billingPeriodKey: product.billingPeriodKey?.trim() || null,
     lineConstraints: product.lineConstraints
       ? { ...product.lineConstraints }

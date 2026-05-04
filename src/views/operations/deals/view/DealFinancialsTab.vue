@@ -2,8 +2,8 @@
 import { computed, reactive, ref } from "vue";
 
 import type {
-  DealBillingPeriod,
-  DealProperties,
+    DealBillingPeriod,
+    DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
@@ -14,21 +14,24 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
-  buildDealDocumentDraftRecord,
-  buildMonthlyBillingPeriod,
-  filterDealDocumentItemsByBillingMode,
-  getBillableRootDealItems,
-  getDealBillingPeriodKey,
-  getDealBillingPeriodLabel,
-  getDealBillingPeriodMonthValue,
-  getQuotationTopLevelDealItems,
-  getSelectableDealItems,
-  resolveDealDocumentBillingMode,
-  resolveDealDocumentBillingModeForItem,
-  saveDealDocumentDraft,
-  type DealDocumentBillingMode,
-  type DealDocumentKind,
-  type DealDocumentSelectableItem,
+    buildCustomBillingPeriod,
+    buildDealDocumentDraftRecord,
+    buildMonthlyBillingPeriod,
+    buildQuarterlyBillingPeriod,
+    buildYearlyBillingPeriod,
+    filterDealDocumentItemsByBillingMode,
+    getBillableRootDealItems,
+    getDealBillingPeriodKey,
+    getDealBillingPeriodLabel,
+    getDealBillingPeriodMonthValue,
+    getQuotationTopLevelDealItems,
+    getSelectableDealItems,
+    resolveDealDocumentBillingMode,
+    resolveDealDocumentBillingModeForItem,
+    saveDealDocumentDraft,
+    type DealDocumentBillingMode,
+    type DealDocumentKind,
+    type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
 
 const props = defineProps<{
@@ -74,12 +77,93 @@ const billingModeDialogVisible = ref(false);
 const billingPeriodDialogVisible = ref(false);
 const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
+const billingPeriodKind = ref<DealBillingPeriod["kind"]>(
+  billingPeriod.value.kind,
+);
 const billingPeriodMonthValue = ref(
   getDealBillingPeriodMonthValue(billingPeriod.value),
 );
-const billingPeriodPreview = computed(() =>
-  buildMonthlyBillingPeriod(billingPeriodMonthValue.value),
-);
+const defaultBillingYearValue = () => String(new Date().getFullYear());
+const defaultBillingQuarterValue = () => {
+  const today = new Date();
+
+  return `Q${Math.floor(today.getMonth() / 3) + 1}`;
+};
+const defaultBillingCustomDateValue = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+const billingPeriodQuarterYearValue = ref(defaultBillingYearValue());
+const billingPeriodQuarterValue = ref(defaultBillingQuarterValue());
+const billingPeriodYearValue = ref(defaultBillingYearValue());
+const billingPeriodCustomStartDate = ref(defaultBillingCustomDateValue());
+const billingPeriodCustomEndDate = ref(defaultBillingCustomDateValue());
+const billingPeriodCustomLabel = ref("");
+const billingPeriodKindOptions = [
+  { title: "Month", value: "monthly" },
+  { title: "Quarter", value: "quarterly" },
+  { title: "Year", value: "yearly" },
+  { title: "Custom", value: "custom" },
+] as const;
+const billingQuarterOptions = [
+  { title: "Q1", value: "Q1" },
+  { title: "Q2", value: "Q2" },
+  { title: "Q3", value: "Q3" },
+  { title: "Q4", value: "Q4" },
+] as const;
+
+const syncBillingPeriodDraft = (period: DealBillingPeriod = billingPeriod.value) => {
+  const periodKey = getDealBillingPeriodKey(period);
+  const startDate = String(period.startDate || defaultBillingCustomDateValue());
+  const endDate = String(period.endDate || startDate);
+  const quarterMatch = periodKey.match(/^(\d{4})-q([1-4])$/);
+  const yearMatch = periodKey.match(/^(\d{4})$/);
+  const startDateMatch = startDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const fallbackYear = startDateMatch?.[1] || defaultBillingYearValue();
+  const fallbackQuarter = startDateMatch
+    ? `Q${Math.floor((Number(startDateMatch[2]) - 1) / 3) + 1}`
+    : defaultBillingQuarterValue();
+
+  billingPeriodKind.value = period.kind;
+  billingPeriodMonthValue.value = getDealBillingPeriodMonthValue(period);
+  billingPeriodQuarterYearValue.value = quarterMatch?.[1] || fallbackYear;
+  billingPeriodQuarterValue.value = quarterMatch
+    ? `Q${quarterMatch[2]}`
+    : fallbackQuarter;
+  billingPeriodYearValue.value = yearMatch?.[1] || fallbackYear;
+  billingPeriodCustomStartDate.value = startDate;
+  billingPeriodCustomEndDate.value = endDate;
+  billingPeriodCustomLabel.value =
+    period.kind === "custom" ? getDealBillingPeriodLabel(period) : "";
+};
+
+const billingPeriodPreview = computed(() => {
+  if (billingPeriodKind.value === "quarterly") {
+    return buildQuarterlyBillingPeriod(
+      `${billingPeriodQuarterYearValue.value}-${billingPeriodQuarterValue.value}`,
+    );
+  }
+
+  if (billingPeriodKind.value === "yearly") {
+    return buildYearlyBillingPeriod(billingPeriodYearValue.value);
+  }
+
+  if (billingPeriodKind.value === "custom") {
+    return buildCustomBillingPeriod({
+      endDate: billingPeriodCustomEndDate.value,
+      label: billingPeriodCustomLabel.value,
+      startDate: billingPeriodCustomStartDate.value,
+    });
+  }
+
+  return buildMonthlyBillingPeriod(billingPeriodMonthValue.value);
+});
+
+syncBillingPeriodDraft();
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const selectedItemIds = ref<string[]>([]);
@@ -87,9 +171,7 @@ const selectionDialogVisible = ref(false);
 
 const commitBillingPeriod = () => {
   billingPeriod.value = billingPeriodPreview.value;
-  billingPeriodMonthValue.value = getDealBillingPeriodMonthValue(
-    billingPeriod.value,
-  );
+  syncBillingPeriodDraft(billingPeriod.value);
 
   return billingPeriod.value;
 };
@@ -490,6 +572,7 @@ const openBillingPeriodDialog = (
 ) => {
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
+  syncBillingPeriodDraft();
   initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
   billingPeriodDialogVisible.value = true;
 };
@@ -499,7 +582,7 @@ const confirmBillingPeriod = () => {
 
   const nextBillingPeriod = commitBillingPeriod();
   if (!getDealBillingPeriodKey(nextBillingPeriod)) {
-    notifications.push("Select a billing month first", "warning", 2500);
+    notifications.push("Select a billing period first", "warning", 2500);
     return;
   }
 
@@ -801,12 +884,72 @@ const formatDate = (value?: string | null) => {
           period-based lines.
         </div>
 
+        <VSelect
+          v-model="billingPeriodKind"
+          label="Period Type"
+          :items="billingPeriodKindOptions"
+        />
+
         <VTextField
+          v-if="billingPeriodKind === 'monthly'"
           v-model="billingPeriodMonthValue"
           type="month"
           label="Billing Month"
           autofocus
         />
+
+        <VRow v-else-if="billingPeriodKind === 'quarterly'">
+          <VCol cols="12" md="6">
+            <VTextField
+              v-model="billingPeriodQuarterYearValue"
+              type="number"
+              min="2000"
+              label="Billing Year"
+            />
+          </VCol>
+
+          <VCol cols="12" md="6">
+            <VSelect
+              v-model="billingPeriodQuarterValue"
+              label="Billing Quarter"
+              :items="billingQuarterOptions"
+            />
+          </VCol>
+        </VRow>
+
+        <VTextField
+          v-else-if="billingPeriodKind === 'yearly'"
+          v-model="billingPeriodYearValue"
+          type="number"
+          min="2000"
+          label="Billing Year"
+        />
+
+        <VRow v-else>
+          <VCol cols="12" md="6">
+            <VTextField
+              v-model="billingPeriodCustomStartDate"
+              type="date"
+              label="Start Date"
+            />
+          </VCol>
+
+          <VCol cols="12" md="6">
+            <VTextField
+              v-model="billingPeriodCustomEndDate"
+              type="date"
+              label="End Date"
+            />
+          </VCol>
+
+          <VCol cols="12">
+            <VTextField
+              v-model="billingPeriodCustomLabel"
+              label="Custom Label"
+              placeholder="Optional"
+            />
+          </VCol>
+        </VRow>
 
         <div class="text-sm text-medium-emphasis mt-2">
           Selected period: {{ billingPeriodPreview.label }}
