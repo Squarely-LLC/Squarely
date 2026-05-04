@@ -280,6 +280,106 @@ const nextDealSalesTaskId = (tasks: DealSalesTaskTemplate[]) => {
   return ids.length ? Math.max(...ids) + 1 : 1;
 };
 
+const isImportedDealSalesTask = (task: DealSalesTaskTemplate) =>
+  task.sourceItemId !== null && task.sourceItemId !== undefined;
+
+const isManualDealTodo = (todo: ToDo, dealId: number | string) => {
+  if (!todo?.relatedTo) return false;
+  if (String(todo.relatedTo.id) !== String(dealId)) return false;
+  if (todo.relatedTo.type !== "deal") return false;
+
+  return (
+    !String((todo as any).milestoneId ?? "").trim() &&
+    !String((todo as any).goalId ?? "").trim()
+  );
+};
+
+const buildSalesTaskMigrationKey = (task: {
+  title?: string | null;
+  notes?: string | null;
+  afterWhen?: string | null;
+  startTrigger?: CatalogueTaskStartTrigger | ToDo["startTrigger"] | null;
+}) =>
+  [
+    String(task.title || "").trim(),
+    String(task.notes || "").trim(),
+    String(task.afterWhen || "").trim(),
+    String(task.startTrigger?.type || "").trim(),
+    String(task.startTrigger?.goalId ?? "").trim(),
+    String(task.startTrigger?.taskId ?? "").trim(),
+  ].join("::");
+
+const migrateLegacyDealSalesTasksToTodos = (
+  currentDeal: DealProperties,
+): DealProperties => {
+  const storedSalesTasks = Array.isArray(currentDeal.salesTasks)
+    ? currentDeal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
+    : [];
+  const legacyManualTasks = storedSalesTasks.filter(
+    (task) => !isImportedDealSalesTask(task),
+  );
+
+  if (!legacyManualTasks.length) return currentDeal;
+
+  const existingManualTodoKeys = new Set(
+    (todosStore.items || [])
+      .filter((todo) => isManualDealTodo(todo, currentDeal.id))
+      .map((todo) => buildSalesTaskMigrationKey(todo as any)),
+  );
+  const relatedTo = {
+    id: currentDeal.id,
+    name: currentDeal.code || `Deal #${currentDeal.id}`,
+    type: "deal",
+  } as const;
+
+  legacyManualTasks.forEach((task) => {
+    const migrationKey = buildSalesTaskMigrationKey(task);
+    if (existingManualTodoKeys.has(migrationKey)) return;
+
+    todosStore.addTodo({
+      title: task.title,
+      collaborators: Array.isArray(task.collaborators)
+        ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+        : [],
+      dueAt: new Date().toISOString(),
+      afterWhen: task.afterWhen ?? null,
+      startTrigger: task.startTrigger
+        ? {
+            type: task.startTrigger.type,
+            goalId: task.startTrigger.goalId ?? null,
+            taskId: task.startTrigger.taskId ?? null,
+          }
+        : null,
+      status:
+        task.status === "in_progress" ||
+        task.status === "for_review" ||
+        task.status === "completed"
+          ? task.status
+          : "pending",
+      notes: task.notes || "",
+      important: Boolean(task.important),
+      attachment: task.attachment ? { ...task.attachment } : null,
+      relatedTo,
+      steps: Array.isArray(task.steps)
+        ? task.steps.map((step) => ({ ...step }))
+        : [],
+    } as any);
+    existingManualTodoKeys.add(migrationKey);
+  });
+
+  const retainedSalesTasks = storedSalesTasks.filter(isImportedDealSalesTask);
+  const updatedDeal = dealsStore.updateDeal(currentDeal.id, {
+    salesTasks: retainedSalesTasks,
+  });
+
+  return (
+    updatedDeal ?? {
+      ...currentDeal,
+      salesTasks: retainedSalesTasks,
+    }
+  );
+};
+
 const resolveDealSalesTasks = (
   currentDeal: DealProperties,
 ): DealSalesTaskTemplate[] => {
@@ -729,8 +829,9 @@ const resolveLatestDealState = () => {
   const latest = dealsStore.byId(currentId);
 
   if (latest) {
-    deal.value = cloneDeal(latest);
-    return latest;
+    const migrated = migrateLegacyDealSalesTasksToTodos(latest);
+    deal.value = cloneDeal(migrated);
+    return migrated;
   }
 
   return deal.value;
@@ -741,7 +842,7 @@ const resolveDeal = () => {
   const found = dealsStore.byId(route.params.id);
 
   if (found) {
-    deal.value = cloneDeal(found);
+    deal.value = cloneDeal(migrateLegacyDealSalesTasksToTodos(found));
     error.value = null;
   } else {
     deal.value = null;
@@ -786,6 +887,14 @@ const dealEmployeeCollaborators = computed(() =>
       avatarUrl: employee?.picture || null,
     };
   }),
+);
+
+const employeeOptions = computed(() =>
+  employeesStore.all.map((employee) => ({
+    id: employee.id,
+    name: employee.fullName,
+    avatarUrl: employee.picture || null,
+  })),
 );
 
 const dealLinkedEntities = computed(() => {
@@ -1178,26 +1287,65 @@ const openEmail = () => {
 };
 
 const openAddTask = (payload: { initial: Partial<ToDo> }) => {
-  taskTemplateMode.value = "create";
-  taskTemplateTodoId.value = null;
+  if (!deal.value) return;
 
+  addTodoInitial.value = {
+    ...payload.initial,
+    collaborators:
+      payload?.initial?.collaborators &&
+      Array.isArray(payload.initial.collaborators) &&
+      payload.initial.collaborators.length
+        ? payload.initial.collaborators
+        : dealEmployeeCollaborators.value,
+    relatedTo: payload?.initial?.relatedTo ?? dealRelatedRef.value,
+    dueAt: payload?.initial?.dueAt ?? new Date().toISOString(),
+    status: payload?.initial?.status ?? "pending",
+    important: Boolean(payload?.initial?.important),
+  };
+  isAddTodoDrawerVisible.value = true;
   nextTick(() => {
     try {
-      taskTemplateDrawerRef.value?.openWith?.({
-        ...payload.initial,
-        afterWhen: (payload.initial as ToDo).afterWhen ?? "+1 day",
-        startTrigger: (payload.initial as ToDo).startTrigger ?? {
-          type: "time",
-          goalId: null,
-          taskId: null,
-        },
-      });
+      addTodoDrawerRef.value?.openWith?.(addTodoInitial.value);
     } catch {}
+    addTodoInitial.value = null;
   });
-  isTaskTemplateDrawerOpen.value = true;
+};
+
+const findDealTodoById = (todoId: number | string) => {
+  if (!deal.value) return null;
+
+  return (
+    todosStore.items.find((todo) => {
+      if (String(todo.id) !== String(todoId)) return false;
+      if (todo.relatedTo?.type !== "deal") return false;
+      if (String(todo.relatedTo?.id) !== String(deal.value?.id)) return false;
+
+      return (
+        !String((todo as any).milestoneId ?? "").trim() &&
+        !String((todo as any).goalId ?? "").trim()
+      );
+    }) ?? null
+  );
 };
 
 const openEditTask = (todoId: number | string) => {
+  const todo = findDealTodoById(todoId);
+  if (todo) {
+    editingTodo.value = {
+      ...todo,
+      collaborators: Array.isArray(todo.collaborators)
+        ? todo.collaborators.map((collaborator) => ({ ...collaborator }))
+        : [],
+      relatedTo: todo.relatedTo ? { ...todo.relatedTo } : null,
+      steps: Array.isArray(todo.steps)
+        ? todo.steps.map((step) => ({ ...step }))
+        : [],
+      attachment: todo.attachment ? { ...todo.attachment } : null,
+    };
+    isEditTodoDrawerVisible.value = true;
+    return;
+  }
+
   if (!deal.value) return;
 
   const task = resolveDealSalesTasks(deal.value).find(
@@ -1233,6 +1381,13 @@ const openEditTask = (todoId: number | string) => {
 };
 
 const deleteTask = (todoId: number | string) => {
+  const todo = findDealTodoById(todoId);
+  if (todo) {
+    todosStore.removeTodo(todoId);
+    notifications.push("Task deleted", "success", 3000);
+    return;
+  }
+
   if (!deal.value) return;
 
   const updatedDeal = dealsStore.updateDeal(deal.value.id, {
@@ -1593,7 +1748,7 @@ watch(
     <EditToDoDrawer
       v-model:is-drawer-open="isEditTodoDrawerVisible"
       :todo="editingTodo"
-      :collaborators-options="contactOptions"
+      :collaborators-options="employeeOptions"
       @save="onTodoEdited"
       @saveSteps="onTodoStepsEdited"
     />

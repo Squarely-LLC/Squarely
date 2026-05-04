@@ -2367,6 +2367,15 @@ const dealTodos = computed<DealTodo[]>(
     }) as DealTodo[],
 );
 
+const manualDealSalesTodos = computed<DealTodo[]>(() =>
+  dealTodos.value.filter((todo) => {
+    const milestoneId = String(todo.milestoneId ?? "").trim();
+    const goalId = String(todo.goalId ?? "").trim();
+
+    return !milestoneId && !goalId;
+  }),
+);
+
 const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
   const storedSalesTasks = Array.isArray(props.deal.salesTasks)
     ? props.deal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
@@ -2435,22 +2444,59 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
   ];
 };
 
-const salesTasks = computed<DealSalesTaskRow[]>(() =>
-  buildEditableSalesTasks().map((task) => ({
-    id: task.id,
-    title: task.title,
-    afterWhen: task.afterWhen ?? null,
-    startTrigger: task.startTrigger ?? {
-      type: "time",
-      goalId: null,
-      taskId: null,
-    },
-    notes: task.notes || "",
-    collaborators: task.collaborators || [],
-    important: Boolean(task.important),
-    status: (task.status as Status) || "pending",
-    isImported: task.sourceItemId !== null && task.sourceItemId !== undefined,
-  })),
+const salesTasks = computed<DealSalesTaskRow[]>(() => {
+  const manualTodoKeys = new Set(
+    manualDealSalesTodos.value.map(
+      (todo) => `${todo.title || ""}::${todo.notes || ""}`,
+    ),
+  );
+  const fallbackTasks = buildEditableSalesTasks().filter((task) => {
+    if (task.sourceItemId !== null && task.sourceItemId !== undefined)
+      return true;
+
+    return !manualTodoKeys.has(`${task.title || ""}::${task.notes || ""}`);
+  });
+
+  return [
+    ...manualDealSalesTodos.value.map((todo) => ({
+      id: todo.id,
+      title: todo.title,
+      afterWhen: todo.afterWhen ?? null,
+      startTrigger: todo.startTrigger ?? {
+        type: "time",
+        goalId: null,
+        taskId: null,
+      },
+      notes: todo.notes || "",
+      collaborators: todo.collaborators || [],
+      important: Boolean(todo.important),
+      status: (todo.status as Status) || "pending",
+      isImported: false,
+    })),
+    ...fallbackTasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      afterWhen: task.afterWhen ?? null,
+      startTrigger: task.startTrigger ?? {
+        type: "time",
+        goalId: null,
+        taskId: null,
+      },
+      notes: task.notes || "",
+      collaborators: task.collaborators || [],
+      important: Boolean(task.important),
+      status: (task.status as Status) || "pending",
+      isImported: task.sourceItemId !== null && task.sourceItemId !== undefined,
+    })),
+  ];
+});
+
+const manualSalesTasks = computed(() =>
+  salesTasks.value.filter((task) => !task.isImported),
+);
+
+const catalogueTemplateSalesTasks = computed(() =>
+  salesTasks.value.filter((task) => task.isImported),
 );
 
 const collaboratorInitials = (name?: string) =>
@@ -3091,99 +3137,228 @@ const openEditTask = (taskId: number | string) => {
           </VBtn>
         </div>
 
-        <div v-if="salesTasks.length" class="d-flex flex-column gap-2">
-          <VCard
-            v-for="task in salesTasks"
-            :key="task.id"
-            class="task-row"
-            variant="tonal"
-            @click="openEditTask(task.id)"
-          >
-            <div class="task-row-main">
-              <div class="task-row-left">
-                <div class="task-copy">
-                  <VTooltip :text="task.title" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <strong
-                        v-bind="tooltipProps"
-                        class="text-body-1 truncate-title"
-                      >
-                        {{ task.title }}
-                      </strong>
-                    </template>
-                  </VTooltip>
-                  <span class="text-sm">
-                    {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
-                  </span>
-                  <span v-if="task.isImported" class="text-sm text-info">
-                    From catalogue item
-                  </span>
-                  <span v-if="task.notes" class="text-sm text-medium-emphasis">
-                    {{ task.notes }}
-                  </span>
+        <div v-if="salesTasks.length" class="d-flex flex-column gap-4">
+          <div v-if="manualSalesTasks.length" class="d-flex flex-column gap-2">
+            <div class="d-flex align-center justify-space-between gap-3">
+              <div>
+                <div class="text-subtitle-1 font-weight-medium">
+                  Sales Tasks
+                </div>
+                <div class="text-body-2 text-medium-emphasis">
+                  Regular pre-execution tasks added directly to this deal.
                 </div>
               </div>
-
-              <div class="task-row-side">
-                <div
-                  v-if="task.collaborators?.length"
-                  class="v-avatar-group demo-avatar-group"
-                >
-                  <VAvatar
-                    v-for="collaborator in task.collaborators.slice(0, 2)"
-                    :key="collaborator.id"
-                    :size="28"
-                    color="primary"
-                  >
-                    <template v-if="collaborator.avatarUrl">
-                      <VImg :src="collaborator.avatarUrl" />
-                    </template>
-                    <template v-else>
-                      <span class="task-mono">
-                        {{ collaboratorInitials(collaborator.name) }}
-                      </span>
-                    </template>
-                    <VTooltip activator="parent" location="top">
-                      {{ collaborator.name }}
-                    </VTooltip>
-                  </VAvatar>
-                  <VAvatar
-                    v-if="task.collaborators.length > 2"
-                    :size="28"
-                    color="secondary"
-                  >
-                    +{{ task.collaborators.length - 2 }}
-                  </VAvatar>
-                </div>
-
-                <VIcon
-                  v-if="task.important"
-                  icon="tabler-star-filled"
-                  color="warning"
-                  size="18"
-                />
-                <VBtn
-                  icon
-                  variant="text"
-                  size="x-small"
-                  @click.stop="emit('delete-task', task.id)"
-                >
-                  <VIcon icon="tabler-trash" color="error" size="18" />
-                </VBtn>
-                <span
-                  class="text-sm"
-                  :class="{
-                    'text-primary': task.status === 'in_progress',
-                    'text-warning': task.status === 'for_review',
-                    'text-medium-emphasis': task.status === 'pending',
-                    'text-success': task.status === 'completed',
-                  }"
-                >
-                  {{ todoStatusLabel(task.status) }}
-                </span>
-              </div>
+              <VChip size="small" variant="outlined">
+                {{ manualSalesTasks.length }}
+              </VChip>
             </div>
-          </VCard>
+
+            <VCard
+              v-for="task in manualSalesTasks"
+              :key="task.id"
+              class="task-row"
+              variant="tonal"
+              @click="openEditTask(task.id)"
+            >
+              <div class="task-row-main">
+                <div class="task-row-left">
+                  <div class="task-copy">
+                    <VTooltip :text="task.title" location="top">
+                      <template #activator="{ props: tooltipProps }">
+                        <strong
+                          v-bind="tooltipProps"
+                          class="text-body-1 truncate-title"
+                        >
+                          {{ task.title }}
+                        </strong>
+                      </template>
+                    </VTooltip>
+                    <span class="text-sm">
+                      {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
+                    </span>
+                    <span
+                      v-if="task.notes"
+                      class="text-sm text-medium-emphasis"
+                    >
+                      {{ task.notes }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="task-row-side">
+                  <div
+                    v-if="task.collaborators?.length"
+                    class="v-avatar-group demo-avatar-group"
+                  >
+                    <VAvatar
+                      v-for="collaborator in task.collaborators.slice(0, 2)"
+                      :key="collaborator.id"
+                      :size="28"
+                      color="primary"
+                    >
+                      <template v-if="collaborator.avatarUrl">
+                        <VImg :src="collaborator.avatarUrl" />
+                      </template>
+                      <template v-else>
+                        <span class="task-mono">
+                          {{ collaboratorInitials(collaborator.name) }}
+                        </span>
+                      </template>
+                      <VTooltip activator="parent" location="top">
+                        {{ collaborator.name }}
+                      </VTooltip>
+                    </VAvatar>
+                    <VAvatar
+                      v-if="task.collaborators.length > 2"
+                      :size="28"
+                      color="secondary"
+                    >
+                      +{{ task.collaborators.length - 2 }}
+                    </VAvatar>
+                  </div>
+
+                  <VIcon
+                    v-if="task.important"
+                    icon="tabler-star-filled"
+                    color="warning"
+                    size="18"
+                  />
+                  <VBtn
+                    icon
+                    variant="text"
+                    size="x-small"
+                    @click.stop="emit('delete-task', task.id)"
+                  >
+                    <VIcon icon="tabler-trash" color="error" size="18" />
+                  </VBtn>
+                  <span
+                    class="text-sm"
+                    :class="{
+                      'text-primary': task.status === 'in_progress',
+                      'text-warning': task.status === 'for_review',
+                      'text-medium-emphasis': task.status === 'pending',
+                      'text-success': task.status === 'completed',
+                    }"
+                  >
+                    {{ todoStatusLabel(task.status) }}
+                  </span>
+                </div>
+              </div>
+            </VCard>
+          </div>
+
+          <div
+            v-if="catalogueTemplateSalesTasks.length"
+            class="d-flex flex-column gap-2"
+          >
+            <div class="d-flex align-center justify-space-between gap-3">
+              <div>
+                <div class="text-subtitle-1 font-weight-medium">
+                  Catalogue Template Tasks
+                </div>
+                <div class="text-body-2 text-medium-emphasis">
+                  Tasks inherited from the selected catalogue items.
+                </div>
+              </div>
+              <VChip size="small" variant="outlined">
+                {{ catalogueTemplateSalesTasks.length }}
+              </VChip>
+            </div>
+
+            <VCard
+              v-for="task in catalogueTemplateSalesTasks"
+              :key="task.id"
+              class="task-row"
+              variant="tonal"
+              @click="openEditTask(task.id)"
+            >
+              <div class="task-row-main">
+                <div class="task-row-left">
+                  <div class="task-copy">
+                    <VTooltip :text="task.title" location="top">
+                      <template #activator="{ props: tooltipProps }">
+                        <strong
+                          v-bind="tooltipProps"
+                          class="text-body-1 truncate-title"
+                        >
+                          {{ task.title }}
+                        </strong>
+                      </template>
+                    </VTooltip>
+                    <span class="text-sm">
+                      {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
+                    </span>
+                    <span class="text-sm text-info">From catalogue item</span>
+                    <span
+                      v-if="task.notes"
+                      class="text-sm text-medium-emphasis"
+                    >
+                      {{ task.notes }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="task-row-side">
+                  <div
+                    v-if="task.collaborators?.length"
+                    class="v-avatar-group demo-avatar-group"
+                  >
+                    <VAvatar
+                      v-for="collaborator in task.collaborators.slice(0, 2)"
+                      :key="collaborator.id"
+                      :size="28"
+                      color="primary"
+                    >
+                      <template v-if="collaborator.avatarUrl">
+                        <VImg :src="collaborator.avatarUrl" />
+                      </template>
+                      <template v-else>
+                        <span class="task-mono">
+                          {{ collaboratorInitials(collaborator.name) }}
+                        </span>
+                      </template>
+                      <VTooltip activator="parent" location="top">
+                        {{ collaborator.name }}
+                      </VTooltip>
+                    </VAvatar>
+                    <VAvatar
+                      v-if="task.collaborators.length > 2"
+                      :size="28"
+                      color="secondary"
+                    >
+                      +{{ task.collaborators.length - 2 }}
+                    </VAvatar>
+                  </div>
+
+                  <VIcon
+                    v-if="task.important"
+                    icon="tabler-star-filled"
+                    color="warning"
+                    size="18"
+                  />
+                  <VBtn
+                    icon
+                    variant="text"
+                    size="x-small"
+                    @click.stop="emit('delete-task', task.id)"
+                  >
+                    <VIcon icon="tabler-trash" color="error" size="18" />
+                  </VBtn>
+                  <span
+                    class="text-sm"
+                    :class="{
+                      'text-primary': task.status === 'in_progress',
+                      'text-warning': task.status === 'for_review',
+                      'text-medium-emphasis': task.status === 'pending',
+                      'text-success': task.status === 'completed',
+                    }"
+                  >
+                    {{ todoStatusLabel(task.status) }}
+                  </span>
+                </div>
+              </div>
+            </VCard>
+          </div>
         </div>
 
         <div v-else class="text-body-2 text-medium-emphasis empty-tasks">
