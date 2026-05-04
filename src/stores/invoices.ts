@@ -8,6 +8,7 @@ import type {
   PaymentDetails,
   PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
+import { cloneDealBillingPeriod } from "@/utils/dealDocumentDraft";
 import {
   buildDocumentNote,
   buildQuotationPaymentDetails,
@@ -368,6 +369,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    billingPeriod: cloneDealBillingPeriod(product.billingPeriod),
     billingPeriodKey: product.billingPeriodKey?.trim() || null,
     dealSelectionKey: product.dealSelectionKey?.trim() || null,
     lineConstraints: product.lineConstraints

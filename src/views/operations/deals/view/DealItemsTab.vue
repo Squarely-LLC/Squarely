@@ -33,6 +33,7 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
   buildDealDocumentDraftRecord,
+  buildDealDocumentUsageKey,
   buildMonthlyBillingPeriod,
   filterDealDocumentItemsByBillingMode,
   getBillableRootDealItems,
@@ -42,9 +43,9 @@ import {
   getDealContractualPhaseLines,
   getQuotationTopLevelDealItems,
   getSelectableDealItems,
-  normalizeBillingPeriodKey,
   resolveDealDocumentBillingMode,
   resolveDealDocumentBillingModeForItem,
+  resolveStoredBillingPeriodKey,
   saveDealDocumentDraft,
   type DealDocumentBillingMode,
   type DealDocumentKind,
@@ -1407,6 +1408,7 @@ const openSelectedPreviewInPage = () => {
 };
 
 const resolveProductSelectionKey = (product: {
+  billingPeriod?: DealBillingPeriod | null;
   billingPeriodKey?: string | null;
   catalogueItemId?: string | null;
   cost?: number | null;
@@ -1429,20 +1431,6 @@ const resolveProductSelectionKey = (product: {
   });
 
   return matches.length === 1 ? matches[0].selectionKey : "";
-};
-
-const buildDocumentUsageKey = (
-  selectionKey?: string | null,
-  billingPeriodKey?: string | null,
-) => {
-  const normalizedSelectionKey = String(selectionKey ?? "").trim();
-  if (!normalizedSelectionKey) return "";
-
-  const normalizedPeriodKey = normalizeBillingPeriodKey(billingPeriodKey);
-
-  return normalizedPeriodKey
-    ? `${normalizedSelectionKey}::${normalizedPeriodKey}`
-    : normalizedSelectionKey;
 };
 
 const resolveSelectableItemBillingPeriodKey = (
@@ -1471,9 +1459,9 @@ const proformaUsageBySelectionKey = computed(() => {
 
     record.purchasedProducts.forEach((product) => {
       const selectionKey = resolveProductSelectionKey(product);
-      const usageKey = buildDocumentUsageKey(
+      const usageKey = buildDealDocumentUsageKey(
         selectionKey,
-        product.billingPeriodKey,
+        resolveStoredBillingPeriodKey(product),
       );
       if (!usageKey) return;
 
@@ -1492,9 +1480,9 @@ const invoiceUsageBySelectionKey = computed(() => {
 
     record.purchasedProducts.forEach((product) => {
       const selectionKey = resolveProductSelectionKey(product);
-      const usageKey = buildDocumentUsageKey(
+      const usageKey = buildDealDocumentUsageKey(
         selectionKey,
-        product.billingPeriodKey,
+        resolveStoredBillingPeriodKey(product),
       );
       if (!usageKey) return;
 
@@ -1509,7 +1497,7 @@ const getDocumentUsage = (
   selectionKey?: string | null,
   billingPeriodKey?: string | null,
 ) => {
-  const usageKey = buildDocumentUsageKey(selectionKey, billingPeriodKey);
+  const usageKey = buildDealDocumentUsageKey(selectionKey, billingPeriodKey);
   if (!usageKey) return { invoiceCount: 0, proformaCount: 0 };
 
   return {

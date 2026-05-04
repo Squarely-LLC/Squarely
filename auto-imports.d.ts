@@ -16,18 +16,23 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const buildCustomBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']
   const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
+  const buildDealDocumentUsageKey: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']
   const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
   const buildMonthlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']
   const buildProformaNote: typeof import('./src/utils/quotationConfig')['buildProformaNote']
+  const buildQuarterlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildQuarterlyBillingPeriod']
   const buildQuotationNote: typeof import('./src/utils/quotationConfig')['buildQuotationNote']
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
+  const buildYearlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']
   const clearDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']
   const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
   const clearQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']
+  const cloneDealBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['cloneDealBillingPeriod']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
   const computedEager: typeof import('@vueuse/core')['computedEager']
@@ -187,6 +192,7 @@ declare global {
   const resolveDealDocumentBillingModeForItem: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']
   const resolveQuotationLogoUrl: typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
+  const resolveStoredBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['resolveStoredBillingPeriodKey']
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
@@ -445,18 +451,23 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly buildCustomBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']>
     readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
+    readonly buildDealDocumentUsageKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']>
     readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
     readonly buildMonthlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']>
     readonly buildProformaNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildProformaNote']>
+    readonly buildQuarterlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildQuarterlyBillingPeriod']>
     readonly buildQuotationNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationNote']>
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
+    readonly buildYearlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']>
     readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
     readonly clearQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['clearQuotationPreviewDraft']>
+    readonly cloneDealBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['cloneDealBillingPeriod']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -616,6 +627,7 @@ declare module 'vue' {
     readonly resolveDealDocumentBillingModeForItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']>
     readonly resolveQuotationLogoUrl: UnwrapRef<typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
+    readonly resolveStoredBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveStoredBillingPeriodKey']>
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>

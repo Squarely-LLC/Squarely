@@ -1,3 +1,5 @@
+import type { DealBillingPeriod } from "@/plugins/fake-api/handlers/operations/deals/types";
+
 export type ProformaStatus = "Not Paid" | "Paid" | "Partially Paid";
 
 export type LinkedRecordType = "deal" | "contract";
@@ -44,6 +46,7 @@ export interface PaymentDetails {
 
 export interface PurchasedProduct {
   catalogueItemId?: string | null;
+  billingPeriod?: DealBillingPeriod | null;
   billingPeriodKey?: string | null;
   dealSelectionKey?: string | null;
   lineConstraints?: {

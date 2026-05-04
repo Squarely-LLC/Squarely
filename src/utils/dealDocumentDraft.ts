@@ -25,6 +25,7 @@ import type {
 } from "@/plugins/fake-api/handlers/config/types";
 import type {
   DealBillingPeriod,
+  DealBillingPeriodKind,
   DealCustomPhase,
   DealItem,
   DealProperties,
@@ -214,12 +215,74 @@ export const normalizeBillingPeriodKey = (value?: string | null) =>
     .trim()
     .toLowerCase();
 
+const DEAL_BILLING_PERIOD_KINDS = new Set<DealBillingPeriodKind>([
+  "monthly",
+  "quarterly",
+  "yearly",
+  "custom",
+]);
+
+const normalizeDealBillingPeriodKind = (
+  kind?: string | null,
+): DealBillingPeriodKind => {
+  const normalizedKind = String(kind ?? "")
+    .trim()
+    .toLowerCase();
+
+  return DEAL_BILLING_PERIOD_KINDS.has(normalizedKind as DealBillingPeriodKind)
+    ? (normalizedKind as DealBillingPeriodKind)
+    : "monthly";
+};
+
 function formatBillingPeriodDateValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function formatBillingPeriodRangeLabel(startDate: Date, endDate: Date) {
+  const sameYear = startDate.getFullYear() === endDate.getFullYear();
+
+  const startLabel = new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: sameYear ? undefined : "numeric",
+  }).format(startDate);
+  const endLabel = new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(endDate);
+
+  return `${startLabel} - ${endLabel}`;
+}
+
+function parseBillingPeriodDateValue(value?: string | null) {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, monthIndex, day);
+
+  if (
+    !Number.isFinite(year) ||
+    monthIndex < 0 ||
+    monthIndex > 11 ||
+    !Number.isFinite(day) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== monthIndex ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
 }
 
 export const buildMonthlyBillingPeriod = (
@@ -254,10 +317,120 @@ export const buildMonthlyBillingPeriod = (
   };
 };
 
-export const getDealBillingPeriodKey = (period?: DealBillingPeriod | null) =>
-  String(period?.key ?? "")
+export const buildQuarterlyBillingPeriod = (
+  quarterValue?: string | null,
+): DealBillingPeriod => {
+  const match = String(quarterValue ?? "")
     .trim()
-    .toLowerCase();
+    .toUpperCase()
+    .match(/^(\d{4})-Q([1-4])$/);
+  const today = new Date();
+  const fallbackQuarter = Math.floor(today.getMonth() / 3) + 1;
+  const year = match ? Number(match[1]) : today.getFullYear();
+  const quarter = match ? Number(match[2]) : fallbackQuarter;
+  const startDate = new Date(year, (quarter - 1) * 3, 1);
+  const endDate = new Date(year, quarter * 3, 0);
+
+  return {
+    endDate: formatBillingPeriodDateValue(endDate),
+    key: `${year}-q${quarter}`,
+    kind: "quarterly",
+    label: `Q${quarter} ${year}`,
+    startDate: formatBillingPeriodDateValue(startDate),
+  };
+};
+
+export const buildYearlyBillingPeriod = (
+  yearValue?: number | string | null,
+): DealBillingPeriod => {
+  const match = String(yearValue ?? "")
+    .trim()
+    .match(/^(\d{4})$/);
+  const today = new Date();
+  const year = match ? Number(match[1]) : today.getFullYear();
+  const startDate = new Date(year, 0, 1);
+  const endDate = new Date(year, 11, 31);
+
+  return {
+    endDate: formatBillingPeriodDateValue(endDate),
+    key: String(year),
+    kind: "yearly",
+    label: String(year),
+    startDate: formatBillingPeriodDateValue(startDate),
+  };
+};
+
+export const buildCustomBillingPeriod = (
+  input?: Partial<DealBillingPeriod> | null,
+): DealBillingPeriod => {
+  const startDate =
+    parseBillingPeriodDateValue(input?.startDate) ||
+    parseBillingPeriodDateValue(input?.endDate) ||
+    new Date();
+  const endDate =
+    parseBillingPeriodDateValue(input?.endDate) ||
+    parseBillingPeriodDateValue(input?.startDate) ||
+    startDate;
+  const normalizedStartDate =
+    startDate <= endDate ? startDate : new Date(endDate.getTime());
+  const normalizedEndDate =
+    startDate <= endDate ? endDate : new Date(startDate.getTime());
+  const startDateValue = formatBillingPeriodDateValue(normalizedStartDate);
+  const endDateValue = formatBillingPeriodDateValue(normalizedEndDate);
+
+  return {
+    endDate: endDateValue,
+    key:
+      String(input?.key ?? "").trim() ||
+      `custom:${startDateValue}:${endDateValue}`,
+    kind: "custom",
+    label:
+      String(input?.label ?? "").trim() ||
+      formatBillingPeriodRangeLabel(normalizedStartDate, normalizedEndDate),
+    startDate: startDateValue,
+  };
+};
+
+export const cloneDealBillingPeriod = (
+  period?: Partial<DealBillingPeriod> | null,
+): DealBillingPeriod | null => {
+  if (!period) return null;
+
+  const kind = normalizeDealBillingPeriodKind(period.kind);
+  const key = String(period.key ?? "").trim();
+  const label = String(period.label ?? "").trim();
+  const startDate = String(period.startDate ?? "").trim();
+  const endDate = String(period.endDate ?? "").trim();
+
+  if (key && label && startDate && endDate) {
+    return {
+      endDate,
+      key,
+      kind,
+      label,
+      startDate,
+    };
+  }
+
+  if (kind === "monthly") return buildMonthlyBillingPeriod(key || undefined);
+  if (kind === "quarterly")
+    return buildQuarterlyBillingPeriod(key || undefined);
+  if (kind === "yearly") return buildYearlyBillingPeriod(key || undefined);
+
+  if (startDate || endDate || key || label) {
+    return buildCustomBillingPeriod({
+      endDate: endDate || undefined,
+      key: key || undefined,
+      label: label || undefined,
+      startDate: startDate || undefined,
+    });
+  }
+
+  return null;
+};
+
+export const getDealBillingPeriodKey = (period?: DealBillingPeriod | null) =>
+  normalizeBillingPeriodKey(period?.key);
 
 export const getDealBillingPeriodLabel = (period?: DealBillingPeriod | null) =>
   String(period?.label ?? "").trim();
@@ -270,6 +443,29 @@ export const getDealBillingPeriodMonthValue = (
   if (/^\d{4}-\d{2}$/.test(periodKey)) return periodKey;
 
   return buildMonthlyBillingPeriod().key;
+};
+
+export const resolveStoredBillingPeriodKey = (
+  input?: {
+    billingPeriod?: DealBillingPeriod | null;
+    billingPeriodKey?: string | null;
+  } | null,
+) =>
+  getDealBillingPeriodKey(cloneDealBillingPeriod(input?.billingPeriod)) ||
+  normalizeBillingPeriodKey(input?.billingPeriodKey);
+
+export const buildDealDocumentUsageKey = (
+  selectionKey?: string | null,
+  billingPeriodKey?: string | null,
+) => {
+  const normalizedSelectionKey = String(selectionKey ?? "").trim();
+  if (!normalizedSelectionKey) return "";
+
+  const normalizedPeriodKey = normalizeBillingPeriodKey(billingPeriodKey);
+
+  return normalizedPeriodKey
+    ? `${normalizedSelectionKey}::${normalizedPeriodKey}`
+    : normalizedSelectionKey;
 };
 
 function normalizeCustomPhases(item: DealItem) {
@@ -775,6 +971,7 @@ function resolvePeriodUnitPrice(
 }
 
 function createPurchasedProduct(input: {
+  billingPeriod?: DealBillingPeriod | null;
   billingPeriodKey?: string | null;
   catalogueItemId?: string | null;
   dealSelectionKey?: string | null;
@@ -790,9 +987,15 @@ function createPurchasedProduct(input: {
   title: string;
 }): PurchasedProductLike {
   const discountValue = Number(input.discountPercent || 0);
+  const billingPeriod = cloneDealBillingPeriod(input.billingPeriod);
 
   return {
-    billingPeriodKey: input.billingPeriodKey ?? null,
+    billingPeriod: billingPeriod ?? null,
+    billingPeriodKey:
+      resolveStoredBillingPeriodKey({
+        billingPeriod,
+        billingPeriodKey: input.billingPeriodKey,
+      }) || null,
     catalogueItemId: input.catalogueItemId ?? null,
     dealSelectionKey: input.dealSelectionKey ?? null,
     cost: normalizeLineCost(input.cost),
@@ -898,6 +1101,7 @@ function buildStandardPurchasedProduct(
     itemMode === "retainer-period" || itemMode === "recurrent-period";
 
   return createPurchasedProduct({
+    billingPeriod: isPeriodBasedLine ? billingPeriod : null,
     billingPeriodKey: isPeriodBasedLine
       ? getDealBillingPeriodKey(billingPeriod)
       : null,
@@ -952,6 +1156,7 @@ function buildRetainerProducts(
     );
 
     return createPurchasedProduct({
+      billingPeriod: billingPeriod ?? null,
       billingPeriodKey: billingPeriodKey || null,
       catalogueItemId: item.catalogueItemId ?? null,
       dealSelectionKey: item.selectionKey.endsWith(`retainer-${service.id}`)
@@ -993,6 +1198,7 @@ function buildRecurrentProducts(
     );
 
     return createPurchasedProduct({
+      billingPeriod: billingPeriod ?? null,
       billingPeriodKey: billingPeriodKey || null,
       catalogueItemId: item.catalogueItemId ?? null,
       dealSelectionKey: item.selectionKey.endsWith(`recurrent-${service.id}`)

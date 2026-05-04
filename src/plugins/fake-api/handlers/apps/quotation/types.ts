@@ -1,3 +1,5 @@
+import type { DealBillingPeriod } from "@/plugins/fake-api/handlers/operations/deals/types";
+
 export type QuotationStatus =
   | "Pending"
   | "Approved"
@@ -49,6 +51,7 @@ export interface PaymentDetails {
 
 export interface PurchasedProduct {
   catalogueItemId?: string | null;
+  billingPeriod?: DealBillingPeriod | null;
   billingPeriodKey?: string | null;
   lineConstraints?: {
     quantity?: boolean;

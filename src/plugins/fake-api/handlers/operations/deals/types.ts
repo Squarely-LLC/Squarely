@@ -1,6 +1,10 @@
 export type DealFieldValue = string | number | boolean | null;
 
-export type DealBillingPeriodKind = "monthly";
+export type DealBillingPeriodKind =
+  | "monthly"
+  | "quarterly"
+  | "yearly"
+  | "custom";
 
 export interface DealBillingPeriod {
   kind: DealBillingPeriodKind;

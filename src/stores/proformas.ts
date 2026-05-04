@@ -8,6 +8,7 @@ import type {
   ProformaStatus,
   PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
+import { cloneDealBillingPeriod } from "@/utils/dealDocumentDraft";
 import {
   buildProformaNote,
   buildQuotationPaymentDetails,
@@ -373,6 +374,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    billingPeriod: cloneDealBillingPeriod(product.billingPeriod),
     billingPeriodKey: product.billingPeriodKey?.trim() || null,
     dealSelectionKey: product.dealSelectionKey?.trim() || null,
     lineConstraints: product.lineConstraints

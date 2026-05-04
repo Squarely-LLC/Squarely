@@ -6,6 +6,7 @@ import type {
   Quotation,
   QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
+import { cloneDealBillingPeriod } from "@/utils/dealDocumentDraft";
 import {
   buildQuotationNote,
   buildQuotationPaymentDetails,
@@ -330,6 +331,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    billingPeriod: cloneDealBillingPeriod(product.billingPeriod),
     billingPeriodKey: product.billingPeriodKey?.trim() || null,
     lineConstraints: product.lineConstraints
       ? { ...product.lineConstraints }
