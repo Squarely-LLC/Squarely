@@ -24,6 +24,11 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useDealsStore } from "@/stores/deals";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import {
+  getDealDiscountTotal,
+  getDealGrandTotal,
+  getDealItemsSubtotal,
+} from "@/utils/dealValue";
 import { computed, reactive, ref } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -1101,27 +1106,12 @@ const toggleItemExpanded = (panelId: number | string) => {
   expandedItems.value = [...expandedItems.value, panelId];
 };
 
-const itemsSubtotal = computed(() =>
-  (props.deal.items || []).reduce((sum, item) => {
-    const quantity = Number(item.quantity || 0);
-    const unitPrice = Number(item.unitPrice || 0);
+const itemsSubtotal = computed(() => getDealItemsSubtotal(props.deal));
 
-    return sum + quantity * unitPrice;
-  }, 0),
-);
-
-const totalDiscount = computed(() =>
-  (props.deal.items || []).reduce((sum, item) => {
-    const quantity = Number(item.quantity || 0);
-    const unitPrice = Number(item.unitPrice || 0);
-    const discountPercent = Number(item.discountPercent || 0);
-
-    return sum + quantity * unitPrice * (discountPercent / 100);
-  }, 0),
-);
+const totalDiscount = computed(() => getDealDiscountTotal(props.deal));
 const totalTax = computed(() => 0);
 const grandTotal = computed(
-  () => itemsSubtotal.value - totalDiscount.value + totalTax.value,
+  () => getDealGrandTotal(props.deal) + totalTax.value,
 );
 
 type DealTodo = ToDo & {

@@ -2,11 +2,13 @@
 import { computed } from "vue";
 
 import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import { getDealGrandTotal } from "@/utils/dealValue";
 
 interface Props {
   deal: DealProperties;
   linkedToName: string;
   collaboratorNames: string[];
+  hoverMode?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -30,18 +32,25 @@ const formatDate = (value?: string | null) => {
   }
 };
 
-const financialTotal = computed(() =>
-  (props.deal.financials || []).reduce(
-    (sum, entry) => sum + Number(entry.amount || 0),
-    0,
-  ),
+const projectLabel = computed(
+  () => props.deal.projectCode?.trim() || props.deal.projectName?.trim() || "",
 );
+
+const dealAmount = computed(() => props.deal.amount ?? null);
+const dealValue = computed(() => getDealGrandTotal(props.deal));
 
 const itemCount = computed(() => props.deal.items?.length || 0);
 
 const noteText = computed(
   () => props.deal.note?.trim() || "No notes available",
 );
+
+const formatAmount = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value)))
+    return "--";
+
+  return Number(value).toLocaleString();
+};
 </script>
 
 <template>
@@ -102,11 +111,11 @@ const noteText = computed(
           </VListItemTitle>
         </VListItem>
 
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Delivery:</span>
-            <span class="detail-row__value">{{
-              formatDate(deal.estimatedDeliveryDate)
+        <VListItem v-if="projectLabel">
+          <VListItemTitle class="detail-row detail-row--stacked">
+            <span class="detail-row__label">Project:</span>
+            <span class="detail-row__value detail-row__value--wrap">{{
+              projectLabel
             }}</span>
           </VListItemTitle>
         </VListItem>
@@ -127,9 +136,16 @@ const noteText = computed(
 
         <VListItem>
           <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Financial Total:</span>
+            <span class="detail-row__label">Deal Amount:</span>
+            <span class="detail-row__value">{{ formatAmount(dealAmount) }}</span>
+          </VListItemTitle>
+        </VListItem>
+
+        <VListItem>
+          <VListItemTitle class="detail-row">
+            <span class="detail-row__label">Calculated Value:</span>
             <span class="detail-row__value">{{
-              financialTotal.toLocaleString()
+              formatAmount(dealValue)
             }}</span>
           </VListItemTitle>
         </VListItem>
@@ -156,12 +172,12 @@ const noteText = computed(
       </VList>
     </VCardText>
 
-    <VCardText class="d-flex flex-column align-center pb-6">
+    <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-6">
       <VBtn @click="emit('edit')" class="mb-2"> Edit </VBtn>
     </VCardText>
   </VCard>
 
-  <VCardText class="d-flex flex-column align-center pb-2">
+  <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-2">
     <VBtn variant="elevated" @click="emit('execute')">
       <VIcon left>tabler-play</VIcon>
       Execute Deal

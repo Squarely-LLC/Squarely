@@ -52,6 +52,9 @@ export interface DealProperties {
   id: number;
   name: string;
   code?: string | null;
+  amount?: number | null;
+  projectCode?: string | null;
+  projectName?: string | null;
   relatedTo?: number | null;
   type?: string | null;
   estimatedDeliveryDate?: string | null;

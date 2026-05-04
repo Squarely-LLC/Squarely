@@ -73,6 +73,9 @@ declare global {
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getDealDiscountTotal: typeof import('./src/utils/dealValue')['getDealDiscountTotal']
+  const getDealGrandTotal: typeof import('./src/utils/dealValue')['getDealGrandTotal']
+  const getDealItemsSubtotal: typeof import('./src/utils/dealValue')['getDealItemsSubtotal']
   const getDocumentSequencePrefix: typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']
   const getFileInfo: typeof import('./src/utils/fileStore')['getFileInfo']
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
@@ -490,6 +493,9 @@ declare module 'vue' {
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getDealDiscountTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealDiscountTotal']>
+    readonly getDealGrandTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealGrandTotal']>
+    readonly getDealItemsSubtotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealItemsSubtotal']>
     readonly getDocumentSequencePrefix: UnwrapRef<typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']>
     readonly getFileInfo: UnwrapRef<typeof import('./src/utils/fileStore')['getFileInfo']>
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>

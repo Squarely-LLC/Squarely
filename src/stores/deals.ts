@@ -99,6 +99,14 @@ function normalizeCustomFieldValues(
   return Object.fromEntries(Object.entries(values));
 }
 
+function normalizeAmount(value: unknown): number | null {
+  if (value === "" || value === null || value === undefined) return null;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
   if (!Array.isArray(items)) return [];
 
@@ -158,9 +166,41 @@ function collectLegacyGeneratedTaskIds(deals: DealProperties[]) {
   );
 }
 
+const seedDealLookup = new Map(
+  db.deals.flatMap((deal) => {
+    const entries: Array<[string, DealProperties]> = [];
+
+    if (deal.code) entries.push([`code:${String(deal.code)}`, deal]);
+
+    entries.push([`id:${String(deal.id)}`, deal]);
+
+    return entries;
+  }),
+);
+
+function applyDealFieldMigrations(deal: DealProperties): DealProperties {
+  const seedMatch =
+    (deal.code ? seedDealLookup.get(`code:${String(deal.code)}`) : null) ??
+    seedDealLookup.get(`id:${String(deal.id)}`) ??
+    null;
+  const quotationAmount = deal.financials?.find(
+    (entry) => entry.type === "quotation",
+  )?.amount;
+
+  return {
+    ...deal,
+    amount:
+      normalizeAmount(deal.amount) ??
+      normalizeAmount(seedMatch?.amount) ??
+      normalizeAmount(quotationAmount),
+    projectCode: deal.projectCode?.trim() || seedMatch?.projectCode || null,
+    projectName: deal.projectName?.trim() || seedMatch?.projectName || null,
+  };
+}
+
 function sanitizeDeals(deals: DealProperties[]) {
   return deals.map((deal) => ({
-    ...deal,
+    ...applyDealFieldMigrations(deal),
     items: normalizeItems(deal.items),
     salesTasks: normalizeSalesTasks(deal.salesTasks),
     documents: normalizeDocuments(deal.documents),
@@ -191,11 +231,15 @@ function normaliseDeal(
 ): DealProperties {
   const now = new Date().toISOString();
   const code = payload.code?.trim() || generatedCode;
+  const name = String(payload.name ?? "").trim() || code;
 
   return {
     id: assignedId,
-    name: code,
+    name,
     code,
+    amount: normalizeAmount(payload.amount),
+    projectCode: payload.projectCode?.trim() || null,
+    projectName: payload.projectName?.trim() || null,
     relatedTo: payload.relatedTo ?? null,
     type: payload.type?.trim() || null,
     estimatedDeliveryDate: payload.estimatedDeliveryDate || null,
@@ -221,10 +265,29 @@ function mergeDeal(
   original: DealProperties,
   patch: Partial<DealProperties>,
 ): DealProperties {
+  const mergedCode =
+    patch.code === undefined ? original.code : patch.code?.trim() || null;
+
   return cloneDeal({
     ...original,
     ...patch,
-    code: patch.code === undefined ? original.code : patch.code?.trim() || null,
+    code: mergedCode,
+    name:
+      patch.name === undefined
+        ? original.name
+        : String(patch.name ?? "").trim() || mergedCode || original.name,
+    amount:
+      patch.amount === undefined
+        ? normalizeAmount(original.amount)
+        : normalizeAmount(patch.amount),
+    projectCode:
+      patch.projectCode === undefined
+        ? original.projectCode
+        : patch.projectCode?.trim() || null,
+    projectName:
+      patch.projectName === undefined
+        ? original.projectName
+        : patch.projectName?.trim() || null,
     type: patch.type === undefined ? original.type : patch.type?.trim() || null,
     stage:
       patch.stage === undefined ? original.stage : patch.stage?.trim() || null,
