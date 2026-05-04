@@ -143,8 +143,9 @@ export const useCalendar = (
           const title = (t.title ?? "Untitled Task").toString();
 
           // Parse dueAt
-          const raw = String(t.dueAt ?? "");
-          const d = t.dueAt instanceof Date ? t.dueAt : new Date(raw);
+          const dueAtValue = t.dueAt as unknown;
+          const raw = String(dueAtValue ?? "");
+          const d = dueAtValue instanceof Date ? dueAtValue : new Date(raw);
           if (Number.isNaN(d.getTime())) return null;
 
           // Heuristic: treat as timed if string contains time or Date has a time component
@@ -372,16 +373,19 @@ export const useCalendar = (
         return Number(eventLike.extendedProps?.sortRank ?? 0);
       };
 
-      const ar = rank(a);
-      const br = rank(b);
+      const eventA = a as any;
+      const eventB = b as any;
+
+      const ar = rank(eventA);
+      const br = rank(eventB);
       if (ar !== br) return br - ar;
 
-      const ai = a.extendedProps?.important ? 1 : 0;
-      const bi = b.extendedProps?.important ? 1 : 0;
+      const ai = eventA.extendedProps?.important ? 1 : 0;
+      const bi = eventB.extendedProps?.important ? 1 : 0;
       if (ai !== bi) return bi - ai;
 
-      const at = (a.title || "").toString();
-      const bt = (b.title || "").toString();
+      const at = (eventA.title || "").toString();
+      const bt = (eventB.title || "").toString();
       return at.localeCompare(bt);
     },
     eventOrderStrict: true,
