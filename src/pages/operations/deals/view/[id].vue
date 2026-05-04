@@ -1108,13 +1108,14 @@ const handleAddMeetingFromCommunication = () => {
 
 const handleAddTaskFromCommunication = () => {
   if (!deal.value) return;
+  const currentDeal = deal.value;
 
   addTodoInitial.value = {
-    title: "",
+    title: `Task: ${currentDeal.code || `Deal #${currentDeal.id}`}`,
     collaborators: dealEmployeeCollaborators.value,
     relatedTo: dealRelatedRef.value,
     dueAt: new Date().toISOString(),
-    notes: "",
+    notes: `Task regarding ${currentDeal.code || `deal #${currentDeal.id}`}`,
     important: false,
     status: "pending",
   };
@@ -1524,6 +1525,10 @@ watch(
           :collaborator-names="collaboratorNames"
           @edit="openEditDialog"
           @execute="openExecutePreviewDialog"
+          @open-add-task="handleAddTaskFromCommunication"
+          @open-add-email="openEmail"
+          @open-add-meeting="handleAddMeetingFromCommunication"
+          @open-add-call="handleAddCallFromCommunication"
         />
       </VCol>
 

@@ -16,6 +16,10 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: "edit"): void;
   (e: "execute"): void;
+  (e: "open-add-task"): void;
+  (e: "open-add-email"): void;
+  (e: "open-add-meeting"): void;
+  (e: "open-add-call"): void;
 }>();
 
 const formatDate = (value?: string | null) => {
@@ -71,7 +75,75 @@ const formatAmount = (value?: number | null) => {
         {{ deal.code }}
       </h5>
 
-      <div class="d-flex justify-center gap-2 mt-2 flex-wrap">
+      <div class="summary-actions mt-4">
+        <VTooltip text="Task" location="top">
+          <template #activator="{ props: tooltipProps }">
+            <VBtn
+              v-bind="tooltipProps"
+              color="primary"
+              variant="flat"
+              rounded="lg"
+              class="summary-action-btn"
+              @click="emit('open-add-task')"
+            >
+              <VIcon icon="tabler-checkbox" />
+            </VBtn>
+          </template>
+        </VTooltip>
+
+        <VTooltip text="Email" location="top">
+          <template #activator="{ props: tooltipProps }">
+            <VBtn
+              v-bind="tooltipProps"
+              color="primary"
+              variant="flat"
+              rounded="lg"
+              class="summary-action-btn"
+              @click="emit('open-add-email')"
+            >
+              <VIcon icon="tabler-mail" />
+            </VBtn>
+          </template>
+        </VTooltip>
+
+        <VTooltip text="Meeting" location="top">
+          <template #activator="{ props: tooltipProps }">
+            <VBtn
+              v-bind="tooltipProps"
+              color="primary"
+              variant="flat"
+              rounded="lg"
+              class="summary-action-btn"
+              @click="emit('open-add-meeting')"
+            >
+              <VIcon icon="tabler-calendar-plus" />
+            </VBtn>
+          </template>
+        </VTooltip>
+
+        <VTooltip text="Call" location="top">
+          <template #activator="{ props: tooltipProps }">
+            <VBtn
+              v-bind="tooltipProps"
+              color="primary"
+              variant="flat"
+              rounded="lg"
+              class="summary-action-btn"
+              @click="emit('open-add-call')"
+            >
+              <VIcon icon="tabler-phone-call" />
+            </VBtn>
+          </template>
+        </VTooltip>
+      </div>
+    </VCardText>
+
+    <VCardText>
+      <h5 class="text-h5">Details</h5>
+
+      <VDivider class="my-4" />
+
+      <div class="d-flex gap-2 mb-4 flex-wrap">
         <VChip label size="small" color="info" variant="text">
           {{ deal.stage || "--" }}
         </VChip>
@@ -89,21 +161,8 @@ const formatAmount = (value?: number | null) => {
           {{ deal.important ? "Important" : "Standard" }}
         </VChip>
       </div>
-    </VCardText>
-
-    <VCardText>
-      <h5 class="text-h5">Details</h5>
-
-      <VDivider class="my-4" />
 
       <VList class="py-0 card-list">
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Deal Code:</span>
-            <span class="detail-row__value">{{ deal.code || "--" }}</span>
-          </VListItemTitle>
-        </VListItem>
-
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Linked To:</span>
@@ -137,16 +196,16 @@ const formatAmount = (value?: number | null) => {
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Deal Amount:</span>
-            <span class="detail-row__value">{{ formatAmount(dealAmount) }}</span>
+            <span class="detail-row__value">{{
+              formatAmount(dealAmount)
+            }}</span>
           </VListItemTitle>
         </VListItem>
 
         <VListItem>
           <VListItemTitle class="detail-row">
             <span class="detail-row__label">Calculated Value:</span>
-            <span class="detail-row__value">{{
-              formatAmount(dealValue)
-            }}</span>
+            <span class="detail-row__value">{{ formatAmount(dealValue) }}</span>
           </VListItemTitle>
         </VListItem>
 
@@ -190,6 +249,24 @@ const formatAmount = (value?: number | null) => {
   --v-card-list-gap: 0.5rem;
 }
 
+.summary-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  inline-size: fit-content;
+  margin-inline: auto;
+}
+
+.summary-action-btn {
+  padding: 0;
+  border-radius: 0.75rem;
+  block-size: 2.5rem;
+  box-shadow: 0 10px 24px rgba(var(--v-theme-primary), 0.2);
+  min-inline-size: 2.5rem;
+}
+
 .detail-row {
   display: flex;
   align-items: baseline;
@@ -221,6 +298,15 @@ const formatAmount = (value?: number | null) => {
 }
 
 @media (max-width: 960px) {
+  .summary-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .summary-action-btn {
+    box-shadow: 0 10px 20px rgba(var(--v-theme-primary), 0.18);
+  }
+
   .detail-row {
     display: block;
   }
