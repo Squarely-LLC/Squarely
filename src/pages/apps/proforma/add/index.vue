@@ -5,6 +5,7 @@ import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact
 import type { Client } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import {
@@ -13,14 +14,14 @@ import {
   useProformasStore,
 } from "@/stores/proformas";
 import {
+  clearDealDocumentDraft,
+  loadDealDocumentDraft,
+} from "@/utils/dealDocumentDraft";
+import {
   clearProformaPreviewDraft,
   loadProformaPreviewDraft,
   saveProformaPreviewDraft,
 } from "@/utils/proformaPreviewDraft";
-import {
-  clearDealDocumentDraft,
-  loadDealDocumentDraft,
-} from "@/utils/dealDocumentDraft";
 import {
   buildProformaNote,
   buildQuotationPaymentDetails,
@@ -43,6 +44,8 @@ const configStore = useConfigStore();
 configStore.init();
 const contactsStore = useContactsStore();
 contactsStore.init();
+const dealsStore = useDealsStore();
+dealsStore.init();
 const employeesStore = useEmployeesStore();
 employeesStore.init();
 const proformasStore = useProformasStore();
@@ -258,19 +261,14 @@ const hasUnsavedChanges = computed(
   () => buildDraftSnapshot(quotationData.value) !== initialDraftSnapshot.value,
 );
 const dealOptions = computed(() => {
-  const options = new Map<number, { title: string; value: number }>();
-
-  for (const record of proformasStore.all) {
-    const quotation = record.quotation;
-    if (!quotation.dealId) continue;
-
-    options.set(quotation.dealId, {
-      title: `Deal ${quotation.dealId} - ${quotation.client.name}`,
-      value: quotation.dealId,
-    });
-  }
-
-  return Array.from(options.values());
+  return dealsStore.all
+    .map((deal) => ({
+      title:
+        [deal.code?.trim(), deal.name?.trim()].filter(Boolean).join(" - ") ||
+        `Deal ${deal.id}`,
+      value: deal.id,
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title));
 });
 const employeeOptions = computed(() =>
   employeesStore.all.map((employee) => ({

@@ -2,8 +2,8 @@
 import { computed, reactive, ref } from "vue";
 
 import type {
-    DealBillingPeriod,
-    DealProperties,
+  DealBillingPeriod,
+  DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
@@ -14,24 +14,24 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
-    buildCustomBillingPeriod,
-    buildDealDocumentDraftRecord,
-    buildMonthlyBillingPeriod,
-    buildQuarterlyBillingPeriod,
-    buildYearlyBillingPeriod,
-    filterDealDocumentItemsByBillingMode,
-    getBillableRootDealItems,
-    getDealBillingPeriodKey,
-    getDealBillingPeriodLabel,
-    getDealBillingPeriodMonthValue,
-    getQuotationTopLevelDealItems,
-    getSelectableDealItems,
-    resolveDealDocumentBillingMode,
-    resolveDealDocumentBillingModeForItem,
-    saveDealDocumentDraft,
-    type DealDocumentBillingMode,
-    type DealDocumentKind,
-    type DealDocumentSelectableItem,
+  buildCustomBillingPeriod,
+  buildDealDocumentDraftRecord,
+  buildMonthlyBillingPeriod,
+  buildQuarterlyBillingPeriod,
+  buildYearlyBillingPeriod,
+  filterDealDocumentItemsByBillingMode,
+  getBillableRootDealItems,
+  getDealBillingPeriodKey,
+  getDealBillingPeriodLabel,
+  getDealBillingPeriodMonthValue,
+  getQuotationTopLevelDealItems,
+  getSelectableDealItems,
+  resolveDealDocumentBillingMode,
+  resolveDealDocumentBillingModeForItem,
+  saveDealDocumentDraft,
+  type DealDocumentBillingMode,
+  type DealDocumentKind,
+  type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
 
 const props = defineProps<{
@@ -116,7 +116,9 @@ const billingQuarterOptions = [
   { title: "Q4", value: "Q4" },
 ] as const;
 
-const syncBillingPeriodDraft = (period: DealBillingPeriod = billingPeriod.value) => {
+const syncBillingPeriodDraft = (
+  period: DealBillingPeriod = billingPeriod.value,
+) => {
   const periodKey = getDealBillingPeriodKey(period);
   const startDate = String(period.startDate || defaultBillingCustomDateValue());
   const endDate = String(period.endDate || startDate);
@@ -870,7 +872,7 @@ const formatDate = (value?: string | null) => {
     </VCard>
   </VDialog>
 
-  <VDialog v-model="billingPeriodDialogVisible" max-width="520">
+  <VDialog v-model="billingPeriodDialogVisible" max-width="640">
     <VCard>
       <VCardItem>
         <VCardTitle>Select Billing Period</VCardTitle>
@@ -878,81 +880,90 @@ const formatDate = (value?: string | null) => {
 
       <VDivider />
 
-      <VCardText>
-        <div class="text-sm text-medium-emphasis mb-4">
+      <VCardText class="d-flex flex-column gap-4">
+        <div class="text-sm text-medium-emphasis">
           Enter the billing period and explicit prices for the selected
           period-based lines.
         </div>
 
-        <VSelect
-          v-model="billingPeriodKind"
-          label="Period Type"
-          :items="billingPeriodKindOptions"
-        />
+        <div class="rounded border pa-4 bg-var-theme-background">
+          <VRow>
+            <VCol cols="12" md="6">
+              <VSelect
+                v-model="billingPeriodKind"
+                label="Period Type"
+                :items="billingPeriodKindOptions"
+              />
+            </VCol>
 
-        <VTextField
-          v-if="billingPeriodKind === 'monthly'"
-          v-model="billingPeriodMonthValue"
-          type="month"
-          label="Billing Month"
-          autofocus
-        />
+            <VCol cols="12" md="6">
+              <VTextField
+                v-if="billingPeriodKind === 'monthly'"
+                v-model="billingPeriodMonthValue"
+                type="month"
+                label="Billing Month"
+                autofocus
+              />
 
-        <VRow v-else-if="billingPeriodKind === 'quarterly'">
-          <VCol cols="12" md="6">
-            <VTextField
-              v-model="billingPeriodQuarterYearValue"
-              type="number"
-              min="2000"
-              label="Billing Year"
-            />
-          </VCol>
+              <VTextField
+                v-else-if="billingPeriodKind === 'quarterly'"
+                v-model="billingPeriodQuarterYearValue"
+                type="number"
+                min="2000"
+                label="Billing Year"
+              />
 
-          <VCol cols="12" md="6">
-            <VSelect
-              v-model="billingPeriodQuarterValue"
-              label="Billing Quarter"
-              :items="billingQuarterOptions"
-            />
-          </VCol>
-        </VRow>
+              <VTextField
+                v-else-if="billingPeriodKind === 'yearly'"
+                v-model="billingPeriodYearValue"
+                type="number"
+                min="2000"
+                label="Billing Year"
+              />
 
-        <VTextField
-          v-else-if="billingPeriodKind === 'yearly'"
-          v-model="billingPeriodYearValue"
-          type="number"
-          min="2000"
-          label="Billing Year"
-        />
+              <VTextField
+                v-else
+                v-model="billingPeriodCustomStartDate"
+                type="date"
+                label="Start Date"
+              />
+            </VCol>
+          </VRow>
 
-        <VRow v-else>
-          <VCol cols="12" md="6">
-            <VTextField
-              v-model="billingPeriodCustomStartDate"
-              type="date"
-              label="Start Date"
-            />
-          </VCol>
+          <VRow v-if="billingPeriodKind === 'quarterly'">
+            <VCol cols="12" md="6" offset-md="6">
+              <VSelect
+                v-model="billingPeriodQuarterValue"
+                label="Billing Quarter"
+                :items="billingQuarterOptions"
+              />
+            </VCol>
+          </VRow>
 
-          <VCol cols="12" md="6">
-            <VTextField
-              v-model="billingPeriodCustomEndDate"
-              type="date"
-              label="End Date"
-            />
-          </VCol>
+          <VRow v-else-if="billingPeriodKind === 'custom'">
+            <VCol cols="12" md="6">
+              <VTextField
+                v-model="billingPeriodCustomEndDate"
+                type="date"
+                label="End Date"
+              />
+            </VCol>
 
-          <VCol cols="12">
-            <VTextField
-              v-model="billingPeriodCustomLabel"
-              label="Custom Label"
-              placeholder="Optional"
-            />
-          </VCol>
-        </VRow>
+            <VCol cols="12">
+              <VTextField
+                v-model="billingPeriodCustomLabel"
+                label="Custom Label"
+                placeholder="Optional"
+              />
+            </VCol>
+          </VRow>
+        </div>
 
-        <div class="text-sm text-medium-emphasis mt-2">
-          Selected period: {{ billingPeriodPreview.label }}
+        <div class="rounded border pa-3 bg-var-theme-background">
+          <div class="text-xs text-medium-emphasis mb-1">Selected period</div>
+          <div class="text-body-1 font-weight-medium">
+            {{ billingPeriodPreview.label }}
+          </div>
         </div>
 
         <div
@@ -962,7 +973,7 @@ const formatDate = (value?: string | null) => {
           <div
             v-for="item in pendingBillingPeriodItems"
             :key="item.selectionKey"
-            class="border rounded pa-3"
+            class="border rounded-lg pa-4 bg-var-theme-background"
           >
             <div class="text-body-1 font-weight-medium mb-1">
               {{ item.name }}
