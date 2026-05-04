@@ -3922,7 +3922,7 @@ const openEditTask = (taskId: number | string) => {
                   </VChip>
 
                   <VChip
-                    v-else-if="item.isBillableRoot"
+                    v-else-if="item.isBillableRoot && !item.isRootReplacement"
                     size="x-small"
                     label
                     color="warning"

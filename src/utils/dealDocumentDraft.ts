@@ -95,6 +95,7 @@ export interface DealDocumentSelectableItem extends DealItem {
   isAutoBillable: boolean;
   isBillableRoot: boolean;
   isGenerated: boolean;
+  isRootReplacement?: boolean;
   lineConstraintsOverride?: {
     discount?: boolean;
     price?: boolean;
@@ -756,12 +757,16 @@ function buildExpansionSummary(
   if (!record) return null;
 
   if (record.type === "Contractual Service") {
-    return formatCountLabel(record.phases.length, "phase", "phases");
+    return formatCountLabel(
+      getDealContractualPhaseLines(item, record).length,
+      "phase",
+      "phases",
+    );
   }
 
   if (record.type === "Retainer Service") {
     return formatCountLabel(
-      record.retainerServices.length,
+      getDealRetainerServiceLines(item, record).length,
       "retainer service",
       "retainer services",
     );
@@ -769,7 +774,7 @@ function buildExpansionSummary(
 
   if (record.type === "Reccurent Service") {
     return formatCountLabel(
-      record.reccurentServices.length,
+      getDealRecurrentServiceLines(item, record).length,
       "recurrent service",
       "recurrent services",
     );
@@ -782,7 +787,10 @@ function buildItemHint(
   item: DealItem,
   expansionSummary: string | null,
   parentName: string | null,
+  isRootReplacement = false,
 ) {
+  if (isRootReplacement) return null;
+
   if (item.catalogueType === "Related Item") {
     return "Counts as a directly billable related item.";
   }
@@ -821,10 +829,9 @@ function toSelectableItem(
     selectionKeySuffix?: string;
   },
 ): DealDocumentSelectableItem {
-  const expansionSummary = buildExpansionSummary(
-    item,
-    options.resolveCatalogueRecord,
-  );
+  const expansionSummary = options.isRootReplacement
+    ? null
+    : buildExpansionSummary(item, options.resolveCatalogueRecord);
 
   return {
     ...item,
@@ -842,10 +849,16 @@ function toSelectableItem(
       options.isRootReplacement || isBillableRootDealItem(item)
         ? "Billable Root Items"
         : "Child Items",
-    hint: buildItemHint(item, expansionSummary, options.parentName),
+    hint: buildItemHint(
+      item,
+      expansionSummary,
+      options.parentName,
+      Boolean(options.isRootReplacement),
+    ),
     isAutoBillable: isAutoBillableDealItem(item),
     isBillableRoot: options.isRootReplacement || isBillableRootDealItem(item),
     isGenerated: options.isGenerated,
+    isRootReplacement: options.isRootReplacement || undefined,
     lineConstraintsOverride: options.lineConstraintsOverride || undefined,
     parentName: options.parentName,
   };
