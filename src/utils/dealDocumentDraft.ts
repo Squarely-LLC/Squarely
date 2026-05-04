@@ -514,6 +514,82 @@ function normalizeCustomPhases(item: DealItem) {
     : ([] as DealCustomPhase[]);
 }
 
+function normalizeRemovedChildIds(item: DealItem) {
+  return new Set(
+    Array.isArray(item.removedPhaseIds)
+      ? item.removedPhaseIds
+          .map((value) => Number(value))
+          .filter(Number.isFinite)
+      : [],
+  );
+}
+
+function buildDealLinkedServiceLines(
+  item: DealItem,
+  options: {
+    chargeTax: boolean | null;
+    customPrefix: "retainer" | "recurrent";
+    defaultNote?: string | null;
+    overridePrefix: "retainer" | "recurrent";
+    services: Array<{
+      id: number;
+      name: string;
+      category: string;
+      description: string;
+      quantity: number | null;
+    }>;
+  },
+): DealDocumentContractualPhaseLine[] {
+  const removedChildIds = normalizeRemovedChildIds(item);
+
+  const baseLines = options.services
+    .filter((service) => !removedChildIds.has(Number(service.id)))
+    .map((service) => {
+      const override =
+        item.subItemOverrides?.[`${options.overridePrefix}-${service.id}`] ||
+        {};
+
+      return {
+        category:
+          override.category ?? service.category ?? item.category ?? null,
+        discountPercent: override.discountPercent ?? 0,
+        id: service.id,
+        isCustom: false,
+        name: override.name ?? service.name,
+        note:
+          override.note ??
+          service.description ??
+          item.note ??
+          options.defaultNote ??
+          null,
+        overrideKey: `${options.overridePrefix}-${service.id}`,
+        price: override.unitPrice ?? null,
+        quantity: override.quantity ?? service.quantity ?? item.quantity,
+        sourcePhaseId: Number(service.id),
+        taxApplicable: override.taxApplicable ?? options.chargeTax,
+      } satisfies DealDocumentContractualPhaseLine;
+    });
+
+  const customLines = normalizeCustomPhases(item).map(
+    (phase) =>
+      ({
+        category: phase.category ?? item.category ?? null,
+        discountPercent: phase.discountPercent ?? 0,
+        id: phase.id,
+        isCustom: true,
+        name: String(phase.name || "").trim(),
+        note: phase.note ?? item.note ?? options.defaultNote ?? null,
+        overrideKey: `${options.customPrefix}-custom-${phase.id}`,
+        price: phase.price ?? null,
+        quantity: phase.quantity ?? item.quantity,
+        sourcePhaseId: null,
+        taxApplicable: phase.taxApplicable ?? options.chargeTax,
+      }) satisfies DealDocumentContractualPhaseLine,
+  );
+
+  return [...baseLines, ...customLines];
+}
+
 export const getDealContractualPhaseLines = (
   item: DealItem,
   record: CatalogueContractualServiceRecord,
@@ -565,6 +641,42 @@ export const getDealContractualPhaseLines = (
 
   return [...basePhases, ...customPhases];
 };
+
+export const getDealRetainerServiceLines = (
+  item: DealItem,
+  record: CatalogueRetainerServiceRecord,
+): DealDocumentContractualPhaseLine[] =>
+  buildDealLinkedServiceLines(item, {
+    chargeTax: record.chargeTax,
+    customPrefix: "retainer",
+    defaultNote: record.description ?? null,
+    overridePrefix: "retainer",
+    services: (record.retainerServices || []).map((service) => ({
+      id: service.id,
+      name: service.name,
+      category: service.category,
+      description: service.description,
+      quantity: service.qty ?? item.quantity,
+    })),
+  });
+
+export const getDealRecurrentServiceLines = (
+  item: DealItem,
+  record: CatalogueReccurentServiceRecord,
+): DealDocumentContractualPhaseLine[] =>
+  buildDealLinkedServiceLines(item, {
+    chargeTax: record.chargeTax,
+    customPrefix: "recurrent",
+    defaultNote: record.description ?? null,
+    overridePrefix: "recurrent",
+    services: (record.reccurentServices || []).map((service) => ({
+      id: service.id,
+      name: service.name,
+      category: service.category,
+      description: service.description,
+      quantity: item.quantity,
+    })),
+  });
 
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -784,18 +896,18 @@ function buildDerivedSelectableLines(
   if (record.type === "Retainer Service") {
     const retainer = record as CatalogueRetainerServiceRecord;
 
-    return (retainer.retainerServices || []).map((service) => {
-      const override = item.subItemOverrides?.[`retainer-${service.id}`] || {};
-
+    return getDealRetainerServiceLines(item, retainer).map((service) => {
       return toSelectableItem(
         {
           ...item,
           catalogueType: "Retainer Service Line",
-          discountPercent: override.discountPercent ?? 0,
-          name: override.name ?? service.name,
-          note: override.note ?? service.description ?? item.note ?? null,
-          quantity: override.quantity ?? service.qty ?? item.quantity,
-          unitPrice: override.unitPrice ?? item.unitPrice ?? null,
+          category: service.category,
+          discountPercent: service.discountPercent ?? 0,
+          name: service.name,
+          note: service.note,
+          quantity: service.quantity ?? item.quantity,
+          taxApplicable: service.taxApplicable,
+          unitPrice: service.price ?? item.unitPrice ?? null,
         },
         {
           isGenerated: false,
@@ -806,7 +918,7 @@ function buildDerivedSelectableLines(
           },
           parentName: item.name,
           resolveCatalogueRecord,
-          selectionKeySuffix: `retainer-${service.id}`,
+          selectionKeySuffix: service.overrideKey,
         },
       );
     });
@@ -815,18 +927,18 @@ function buildDerivedSelectableLines(
   if (record.type === "Reccurent Service") {
     const recurrent = record as CatalogueReccurentServiceRecord;
 
-    return (recurrent.reccurentServices || []).map((service) => {
-      const override = item.subItemOverrides?.[`recurrent-${service.id}`] || {};
-
+    return getDealRecurrentServiceLines(item, recurrent).map((service) => {
       return toSelectableItem(
         {
           ...item,
           catalogueType: "Recurrent Service Line",
-          discountPercent: override.discountPercent ?? 0,
-          name: override.name ?? service.name,
-          note: override.note ?? service.description ?? item.note ?? null,
-          quantity: override.quantity ?? item.quantity,
-          unitPrice: override.unitPrice ?? item.unitPrice ?? null,
+          category: service.category,
+          discountPercent: service.discountPercent ?? 0,
+          name: service.name,
+          note: service.note,
+          quantity: service.quantity ?? item.quantity,
+          taxApplicable: service.taxApplicable,
+          unitPrice: service.price ?? item.unitPrice ?? null,
         },
         {
           isGenerated: false,
@@ -838,7 +950,7 @@ function buildDerivedSelectableLines(
           },
           parentName: item.name,
           resolveCatalogueRecord,
-          selectionKeySuffix: `recurrent-${service.id}`,
+          selectionKeySuffix: service.overrideKey,
         },
       );
     });
@@ -1077,24 +1189,16 @@ function buildQuotationChildSummary(
     );
 
     if (record?.type === "Retainer Service") {
-      const lines = (record.retainerServices || [])
-        .map((service) => {
-          const override =
-            item.subItemOverrides?.[`retainer-${service.id}`] || {};
-          return String(override.name ?? service.name).trim();
-        })
+      const lines = getDealRetainerServiceLines(item, record)
+        .map((service) => String(service.name).trim())
         .filter(Boolean);
 
       if (lines.length) return lines.join("\n");
     }
 
     if (record?.type === "Reccurent Service") {
-      const lines = (record.reccurentServices || [])
-        .map((service) => {
-          const override =
-            item.subItemOverrides?.[`recurrent-${service.id}`] || {};
-          return String(override.name ?? service.name).trim();
-        })
+      const lines = getDealRecurrentServiceLines(item, record)
+        .map((service) => String(service.name).trim())
         .filter(Boolean);
 
       if (lines.length) return lines.join("\n");
@@ -1184,12 +1288,12 @@ function buildRetainerProducts(
   record: CatalogueRetainerServiceRecord,
   billingPeriod?: DealBillingPeriod | null,
 ) {
-  const services = record.retainerServices || [];
+  const services = getDealRetainerServiceLines(item, record);
   const billingPeriodKey = getDealBillingPeriodKey(billingPeriod);
   const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
 
   return services.map((service, index) => {
-    const override = item.subItemOverrides?.[`retainer-${service.id}`] || {};
+    const override = item.subItemOverrides?.[service.overrideKey] || {};
     const periodUnitPrice = resolvePeriodUnitPrice(
       override.periodUnitPrices,
       billingPeriod,
@@ -1199,24 +1303,25 @@ function buildRetainerProducts(
       billingPeriod: billingPeriod ?? null,
       billingPeriodKey: billingPeriodKey || null,
       catalogueItemId: item.catalogueItemId ?? null,
-      dealSelectionKey: item.selectionKey.endsWith(`retainer-${service.id}`)
+      dealSelectionKey: item.selectionKey.endsWith(service.overrideKey)
         ? item.selectionKey
-        : `item-${item.id}-retainer-${service.id}`,
+        : `item-${item.id}-${service.overrideKey}`,
       cost:
         periodUnitPrice ??
+        service.price ??
         override.unitPrice ??
         buildDistributedCost(totalCost, services.length, index),
       description: appendBillingPeriodLabel(
-        override.note ?? service.description ?? item.note ?? record.description,
+        service.note ?? item.note ?? record.description,
         billingPeriod,
       ),
-      discountPercent: override.discountPercent ?? 0,
-      hours: override.quantity ?? service.qty ?? item.quantity,
+      discountPercent: service.discountPercent ?? 0,
+      hours: service.quantity ?? item.quantity,
       lineConstraints: {
         discount: false,
         price: false,
       },
-      title: override.name ?? service.name,
+      title: service.name,
     });
   });
 }
@@ -1226,12 +1331,12 @@ function buildRecurrentProducts(
   record: CatalogueReccurentServiceRecord,
   billingPeriod?: DealBillingPeriod | null,
 ) {
-  const services = record.reccurentServices || [];
+  const services = getDealRecurrentServiceLines(item, record);
   const billingPeriodKey = getDealBillingPeriodKey(billingPeriod);
   const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
 
   return services.map((service, index) => {
-    const override = item.subItemOverrides?.[`recurrent-${service.id}`] || {};
+    const override = item.subItemOverrides?.[service.overrideKey] || {};
     const periodUnitPrice = resolvePeriodUnitPrice(
       override.periodUnitPrices,
       billingPeriod,
@@ -1241,25 +1346,26 @@ function buildRecurrentProducts(
       billingPeriod: billingPeriod ?? null,
       billingPeriodKey: billingPeriodKey || null,
       catalogueItemId: item.catalogueItemId ?? null,
-      dealSelectionKey: item.selectionKey.endsWith(`recurrent-${service.id}`)
+      dealSelectionKey: item.selectionKey.endsWith(service.overrideKey)
         ? item.selectionKey
-        : `item-${item.id}-recurrent-${service.id}`,
+        : `item-${item.id}-${service.overrideKey}`,
       cost:
         periodUnitPrice ??
+        service.price ??
         override.unitPrice ??
         buildDistributedCost(totalCost, services.length, index),
       description: appendBillingPeriodLabel(
-        override.note ?? service.description ?? item.note ?? record.description,
+        service.note ?? item.note ?? record.description,
         billingPeriod,
       ),
-      discountPercent: override.discountPercent ?? 0,
-      hours: override.quantity ?? item.quantity,
+      discountPercent: service.discountPercent ?? 0,
+      hours: service.quantity ?? item.quantity,
       lineConstraints: {
         discount: false,
         price: false,
         quantity: false,
       },
-      title: override.name ?? service.name,
+      title: service.name,
     });
   });
 }

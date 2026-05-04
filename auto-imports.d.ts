@@ -87,6 +87,8 @@ declare global {
   const getDealDiscountTotal: typeof import('./src/utils/dealValue')['getDealDiscountTotal']
   const getDealGrandTotal: typeof import('./src/utils/dealValue')['getDealGrandTotal']
   const getDealItemsSubtotal: typeof import('./src/utils/dealValue')['getDealItemsSubtotal']
+  const getDealRecurrentServiceLines: typeof import('./src/utils/dealDocumentDraft')['getDealRecurrentServiceLines']
+  const getDealRetainerServiceLines: typeof import('./src/utils/dealDocumentDraft')['getDealRetainerServiceLines']
   const getDocumentSequencePrefix: typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']
   const getFileInfo: typeof import('./src/utils/fileStore')['getFileInfo']
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
@@ -523,6 +525,8 @@ declare module 'vue' {
     readonly getDealDiscountTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealDiscountTotal']>
     readonly getDealGrandTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealGrandTotal']>
     readonly getDealItemsSubtotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealItemsSubtotal']>
+    readonly getDealRecurrentServiceLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealRecurrentServiceLines']>
+    readonly getDealRetainerServiceLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealRetainerServiceLines']>
     readonly getDocumentSequencePrefix: UnwrapRef<typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']>
     readonly getFileInfo: UnwrapRef<typeof import('./src/utils/fileStore')['getFileInfo']>
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>

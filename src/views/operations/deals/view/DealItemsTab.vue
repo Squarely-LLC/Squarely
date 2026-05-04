@@ -44,6 +44,8 @@ import {
   getDealBillingPeriodLabel,
   getDealBillingPeriodMonthValue,
   getDealContractualPhaseLines,
+  getDealRecurrentServiceLines,
+  getDealRetainerServiceLines,
   getQuotationTopLevelDealItems,
   getSelectableDealItems,
   resolveDealDocumentBillingMode,
@@ -824,7 +826,7 @@ const openEditItem = (item: DealItemWithPlan) => {
 };
 
 const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
-  if (goal.overrideKey.startsWith("phase-custom-")) {
+  if (goal.overrideKey.includes("-custom-")) {
     openEditCustomPhase(parentItem, goal);
     return;
   }
@@ -1092,33 +1094,39 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
 
   if (record.type === "Retainer Service") {
     const retainer = record as CatalogueRetainerServiceRecord;
+    const retainerLines = getDealRetainerServiceLines(item, retainer);
 
     return [
       makeSection(item, {
         name: retainer.name,
         note: retainer.description || null,
         price: retainer.bestPrice,
-        goals: (retainer.retainerServices || []).map((service) =>
-          applySubItemOverride(
+        goals: retainerLines.map((service) => ({
+          ...makeDerivedGoal(
             item,
-            `retainer-${service.id}`,
-            makeDerivedGoal(
-              item,
-              "retainer",
-              "Retainer Service",
-              {
-                quantity: service.qty ?? item.quantity,
-                discountLabel: null,
-                taxApplicable: null,
-                showQuantity: true,
-                showPrice: true,
-                showDiscount: false,
-                showTaxApplicable: false,
-              },
-              service,
-            ),
+            "retainer",
+            "Retainer Service",
+            {
+              quantity: service.quantity,
+              discountPercent: service.discountPercent,
+              discountLabel: null,
+              taxApplicable: service.taxApplicable,
+              showQuantity: true,
+              showPrice: true,
+              showDiscount: false,
+              showTaxApplicable: false,
+            },
+            {
+              id: service.id,
+              name: service.name,
+              category: service.category,
+              description: service.note,
+              note: service.note,
+              price: service.price,
+            },
           ),
-        ),
+          overrideKey: service.overrideKey,
+        })),
         goalTypeSingular: "Retainer Service",
         goalTypePlural: "Retainer Services",
       }),
@@ -1127,33 +1135,39 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
 
   if (record.type === "Reccurent Service") {
     const recurrent = record as CatalogueReccurentServiceRecord;
+    const recurrentLines = getDealRecurrentServiceLines(item, recurrent);
 
     return [
       makeSection(item, {
         name: recurrent.name,
         note: recurrent.description || null,
         price: recurrent.bestPrice,
-        goals: (recurrent.reccurentServices || []).map((service) =>
-          applySubItemOverride(
+        goals: recurrentLines.map((service) => ({
+          ...makeDerivedGoal(
             item,
-            `recurrent-${service.id}`,
-            makeDerivedGoal(
-              item,
-              "recurrent",
-              "Recurrent Service",
-              {
-                quantity: null,
-                discountLabel: null,
-                taxApplicable: null,
-                showQuantity: false,
-                showPrice: true,
-                showDiscount: false,
-                showTaxApplicable: false,
-              },
-              service,
-            ),
+            "recurrent",
+            "Recurrent Service",
+            {
+              quantity: service.quantity,
+              discountPercent: service.discountPercent,
+              discountLabel: null,
+              taxApplicable: service.taxApplicable,
+              showQuantity: false,
+              showPrice: true,
+              showDiscount: false,
+              showTaxApplicable: false,
+            },
+            {
+              id: service.id,
+              name: service.name,
+              category: service.category,
+              description: service.note,
+              note: service.note,
+              price: service.price,
+            },
           ),
-        ),
+          overrideKey: service.overrideKey,
+        })),
         goalTypeSingular: "Recurrent Service",
         goalTypePlural: "Recurrent Services",
       }),
@@ -1839,9 +1853,52 @@ const selectionDialogHint = computed(() => {
   return "No rows are preselected. Choose only the rows you want billed.";
 });
 
-const phaseDialogTitle = computed(() =>
-  phaseDraft.customPhaseId ? "Edit Phase" : "Add Phase",
+const getExpandableServiceRecord = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  const sourceItem = item ? (getItemById(item.id) ?? item) : null;
+  if (!sourceItem?.catalogueItemId) return null;
+
+  const record = cataloguesStore.recordById(
+    sourceItem.catalogueItemId,
+    sourceItem.catalogueType || undefined,
+  );
+
+  if (
+    record?.type === "Contractual Service" ||
+    record?.type === "Retainer Service" ||
+    record?.type === "Reccurent Service"
+  )
+    return record;
+
+  return null;
+};
+
+const getEditableChildLabel = (item?: DealItem | DealItemWithPlan | null) => {
+  const record = getExpandableServiceRecord(item);
+
+  if (record?.type === "Contractual Service") return "Phase";
+  if (record?.type === "Retainer Service") return "Retainer Service";
+  if (record?.type === "Reccurent Service") return "Recurrent Service";
+
+  return "Child";
+};
+
+const phaseDialogEntityLabel = computed(() =>
+  phaseDraft.parentItemId
+    ? getEditableChildLabel(getItemById(phaseDraft.parentItemId))
+    : "Child",
 );
+
+const phaseDialogTitle = computed(
+  () =>
+    `${phaseDraft.customPhaseId ? "Edit" : "Add"} ${phaseDialogEntityLabel.value}`,
+);
+
+const isRemovableChildGoal = (goal: DerivedGoal) =>
+  goal.typeLabel === "Phase" ||
+  goal.typeLabel === "Retainer Service" ||
+  goal.typeLabel === "Recurrent Service";
 
 const formatItemType = (value?: string | null) => value || "Unknown";
 
@@ -2200,21 +2257,8 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
   await router.push({ name: routeNameForDocument(kind) });
 };
 
-const getContractualRecord = (item: DealItem) => {
-  if (!item.catalogueItemId) return null;
-
-  const record = cataloguesStore.recordById(
-    item.catalogueItemId,
-    item.catalogueType || undefined,
-  );
-
-  if (!record || record.type !== "Contractual Service") return null;
-
-  return record as CatalogueContractualServiceRecord;
-};
-
 const openAddPhase = (item: DealItemWithPlan) => {
-  const record = getContractualRecord(item);
+  const record = getExpandableServiceRecord(item);
   if (!record) return;
 
   phaseDraft.parentItemId = Number(item.id);
@@ -2232,7 +2276,10 @@ const openAddPhase = (item: DealItemWithPlan) => {
 const openEditCustomPhase = (item: DealItemWithPlan, goal: DerivedGoal) => {
   const sourceItem = getItemById(item.id);
   const customPhase = sourceItem?.customPhases?.find(
-    (phase) => `phase-custom-${phase.id}` === goal.overrideKey,
+    (phase) =>
+      `phase-custom-${phase.id}` === goal.overrideKey ||
+      `retainer-custom-${phase.id}` === goal.overrideKey ||
+      `recurrent-custom-${phase.id}` === goal.overrideKey,
   );
   if (!customPhase) return;
 
@@ -2290,16 +2337,16 @@ const savePhase = async () => {
   dealsStore.updateDeal(props.deal.id, { items: nextItems });
   phaseDialogVisible.value = false;
   notifications.push(
-    phaseDraft.customPhaseId ? "Phase updated" : "Phase added",
+    `${phaseDialogEntityLabel.value} ${phaseDraft.customPhaseId ? "updated" : "added"}`,
     "success",
     2500,
   );
 };
 
 const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
-  if (goal.typeLabel !== "Phase") {
+  if (!isRemovableChildGoal(goal)) {
     notifications.push(
-      "Remove is currently available for contractual phases only.",
+      "Remove is only available for item children.",
       "info",
       2500,
     );
@@ -2309,16 +2356,19 @@ const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   const nextItems = (props.deal.items || []).map((item) => {
     if (item.id !== parentItem.id) return item;
 
-    if (goal.overrideKey.startsWith("phase-custom-")) {
+    if (goal.overrideKey.includes("-custom-")) {
       return {
         ...item,
         customPhases: (item.customPhases || []).filter(
-          (phase) => `phase-custom-${phase.id}` !== goal.overrideKey,
+          (phase) =>
+            `phase-custom-${phase.id}` !== goal.overrideKey &&
+            `retainer-custom-${phase.id}` !== goal.overrideKey &&
+            `recurrent-custom-${phase.id}` !== goal.overrideKey,
         ),
       };
     }
 
-    const phaseId = Number(goal.overrideKey.replace("phase-", ""));
+    const phaseId = Number(goal.overrideKey.replace(/^[^-]+-/, ""));
     const removedPhaseIds = new Set(item.removedPhaseIds || []);
     if (Number.isFinite(phaseId)) removedPhaseIds.add(phaseId);
 
@@ -2335,7 +2385,11 @@ const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   });
 
   dealsStore.updateDeal(props.deal.id, { items: nextItems });
-  notifications.push("Phase removed", "success", 2500);
+  notifications.push(
+    `${getEditableChildLabel(parentItem)} removed`,
+    "success",
+    2500,
+  );
 };
 
 type DealTodo = ToDo & {
@@ -2700,13 +2754,15 @@ const openEditTask = (taskId: number | string) => {
                           <VListItemTitle>Edit</VListItemTitle>
                         </VListItem>
                         <VListItem
-                          v-if="item.catalogueType === 'Contractual Service'"
+                          v-if="getExpandableServiceRecord(item)"
                           @click="openAddPhase(item)"
                         >
                           <template #prepend>
                             <VIcon icon="tabler-layout-grid-add" />
                           </template>
-                          <VListItemTitle>Add Phase</VListItemTitle>
+                          <VListItemTitle>
+                            Add {{ item.childTypeSingular }}
+                          </VListItemTitle>
                         </VListItem>
                         <VListItem @click="removeDealItem(item)">
                           <template #prepend>
@@ -2864,13 +2920,15 @@ const openEditTask = (taskId: number | string) => {
                                 <VListItemTitle>Create Invoice</VListItemTitle>
                               </VListItem>
                               <VListItem
-                                v-if="goal.typeLabel === 'Phase'"
+                                v-if="isRemovableChildGoal(goal)"
                                 @click="removeGoal(item, goal)"
                               >
                                 <template #prepend>
                                   <VIcon icon="tabler-trash" color="error" />
                                 </template>
-                                <VListItemTitle>Remove Phase</VListItemTitle>
+                                <VListItemTitle>
+                                  Remove {{ goal.typeLabel }}
+                                </VListItemTitle>
                               </VListItem>
                             </VList>
                           </VMenu>
