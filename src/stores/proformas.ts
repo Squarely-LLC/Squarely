@@ -373,6 +373,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    dealSelectionKey: product.dealSelectionKey?.trim() || null,
     lineConstraints: product.lineConstraints
       ? { ...product.lineConstraints }
       : null,
@@ -547,7 +548,8 @@ function normaliseProformaRecord(
       payload.convertedInvoiceId === undefined
         ? null
         : Number(payload.convertedInvoiceId),
-    note: normalizeRichText(payload.note) || buildProformaNote(config.financial, 7),
+    note:
+      normalizeRichText(payload.note) || buildProformaNote(config.financial, 7),
     showClientNote:
       payload.showClientNote ?? config.financial?.invoicing?.showNotes ?? true,
     totalFx: payload.totalFx?.trim() || null,
@@ -635,7 +637,8 @@ function mergeProformaRecord(
         : patch.convertedInvoiceId === null
           ? null
           : Number(patch.convertedInvoiceId),
-    note: patch.note === undefined ? original.note : normalizeRichText(patch.note),
+    note:
+      patch.note === undefined ? original.note : normalizeRichText(patch.note),
     showClientNote: patch.showClientNote ?? original.showClientNote,
     totalFx:
       patch.totalFx === undefined

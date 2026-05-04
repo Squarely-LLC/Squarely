@@ -167,7 +167,12 @@ function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
       ? Object.fromEntries(
           Object.entries(item.subItemOverrides).map(([key, value]) => [
             key,
-            { ...value },
+            {
+              ...value,
+              periodUnitPrices: value?.periodUnitPrices
+                ? Object.fromEntries(Object.entries(value.periodUnitPrices))
+                : null,
+            },
           ]),
         )
       : null,

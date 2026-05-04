@@ -8,6 +8,7 @@ export interface DealItemOverride {
   category?: string | null;
   quantity?: number | null;
   unitPrice?: number | null;
+  periodUnitPrices?: Record<string, number | null> | null;
   discountPercent?: number | null;
   taxApplicable?: boolean | null;
   note?: string | null;

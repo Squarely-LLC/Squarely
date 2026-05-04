@@ -3,23 +3,23 @@ import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { Status, ToDo } from "@/data/schema";
 import type {
-    CatalogueActiveState,
-    CatalogueContractualServiceRecord,
-    CatalogueItem,
-    CatalogueItemType,
-    CatalogueOnetimeServiceRecord,
-    CatalogueProducedProductRecord,
-    CatalogueProductRecord,
-    CatalogueReccurentServiceRecord,
-    CatalogueRetainerServiceRecord,
-    CatalogueSalesTask,
+  CatalogueActiveState,
+  CatalogueContractualServiceRecord,
+  CatalogueItem,
+  CatalogueItemType,
+  CatalogueOnetimeServiceRecord,
+  CatalogueProducedProductRecord,
+  CatalogueProductRecord,
+  CatalogueReccurentServiceRecord,
+  CatalogueRetainerServiceRecord,
+  CatalogueSalesTask,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
-    DealCustomPhase,
-    DealItem,
-    DealItemOverride,
-    DealProperties,
-    DealSalesTaskTemplate,
+  DealCustomPhase,
+  DealItem,
+  DealItemOverride,
+  DealProperties,
+  DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
@@ -31,23 +31,23 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
-    buildDealDocumentDraftRecord,
-    filterDealDocumentItemsByBillingMode,
-    getBillableRootDealItems,
-    getDealContractualPhaseLines,
-    getQuotationTopLevelDealItems,
-    getSelectableDealItems,
-    resolveDealDocumentBillingMode,
-    resolveDealDocumentBillingModeForItem,
-    saveDealDocumentDraft,
-    type DealDocumentBillingMode,
-    type DealDocumentKind,
-    type DealDocumentSelectableItem,
+  buildDealDocumentDraftRecord,
+  filterDealDocumentItemsByBillingMode,
+  getBillableRootDealItems,
+  getDealContractualPhaseLines,
+  getQuotationTopLevelDealItems,
+  getSelectableDealItems,
+  resolveDealDocumentBillingMode,
+  resolveDealDocumentBillingModeForItem,
+  saveDealDocumentDraft,
+  type DealDocumentBillingMode,
+  type DealDocumentKind,
+  type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
 import {
-    getDealDiscountTotal,
-    getDealGrandTotal,
-    getDealItemsSubtotal,
+  getDealDiscountTotal,
+  getDealGrandTotal,
+  getDealItemsSubtotal,
 } from "@/utils/dealValue";
 import { computed, reactive, ref } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -127,6 +127,37 @@ type ItemTypeChoice = {
   comingSoon?: boolean;
 };
 
+type DealPreviewKind = "quotation" | "proforma" | "invoice";
+
+type DealDocumentContainer = {
+  quotation: {
+    id: number | string;
+    quoteNumber: string;
+    issuedDate: string;
+    dueDate: string;
+    total: number;
+    quotationStatus: string;
+    dealId: number | null;
+  };
+};
+
+type DealDocumentPanelRecord = {
+  id: number | string;
+  issuedDate: string;
+  quoteNumber: string;
+  status: string;
+  total: number;
+};
+
+type DealDocumentPanel = {
+  count: number;
+  emptyText: string;
+  key: DealPreviewKind;
+  latest: DealDocumentPanelRecord | null;
+  records: DealDocumentPanelRecord[];
+  title: string;
+};
+
 const addItemDialogVisible = ref(false);
 const billingModeDialogVisible = ref(false);
 const billingPeriodDialogVisible = ref(false);
@@ -134,6 +165,7 @@ const createItemTypeDialogVisible = ref(false);
 const createDraftItemDialogVisible = ref(false);
 const editLineDialogVisible = ref(false);
 const phaseDialogVisible = ref(false);
+const previewDialogVisible = ref(false);
 const selectionDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const phaseFormRef = ref<VForm>();
@@ -145,7 +177,14 @@ const selectedCatalogueItemId = ref<string | null>(null);
 const selectedCreateItemType = ref<CatalogueItemType | null>(null);
 const selectedDocumentKind = ref<DealDocumentKind | null>(null);
 const selectedItemIds = ref<string[]>([]);
+const selectedPreviewDocument = ref<{
+  href: string;
+  id: number | string;
+  kind: DealPreviewKind;
+  title: string;
+} | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
+const billingPeriodPrices = reactive<Record<string, number>>({});
 
 const billingPeriodLabel = ref(
   new Intl.DateTimeFormat(undefined, {
@@ -153,6 +192,11 @@ const billingPeriodLabel = ref(
     year: "numeric",
   }).format(new Date()),
 );
+
+const normalizeBillingPeriodKey = (value?: string | null) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
 
 const addItemDraft = reactive({
   quantity: 1,
@@ -450,11 +494,13 @@ const addDealItemsFromCatalogueItem = (
 const itemTypeLabel = (item: DealItem) => {
   const raw = item.itemTypeLabel || item.catalogueType || "Item";
 
-  return raw
-    .replace(/\bitems?\b/gi, "")
-    .replace(/\bservices?\b/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim() || raw;
+  return (
+    raw
+      .replace(/\bitems?\b/gi, "")
+      .replace(/\bservices?\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim() || raw
+  );
 };
 
 const openAddItemDialog = () => {
@@ -777,6 +823,20 @@ const formatTaxApplicable = (value: boolean | null) => {
 
 const formatPercent = (value?: number | null) =>
   value === null || value === undefined ? "--" : `${Number(value)}%`;
+
+const formatDocumentDate = (value?: string | null) => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "--";
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return normalized;
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
+};
 
 const calculateAmount = (
   price?: number | null,
@@ -1185,16 +1245,19 @@ const totalQuoted = computed(() =>
     .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
 );
 const totalInvoiced = computed(() =>
-  financialRows.value
-    .filter((entry) => entry.type === "invoice")
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+  invoicesStore.items
+    .filter(
+      (record) =>
+        String(record.quotation.dealId ?? "") === String(props.deal.id),
+    )
+    .reduce((sum, record) => sum + Number(record.quotation.total || 0), 0),
 );
 const totalPaid = computed(() =>
   financialRows.value
     .filter(
       (entry) =>
-        entry.type === "payment"
-        && String(entry.status || "").toLowerCase() === "received",
+        entry.type === "payment" &&
+        String(entry.status || "").toLowerCase() === "received",
     )
     .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
 );
@@ -1220,32 +1283,220 @@ const selectableDocumentItems = computed(() =>
 const billingMode = computed<DealDocumentBillingMode>(() =>
   resolveDealDocumentBillingMode(billableRootItems.value),
 );
-const effectiveBillingMode = computed<DealDocumentBillingMode>(() =>
-  selectedBillingMode.value ?? billingMode.value,
+const effectiveBillingMode = computed<DealDocumentBillingMode>(
+  () => selectedBillingMode.value ?? billingMode.value,
 );
 const contact = computed(() => {
   if (!props.deal.relatedTo) return null;
 
   return contactsStore.byId(props.deal.relatedTo) ?? null;
 });
-const quotationCount = computed(
-  () =>
-    quotationsStore.items.filter(
-      (record) => String(record.quotation.dealId ?? "") === String(props.deal.id),
-    ).length,
+
+const sortDealDocumentRecords = <T extends DealDocumentContainer>(
+  records: T[],
+) =>
+  [...records]
+    .filter(
+      (record) =>
+        String(record.quotation.dealId ?? "") === String(props.deal.id),
+    )
+    .sort((left, right) => {
+      const leftTime = new Date(left.quotation.issuedDate || 0).getTime();
+      const rightTime = new Date(right.quotation.issuedDate || 0).getTime();
+
+      if (leftTime !== rightTime) return rightTime - leftTime;
+
+      return Number(right.quotation.id) - Number(left.quotation.id);
+    });
+
+const mapDealDocumentPanelRecord = <T extends DealDocumentContainer>(
+  record: T,
+): DealDocumentPanelRecord => ({
+  id: record.quotation.id,
+  issuedDate: record.quotation.issuedDate,
+  quoteNumber: record.quotation.quoteNumber,
+  status: record.quotation.quotationStatus,
+  total: Number(record.quotation.total || 0),
+});
+
+const dealQuotationRecords = computed(() =>
+  sortDealDocumentRecords(quotationsStore.items).map(
+    mapDealDocumentPanelRecord,
+  ),
 );
-const proformaCount = computed(
-  () =>
-    proformasStore.items.filter(
-      (record) => String(record.quotation.dealId ?? "") === String(props.deal.id),
-    ).length,
+const dealProformaRecords = computed(() =>
+  sortDealDocumentRecords(proformasStore.items).map(mapDealDocumentPanelRecord),
 );
-const invoiceCount = computed(
-  () =>
-    invoicesStore.items.filter(
-      (record) => String(record.quotation.dealId ?? "") === String(props.deal.id),
-    ).length,
+const dealInvoiceRecords = computed(() =>
+  sortDealDocumentRecords(invoicesStore.items).map(mapDealDocumentPanelRecord),
 );
+const quotationCount = computed(() => dealQuotationRecords.value.length);
+const proformaCount = computed(() => dealProformaRecords.value.length);
+const invoiceCount = computed(() => dealInvoiceRecords.value.length);
+
+const dealDocumentPanels = computed<DealDocumentPanel[]>(() => [
+  {
+    count: dealQuotationRecords.value.length,
+    emptyText: "No quotations created yet.",
+    key: "quotation",
+    latest: dealQuotationRecords.value[0] ?? null,
+    records: dealQuotationRecords.value,
+    title: "Quotations",
+  },
+  {
+    count: dealProformaRecords.value.length,
+    emptyText: "No proformas created yet.",
+    key: "proforma",
+    latest: dealProformaRecords.value[0] ?? null,
+    records: dealProformaRecords.value,
+    title: "Proformas",
+  },
+  {
+    count: dealInvoiceRecords.value.length,
+    emptyText: "No invoices created yet.",
+    key: "invoice",
+    latest: dealInvoiceRecords.value[0] ?? null,
+    records: dealInvoiceRecords.value,
+    title: "Invoices",
+  },
+]);
+
+const getPreviewRouteName = (kind: DealPreviewKind) => {
+  if (kind === "quotation") return "apps-quotation-preview-id";
+  if (kind === "proforma") return "apps-proforma-preview-id";
+
+  return "apps-invoice-preview-id";
+};
+
+const openQuickDocumentPreview = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  const route = router.resolve({
+    name: getPreviewRouteName(kind),
+    params: { id: record.id },
+    query: { quickPreview: "1" },
+  });
+
+  selectedPreviewDocument.value = {
+    href: route.href,
+    id: record.id,
+    kind,
+    title: record.quoteNumber || `${kind.toUpperCase()} #${record.id}`,
+  };
+  previewDialogVisible.value = true;
+};
+
+const openSelectedPreviewInPage = () => {
+  if (!selectedPreviewDocument.value) return;
+
+  router.push({
+    name: getPreviewRouteName(selectedPreviewDocument.value.kind),
+    params: { id: selectedPreviewDocument.value.id },
+  });
+};
+
+const resolveProductSelectionKey = (product: {
+  catalogueItemId?: string | null;
+  cost?: number | null;
+  dealSelectionKey?: string | null;
+  hours?: number | null;
+  title?: string | null;
+}) => {
+  const directKey = String(product.dealSelectionKey ?? "").trim();
+  if (directKey) return directKey;
+
+  const matches = selectableDocumentItems.value.filter((item) => {
+    const sameTitle = item.name.trim() === String(product.title ?? "").trim();
+    const sameCatalogueItemId =
+      String(item.catalogueItemId ?? "") ===
+      String(product.catalogueItemId ?? "");
+    const sameHours = Number(item.quantity ?? 1) === Number(product.hours ?? 1);
+    const sameCost = Number(item.unitPrice ?? 0) === Number(product.cost ?? 0);
+
+    return sameTitle && sameCatalogueItemId && sameHours && sameCost;
+  });
+
+  return matches.length === 1 ? matches[0].selectionKey : "";
+};
+
+const proformaUsageBySelectionKey = computed(() => {
+  const usage = new Map<string, number>();
+
+  proformasStore.items.forEach((record) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id)) return;
+
+    record.purchasedProducts.forEach((product) => {
+      const selectionKey = resolveProductSelectionKey(product);
+      if (!selectionKey) return;
+
+      usage.set(selectionKey, (usage.get(selectionKey) ?? 0) + 1);
+    });
+  });
+
+  return usage;
+});
+
+const invoiceUsageBySelectionKey = computed(() => {
+  const usage = new Map<string, number>();
+
+  invoicesStore.items.forEach((record) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id)) return;
+
+    record.purchasedProducts.forEach((product) => {
+      const selectionKey = resolveProductSelectionKey(product);
+      if (!selectionKey) return;
+
+      usage.set(selectionKey, (usage.get(selectionKey) ?? 0) + 1);
+    });
+  });
+
+  return usage;
+});
+
+const getDocumentUsage = (selectionKey?: string | null) => {
+  const normalized = String(selectionKey ?? "").trim();
+  if (!normalized) return { invoiceCount: 0, proformaCount: 0 };
+
+  return {
+    invoiceCount: invoiceUsageBySelectionKey.value.get(normalized) ?? 0,
+    proformaCount: proformaUsageBySelectionKey.value.get(normalized) ?? 0,
+  };
+};
+
+const isSelectionDocumentActionDisabled = (selectionKey?: string | null) => {
+  const usage = getDocumentUsage(selectionKey);
+
+  if (selectedDocumentKind.value === "invoice") return usage.invoiceCount > 0;
+  if (selectedDocumentKind.value === "proforma") return usage.proformaCount > 0;
+
+  return false;
+};
+
+const findGoalSelectableItem = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) =>
+  selectableDocumentItems.value.find(
+    (item) =>
+      String(item.id) === String(parentItem.id) &&
+      item.selectionKey.endsWith(goal.overrideKey),
+  ) ?? null;
+
+const getGoalDocumentUsage = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => getDocumentUsage(findGoalSelectableItem(parentItem, goal)?.selectionKey);
+
+const isGoalProformaActionDisabled = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => getGoalDocumentUsage(parentItem, goal).proformaCount > 0;
+
+const isGoalInvoiceActionDisabled = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => getGoalDocumentUsage(parentItem, goal).invoiceCount > 0;
 
 const filteredSelectableDocumentItems = computed(() =>
   filterDealDocumentItemsByBillingMode(
@@ -1321,8 +1572,10 @@ const selectableGroups = computed(() => {
 const selectedDocumentItems = computed(() => {
   const selected = new Set(selectedItemIds.value.map((value) => String(value)));
 
-  return filteredSelectableDocumentItems.value.filter((item) =>
-    selected.has(String(item.selectionKey)),
+  return filteredSelectableDocumentItems.value.filter(
+    (item) =>
+      selected.has(String(item.selectionKey)) &&
+      !isSelectionDocumentActionDisabled(item.selectionKey),
   );
 });
 
@@ -1420,6 +1673,7 @@ const resetDocumentWorkflowState = () => {
   billingPeriodDialogVisible.value = false;
   selectionDialogVisible.value = false;
   pendingDocumentItems.value = [];
+  resetBillingPeriodPrices();
   selectedBillingMode.value = null;
   selectedDocumentKind.value = null;
   selectedItemIds.value = [];
@@ -1429,8 +1683,123 @@ const selectionNeedsBillingPeriod = (items: DealDocumentSelectableItem[]) =>
   items.some((item) => {
     const itemMode = resolveDealDocumentBillingModeForItem(item);
 
-    return itemMode === 'retainer-period' || itemMode === 'recurrent-period';
+    return itemMode === "retainer-period" || itemMode === "recurrent-period";
   });
+
+const pendingBillingPeriodItems = computed(() =>
+  pendingDocumentItems.value.filter((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+    return itemMode === "retainer-period" || itemMode === "recurrent-period";
+  }),
+);
+
+const getOverrideKeyFromSelectionKey = (selectionKey: string) => {
+  const match = selectionKey.match(/^item-\d+-(.+)$/);
+
+  return match?.[1] ?? null;
+};
+
+const getStoredBillingPeriodPrice = (
+  item: DealDocumentSelectableItem,
+  periodLabel: string,
+) => {
+  const overrideKey = getOverrideKeyFromSelectionKey(item.selectionKey);
+  const periodKey = normalizeBillingPeriodKey(periodLabel);
+  if (!overrideKey || !periodKey) return null;
+
+  const value =
+    item.subItemOverrides?.[overrideKey]?.periodUnitPrices?.[periodKey];
+  if (value === null || value === undefined) return null;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const resetBillingPeriodPrices = () => {
+  Object.keys(billingPeriodPrices).forEach((key) => {
+    delete billingPeriodPrices[key];
+  });
+};
+
+const initializeBillingPeriodPrices = (
+  items: DealDocumentSelectableItem[],
+  periodLabel = billingPeriodLabel.value,
+) => {
+  resetBillingPeriodPrices();
+
+  items.forEach((item) => {
+    billingPeriodPrices[item.selectionKey] = Number(
+      getStoredBillingPeriodPrice(item, periodLabel) ?? item.unitPrice ?? 0,
+    );
+  });
+};
+
+const applyBillingPeriodPricing = (
+  items: DealDocumentSelectableItem[],
+  periodLabel: string,
+) => {
+  const periodKey = normalizeBillingPeriodKey(periodLabel);
+  if (!periodKey) return items;
+
+  const updatedPrices = new Map<string, number>();
+
+  items.forEach((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+    if (itemMode !== "retainer-period" && itemMode !== "recurrent-period")
+      return;
+
+    const numeric = Number(billingPeriodPrices[item.selectionKey]);
+    updatedPrices.set(
+      item.selectionKey,
+      Number.isFinite(numeric) ? numeric : 0,
+    );
+  });
+
+  if (!updatedPrices.size) return items;
+
+  const nextItems = (props.deal.items || []).map((item) => {
+    const nextOverrides = { ...(item.subItemOverrides || {}) };
+    let hasChanges = false;
+
+    Object.keys(nextOverrides).forEach((overrideKey) => {
+      const selectionKey = `item-${item.id}-${overrideKey}`;
+      const nextPrice = updatedPrices.get(selectionKey);
+      if (nextPrice === undefined) return;
+
+      const currentOverride = nextOverrides[overrideKey] || {};
+      nextOverrides[overrideKey] = {
+        ...currentOverride,
+        unitPrice: nextPrice,
+        periodUnitPrices: {
+          ...(currentOverride.periodUnitPrices || {}),
+          [periodKey]: nextPrice,
+        },
+      };
+      hasChanges = true;
+    });
+
+    return hasChanges
+      ? {
+          ...item,
+          subItemOverrides: nextOverrides,
+        }
+      : item;
+  });
+
+  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+
+  return items.map((item) => {
+    const nextPrice = updatedPrices.get(item.selectionKey);
+    if (nextPrice === undefined) return item;
+
+    return {
+      ...item,
+      unitPrice: nextPrice,
+    };
+  });
+};
 
 const saveAndNavigateDocumentDraft = async (
   kind: DealDocumentKind,
@@ -1465,36 +1834,16 @@ const saveAndNavigateDocumentDraft = async (
   resetDocumentWorkflowState();
 };
 
-const findStageSelectableItem = (
-  parentItem: DealItemWithPlan,
-  goal: DerivedGoal,
-) =>
-  selectableDocumentItems.value.find(
-    (item) =>
-      item.catalogueType === "Phase" &&
-      String(item.id) === String(parentItem.id) &&
-      item.selectionKey.endsWith(goal.overrideKey),
-  ) ?? null;
-
 const openGoalDocumentPage = async (
   kind: Extract<DealDocumentKind, "proforma" | "invoice">,
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
 ) => {
-  if (goal.typeLabel !== "Phase") {
-    notifications.push(
-      "Stage-level document creation is currently available for contractual phases only.",
-      "info",
-      3000,
-    );
-    return;
-  }
-
-  const selectableItem = findStageSelectableItem(parentItem, goal);
+  const selectableItem = findGoalSelectableItem(parentItem, goal);
 
   if (!selectableItem) {
     notifications.push(
-      "Could not resolve this stage for document creation.",
+      "Could not resolve this item for document creation.",
       "warning",
       3000,
     );
@@ -1516,10 +1865,14 @@ const openSelectionDialog = (
 
 const openBillingPeriodDialog = (
   kind: DealDocumentKind,
-  mode: Extract<DealDocumentBillingMode, "retainer-period" | "recurrent-period">,
+  mode: Extract<
+    DealDocumentBillingMode,
+    "retainer-period" | "recurrent-period"
+  >,
 ) => {
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
+  initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
   billingPeriodDialogVisible.value = true;
 };
 
@@ -1537,7 +1890,10 @@ const confirmBillingPeriod = () => {
 
   if (pendingDocumentItems.value.length) {
     const kind = selectedDocumentKind.value;
-    const items = [...pendingDocumentItems.value];
+    const items = applyBillingPeriodPricing(
+      [...pendingDocumentItems.value],
+      trimmed,
+    );
 
     pendingDocumentItems.value = [];
     void saveAndNavigateDocumentDraft(kind, items);
@@ -1555,14 +1911,6 @@ const confirmBillingModeSelection = () => {
 
   billingModeDialogVisible.value = false;
 
-  if (
-    selectedBillingMode.value === "retainer-period" ||
-    selectedBillingMode.value === "recurrent-period"
-  ) {
-    billingPeriodDialogVisible.value = true;
-    return;
-  }
-
   openSelectionDialog(selectedDocumentKind.value, selectedBillingMode.value);
 };
 
@@ -1576,13 +1924,23 @@ const closeSelectionDialog = () => {
 };
 
 const confirmSelectedDocumentItems = async () => {
-  if (!selectedDocumentKind.value || !selectedDocumentItems.value.length) return;
+  if (!selectedDocumentKind.value || !selectedDocumentItems.value.length)
+    return;
 
   const kind = selectedDocumentKind.value;
   const items = [...selectedDocumentItems.value];
 
   if (selectionNeedsBillingPeriod(items)) {
     pendingDocumentItems.value = items;
+    initializeBillingPeriodPrices(
+      items.filter((item) => {
+        const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+        return (
+          itemMode === "retainer-period" || itemMode === "recurrent-period"
+        );
+      }),
+    );
     selectionDialogVisible.value = false;
     billingPeriodDialogVisible.value = true;
     return;
@@ -1605,16 +1963,16 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
     }
 
     if (billingMode.value === "retainer-period") {
-      openBillingPeriodDialog(kind, "retainer-period");
+      openSelectionDialog(kind, "retainer-period");
       return;
     }
 
     if (billingMode.value === "recurrent-period") {
-      openBillingPeriodDialog(kind, "recurrent-period");
+      openSelectionDialog(kind, "recurrent-period");
       return;
     }
 
-    openSelectionDialog(kind, 'mixed-manual');
+    openSelectionDialog(kind, "mixed-manual");
     return;
   }
 
@@ -1670,8 +2028,10 @@ const openEditCustomPhase = (item: DealItemWithPlan, goal: DerivedGoal) => {
   phaseDraft.category = customPhase.category ?? goal.category ?? "";
   phaseDraft.quantity = customPhase.quantity ?? goal.quantity ?? 1;
   phaseDraft.price = customPhase.price ?? goal.price ?? 0;
-  phaseDraft.discountPercent = customPhase.discountPercent ?? goal.discountPercent ?? 0;
-  phaseDraft.taxApplicable = customPhase.taxApplicable ?? goal.taxApplicable ?? null;
+  phaseDraft.discountPercent =
+    customPhase.discountPercent ?? goal.discountPercent ?? 0;
+  phaseDraft.taxApplicable =
+    customPhase.taxApplicable ?? goal.taxApplicable ?? null;
   phaseDraft.note = customPhase.note ?? goal.note ?? "";
   phaseDialogVisible.value = true;
 };
@@ -1724,7 +2084,11 @@ const savePhase = async () => {
 
 const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   if (goal.typeLabel !== "Phase") {
-    notifications.push("Remove is currently available for contractual phases only.", "info", 2500);
+    notifications.push(
+      "Remove is currently available for contractual phases only.",
+      "info",
+      2500,
+    );
     return;
   }
 
@@ -1750,7 +2114,9 @@ const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
     return {
       ...item,
       removedPhaseIds: Array.from(removedPhaseIds),
-      subItemOverrides: Object.keys(nextOverrides).length ? nextOverrides : null,
+      subItemOverrides: Object.keys(nextOverrides).length
+        ? nextOverrides
+        : null,
     };
   });
 
@@ -2201,34 +2567,46 @@ const openEditTask = (taskId: number | string) => {
                           variant="text"
                           size="x-small"
                           class="phase-edit-btn"
-                          @click.stop="openEditGoal(item, goal)"
-                        >
-                          <VIcon icon="tabler-pencil" size="16" />
-                        </VBtn>
-
-                        <VBtn
-                          v-if="goal.typeLabel === 'Phase'"
-                          icon
-                          variant="text"
-                          size="x-small"
-                          class="phase-edit-btn"
                         >
                           <VIcon icon="tabler-dots-vertical" size="16" />
                           <VMenu activator="parent">
                             <VList>
-                              <VListItem @click="openGoalDocumentPage('proforma', item, goal)">
+                              <VListItem @click="openEditGoal(item, goal)">
+                                <template #prepend>
+                                  <VIcon icon="tabler-pencil" />
+                                </template>
+                                <VListItemTitle>Edit</VListItemTitle>
+                              </VListItem>
+                              <VListItem
+                                :disabled="
+                                  isGoalProformaActionDisabled(item, goal)
+                                "
+                                @click="
+                                  openGoalDocumentPage('proforma', item, goal)
+                                "
+                              >
                                 <template #prepend>
                                   <VIcon icon="tabler-file-certificate" />
                                 </template>
                                 <VListItemTitle>Create Proforma</VListItemTitle>
                               </VListItem>
-                              <VListItem @click="openGoalDocumentPage('invoice', item, goal)">
+                              <VListItem
+                                :disabled="
+                                  isGoalInvoiceActionDisabled(item, goal)
+                                "
+                                @click="
+                                  openGoalDocumentPage('invoice', item, goal)
+                                "
+                              >
                                 <template #prepend>
                                   <VIcon icon="tabler-file-invoice" />
                                 </template>
                                 <VListItemTitle>Create Invoice</VListItemTitle>
                               </VListItem>
-                              <VListItem @click="removeGoal(item, goal)">
+                              <VListItem
+                                v-if="goal.typeLabel === 'Phase'"
+                                @click="removeGoal(item, goal)"
+                              >
                                 <template #prepend>
                                   <VIcon icon="tabler-trash" color="error" />
                                 </template>
@@ -2335,11 +2713,128 @@ const openEditTask = (taskId: number | string) => {
               <strong>{{ formatMoney(totalPaid) }}</strong>
             </div>
           </div>
+
+          <div class="items-overview__previews">
+            <button
+              v-for="panel in dealDocumentPanels"
+              :key="panel.key"
+              type="button"
+              class="items-overview__preview-card"
+              :class="`items-overview__preview-card--${panel.key}`"
+              :disabled="!panel.latest"
+              @click="
+                panel.latest &&
+                openQuickDocumentPreview(panel.key, panel.latest)
+              "
+            >
+              <div class="items-overview__preview-header">
+                <div>
+                  <div class="items-overview__preview-kicker">
+                    {{ panel.title }}
+                  </div>
+                  <strong class="items-overview__preview-title">
+                    {{
+                      panel.latest?.quoteNumber ||
+                      `No ${panel.title.toLowerCase()}`
+                    }}
+                  </strong>
+                </div>
+
+                <div class="items-overview__preview-count">
+                  {{ panel.count }}
+                </div>
+              </div>
+
+              <template v-if="panel.latest">
+                <div class="items-overview__preview-meta">
+                  <span>{{ panel.latest.status }}</span>
+                  <span>{{ formatDocumentDate(panel.latest.issuedDate) }}</span>
+                </div>
+
+                <div class="items-overview__preview-total">
+                  {{ formatMoney(panel.latest.total) }}
+                </div>
+
+                <div class="items-overview__preview-list">
+                  <button
+                    v-for="record in panel.records.slice(0, 4)"
+                    :key="`${panel.key}-${record.id}`"
+                    type="button"
+                    class="items-overview__preview-chip"
+                    @click.stop="openQuickDocumentPreview(panel.key, record)"
+                  >
+                    {{ record.quoteNumber }}
+                  </button>
+
+                  <span
+                    v-if="panel.records.length > 4"
+                    class="items-overview__preview-more"
+                  >
+                    +{{ panel.records.length - 4 }} more
+                  </span>
+                </div>
+              </template>
+
+              <p v-else class="items-overview__preview-empty mb-0">
+                {{ panel.emptyText }}
+              </p>
+            </button>
+          </div>
         </div>
       </VCardText>
     </VCard>
 
     <VCard>
+      <VDialog v-model="previewDialogVisible" max-width="1280">
+        <VCard class="items-preview-dialog">
+          <VCardItem>
+            <template #title>
+              <div
+                class="d-flex align-center justify-space-between gap-4 flex-wrap"
+              >
+                <div>
+                  <div class="text-overline text-primary mb-1">
+                    Quick Preview
+                  </div>
+                  <div class="text-h6">
+                    {{ selectedPreviewDocument?.title || "Document Preview" }}
+                  </div>
+                </div>
+
+                <div class="d-flex align-center gap-2 flex-wrap">
+                  <VBtn
+                    variant="tonal"
+                    prepend-icon="tabler-external-link"
+                    :disabled="!selectedPreviewDocument"
+                    @click="openSelectedPreviewInPage"
+                  >
+                    Open Full Page
+                  </VBtn>
+                  <VBtn
+                    icon
+                    variant="text"
+                    @click="previewDialogVisible = false"
+                  >
+                    <VIcon icon="tabler-x" />
+                  </VBtn>
+                </div>
+              </div>
+            </template>
+          </VCardItem>
+
+          <VDivider />
+
+          <VCardText class="items-preview-dialog__body">
+            <iframe
+              v-if="selectedPreviewDocument"
+              :key="selectedPreviewDocument.href"
+              :src="selectedPreviewDocument.href"
+              class="items-preview-dialog__frame"
+              title="Document quick preview"
+            />
+          </VCardText>
+        </VCard>
+      </VDialog>
       <VCardText>
         <div
           class="d-flex justify-space-between align-center flex-wrap gap-4 mb-4"
@@ -2716,8 +3211,12 @@ const openEditTask = (taskId: number | string) => {
           >
             <template #label>
               <div>
-                <div class="text-body-1 font-weight-medium">{{ option.title }}</div>
-                <div class="text-body-2 text-medium-emphasis">{{ option.description }}</div>
+                <div class="text-body-1 font-weight-medium">
+                  {{ option.title }}
+                </div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ option.description }}
+                </div>
               </div>
             </template>
           </VRadio>
@@ -2728,7 +3227,9 @@ const openEditTask = (taskId: number | string) => {
 
       <VCardActions class="justify-end pa-4">
         <VBtn variant="text" @click="resetDocumentWorkflowState">Cancel</VBtn>
-        <VBtn color="primary" @click="confirmBillingModeSelection">Continue</VBtn>
+        <VBtn color="primary" @click="confirmBillingModeSelection"
+          >Continue</VBtn
+        >
       </VCardActions>
     </VCard>
   </VDialog>
@@ -2743,7 +3244,8 @@ const openEditTask = (taskId: number | string) => {
 
       <VCardText>
         <div class="text-sm text-medium-emphasis mb-4">
-          Enter the billing period label that should appear on this document.
+          Enter the billing period and explicit prices for the selected
+          period-based lines.
         </div>
 
         <AppTextField
@@ -2751,6 +3253,32 @@ const openEditTask = (taskId: number | string) => {
           label="Billing Period"
           placeholder="May 2026"
         />
+
+        <div
+          v-if="pendingBillingPeriodItems.length"
+          class="d-flex flex-column gap-3 mt-4"
+        >
+          <div
+            v-for="item in pendingBillingPeriodItems"
+            :key="item.selectionKey"
+            class="border rounded pa-3"
+          >
+            <div class="text-body-1 font-weight-medium mb-1">
+              {{ item.name }}
+            </div>
+            <div class="text-sm text-medium-emphasis mb-3">
+              Set the explicit billed amount for this period.
+            </div>
+
+            <AppTextField
+              v-model.number="billingPeriodPrices[item.selectionKey]"
+              type="number"
+              min="0"
+              step="0.01"
+              label="Period Price"
+            />
+          </div>
+        </div>
       </VCardText>
 
       <VDivider />
@@ -2779,7 +3307,10 @@ const openEditTask = (taskId: number | string) => {
           {{ selectionDialogHint }}
         </div>
 
-        <div v-if="filteredSelectableDocumentItems.length" class="d-flex flex-column gap-3">
+        <div
+          v-if="filteredSelectableDocumentItems.length"
+          class="d-flex flex-column gap-3"
+        >
           <div
             v-for="group in selectableGroups"
             :key="group.key"
@@ -2798,11 +3329,17 @@ const openEditTask = (taskId: number | string) => {
               v-for="item in group.items"
               :key="item.selectionKey"
               class="border rounded pa-3 d-flex align-start gap-3"
+              :class="{
+                'opacity-50': isSelectionDocumentActionDisabled(
+                  item.selectionKey,
+                ),
+              }"
               :style="{ marginInlineStart: itemRowOffset(item) }"
             >
               <VCheckbox
                 v-model="selectedItemIds"
                 :value="item.selectionKey"
+                :disabled="isSelectionDocumentActionDisabled(item.selectionKey)"
                 color="primary"
                 hide-details
                 class="mt-0 pt-0"
@@ -2865,6 +3402,17 @@ const openEditTask = (taskId: number | string) => {
 
                 <div v-if="item.hint" class="text-sm text-medium-emphasis mb-1">
                   {{ item.hint }}
+                </div>
+
+                <div
+                  v-if="isSelectionDocumentActionDisabled(item.selectionKey)"
+                  class="text-sm text-warning mb-1"
+                >
+                  {{
+                    selectedDocumentKind === "invoice"
+                      ? "Already invoiced."
+                      : "Already proforma'd."
+                  }}
                 </div>
 
                 <div v-if="item.note" class="text-sm text-medium-emphasis">
@@ -3339,7 +3887,11 @@ const openEditTask = (taskId: number | string) => {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 16px;
   background:
-    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.36), rgba(var(--v-theme-surface), 0.18)),
+    linear-gradient(
+      180deg,
+      rgba(var(--v-theme-surface), 0.36),
+      rgba(var(--v-theme-surface), 0.18)
+    ),
     rgba(var(--v-theme-surface), 0.16);
   gap: 1rem;
   margin-block-start: 1rem;
@@ -3443,6 +3995,151 @@ const openEditTask = (taskId: number | string) => {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.items-overview__previews {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.items-overview__preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 14px;
+  background: rgba(var(--v-theme-surface), 0.2);
+  color: inherit;
+  cursor: pointer;
+  gap: 0.85rem;
+  min-inline-size: 0;
+  padding-block: 0.95rem;
+  padding-inline: 1rem;
+  text-align: start;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.items-overview__preview-card:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.items-overview__preview-card:hover:not(:disabled) {
+  border-color: rgba(var(--v-theme-primary), 0.24);
+  background: rgba(var(--v-theme-primary), 0.06);
+  transform: translateY(-1px);
+}
+
+.items-overview__preview-card--quotation {
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-info), 0.08);
+}
+
+.items-overview__preview-card--proforma {
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-warning), 0.08);
+}
+
+.items-overview__preview-card--invoice {
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-success), 0.08);
+}
+
+.items-overview__preview-header,
+.items-overview__preview-meta,
+.items-overview__preview-list {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.items-overview__preview-header {
+  align-items: flex-start;
+}
+
+.items-overview__preview-kicker {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.74rem;
+  line-height: 1.1;
+  margin-block-end: 0.25rem;
+  text-transform: uppercase;
+}
+
+.items-overview__preview-title {
+  display: block;
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.items-overview__preview-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgba(var(--v-theme-primary), 0.92);
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-inline-size: 2rem;
+  padding-block: 0.3rem;
+  padding-inline: 0.55rem;
+}
+
+.items-overview__preview-meta {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.76rem;
+}
+
+.items-overview__preview-total {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.items-overview__preview-list {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.items-overview__preview-chip {
+  border: 1px solid rgba(var(--v-theme-primary), 0.18);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-primary), 0.08);
+  color: rgba(var(--v-theme-primary), 0.96);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding-block: 0.25rem;
+  padding-inline: 0.6rem;
+}
+
+.items-overview__preview-more,
+.items-overview__preview-empty {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.78rem;
+}
+
+.items-preview-dialog {
+  overflow: hidden;
+}
+
+.items-preview-dialog__body {
+  padding: 0;
+}
+
+.items-preview-dialog__frame {
+  display: block;
+  border: 0;
+  background: #fff;
+  inline-size: 100%;
+  min-block-size: 75vh;
+}
+
 .items-overview__detail {
   display: flex;
   flex-direction: column;
@@ -3481,12 +4178,14 @@ const openEditTask = (taskId: number | string) => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .items-overview__previews,
   .items-overview__details {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 639px) {
+  .items-overview__previews,
   .items-overview__metrics,
   .items-overview__details {
     grid-template-columns: minmax(0, 1fr);

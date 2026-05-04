@@ -6,20 +6,20 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { createPdfFileFromElement } from "@/utils/domPdf";
 import { getFileObjectUrl, getFileRecord } from "@/utils/fileStore";
 import {
-  buildQuotationPaymentDetails,
-  formatCurrencyAmount,
-  getQuotationCompanyAddressLines,
-  getQuotationCompanyContactLines,
-  getVatSummary,
-  resolveQuotationLogoUrl,
+    buildQuotationPaymentDetails,
+    formatCurrencyAmount,
+    getQuotationCompanyAddressLines,
+    getQuotationCompanyContactLines,
+    getVatSummary,
+    resolveQuotationLogoUrl,
 } from "@/utils/quotationConfig";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
 import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
 import {
-  getLineTotal,
-  getQuotationDiscountTotal,
-  getQuotationGrandTotal,
-  getQuotationSubtotal,
+    getLineTotal,
+    getQuotationDiscountTotal,
+    getQuotationGrandTotal,
+    getQuotationSubtotal,
 } from "@/utils/quotationPricing";
 import { normalizeRichText } from "@/utils/richText";
 import { openWhatsAppIntent, shareToWhatsApp } from "@/utils/shareToWhatsApp";
@@ -31,6 +31,8 @@ import type { QuotationRecord } from "@db/apps/quotation/types";
 
 const route = useRoute("apps-quotation-preview-id");
 const isEmbeddedActionFrame = route.query.embedded === "1";
+const isQuickPreview = route.query.quickPreview === "1";
+const QUICK_PREVIEW_BODY_CLASS = "document-quick-preview";
 const configStore = useConfigStore();
 const notifications = useNotificationsStore();
 const quotationsStore = useQuotationsStore();
@@ -85,6 +87,15 @@ const editRoute = computed(() => {
 const quotation = computed(() => quotationRecord.value?.quotation ?? null);
 const legalConfiguration = computed(
   () => embeddedPreviewPayload.value?.legal ?? configStore.legal,
+);
+const legalTaxRegistration = computed(() =>
+  String(
+    (
+      legalConfiguration.value as {
+        trn?: string | null;
+      } | null
+    )?.trn ?? "",
+  ).trim(),
 );
 const financialConfiguration = computed(
   () => embeddedPreviewPayload.value?.financial ?? configStore.financial,
@@ -521,6 +532,7 @@ const handleEmbeddedPreviewMessage = async (event: MessageEvent) => {
 };
 
 onMounted(() => {
+  if (isQuickPreview) document.body.classList.add(QUICK_PREVIEW_BODY_CLASS);
   if (!isEmbeddedActionFrame) return;
 
   window.addEventListener("message", handleEmbeddedPreviewMessage);
@@ -531,6 +543,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  document.body.classList.remove(QUICK_PREVIEW_BODY_CLASS);
   revokeExternalAttachmentPreview();
   if (!isEmbeddedActionFrame) return;
 
@@ -574,11 +587,12 @@ if (!isEmbeddedActionFrame) {
 
 <template>
   <section v-if="quotation && paymentDetails">
-    <VRow>
-      <VCol cols="12" md="9">
+    <VRow class="preview-layout" :class="{ 'preview-layout--quick': isQuickPreview }">
+      <VCol cols="12" :md="isQuickPreview ? 12 : 9">
         <VCard
           ref="quotationPdfTarget"
           class="quotation-preview-wrapper pa-6 pa-sm-12"
+          :class="{ 'quotation-preview-wrapper--quick': isQuickPreview }"
         >
           <div
             class="quotation-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6"
@@ -610,8 +624,8 @@ if (!isEmbeddedActionFrame) {
                 >
                   {{ line }}
                 </div>
-                <div v-if="legalConfiguration?.trn" class="text-body-2 mt-1">
-                  TRN: {{ legalConfiguration.trn }}
+                <div v-if="legalTaxRegistration" class="text-body-2 mt-1">
+                  TRN: {{ legalTaxRegistration }}
                 </div>
               </div>
             </div>
@@ -899,7 +913,7 @@ if (!isEmbeddedActionFrame) {
         </VCard>
       </VCol>
 
-      <VCol cols="12" md="3" class="d-print-none">
+      <VCol v-if="!isQuickPreview" cols="12" md="3" class="d-print-none">
         <VCard>
           <VCardText>
             <div class="quotation-action-row mb-4">
@@ -1014,6 +1028,35 @@ if (!isEmbeddedActionFrame) {
 </template>
 
 <style lang="scss">
+.preview-layout--quick {
+  margin: 0;
+}
+
+.quotation-preview-wrapper--quick {
+  padding: 1.25rem !important;
+  box-shadow: none !important;
+}
+
+body.document-quick-preview {
+  background: transparent !important;
+}
+
+body.document-quick-preview .product-buy-now,
+body.document-quick-preview .v-navigation-drawer,
+body.document-quick-preview .layout-vertical-nav,
+body.document-quick-preview .app-customizer-toggler,
+body.document-quick-preview .layout-footer,
+body.document-quick-preview .layout-navbar,
+body.document-quick-preview .layout-navbar-and-nav-container,
+body.document-quick-preview .vue-devtools__anchor {
+  display: none !important;
+}
+
+body.document-quick-preview .layout-content-wrapper {
+  padding-block-start: 0 !important;
+  padding-inline-start: 0 !important;
+}
+
 .quotation-company-brand {
   display: inline-flex;
   flex-direction: column;
@@ -1072,8 +1115,7 @@ if (!isEmbeddedActionFrame) {
   }
 
   &.v-table .v-table__wrapper table thead tr th {
-    border-block-end: 1px solid
-      rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+    border-block-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)) !important;
   }
 }
 

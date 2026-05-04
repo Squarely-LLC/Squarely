@@ -368,6 +368,7 @@ function ensureProducts(
 
   return products.map((product) => ({
     catalogueItemId: product.catalogueItemId?.trim() || null,
+    dealSelectionKey: product.dealSelectionKey?.trim() || null,
     lineConstraints: product.lineConstraints
       ? { ...product.lineConstraints }
       : null,
@@ -619,7 +620,8 @@ function mergeInvoiceRecord(
     purchasedProducts: ensureProducts(
       patch.purchasedProducts ?? original.purchasedProducts,
     ),
-    note: patch.note === undefined ? original.note : normalizeRichText(patch.note),
+    note:
+      patch.note === undefined ? original.note : normalizeRichText(patch.note),
     showClientNote: patch.showClientNote ?? original.showClientNote,
     totalFx:
       patch.totalFx === undefined
