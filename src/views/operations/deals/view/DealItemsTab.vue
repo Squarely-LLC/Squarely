@@ -15,6 +15,7 @@ import type {
     CatalogueSalesTask,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
+    DealCustomPhase,
     DealItem,
     DealItemOverride,
     DealProperties,
@@ -31,10 +32,17 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
     buildDealDocumentDraftRecord,
+    filterDealDocumentItemsByBillingMode,
     getBillableRootDealItems,
+    getDealContractualPhaseLines,
     getQuotationTopLevelDealItems,
+    getSelectableDealItems,
+    resolveDealDocumentBillingMode,
+    resolveDealDocumentBillingModeForItem,
     saveDealDocumentDraft,
+    type DealDocumentBillingMode,
     type DealDocumentKind,
+    type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
 import {
     getDealDiscountTotal,
@@ -120,15 +128,31 @@ type ItemTypeChoice = {
 };
 
 const addItemDialogVisible = ref(false);
+const billingModeDialogVisible = ref(false);
+const billingPeriodDialogVisible = ref(false);
 const createItemTypeDialogVisible = ref(false);
 const createDraftItemDialogVisible = ref(false);
 const editLineDialogVisible = ref(false);
+const phaseDialogVisible = ref(false);
+const selectionDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
+const phaseFormRef = ref<VForm>();
 const createDraftItemFormRef = ref<VForm>();
 const editLineFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
+const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
 const selectedCatalogueItemId = ref<string | null>(null);
 const selectedCreateItemType = ref<CatalogueItemType | null>(null);
+const selectedDocumentKind = ref<DealDocumentKind | null>(null);
+const selectedItemIds = ref<string[]>([]);
+const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
+
+const billingPeriodLabel = ref(
+  new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+  }).format(new Date()),
+);
 
 const addItemDraft = reactive({
   quantity: 1,
@@ -161,6 +185,18 @@ const editLine = reactive({
   canEditDiscount: true,
   canEditTax: true,
   canEditInfo: true,
+});
+
+const phaseDraft = reactive({
+  category: "",
+  customPhaseId: null as string | null,
+  discountPercent: 0,
+  name: "",
+  note: "",
+  parentItemId: null as number | null,
+  price: 0,
+  quantity: 1,
+  taxApplicable: true as boolean | null,
 });
 
 const itemTypeChoices: ItemTypeChoice[] = [
@@ -646,6 +682,11 @@ const openEditItem = (item: DealItemWithPlan) => {
 };
 
 const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
+  if (goal.overrideKey.startsWith("phase-custom-")) {
+    openEditCustomPhase(parentItem, goal);
+    return;
+  }
+
   const sourceItem = getItemById(parentItem.id);
   const override = sourceItem?.subItemOverrides?.[goal.overrideKey] || {};
 
@@ -861,28 +902,32 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
         name: contractual.name,
         note: contractual.description || null,
         price: contractual.bestPrice,
-        goals: (contractual.phases || []).map((phase) =>
-          applySubItemOverride(
+        goals: getDealContractualPhaseLines(item, contractual).map((phase) => ({
+          ...makeDerivedGoal(
             item,
-            `phase-${phase.id}`,
-            makeDerivedGoal(
-              item,
-              "phase",
-              "Phase",
-              {
-                quantity: item.quantity,
-                discountPercent: 0,
-                discountLabel: "0%",
-                taxApplicable: contractual.chargeTax,
-                showQuantity: true,
-                showPrice: true,
-                showDiscount: true,
-                showTaxApplicable: true,
-              },
-              phase,
-            ),
+            "phase",
+            "Phase",
+            {
+              quantity: phase.quantity,
+              discountPercent: phase.discountPercent,
+              discountLabel: formatPercent(phase.discountPercent ?? 0),
+              taxApplicable: phase.taxApplicable,
+              showQuantity: true,
+              showPrice: true,
+              showDiscount: true,
+              showTaxApplicable: true,
+            },
+            {
+              category: phase.category,
+              description: phase.note,
+              id: phase.id,
+              name: phase.name,
+              note: phase.note,
+              price: phase.price,
+            },
           ),
-        ),
+          overrideKey: phase.overrideKey,
+        })),
         goalTypeSingular: "Phase",
         goalTypePlural: "Phases",
       }),
@@ -1167,6 +1212,17 @@ const quotationItems = computed(() =>
     cataloguesStore.recordById(id, typeHint),
   ),
 );
+const selectableDocumentItems = computed(() =>
+  getSelectableDealItems(dealItems.value, (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
+);
+const billingMode = computed<DealDocumentBillingMode>(() =>
+  resolveDealDocumentBillingMode(billableRootItems.value),
+);
+const effectiveBillingMode = computed<DealDocumentBillingMode>(() =>
+  selectedBillingMode.value ?? billingMode.value,
+);
 const contact = computed(() => {
   if (!props.deal.relatedTo) return null;
 
@@ -1191,6 +1247,160 @@ const invoiceCount = computed(
     ).length,
 );
 
+const filteredSelectableDocumentItems = computed(() =>
+  filterDealDocumentItemsByBillingMode(
+    selectableDocumentItems.value,
+    effectiveBillingMode.value,
+  ),
+);
+
+const billingModeOptions = computed(() => {
+  const availableModes = Array.from(
+    new Set(
+      billableRootItems.value
+        .map((item) => resolveDealDocumentBillingModeForItem(item))
+        .filter((mode) => mode !== "empty" && mode !== "mixed-manual"),
+    ),
+  ) as DealDocumentBillingMode[];
+
+  return availableModes.map((mode) => ({
+    description:
+      mode === "simple-root"
+        ? "Bill directly from simple top-level items."
+        : mode === "contractual-stage"
+          ? "Bill by contractual stages."
+          : mode === "retainer-period"
+            ? "Bill retainer services for a selected period."
+            : "Bill recurrent services for a selected period.",
+    title:
+      mode === "simple-root"
+        ? "Simple items"
+        : mode === "contractual-stage"
+          ? "Contractual stages"
+          : mode === "retainer-period"
+            ? "Retainer period"
+            : "Recurrent period",
+    value: mode,
+  }));
+});
+
+const selectableGroups = computed(() => {
+  const groups = new Map<
+    string,
+    {
+      description: string;
+      items: DealDocumentSelectableItem[];
+      key: string;
+      label: string;
+    }
+  >();
+
+  for (const item of filteredSelectableDocumentItems.value) {
+    const description =
+      item.groupKey === "billable-root"
+        ? "These rows drive quotation and direct invoice/proforma eligibility."
+        : "Nested rows are available only through manual selection.";
+    const existing = groups.get(item.groupKey);
+
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+
+    groups.set(item.groupKey, {
+      description,
+      items: [item],
+      key: item.groupKey,
+      label: item.groupLabel,
+    });
+  }
+
+  return Array.from(groups.values());
+});
+
+const selectedDocumentItems = computed(() => {
+  const selected = new Set(selectedItemIds.value.map((value) => String(value)));
+
+  return filteredSelectableDocumentItems.value.filter((item) =>
+    selected.has(String(item.selectionKey)),
+  );
+});
+
+const selectionDialogTitle = computed(() => {
+  if (selectedDocumentKind.value === "invoice") {
+    if (effectiveBillingMode.value === "contractual-stage")
+      return "Select Stages for Invoice";
+    if (effectiveBillingMode.value === "retainer-period")
+      return "Select Retainer Lines for Invoice";
+    if (effectiveBillingMode.value === "recurrent-period")
+      return "Select Recurrent Lines for Invoice";
+
+    return "Select Items for Invoice";
+  }
+
+  if (selectedDocumentKind.value === "proforma") {
+    if (effectiveBillingMode.value === "contractual-stage")
+      return "Select Stages for Proforma";
+    if (effectiveBillingMode.value === "retainer-period")
+      return "Select Retainer Lines for Proforma";
+    if (effectiveBillingMode.value === "recurrent-period")
+      return "Select Recurrent Lines for Proforma";
+
+    return "Select Items for Proforma";
+  }
+
+  return "Select Items";
+});
+
+const selectionDialogIntro = computed(() => {
+  if (effectiveBillingMode.value === "contractual-stage") {
+    return "Select one or more contractual stages to include in this document.";
+  }
+
+  if (effectiveBillingMode.value === "retainer-period") {
+    return "Select one or more retainer lines to include in this document.";
+  }
+
+  if (effectiveBillingMode.value === "recurrent-period") {
+    return "Select one or more recurrent lines to include in this document.";
+  }
+
+  return "Select one or more items to include in this document.";
+});
+
+const selectionDialogHint = computed(() => {
+  if (effectiveBillingMode.value === "contractual-stage") {
+    return "Contractual deals bill at stage level. Choose only the stages you want billed in this document.";
+  }
+
+  if (effectiveBillingMode.value === "retainer-period") {
+    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+  }
+
+  if (effectiveBillingMode.value === "recurrent-period") {
+    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+  }
+
+  if (effectiveBillingMode.value === "mixed-manual") {
+    return "This deal mixes billing bases. Choose any combination of billable rows for this document.";
+  }
+
+  return "No rows are preselected. Choose only the rows you want billed.";
+});
+
+const phaseDialogTitle = computed(() =>
+  phaseDraft.customPhaseId ? "Edit Phase" : "Add Phase",
+);
+
+const formatItemType = (value?: string | null) => value || "Unknown";
+
+const itemRowOffset = (item: DealDocumentSelectableItem) => {
+  if (item.parentName && item.groupKey === "billable-root") return "16px";
+  if (item.parentName) return "28px";
+
+  return "0px";
+};
+
 const nextIdForDocument = (kind: DealDocumentKind) => {
   if (kind === "quotation") return quotationsStore.nextId();
   if (kind === "proforma") return proformasStore.nextId();
@@ -1205,34 +1415,347 @@ const routeNameForDocument = (kind: DealDocumentKind) => {
   return "apps-invoice-add";
 };
 
+const resetDocumentWorkflowState = () => {
+  billingModeDialogVisible.value = false;
+  billingPeriodDialogVisible.value = false;
+  selectionDialogVisible.value = false;
+  pendingDocumentItems.value = [];
+  selectedBillingMode.value = null;
+  selectedDocumentKind.value = null;
+  selectedItemIds.value = [];
+};
+
+const selectionNeedsBillingPeriod = (items: DealDocumentSelectableItem[]) =>
+  items.some((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+    return itemMode === 'retainer-period' || itemMode === 'recurrent-period';
+  });
+
+const saveAndNavigateDocumentDraft = async (
+  kind: DealDocumentKind,
+  selectedItems: DealDocumentSelectableItem[],
+) => {
+  if (!selectedItems.length) {
+    notifications.push("This deal has no billable items yet", "warning", 2500);
+    return;
+  }
+
+  const draft = buildDealDocumentDraftRecord(kind, {
+    contact: contact.value,
+    deal: props.deal,
+    financial: configStore.financial,
+    legal: configStore.legal,
+    nextId: nextIdForDocument(kind),
+    billingPeriodLabel: selectionNeedsBillingPeriod(selectedItems)
+      ? billingPeriodLabel.value
+      : null,
+    resolveCatalogueRecord: (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    selectedItems,
+  });
+
+  saveDealDocumentDraft(kind, draft);
+
+  await router.push({
+    name: routeNameForDocument(kind),
+    query: { dealDraft: "1" },
+  });
+
+  resetDocumentWorkflowState();
+};
+
+const findStageSelectableItem = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) =>
+  selectableDocumentItems.value.find(
+    (item) =>
+      item.catalogueType === "Phase" &&
+      String(item.id) === String(parentItem.id) &&
+      item.selectionKey.endsWith(goal.overrideKey),
+  ) ?? null;
+
+const openGoalDocumentPage = async (
+  kind: Extract<DealDocumentKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => {
+  if (goal.typeLabel !== "Phase") {
+    notifications.push(
+      "Stage-level document creation is currently available for contractual phases only.",
+      "info",
+      3000,
+    );
+    return;
+  }
+
+  const selectableItem = findStageSelectableItem(parentItem, goal);
+
+  if (!selectableItem) {
+    notifications.push(
+      "Could not resolve this stage for document creation.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
+  await saveAndNavigateDocumentDraft(kind, [selectableItem]);
+};
+
+const openSelectionDialog = (
+  kind: DealDocumentKind,
+  mode: DealDocumentBillingMode = billingMode.value,
+) => {
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = mode;
+  selectedItemIds.value = [];
+  selectionDialogVisible.value = true;
+};
+
+const openBillingPeriodDialog = (
+  kind: DealDocumentKind,
+  mode: Extract<DealDocumentBillingMode, "retainer-period" | "recurrent-period">,
+) => {
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = mode;
+  billingPeriodDialogVisible.value = true;
+};
+
+const confirmBillingPeriod = () => {
+  if (!selectedDocumentKind.value) return;
+
+  const trimmed = billingPeriodLabel.value.trim();
+  if (!trimmed) {
+    notifications.push("Enter a billing period first", "warning", 2500);
+    return;
+  }
+
+  billingPeriodLabel.value = trimmed;
+  billingPeriodDialogVisible.value = false;
+
+  if (pendingDocumentItems.value.length) {
+    const kind = selectedDocumentKind.value;
+    const items = [...pendingDocumentItems.value];
+
+    pendingDocumentItems.value = [];
+    void saveAndNavigateDocumentDraft(kind, items);
+    return;
+  }
+
+  openSelectionDialog(selectedDocumentKind.value, effectiveBillingMode.value);
+};
+
+const confirmBillingModeSelection = () => {
+  if (!selectedDocumentKind.value || !selectedBillingMode.value) {
+    notifications.push("Choose a billing basis first", "warning", 2500);
+    return;
+  }
+
+  billingModeDialogVisible.value = false;
+
+  if (
+    selectedBillingMode.value === "retainer-period" ||
+    selectedBillingMode.value === "recurrent-period"
+  ) {
+    billingPeriodDialogVisible.value = true;
+    return;
+  }
+
+  openSelectionDialog(selectedDocumentKind.value, selectedBillingMode.value);
+};
+
+const closeSelectionDialog = () => {
+  selectionDialogVisible.value = false;
+  if (!billingModeDialogVisible.value && !billingPeriodDialogVisible.value) {
+    selectedBillingMode.value = null;
+    selectedDocumentKind.value = null;
+  }
+  selectedItemIds.value = [];
+};
+
+const confirmSelectedDocumentItems = async () => {
+  if (!selectedDocumentKind.value || !selectedDocumentItems.value.length) return;
+
+  const kind = selectedDocumentKind.value;
+  const items = [...selectedDocumentItems.value];
+
+  if (selectionNeedsBillingPeriod(items)) {
+    pendingDocumentItems.value = items;
+    selectionDialogVisible.value = false;
+    billingPeriodDialogVisible.value = true;
+    return;
+  }
+
+  selectionDialogVisible.value = false;
+  await saveAndNavigateDocumentDraft(kind, items);
+};
+
 const openDocumentPage = async (kind: DealDocumentKind) => {
-  const selectedItems = kind === "quotation"
-    ? quotationItems.value
-    : billableRootItems.value;
+  if (kind !== "quotation") {
+    if (billingMode.value === "simple-root") {
+      await saveAndNavigateDocumentDraft(kind, billableRootItems.value);
+      return;
+    }
+
+    if (billingMode.value === "contractual-stage") {
+      openSelectionDialog(kind, "contractual-stage");
+      return;
+    }
+
+    if (billingMode.value === "retainer-period") {
+      openBillingPeriodDialog(kind, "retainer-period");
+      return;
+    }
+
+    if (billingMode.value === "recurrent-period") {
+      openBillingPeriodDialog(kind, "recurrent-period");
+      return;
+    }
+
+    openSelectionDialog(kind, 'mixed-manual');
+    return;
+  }
+
+  const selectedItems = quotationItems.value;
 
   if (selectedItems.length) {
-    const draft = buildDealDocumentDraftRecord(kind, {
-      contact: contact.value,
-      deal: props.deal,
-      financial: configStore.financial,
-      legal: configStore.legal,
-      nextId: nextIdForDocument(kind),
-      resolveCatalogueRecord: (id, typeHint) =>
-        cataloguesStore.recordById(id, typeHint),
-      selectedItems,
-    });
-
-    saveDealDocumentDraft(kind, draft);
-
-    await router.push({
-      name: routeNameForDocument(kind),
-      query: { dealDraft: "1" },
-    });
-
+    await saveAndNavigateDocumentDraft(kind, selectedItems);
     return;
   }
 
   await router.push({ name: routeNameForDocument(kind) });
+};
+
+const getContractualRecord = (item: DealItem) => {
+  if (!item.catalogueItemId) return null;
+
+  const record = cataloguesStore.recordById(
+    item.catalogueItemId,
+    item.catalogueType || undefined,
+  );
+
+  if (!record || record.type !== "Contractual Service") return null;
+
+  return record as CatalogueContractualServiceRecord;
+};
+
+const openAddPhase = (item: DealItemWithPlan) => {
+  const record = getContractualRecord(item);
+  if (!record) return;
+
+  phaseDraft.parentItemId = Number(item.id);
+  phaseDraft.customPhaseId = null;
+  phaseDraft.name = "";
+  phaseDraft.category = item.category ?? "";
+  phaseDraft.quantity = item.quantity ?? 1;
+  phaseDraft.price = 0;
+  phaseDraft.discountPercent = 0;
+  phaseDraft.taxApplicable = record.chargeTax;
+  phaseDraft.note = item.note ?? record.description ?? "";
+  phaseDialogVisible.value = true;
+};
+
+const openEditCustomPhase = (item: DealItemWithPlan, goal: DerivedGoal) => {
+  const sourceItem = getItemById(item.id);
+  const customPhase = sourceItem?.customPhases?.find(
+    (phase) => `phase-custom-${phase.id}` === goal.overrideKey,
+  );
+  if (!customPhase) return;
+
+  phaseDraft.parentItemId = Number(item.id);
+  phaseDraft.customPhaseId = customPhase.id;
+  phaseDraft.name = customPhase.name;
+  phaseDraft.category = customPhase.category ?? goal.category ?? "";
+  phaseDraft.quantity = customPhase.quantity ?? goal.quantity ?? 1;
+  phaseDraft.price = customPhase.price ?? goal.price ?? 0;
+  phaseDraft.discountPercent = customPhase.discountPercent ?? goal.discountPercent ?? 0;
+  phaseDraft.taxApplicable = customPhase.taxApplicable ?? goal.taxApplicable ?? null;
+  phaseDraft.note = customPhase.note ?? goal.note ?? "";
+  phaseDialogVisible.value = true;
+};
+
+const savePhase = async () => {
+  const { valid } = (await phaseFormRef.value?.validate()) ?? { valid: true };
+  if (!valid || !phaseDraft.parentItemId) return;
+
+  const parentItem = getItemById(phaseDraft.parentItemId);
+  if (!parentItem) return;
+
+  const nextItems = (props.deal.items || []).map((item) => {
+    if (item.id !== phaseDraft.parentItemId) return item;
+
+    const existingCustomPhases = Array.isArray(item.customPhases)
+      ? item.customPhases.map((phase) => ({ ...phase }))
+      : [];
+
+    const nextPhase: DealCustomPhase = {
+      id: phaseDraft.customPhaseId ?? `${Date.now()}`,
+      name: phaseDraft.name.trim(),
+      category: phaseDraft.category.trim() || null,
+      quantity: Number(phaseDraft.quantity || 1),
+      price: Number(phaseDraft.price || 0),
+      discountPercent: Number(phaseDraft.discountPercent || 0),
+      taxApplicable: phaseDraft.taxApplicable,
+      note: phaseDraft.note.trim() || null,
+    };
+
+    const customPhases = phaseDraft.customPhaseId
+      ? existingCustomPhases.map((phase) =>
+          phase.id === phaseDraft.customPhaseId ? nextPhase : phase,
+        )
+      : [...existingCustomPhases, nextPhase];
+
+    return {
+      ...item,
+      customPhases,
+    };
+  });
+
+  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+  phaseDialogVisible.value = false;
+  notifications.push(
+    phaseDraft.customPhaseId ? "Phase updated" : "Phase added",
+    "success",
+    2500,
+  );
+};
+
+const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
+  if (goal.typeLabel !== "Phase") {
+    notifications.push("Remove is currently available for contractual phases only.", "info", 2500);
+    return;
+  }
+
+  const nextItems = (props.deal.items || []).map((item) => {
+    if (item.id !== parentItem.id) return item;
+
+    if (goal.overrideKey.startsWith("phase-custom-")) {
+      return {
+        ...item,
+        customPhases: (item.customPhases || []).filter(
+          (phase) => `phase-custom-${phase.id}` !== goal.overrideKey,
+        ),
+      };
+    }
+
+    const phaseId = Number(goal.overrideKey.replace("phase-", ""));
+    const removedPhaseIds = new Set(item.removedPhaseIds || []);
+    if (Number.isFinite(phaseId)) removedPhaseIds.add(phaseId);
+
+    const nextOverrides = { ...(item.subItemOverrides || {}) };
+    delete nextOverrides[goal.overrideKey];
+
+    return {
+      ...item,
+      removedPhaseIds: Array.from(removedPhaseIds),
+      subItemOverrides: Object.keys(nextOverrides).length ? nextOverrides : null,
+    };
+  });
+
+  dealsStore.updateDeal(props.deal.id, { items: nextItems });
+  notifications.push("Phase removed", "success", 2500);
 };
 
 type DealTodo = ToDo & {
@@ -1550,6 +2073,15 @@ const openEditTask = (taskId: number | string) => {
                           </template>
                           <VListItemTitle>Edit</VListItemTitle>
                         </VListItem>
+                        <VListItem
+                          v-if="item.catalogueType === 'Contractual Service'"
+                          @click="openAddPhase(item)"
+                        >
+                          <template #prepend>
+                            <VIcon icon="tabler-layout-grid-add" />
+                          </template>
+                          <VListItemTitle>Add Phase</VListItemTitle>
+                        </VListItem>
                         <VListItem @click="removeDealItem(item)">
                           <template #prepend>
                             <VIcon icon="tabler-trash" color="error" />
@@ -1663,15 +2195,49 @@ const openEditTask = (taskId: number | string) => {
                         </div>
                       </div>
 
-                      <VBtn
-                        icon
-                        variant="text"
-                        size="x-small"
-                        class="phase-edit-btn"
-                        @click.stop="openEditGoal(item, goal)"
-                      >
-                        <VIcon icon="tabler-pencil" size="16" />
-                      </VBtn>
+                      <div class="goal-card-actions">
+                        <VBtn
+                          icon
+                          variant="text"
+                          size="x-small"
+                          class="phase-edit-btn"
+                          @click.stop="openEditGoal(item, goal)"
+                        >
+                          <VIcon icon="tabler-pencil" size="16" />
+                        </VBtn>
+
+                        <VBtn
+                          v-if="goal.typeLabel === 'Phase'"
+                          icon
+                          variant="text"
+                          size="x-small"
+                          class="phase-edit-btn"
+                        >
+                          <VIcon icon="tabler-dots-vertical" size="16" />
+                          <VMenu activator="parent">
+                            <VList>
+                              <VListItem @click="openGoalDocumentPage('proforma', item, goal)">
+                                <template #prepend>
+                                  <VIcon icon="tabler-file-certificate" />
+                                </template>
+                                <VListItemTitle>Create Proforma</VListItemTitle>
+                              </VListItem>
+                              <VListItem @click="openGoalDocumentPage('invoice', item, goal)">
+                                <template #prepend>
+                                  <VIcon icon="tabler-file-invoice" />
+                                </template>
+                                <VListItemTitle>Create Invoice</VListItemTitle>
+                              </VListItem>
+                              <VListItem @click="removeGoal(item, goal)">
+                                <template #prepend>
+                                  <VIcon icon="tabler-trash" color="error" />
+                                </template>
+                                <VListItemTitle>Remove Phase</VListItemTitle>
+                              </VListItem>
+                            </VList>
+                          </VMenu>
+                        </VBtn>
+                      </div>
                     </div>
                   </VCard>
                 </div>
@@ -2035,6 +2601,297 @@ const openEditTask = (taskId: number | string) => {
           </VRow>
         </VForm>
       </VCardText>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="phaseDialogVisible" max-width="760">
+    <VCard>
+      <VCardText>
+        <h5 class="text-h5 mb-4">{{ phaseDialogTitle }}</h5>
+
+        <VForm ref="phaseFormRef" @submit.prevent="savePhase">
+          <VRow>
+            <VCol cols="12" md="8">
+              <AppTextField
+                v-model="phaseDraft.name"
+                label="Phase Name"
+                placeholder="Phase name"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="4">
+              <AppTextField
+                v-model="phaseDraft.category"
+                label="Category"
+                placeholder="Category"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="phaseDraft.price"
+                type="number"
+                min="0"
+                label="Price"
+                placeholder="0"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="phaseDraft.quantity"
+                type="number"
+                min="0"
+                label="Quantity"
+                placeholder="1"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <AppTextField
+                v-model="phaseDraft.discountPercent"
+                type="number"
+                min="0"
+                label="Discount %"
+                placeholder="0"
+              />
+            </VCol>
+
+            <VCol cols="12" md="3">
+              <div class="d-flex flex-column gap-2">
+                <span class="text-sm text-medium-emphasis">Tax?</span>
+                <VSwitch
+                  v-model="phaseDraft.taxApplicable"
+                  inset
+                  hide-details
+                  color="primary"
+                  label="Applicable"
+                />
+              </div>
+            </VCol>
+
+            <VCol cols="12">
+              <AppTextarea
+                v-model="phaseDraft.note"
+                label="Note"
+                placeholder="Short note"
+                rows="2"
+                auto-grow
+              />
+            </VCol>
+
+            <VCol cols="12">
+              <DialogActionBar
+                save-type="submit"
+                @save="() => undefined"
+                @cancel="phaseDialogVisible = false"
+              />
+            </VCol>
+          </VRow>
+        </VForm>
+      </VCardText>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="billingModeDialogVisible" max-width="560">
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Choose Billing Basis</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          This deal mixes billing modes. Choose how you want to build this
+          document.
+        </div>
+
+        <VRadioGroup v-model="selectedBillingMode" color="primary">
+          <VRadio
+            v-for="option in billingModeOptions"
+            :key="option.value"
+            :value="option.value"
+          >
+            <template #label>
+              <div>
+                <div class="text-body-1 font-weight-medium">{{ option.title }}</div>
+                <div class="text-body-2 text-medium-emphasis">{{ option.description }}</div>
+              </div>
+            </template>
+          </VRadio>
+        </VRadioGroup>
+      </VCardText>
+
+      <VDivider />
+
+      <VCardActions class="justify-end pa-4">
+        <VBtn variant="text" @click="resetDocumentWorkflowState">Cancel</VBtn>
+        <VBtn color="primary" @click="confirmBillingModeSelection">Continue</VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="billingPeriodDialogVisible" max-width="520">
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Select Billing Period</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          Enter the billing period label that should appear on this document.
+        </div>
+
+        <AppTextField
+          v-model="billingPeriodLabel"
+          label="Billing Period"
+          placeholder="May 2026"
+        />
+      </VCardText>
+
+      <VDivider />
+
+      <VCardActions class="justify-end pa-4">
+        <VBtn variant="text" @click="resetDocumentWorkflowState">Cancel</VBtn>
+        <VBtn color="primary" @click="confirmBillingPeriod">Continue</VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="selectionDialogVisible" max-width="760">
+    <VCard>
+      <VCardItem>
+        <VCardTitle>{{ selectionDialogTitle }}</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          {{ selectionDialogIntro }}
+        </div>
+
+        <div class="text-sm text-medium-emphasis mb-4">
+          {{ selectionDialogHint }}
+        </div>
+
+        <div v-if="filteredSelectableDocumentItems.length" class="d-flex flex-column gap-3">
+          <div
+            v-for="group in selectableGroups"
+            :key="group.key"
+            class="d-flex flex-column gap-3"
+          >
+            <div>
+              <div class="text-subtitle-2 font-weight-medium">
+                {{ group.label }}
+              </div>
+              <div class="text-sm text-medium-emphasis">
+                {{ group.description }}
+              </div>
+            </div>
+
+            <label
+              v-for="item in group.items"
+              :key="item.selectionKey"
+              class="border rounded pa-3 d-flex align-start gap-3"
+              :style="{ marginInlineStart: itemRowOffset(item) }"
+            >
+              <VCheckbox
+                v-model="selectedItemIds"
+                :value="item.selectionKey"
+                color="primary"
+                hide-details
+                class="mt-0 pt-0"
+              />
+
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex flex-wrap align-center gap-2 mb-1">
+                  <div class="text-body-1 font-weight-medium">
+                    {{ item.name }}
+                  </div>
+
+                  <VChip size="x-small" label color="primary" variant="tonal">
+                    {{ formatItemType(item.catalogueType) }}
+                  </VChip>
+
+                  <VChip
+                    v-if="item.parentName"
+                    size="x-small"
+                    label
+                    color="secondary"
+                    variant="tonal"
+                  >
+                    Parent: {{ item.parentName }}
+                  </VChip>
+
+                  <VChip
+                    v-if="item.isBillableRoot && item.isAutoBillable"
+                    size="x-small"
+                    label
+                    color="success"
+                    variant="tonal"
+                  >
+                    Auto-flow eligible
+                  </VChip>
+
+                  <VChip
+                    v-else-if="item.isBillableRoot"
+                    size="x-small"
+                    label
+                    color="warning"
+                    variant="tonal"
+                  >
+                    Selection flow
+                  </VChip>
+
+                  <VChip
+                    v-if="item.expansionSummary"
+                    size="x-small"
+                    label
+                    color="info"
+                    variant="tonal"
+                  >
+                    {{ item.expansionSummary }}
+                  </VChip>
+                </div>
+
+                <div class="text-sm text-medium-emphasis mb-1">
+                  {{ formatMoney(item.unitPrice) }} x {{ item.quantity ?? 1 }}
+                </div>
+
+                <div v-if="item.hint" class="text-sm text-medium-emphasis mb-1">
+                  {{ item.hint }}
+                </div>
+
+                <div v-if="item.note" class="text-sm text-medium-emphasis">
+                  {{ item.note }}
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div v-else class="text-body-2 text-medium-emphasis">
+          No selectable rows available for this billing mode.
+        </div>
+      </VCardText>
+
+      <VDivider />
+
+      <VCardActions class="justify-end pa-4">
+        <VBtn variant="text" @click="closeSelectionDialog">Cancel</VBtn>
+        <VBtn
+          color="primary"
+          :disabled="!selectedDocumentItems.length"
+          @click="confirmSelectedDocumentItems"
+        >
+          Continue
+        </VBtn>
+      </VCardActions>
     </VCard>
   </VDialog>
 
@@ -2421,10 +3278,15 @@ const openEditTask = (taskId: number | string) => {
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
+.goal-card-actions {
+  display: flex;
+  align-self: flex-start;
+  gap: 0.15rem;
+  margin-block-start: -0.25rem;
+}
+
 .phase-edit-btn {
   flex: 0 0 auto;
-  align-self: flex-start;
-  margin-block-start: -0.25rem;
 }
 
 .item-card-note {

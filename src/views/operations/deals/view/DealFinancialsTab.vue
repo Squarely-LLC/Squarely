@@ -11,11 +11,14 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import {
   buildDealDocumentDraftRecord,
+  filterDealDocumentItemsByBillingMode,
   getBillableRootDealItems,
   getQuotationTopLevelDealItems,
   getSelectableDealItems,
-  isAutoBillableDealItem,
+  resolveDealDocumentBillingMode,
+  resolveDealDocumentBillingModeForItem,
   saveDealDocumentDraft,
+  type DealDocumentBillingMode,
   type DealDocumentKind,
   type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
@@ -57,6 +60,15 @@ const quotationItems = computed(() =>
   ),
 );
 const selectedDocumentKind = ref<DealDocumentKind | null>(null);
+const billingModeDialogVisible = ref(false);
+const billingPeriodDialogVisible = ref(false);
+const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
+const billingPeriodLabel = ref(
+  new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+  }).format(new Date()),
+);
 const selectedItemIds = ref<string[]>([]);
 const selectionDialogVisible = ref(false);
 
@@ -67,18 +79,31 @@ const contact = computed(() => {
 });
 
 const canAutoCreateBillingDocument = computed(
-  () =>
-    billableRootItems.value.length > 0 &&
-    billableRootItems.value.every(isAutoBillableDealItem),
+  () => billingMode.value === "simple-root",
+);
+
+const billingMode = computed<DealDocumentBillingMode>(() =>
+  resolveDealDocumentBillingMode(billableRootItems.value),
+);
+
+const effectiveBillingMode = computed<DealDocumentBillingMode>(
+  () => selectedBillingMode.value ?? billingMode.value,
 );
 
 const selectedItems = computed(() => {
   const selected = new Set(selectedItemIds.value.map((value) => String(value)));
 
-  return selectableItems.value.filter((item) =>
+  return filteredSelectableItems.value.filter((item) =>
     selected.has(String(item.selectionKey)),
   );
 });
+
+const filteredSelectableItems = computed(() =>
+  filterDealDocumentItemsByBillingMode(
+    selectableItems.value,
+    effectiveBillingMode.value,
+  ),
+);
 
 const selectableGroups = computed(() => {
   const groups = new Map<
@@ -91,7 +116,7 @@ const selectableGroups = computed(() => {
     }
   >();
 
-  for (const item of selectableItems.value) {
+  for (const item of filteredSelectableItems.value) {
     const description =
       item.groupKey === "billable-root"
         ? "These rows drive quotation and direct invoice/proforma eligibility."
@@ -141,20 +166,99 @@ const totalPaid = computed(() =>
 const balance = computed(() => totalQuoted.value - totalPaid.value);
 
 const selectionDialogTitle = computed(() => {
-  if (selectedDocumentKind.value === "invoice")
+  if (selectedDocumentKind.value === "invoice") {
+    if (effectiveBillingMode.value === "contractual-stage")
+      return "Select Stages for Invoice";
+    if (effectiveBillingMode.value === "retainer-period")
+      return "Select Retainer Lines for Invoice";
+    if (effectiveBillingMode.value === "recurrent-period")
+      return "Select Recurrent Lines for Invoice";
+
     return "Select Items for Invoice";
-  if (selectedDocumentKind.value === "proforma")
+  }
+
+  if (selectedDocumentKind.value === "proforma") {
+    if (effectiveBillingMode.value === "contractual-stage")
+      return "Select Stages for Proforma";
+    if (effectiveBillingMode.value === "retainer-period")
+      return "Select Retainer Lines for Proforma";
+    if (effectiveBillingMode.value === "recurrent-period")
+      return "Select Recurrent Lines for Proforma";
+
     return "Select Items for Proforma";
+  }
 
   return "Select Items";
 });
 
-const selectionDialogHint = computed(
-  () => "No rows are preselected. Choose only the rows you want billed.",
-);
+const selectionDialogHint = computed(() => {
+  if (effectiveBillingMode.value === "contractual-stage") {
+    return "Contractual deals bill at stage level. Choose only the stages you want billed in this document.";
+  }
+
+  if (effectiveBillingMode.value === "retainer-period") {
+    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+  }
+
+  if (effectiveBillingMode.value === "recurrent-period") {
+    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${billingPeriodLabel.value}.`;
+  }
+
+  if (effectiveBillingMode.value === "mixed-manual") {
+    return "This deal mixes billing modes. Pick a billing basis first, then choose only the rows you want billed.";
+  }
+
+  return "No rows are preselected. Choose only the rows you want billed.";
+});
+
+const selectionDialogIntro = computed(() => {
+  if (effectiveBillingMode.value === "contractual-stage") {
+    return "Select one or more contractual stages to include in this document.";
+  }
+
+  if (effectiveBillingMode.value === "retainer-period") {
+    return "Select one or more retainer lines to include in this document.";
+  }
+
+  if (effectiveBillingMode.value === "recurrent-period") {
+    return "Select one or more recurrent lines to include in this document.";
+  }
+
+  return "Select one or more items to include in this document.";
+});
 
 const formatMoney = (value?: number | null) =>
   Number(value || 0).toLocaleString();
+
+const billingModeOptions = computed(() => {
+  const availableModes = Array.from(
+    new Set(
+      billableRootItems.value
+        .map((item) => resolveDealDocumentBillingModeForItem(item))
+        .filter((mode) => mode !== "empty" && mode !== "mixed-manual"),
+    ),
+  ) as DealDocumentBillingMode[];
+
+  return availableModes.map((mode) => ({
+    description:
+      mode === "simple-root"
+        ? "Bill directly from simple top-level items."
+        : mode === "contractual-stage"
+          ? "Bill by contractual stages."
+          : mode === "retainer-period"
+            ? "Bill retainer services for a selected period."
+            : "Bill recurrent services for a selected period.",
+    title:
+      mode === "simple-root"
+        ? "Simple items"
+        : mode === "contractual-stage"
+          ? "Contractual stages"
+          : mode === "retainer-period"
+            ? "Retainer period"
+            : "Recurrent period",
+    value: mode,
+  }));
+});
 
 const formatItemType = (value?: string | null) => value || "Unknown";
 
@@ -194,6 +298,11 @@ const saveAndNavigateToDraft = async (
     financial: configStore.financial,
     legal: configStore.legal,
     nextId: nextIdForDocument(kind),
+    billingPeriodLabel:
+      effectiveBillingMode.value === "retainer-period" ||
+      effectiveBillingMode.value === "recurrent-period"
+        ? billingPeriodLabel.value
+        : null,
     resolveCatalogueRecord: (id, typeHint) =>
       cataloguesStore.recordById(id, typeHint),
     selectedItems: itemsToSend,
@@ -207,10 +316,75 @@ const saveAndNavigateToDraft = async (
   });
 };
 
-const openSelectionDialog = (kind: DealDocumentKind) => {
+const openSelectionDialog = (
+  kind: DealDocumentKind,
+  mode: DealDocumentBillingMode = billingMode.value,
+) => {
   selectedDocumentKind.value = kind;
+  selectedBillingMode.value = mode;
   selectedItemIds.value = [];
   selectionDialogVisible.value = true;
+};
+
+const openBillingPeriodDialog = (
+  kind: DealDocumentKind,
+  mode: Extract<
+    DealDocumentBillingMode,
+    "retainer-period" | "recurrent-period"
+  >,
+) => {
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = mode;
+  billingPeriodDialogVisible.value = true;
+};
+
+const confirmBillingPeriod = () => {
+  if (!selectedDocumentKind.value) return;
+
+  const trimmed = billingPeriodLabel.value.trim();
+  if (!trimmed) {
+    notifications.push("Enter a billing period first", "warning", 2500);
+    return;
+  }
+
+  billingPeriodLabel.value = trimmed;
+  billingPeriodDialogVisible.value = false;
+  openSelectionDialog(selectedDocumentKind.value, effectiveBillingMode.value);
+};
+
+const closeBillingPeriodDialog = () => {
+  billingPeriodDialogVisible.value = false;
+  if (!selectionDialogVisible.value) {
+    selectedBillingMode.value = null;
+    selectedDocumentKind.value = null;
+  }
+};
+
+const confirmBillingModeSelection = () => {
+  if (!selectedDocumentKind.value || !selectedBillingMode.value) {
+    notifications.push("Choose a billing basis first", "warning", 2500);
+    return;
+  }
+
+  billingModeDialogVisible.value = false;
+
+  if (
+    selectedBillingMode.value === "retainer-period" ||
+    selectedBillingMode.value === "recurrent-period"
+  ) {
+    billingPeriodDialogVisible.value = true;
+    return;
+  }
+
+  openSelectionDialog(selectedDocumentKind.value, selectedBillingMode.value);
+};
+
+const closeBillingModeDialog = () => {
+  billingModeDialogVisible.value = false;
+  if (!selectionDialogVisible.value && !billingPeriodDialogVisible.value) {
+    selectedBillingMode.value = null;
+    selectedDocumentKind.value = null;
+  }
 };
 
 const handleCreateQuotation = async () => {
@@ -223,7 +397,24 @@ const handleCreateBillingDocument = async (kind: "invoice" | "proforma") => {
     return;
   }
 
-  openSelectionDialog(kind);
+  if (billingMode.value === "contractual-stage") {
+    openSelectionDialog(kind, "contractual-stage");
+    return;
+  }
+
+  if (billingMode.value === "retainer-period") {
+    openBillingPeriodDialog(kind, "retainer-period");
+    return;
+  }
+
+  if (billingMode.value === "recurrent-period") {
+    openBillingPeriodDialog(kind, "recurrent-period");
+    return;
+  }
+
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = billingModeOptions.value[0]?.value ?? null;
+  billingModeDialogVisible.value = true;
 };
 
 const confirmSelectedItems = async () => {
@@ -237,7 +428,10 @@ const confirmSelectedItems = async () => {
 
 const closeSelectionDialog = () => {
   selectionDialogVisible.value = false;
-  selectedDocumentKind.value = null;
+  if (!billingModeDialogVisible.value && !billingPeriodDialogVisible.value) {
+    selectedBillingMode.value = null;
+    selectedDocumentKind.value = null;
+  }
   selectedItemIds.value = [];
 };
 
@@ -372,6 +566,81 @@ const formatDate = (value?: string | null) => {
     </VCol>
   </VRow>
 
+  <VDialog v-model="billingModeDialogVisible" max-width="560">
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Choose Billing Basis</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          This deal mixes billing modes. Choose how you want to build this
+          document.
+        </div>
+
+        <VRadioGroup v-model="selectedBillingMode" color="primary">
+          <VRadio
+            v-for="option in billingModeOptions"
+            :key="option.value"
+            :value="option.value"
+          >
+            <template #label>
+              <div>
+                <div class="text-body-1 font-weight-medium">
+                  {{ option.title }}
+                </div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ option.description }}
+                </div>
+              </div>
+            </template>
+          </VRadio>
+        </VRadioGroup>
+      </VCardText>
+
+      <VDivider />
+
+      <VCardActions class="justify-end pa-4">
+        <VBtn variant="text" @click="closeBillingModeDialog">Cancel</VBtn>
+        <VBtn color="primary" @click="confirmBillingModeSelection"
+          >Continue</VBtn
+        >
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="billingPeriodDialogVisible" max-width="520">
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Select Billing Period</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          Enter the billing period label that should appear on this document.
+        </div>
+
+        <VTextField
+          v-model="billingPeriodLabel"
+          label="Billing Period"
+          placeholder="May 2026"
+          autofocus
+        />
+      </VCardText>
+
+      <VDivider />
+
+      <VCardActions class="justify-end pa-4">
+        <VBtn variant="text" @click="closeBillingPeriodDialog">Cancel</VBtn>
+        <VBtn color="primary" @click="confirmBillingPeriod">Continue</VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
   <VDialog v-model="selectionDialogVisible" max-width="760">
     <VCard>
       <VCardItem>
@@ -382,7 +651,7 @@ const formatDate = (value?: string | null) => {
 
       <VCardText>
         <div class="text-sm text-medium-emphasis mb-4">
-          Select one or more items to include in this document.
+          {{ selectionDialogIntro }}
         </div>
 
         <div class="text-sm text-medium-emphasis mb-4">

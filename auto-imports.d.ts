@@ -62,6 +62,7 @@ declare global {
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
   const extendRef: typeof import('@vueuse/core')['extendRef']
+  const filterDealDocumentItemsByBillingMode: typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']
   const formatCurrencyAmount: typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
@@ -73,6 +74,7 @@ declare global {
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getDealContractualPhaseLines: typeof import('./src/utils/dealDocumentDraft')['getDealContractualPhaseLines']
   const getDealDiscountTotal: typeof import('./src/utils/dealValue')['getDealDiscountTotal']
   const getDealGrandTotal: typeof import('./src/utils/dealValue')['getDealGrandTotal']
   const getDealItemsSubtotal: typeof import('./src/utils/dealValue')['getDealItemsSubtotal']
@@ -176,6 +178,8 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
+  const resolveDealDocumentBillingMode: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']
+  const resolveDealDocumentBillingModeForItem: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']
   const resolveQuotationLogoUrl: typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
@@ -482,6 +486,7 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly filterDealDocumentItemsByBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']>
     readonly formatCurrencyAmount: UnwrapRef<typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
@@ -493,6 +498,7 @@ declare module 'vue' {
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getDealContractualPhaseLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealContractualPhaseLines']>
     readonly getDealDiscountTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealDiscountTotal']>
     readonly getDealGrandTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealGrandTotal']>
     readonly getDealItemsSubtotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealItemsSubtotal']>
@@ -596,6 +602,8 @@ declare module 'vue' {
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
+    readonly resolveDealDocumentBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']>
+    readonly resolveDealDocumentBillingModeForItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']>
     readonly resolveQuotationLogoUrl: UnwrapRef<typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>

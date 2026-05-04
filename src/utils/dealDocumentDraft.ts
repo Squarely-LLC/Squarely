@@ -1,40 +1,41 @@
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type {
-  InvoiceRecord,
-  PurchasedProduct as InvoicePurchasedProduct,
+    PurchasedProduct as InvoicePurchasedProduct,
+    InvoiceRecord,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import type {
-  ProformaRecord,
-  PurchasedProduct as ProformaPurchasedProduct,
+    PurchasedProduct as ProformaPurchasedProduct,
+    ProformaRecord,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
-  CatalogueContractualServiceRecord,
-  CatalogueOnetimeServiceRecord,
-  CatalogueReccurentServiceRecord,
-  CatalogueRecord,
-  CatalogueRetainerServiceRecord,
-} from "@/plugins/fake-api/handlers/catalogues/types";
-import type {
-  Client,
-  PurchasedProduct as QuotationPurchasedProduct,
-  QuotationRecord,
+    Client,
+    PurchasedProduct as QuotationPurchasedProduct,
+    QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import type {
-  FinancialConfig,
-  LegalConfig,
+    CatalogueContractualServiceRecord,
+    CatalogueOnetimeServiceRecord,
+    CatalogueReccurentServiceRecord,
+    CatalogueRecord,
+    CatalogueRetainerServiceRecord,
+} from "@/plugins/fake-api/handlers/catalogues/types";
+import type {
+    FinancialConfig,
+    LegalConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import type {
-  DealItem,
-  DealProperties,
+    DealCustomPhase,
+    DealItem,
+    DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import {
-  buildDocumentNote,
-  buildProformaNote,
-  buildQuotationNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  getDocumentSequencePrefix,
+    buildDocumentNote,
+    buildProformaNote,
+    buildQuotationNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 
@@ -48,7 +49,23 @@ const AUTO_BILLABLE_TYPES = new Set([
   "Onetime Service",
   "Product",
   "Produced Product",
+  "Rental",
   "Related Item",
+]);
+
+const CONTRACTUAL_BILLABLE_TYPES = new Set([
+  "Contractual Service",
+  "Phase",
+]);
+
+const RETAINER_BILLABLE_TYPES = new Set([
+  "Retainer Service",
+  "Retainer Service Line",
+]);
+
+const RECURRENT_BILLABLE_TYPES = new Set([
+  "Reccurent Service",
+  "Recurrent Service Line",
 ]);
 
 type PurchasedProductLike =
@@ -57,6 +74,14 @@ type PurchasedProductLike =
   | InvoicePurchasedProduct;
 
 export type DealDocumentKind = keyof typeof DEAL_DOCUMENT_DRAFT_KEYS;
+export type DealDocumentBillingMode =
+  | "empty"
+  | "simple-root"
+  | "contractual-stage"
+  | "retainer-period"
+  | "recurrent-period"
+  | "mixed-manual";
+
 export type CatalogueRecordResolver = (
   id: string,
   typeHint?: string | null,
@@ -79,7 +104,22 @@ export interface DealDocumentSelectableItem extends DealItem {
   parentName: string | null;
 }
 
+export interface DealDocumentContractualPhaseLine {
+  category: string | null;
+  discountPercent: number | null;
+  id: number | string;
+  isCustom: boolean;
+  name: string;
+  note: string | null;
+  overrideKey: string;
+  price: number | null;
+  quantity: number | null;
+  sourcePhaseId: number | null;
+  taxApplicable: boolean | null;
+}
+
 export interface DealDocumentDraftContext {
+  billingPeriodLabel?: string | null;
   contact?: ContactProperties | null;
   deal: DealProperties;
   financial?: FinancialConfig | null;
@@ -108,6 +148,121 @@ export const isBillableRootDealItem = (item: DealItem) =>
 
 export const isAutoBillableDealItem = (item: DealItem) =>
   AUTO_BILLABLE_TYPES.has(String(item.catalogueType || ""));
+
+export const resolveDealDocumentBillingMode = (
+  items: Array<Pick<DealItem, "catalogueType">> | null | undefined,
+): DealDocumentBillingMode => {
+  const actualItems = items || [];
+
+  if (!actualItems.length) return "empty";
+
+  if (
+    actualItems.every((item) =>
+      AUTO_BILLABLE_TYPES.has(String(item.catalogueType || "")),
+    )
+  ) {
+    return "simple-root";
+  }
+
+  if (
+    actualItems.every((item) =>
+      CONTRACTUAL_BILLABLE_TYPES.has(String(item.catalogueType || "")),
+    )
+  ) {
+    return "contractual-stage";
+  }
+
+  if (
+    actualItems.every((item) =>
+      RETAINER_BILLABLE_TYPES.has(String(item.catalogueType || "")),
+    )
+  ) {
+    return "retainer-period";
+  }
+
+  if (
+    actualItems.every((item) =>
+      RECURRENT_BILLABLE_TYPES.has(String(item.catalogueType || "")),
+    )
+  ) {
+    return "recurrent-period";
+  }
+
+  return "mixed-manual";
+};
+
+export const resolveDealDocumentBillingModeForItem = (
+  item: Pick<DealItem, "catalogueType">,
+) => resolveDealDocumentBillingMode([item]);
+
+export const filterDealDocumentItemsByBillingMode = <
+  TItem extends Pick<DealItem, "catalogueType">,
+>(
+  items: TItem[] | null | undefined,
+  mode: DealDocumentBillingMode,
+) => {
+  const actualItems = items || [];
+
+  if (mode === "empty") return [] as TItem[];
+  if (mode === "mixed-manual") return [...actualItems];
+
+  return actualItems.filter(
+    (item) => resolveDealDocumentBillingModeForItem(item) === mode,
+  );
+};
+
+function normalizeCustomPhases(item: DealItem) {
+  return Array.isArray(item.customPhases)
+    ? item.customPhases.filter(Boolean)
+    : [] as DealCustomPhase[];
+}
+
+export const getDealContractualPhaseLines = (
+  item: DealItem,
+  record: CatalogueContractualServiceRecord,
+): DealDocumentContractualPhaseLine[] => {
+  const removedPhaseIds = new Set(
+    Array.isArray(item.removedPhaseIds)
+      ? item.removedPhaseIds.map((value) => Number(value)).filter(Number.isFinite)
+      : [],
+  );
+
+  const basePhases = (record.phases || [])
+    .filter((phase) => !removedPhaseIds.has(Number(phase.id)))
+    .map((phase) => {
+      const override = item.subItemOverrides?.[`phase-${phase.id}`] || {};
+
+      return {
+        category: override.category ?? item.category ?? null,
+        discountPercent: override.discountPercent ?? 0,
+        id: phase.id,
+        isCustom: false,
+        name: override.name ?? phase.name,
+        note: override.note ?? item.note ?? record.description ?? null,
+        overrideKey: `phase-${phase.id}`,
+        price: override.unitPrice ?? phase.price ?? null,
+        quantity: override.quantity ?? item.quantity,
+        sourcePhaseId: Number(phase.id),
+        taxApplicable: override.taxApplicable ?? record.chargeTax,
+      } satisfies DealDocumentContractualPhaseLine;
+    });
+
+  const customPhases = normalizeCustomPhases(item).map((phase) => ({
+    category: phase.category ?? item.category ?? null,
+    discountPercent: phase.discountPercent ?? 0,
+    id: phase.id,
+    isCustom: true,
+    name: String(phase.name || "").trim(),
+    note: phase.note ?? item.note ?? record.description ?? null,
+    overrideKey: `phase-custom-${phase.id}`,
+    price: phase.price ?? null,
+    quantity: phase.quantity ?? item.quantity,
+    sourcePhaseId: null,
+    taxApplicable: phase.taxApplicable ?? record.chargeTax,
+  } satisfies DealDocumentContractualPhaseLine));
+
+  return [...basePhases, ...customPhases];
+};
 
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -300,25 +455,26 @@ function buildDerivedSelectableLines(
   if (record.type === "Contractual Service") {
     const contractual = record as CatalogueContractualServiceRecord;
 
-    return (contractual.phases || []).map((phase) => {
-      const override = item.subItemOverrides?.[`phase-${phase.id}`] || {};
+    return getDealContractualPhaseLines(item, contractual).map((phase) => {
 
       return toSelectableItem(
         {
           ...item,
           catalogueType: "Phase",
-          discountPercent: override.discountPercent ?? 0,
-          name: override.name ?? phase.name,
-          note: override.note ?? item.note ?? record.description ?? null,
-          quantity: override.quantity ?? item.quantity,
-          unitPrice: override.unitPrice ?? phase.price ?? null,
+          category: phase.category,
+          discountPercent: phase.discountPercent ?? 0,
+          name: phase.name,
+          note: phase.note,
+          quantity: phase.quantity ?? item.quantity ?? 1,
+          taxApplicable: phase.taxApplicable,
+          unitPrice: phase.price,
         },
         {
           isGenerated: false,
           isRootReplacement: true,
           parentName: item.name,
           resolveCatalogueRecord,
-          selectionKeySuffix: `phase-${phase.id}`,
+          selectionKeySuffix: phase.overrideKey,
         },
       );
     });
@@ -524,6 +680,18 @@ function buildDistributedCost(totalCost: number, count: number, index: number) {
   return Number((safeTotal - baseShare * (count - 1)).toFixed(2));
 }
 
+function appendBillingPeriodLabel(
+  value: string | null | undefined,
+  billingPeriodLabel?: string | null,
+) {
+  const label = billingPeriodLabel?.trim();
+  if (!label) return value?.trim() || "";
+
+  const base = value?.trim();
+
+  return base ? `${base}\nBilling Period: ${label}` : `Billing Period: ${label}`;
+}
+
 function createPurchasedProduct(input: {
   catalogueItemId?: string | null;
   cost?: number | null;
@@ -551,6 +719,76 @@ function createPurchasedProduct(input: {
   };
 }
 
+function buildQuotationChildSummary(
+  item: DealDocumentSelectableItem,
+  resolveCatalogueRecord?: CatalogueRecordResolver,
+) {
+  if (item.catalogueType === "Contractual Service" && item.catalogueItemId && resolveCatalogueRecord) {
+    const record = resolveCatalogueRecord(item.catalogueItemId, item.catalogueType || undefined);
+    if (record?.type === "Contractual Service") {
+      const phases = getDealContractualPhaseLines(item, record)
+        .map((phase) => phase.name.trim())
+        .filter(Boolean);
+
+      if (phases.length) return phases.join("\n");
+    }
+  }
+
+  if (item.catalogueItemId && resolveCatalogueRecord) {
+    const record = resolveCatalogueRecord(item.catalogueItemId, item.catalogueType || undefined);
+
+    if (record?.type === "Retainer Service") {
+      const lines = (record.retainerServices || [])
+        .map((service) => {
+          const override = item.subItemOverrides?.[`retainer-${service.id}`] || {};
+          return String(override.name ?? service.name).trim();
+        })
+        .filter(Boolean);
+
+      if (lines.length) return lines.join("\n");
+    }
+
+    if (record?.type === "Reccurent Service") {
+      const lines = (record.reccurentServices || [])
+        .map((service) => {
+          const override = item.subItemOverrides?.[`recurrent-${service.id}`] || {};
+          return String(override.name ?? service.name).trim();
+        })
+        .filter(Boolean);
+
+      if (lines.length) return lines.join("\n");
+    }
+
+    if (record?.type === "Onetime Service") {
+      const excluded = new Set(item.excludedRelatedItemIds || []);
+      const related = (record.relatedItems || [])
+        .filter((relatedItem) => !excluded.has(Number(relatedItem.id)))
+        .map((relatedItem) => {
+          const override = item.subItemOverrides?.[`related-${relatedItem.id}`] || {};
+          return String(override.name ?? relatedItem.name).trim();
+        })
+        .filter(Boolean);
+
+      if (related.length) return related.join("\n");
+    }
+  }
+
+  return "";
+}
+
+function buildQuotationDescription(
+  item: DealDocumentSelectableItem,
+  resolveCatalogueRecord?: CatalogueRecordResolver,
+) {
+  const baseDescription = item.note?.trim() || item.category?.trim() || "";
+  const childSummary = buildQuotationChildSummary(item, resolveCatalogueRecord);
+
+  if (baseDescription && childSummary) return `${baseDescription}\n\n${childSummary}`;
+  if (childSummary) return childSummary;
+
+  return baseDescription;
+}
+
 function buildStandardPurchasedProduct(item: DealDocumentSelectableItem) {
   return createPurchasedProduct({
     catalogueItemId: item.catalogueItemId ?? null,
@@ -567,17 +805,14 @@ function buildContractualProducts(
   item: DealDocumentSelectableItem,
   record: CatalogueContractualServiceRecord,
 ) {
-  return (record.phases || []).map((phase) => {
-    const override = item.subItemOverrides?.[`phase-${phase.id}`] || {};
-
+  return getDealContractualPhaseLines(item, record).map((phase) => {
     return createPurchasedProduct({
       catalogueItemId: item.catalogueItemId ?? null,
-      cost: override.unitPrice ?? phase.price ?? 0,
-      description:
-        override.note ?? item.note ?? record.description ?? item.category ?? "",
-      discountPercent: override.discountPercent ?? 0,
-      hours: override.quantity ?? item.quantity,
-      title: override.name ?? phase.name,
+      cost: phase.price ?? 0,
+      description: phase.note ?? item.note ?? record.description ?? item.category ?? "",
+      discountPercent: phase.discountPercent ?? 0,
+      hours: phase.quantity,
+      title: phase.name,
     });
   });
 }
@@ -585,6 +820,7 @@ function buildContractualProducts(
 function buildRetainerProducts(
   item: DealDocumentSelectableItem,
   record: CatalogueRetainerServiceRecord,
+  billingPeriodLabel?: string | null,
 ) {
   const services = record.retainerServices || [];
   const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
@@ -598,7 +834,10 @@ function buildRetainerProducts(
         override.unitPrice ??
         buildDistributedCost(totalCost, services.length, index),
       description:
-        override.note ?? service.description ?? item.note ?? record.description,
+        appendBillingPeriodLabel(
+          override.note ?? service.description ?? item.note ?? record.description,
+          billingPeriodLabel,
+        ),
       discountPercent: override.discountPercent ?? 0,
       hours: override.quantity ?? service.qty ?? item.quantity,
       lineConstraints: {
@@ -613,6 +852,7 @@ function buildRetainerProducts(
 function buildRecurrentProducts(
   item: DealDocumentSelectableItem,
   record: CatalogueReccurentServiceRecord,
+  billingPeriodLabel?: string | null,
 ) {
   const services = record.reccurentServices || [];
   const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
@@ -626,7 +866,10 @@ function buildRecurrentProducts(
         override.unitPrice ??
         buildDistributedCost(totalCost, services.length, index),
       description:
-        override.note ?? service.description ?? item.note ?? record.description,
+        appendBillingPeriodLabel(
+          override.note ?? service.description ?? item.note ?? record.description,
+          billingPeriodLabel,
+        ),
       discountPercent: override.discountPercent ?? 0,
       hours: override.quantity ?? item.quantity,
       lineConstraints: {
@@ -641,6 +884,7 @@ function buildRecurrentProducts(
 
 function expandDealItemToPurchasedProducts(
   item: DealDocumentSelectableItem,
+  billingPeriodLabel?: string | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   if (
@@ -666,10 +910,10 @@ function expandDealItemToPurchasedProducts(
     return buildContractualProducts(item, record);
   }
   if (record.type === "Retainer Service") {
-    return buildRetainerProducts(item, record);
+    return buildRetainerProducts(item, record, billingPeriodLabel);
   }
   if (record.type === "Reccurent Service") {
-    return buildRecurrentProducts(item, record);
+    return buildRecurrentProducts(item, record, billingPeriodLabel);
   }
 
   return [buildStandardPurchasedProduct(item)];
@@ -677,10 +921,15 @@ function expandDealItemToPurchasedProducts(
 
 function buildPurchasedProducts(
   items: DealDocumentSelectableItem[],
+  billingPeriodLabel?: string | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   const purchasedProducts = items.flatMap((item) =>
-    expandDealItemToPurchasedProducts(item, resolveCatalogueRecord),
+    expandDealItemToPurchasedProducts(
+      item,
+      billingPeriodLabel,
+      resolveCatalogueRecord,
+    ),
   );
 
   if (purchasedProducts.length) return purchasedProducts;
@@ -711,7 +960,17 @@ function buildQuotationDraftRecord({
   selectedItems,
 }: DealDocumentDraftContext): QuotationRecord {
   const purchasedProducts = selectedItems.length
-    ? selectedItems.map((item) => buildStandardPurchasedProduct(item))
+    ? selectedItems.map((item) =>
+        createPurchasedProduct({
+          catalogueItemId: item.catalogueItemId ?? null,
+          cost: item.unitPrice ?? 0,
+          description: buildQuotationDescription(item, resolveCatalogueRecord),
+          discountPercent: item.discountPercent ?? 0,
+          hours: item.quantity,
+          lineConstraints: item.lineConstraintsOverride,
+          title: item.name,
+        }),
+      )
     : [
         createPurchasedProduct({
           catalogueItemId: null,
@@ -761,6 +1020,7 @@ function buildQuotationDraftRecord({
 }
 
 function buildProformaDraftRecord({
+  billingPeriodLabel,
   contact,
   deal,
   financial,
@@ -771,6 +1031,7 @@ function buildProformaDraftRecord({
 }: DealDocumentDraftContext): ProformaRecord {
   const purchasedProducts = buildPurchasedProducts(
     selectedItems,
+    billingPeriodLabel,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);
@@ -813,6 +1074,7 @@ function buildProformaDraftRecord({
 }
 
 function buildInvoiceDraftRecord({
+  billingPeriodLabel,
   contact,
   deal,
   financial,
@@ -823,6 +1085,7 @@ function buildInvoiceDraftRecord({
 }: DealDocumentDraftContext): InvoiceRecord {
   const purchasedProducts = buildPurchasedProducts(
     selectedItems,
+    billingPeriodLabel,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);

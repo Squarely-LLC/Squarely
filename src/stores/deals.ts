@@ -3,11 +3,12 @@ import { toRaw } from "vue";
 
 import { db } from "@/plugins/fake-api/handlers/operations/deals/db";
 import type {
-    DealFieldValue,
-    DealFinancialEntry,
-    DealItem,
-    DealProperties,
-    DealSalesTaskTemplate,
+  DealCustomPhase,
+  DealFieldValue,
+  DealFinancialEntry,
+  DealItem,
+  DealProperties,
+  DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useConfigStore } from "@/stores/config";
 import { useTodos } from "@/stores/todos";
@@ -114,12 +115,16 @@ function getDealPrefix() {
   configStore.init();
 
   return (
-    String(configStore.configurations?.deals?.dealPrefix ?? DEFAULT_DEAL_PREFIX).trim()
-    || DEFAULT_DEAL_PREFIX
+    String(
+      configStore.configurations?.deals?.dealPrefix ?? DEFAULT_DEAL_PREFIX,
+    ).trim() || DEFAULT_DEAL_PREFIX
   );
 }
 
-function applyPrefixToDealCode(code: string | null | undefined, prefix: string) {
+function applyPrefixToDealCode(
+  code: string | null | undefined,
+  prefix: string,
+) {
   const trimmed = String(code ?? "").trim();
   if (!trimmed) return null;
 
@@ -150,6 +155,22 @@ function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
 
   return items.map(({ generatedTaskIds: _generatedTaskIds, ...item }) => ({
     ...item,
+    customPhases: Array.isArray(item.customPhases)
+      ? item.customPhases.map((phase: DealCustomPhase) => ({ ...phase }))
+      : null,
+    removedPhaseIds: Array.isArray(item.removedPhaseIds)
+      ? item.removedPhaseIds
+          .map((value) => Number(value))
+          .filter(Number.isFinite)
+      : null,
+    subItemOverrides: item.subItemOverrides
+      ? Object.fromEntries(
+          Object.entries(item.subItemOverrides).map(([key, value]) => [
+            key,
+            { ...value },
+          ]),
+        )
+      : null,
   }));
 }
 

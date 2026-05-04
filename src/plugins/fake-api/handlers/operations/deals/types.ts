@@ -13,6 +13,17 @@ export interface DealItemOverride {
   note?: string | null;
 }
 
+export interface DealCustomPhase {
+  id: string;
+  name: string;
+  category?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  discountPercent?: number | null;
+  taxApplicable?: boolean | null;
+  note?: string | null;
+}
+
 export interface DealItem {
   id: number;
   name: string;
@@ -22,6 +33,8 @@ export interface DealItem {
   catalogueType?: string | null;
   parentItemId?: number | null;
   sourceRelatedItemId?: number | null;
+  removedPhaseIds?: number[] | null;
+  customPhases?: DealCustomPhase[] | null;
   excludedRelatedItemIds?: number[] | null;
   generatedTaskIds?: Array<number | string> | null;
   subItemOverrides?: Record<string, DealItemOverride> | null;
