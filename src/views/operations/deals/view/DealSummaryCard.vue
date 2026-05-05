@@ -84,6 +84,7 @@ const formatAmount = (value?: number | null) => {
               variant="flat"
               rounded="lg"
               class="summary-action-btn"
+              aria-label="Add task"
               @click="emit('open-add-task')"
             >
               <VIcon icon="tabler-checkbox" />
@@ -99,6 +100,7 @@ const formatAmount = (value?: number | null) => {
               variant="flat"
               rounded="lg"
               class="summary-action-btn"
+              aria-label="Add email"
               @click="emit('open-add-email')"
             >
               <VIcon icon="tabler-mail" />
@@ -114,6 +116,7 @@ const formatAmount = (value?: number | null) => {
               variant="flat"
               rounded="lg"
               class="summary-action-btn"
+              aria-label="Add meeting"
               @click="emit('open-add-meeting')"
             >
               <VIcon icon="tabler-calendar-plus" />
@@ -129,6 +132,7 @@ const formatAmount = (value?: number | null) => {
               variant="flat"
               rounded="lg"
               class="summary-action-btn"
+              aria-label="Add call"
               @click="emit('open-add-call')"
             >
               <VIcon icon="tabler-phone-call" />
@@ -232,12 +236,14 @@ const formatAmount = (value?: number | null) => {
     </VCardText>
 
     <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-6">
-      <VBtn @click="emit('edit')" class="mb-2"> Edit </VBtn>
+      <VBtn aria-label="Edit deal" @click="emit('edit')" class="mb-2">
+        Edit
+      </VBtn>
     </VCardText>
   </VCard>
 
   <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-2">
-    <VBtn variant="elevated" @click="emit('execute')">
+    <VBtn aria-label="Execute deal" variant="elevated" @click="emit('execute')">
       <VIcon left>tabler-play</VIcon>
       Execute Deal
     </VBtn>
