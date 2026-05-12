@@ -37,17 +37,37 @@ todosStore.init();
 
 const EMAIL_THREAD_NOTE = "__deal_email_thread__";
 const activityFilter = ref("");
+const activityTypeFilter = ref<
+  "all" | "updates" | "task" | "email" | "meeting" | "document" | "financial"
+>("all");
+
+const activityTypeOptions = [
+  { title: "All", value: "all" },
+  { title: "Updates", value: "updates" },
+  { title: "Tasks", value: "task" },
+  { title: "Emails", value: "email" },
+  { title: "Meetings", value: "meeting" },
+  { title: "Documents", value: "document" },
+  { title: "Financials", value: "financial" },
+] as const;
 
 const dealTodos = computed(() => {
   const dealId = String(props.deal.id ?? "").trim();
+  const linkedJobId = String(props.deal.linkedJobId ?? "").trim();
   if (!dealId) return [] as any[];
 
   return (todosStore.items || []).filter((todo: any) => {
-    return (
-      todo?.relatedTo &&
+    if (!todo?.relatedTo) return false;
+
+    const matchesDeal =
       String(todo.relatedTo.id) === dealId &&
-      (todo.relatedTo.type ? todo.relatedTo.type === "deal" : true)
-    );
+      (todo.relatedTo.type ? todo.relatedTo.type === "deal" : true);
+    const matchesLinkedJob =
+      Boolean(linkedJobId) &&
+      String(todo.relatedTo.id) === linkedJobId &&
+      todo.relatedTo.type === "job";
+
+    return matchesDeal || matchesLinkedJob;
   });
 });
 
@@ -233,8 +253,8 @@ const timelineActivities = computed<ActivityItem[]>(() => {
       id: `item-${item.id}`,
       kind: "item" as const,
       title: `Item added: ${item.name}`,
-      body: item.note || "",
-      date: item.createdAt || props.deal.createdAt || null,
+      body: (item as any).note || "",
+      date: (item as any).createdAt || props.deal.createdAt || null,
       meta: item.status || item.catalogueType || "",
       linkedTo: [],
     })),
@@ -251,7 +271,7 @@ const timelineActivities = computed<ActivityItem[]>(() => {
       id: `financial-${entry.id}`,
       kind: "financial" as const,
       title: entry.title || "Financial entry",
-      body: entry.note || "",
+      body: (entry as any).note || "",
       date: entry.createdAt || null,
       meta: `${entry.type} - ${Number(entry.amount || 0).toLocaleString()}`,
       linkedTo: [],
@@ -271,10 +291,22 @@ const allActivities = computed(() => {
 });
 
 const filteredActivities = computed(() => {
+  const typeFilter = activityTypeFilter.value;
   const query = activityFilter.value.trim().toLowerCase();
-  if (!query) return allActivities.value;
 
   return allActivities.value.filter((activity) => {
+    const matchesType =
+      typeFilter === "all"
+        ? true
+        : typeFilter === "updates"
+          ? ["deal", "delivery", "item"].includes(activity.kind)
+          : typeFilter === "meeting"
+            ? activity.kind === "meeting" || activity.kind === "call"
+            : activity.kind === typeFilter;
+
+    if (!matchesType) return false;
+    if (!query) return true;
+
     const haystack = [
       activity.title,
       activity.body,
@@ -313,18 +345,37 @@ function activityDateTooltip(date?: string | null) {
 <template>
   <VRow>
     <VCol cols="12">
-      <VCard
-        :title="`${deal.code || `Deal #${deal.id}`} Activity`"
-        :class="hasAnyActivities ? 'activity-card' : ''"
-      >
-        <VCardText :class="hasAnyActivities ? 'activity-card__body' : ''">
-          <AppTextField
-            v-model="activityFilter"
-            class="mb-4"
-            prepend-inner-icon="tabler-search"
-            placeholder="Filter tasks, emails, meetings, documents, financials..."
-          />
+      <VCard :class="hasAnyActivities ? 'activity-card' : ''">
+        <VCardItem>
+          <template #title>
+            {{ `${deal.code || `Deal #${deal.id}`} Activity` }}
+          </template>
 
+          <template #append>
+            <div class="activity-card__toolbar">
+              <AppTextField
+                v-model="activityFilter"
+                class="activity-card__search"
+                prepend-inner-icon="tabler-search"
+                placeholder="Search activity"
+                density="compact"
+                hide-details
+              />
+
+              <AppSelect
+                v-model="activityTypeFilter"
+                class="activity-card__filter"
+                :items="activityTypeOptions"
+                item-title="title"
+                item-value="value"
+                density="compact"
+                hide-details
+              />
+            </div>
+          </template>
+        </VCardItem>
+
+        <VCardText :class="hasAnyActivities ? 'activity-card__body' : ''">
           <template v-if="!hasAnyActivities">
             <div class="d-flex justify-center align-center pa-6">
               <div class="text-subtitle-1">No activity yet</div>
@@ -454,6 +505,22 @@ function activityDateTooltip(date?: string | null) {
   block-size: 39rem;
 }
 
+.activity-card__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: min(100%, 34rem);
+}
+
+.activity-card__search {
+  flex: 1 1 15rem;
+  min-inline-size: 0;
+}
+
+.activity-card__filter {
+  flex: 0 0 11rem;
+}
+
 .activity-card__body {
   overflow: auto;
   flex: 1 1 auto;
@@ -502,5 +569,17 @@ function activityDateTooltip(date?: string | null) {
 .app-timeline-text {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.875rem;
+}
+
+@media (max-width: 959px) {
+  .activity-card__toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .activity-card__search,
+  .activity-card__filter {
+    flex-basis: 100%;
+  }
 }
 </style>

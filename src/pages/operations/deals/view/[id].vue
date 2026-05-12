@@ -2,7 +2,6 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
-import CatalogueTaskTemplateDrawer from "@/components/catalogues/CatalogueTaskTemplateDrawer.vue";
 import type { ToDo } from "@/data/schema";
 import type {
   CatalogueJobConfigTask,
@@ -33,7 +32,6 @@ import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
 import DealUpsertDialog from "@/views/operations/deals/list/DealUpsertDialog.vue";
 import DealCommunicationTab from "@/views/operations/deals/view/DealCommunicationTab.vue";
 import DealDocumentsTab from "@/views/operations/deals/view/DealDocumentsTab.vue";
-import DealFinancialsTab from "@/views/operations/deals/view/DealFinancialsTab.vue";
 import DealItemsTab from "@/views/operations/deals/view/DealItemsTab.vue";
 import DealSummaryCard from "@/views/operations/deals/view/DealSummaryCard.vue";
 
@@ -67,30 +65,26 @@ const isAddMeetingOpen = ref(false);
 const lockMeetingRelatedTo = ref(false);
 const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
-const taskTemplateDrawerRef = ref<InstanceType<
-  typeof CatalogueTaskTemplateDrawer
-> | null>(null);
-const isTaskTemplateDrawerOpen = ref(false);
-const taskTemplateMode = ref<"create" | "edit">("create");
-const taskTemplateTodoId = ref<number | string | null>(null);
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
   null,
 );
 const isAddTodoDrawerVisible = ref(false);
+const showImmediateDueOption = ref(false);
 const addTodoInitial = ref<Partial<ToDo> | null>(null);
 const editingTodo = ref<ToDo | null>(null);
+const editingSalesTaskTemplateId = ref<number | string | null>(null);
+const showImmediateDueOptionOnEdit = ref(false);
 const isEditTodoDrawerVisible = ref(false);
 const isExecutePreviewDialogVisible = ref(false);
 const isExecutingDeal = ref(false);
 const executePreviewError = ref<string | null>(null);
 const executePreview = ref<DealExecutionPreview | null>(null);
 
-const tabKeys = ["items", "activity", "documents", "financials"] as const;
+const tabKeys = ["items", "activity", "documents"] as const;
 const tabs = [
   { icon: "tabler-package", title: "Items" },
   { icon: "tabler-message", title: "Activity" },
   { icon: "tabler-folder", title: "Documents" },
-  { icon: "tabler-credit-card", title: "Invoicing" },
 ] as const;
 
 type ExecutionPreviewTaskKind = "sales" | "milestone" | "goal";
@@ -995,6 +989,13 @@ const contactOptions = computed(() =>
   })),
 );
 
+const linkedJob = computed(() => {
+  const linkedJobId = Number(deal.value?.linkedJobId ?? NaN);
+  if (!Number.isFinite(linkedJobId)) return null;
+
+  return jobsStore.byId(linkedJobId) ?? null;
+});
+
 const dealRelatedRef = computed(() =>
   deal.value
     ? {
@@ -1004,6 +1005,38 @@ const dealRelatedRef = computed(() =>
       }
     : null,
 );
+
+const preferredTaskRelatedRef = computed(() => {
+  if (linkedJob.value) {
+    return {
+      id: linkedJob.value.id,
+      name: linkedJob.value.name,
+      type: "job",
+    } as const;
+  }
+
+  return dealRelatedRef.value;
+});
+
+const taskRelationCandidates = computed(() => {
+  const candidates: Array<{ id: number | string; type: string }> = [];
+
+  if (dealRelatedRef.value) {
+    candidates.push({
+      id: dealRelatedRef.value.id,
+      type: dealRelatedRef.value.type,
+    });
+  }
+
+  if (preferredTaskRelatedRef.value?.type === "job") {
+    candidates.push({
+      id: preferredTaskRelatedRef.value.id,
+      type: preferredTaskRelatedRef.value.type,
+    });
+  }
+
+  return candidates;
+});
 
 const goalTriggerOptions = computed(
   () => [] as Array<{ title: string; value: string }>,
@@ -1074,6 +1107,11 @@ const confirmDealExecution = () => {
       name: createdJob.name,
       type: "job",
     };
+    const updatedDeal = dealsStore.updateDeal(currentDealId, {
+      linkedJobId: Number(createdJob.id),
+    });
+    if (updatedDeal) deal.value = cloneDeal(updatedDeal);
+
     const milestoneIdByKey = new Map<string, number>();
     const goalIdByKey = new Map<string, number>();
     const taskIdByKey = new Map<string, number | string>();
@@ -1271,7 +1309,7 @@ const handleAddTaskFromCommunication = () => {
   addTodoInitial.value = {
     title: `Task: ${currentDeal.code || `Deal #${currentDeal.id}`}`,
     collaborators: dealEmployeeCollaborators.value,
-    relatedTo: dealRelatedRef.value,
+    relatedTo: preferredTaskRelatedRef.value,
     dueAt: new Date().toISOString(),
     notes: `Task regarding ${currentDeal.code || `deal #${currentDeal.id}`}`,
     important: false,
@@ -1342,6 +1380,7 @@ const openEmail = () => {
 const openAddTask = (payload: { initial: Partial<ToDo> }) => {
   if (!deal.value) return;
 
+  showImmediateDueOption.value = true;
   addTodoInitial.value = {
     ...payload.initial,
     collaborators:
@@ -1350,8 +1389,8 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
       payload.initial.collaborators.length
         ? payload.initial.collaborators
         : dealEmployeeCollaborators.value,
-    relatedTo: payload?.initial?.relatedTo ?? dealRelatedRef.value,
-    dueAt: payload?.initial?.dueAt ?? new Date().toISOString(),
+    relatedTo:
+      preferredTaskRelatedRef.value ?? payload?.initial?.relatedTo ?? null,
     status: payload?.initial?.status ?? "pending",
     important: Boolean(payload?.initial?.important),
   };
@@ -1370,8 +1409,12 @@ const findDealTodoById = (todoId: number | string) => {
   return (
     todosStore.items.find((todo) => {
       if (String(todo.id) !== String(todoId)) return false;
-      if (todo.relatedTo?.type !== "deal") return false;
-      if (String(todo.relatedTo?.id) !== String(deal.value?.id)) return false;
+      const matchesRelation = taskRelationCandidates.value.some(
+        (candidate) =>
+          todo.relatedTo?.type === candidate.type &&
+          String(todo.relatedTo?.id) === String(candidate.id),
+      );
+      if (!matchesRelation) return false;
 
       return (
         !String((todo as any).milestoneId ?? "").trim() &&
@@ -1381,15 +1424,61 @@ const findDealTodoById = (todoId: number | string) => {
   );
 };
 
+const mapSalesTaskTemplateToEditableTodo = (
+  task: DealSalesTaskTemplate,
+): ToDo => {
+  const dueAt = task.afterWhen
+    ? resolveTaskDueAt(task.afterWhen, new Date().toISOString())
+    : new Date().toISOString();
+
+  return {
+    id: task.id,
+    title: task.title,
+    collaborators: Array.isArray(task.collaborators)
+      ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+      : [],
+    dueAt,
+    status:
+      task.status === "in_progress" ||
+      task.status === "for_review" ||
+      task.status === "completed"
+        ? task.status
+        : "pending",
+    notes: task.notes || "",
+    important: Boolean(task.important),
+    attachment: task.attachment ? { ...task.attachment } : null,
+    relatedTo:
+      preferredTaskRelatedRef.value ??
+      (task.relatedTo ? { ...task.relatedTo } : null),
+    steps: Array.isArray(task.steps)
+      ? task.steps.map((step) => ({ ...step }))
+      : [],
+    afterWhen: task.afterWhen ?? null,
+    startTrigger: task.startTrigger
+      ? {
+          type: task.startTrigger.type,
+          goalId: task.startTrigger.goalId ?? null,
+          taskId: task.startTrigger.taskId ?? null,
+        }
+      : null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as ToDo;
+};
+
 const openEditTask = (todoId: number | string) => {
   const todo = findDealTodoById(todoId);
   if (todo) {
+    editingSalesTaskTemplateId.value = null;
+    showImmediateDueOptionOnEdit.value = true;
     editingTodo.value = {
       ...todo,
       collaborators: Array.isArray(todo.collaborators)
         ? todo.collaborators.map((collaborator) => ({ ...collaborator }))
         : [],
-      relatedTo: todo.relatedTo ? { ...todo.relatedTo } : null,
+      relatedTo:
+        preferredTaskRelatedRef.value ??
+        (todo.relatedTo ? { ...todo.relatedTo } : null),
       steps: Array.isArray(todo.steps)
         ? todo.steps.map((step) => ({ ...step }))
         : [],
@@ -1406,31 +1495,10 @@ const openEditTask = (todoId: number | string) => {
   );
   if (!task) return;
 
-  taskTemplateMode.value = "edit";
-  taskTemplateTodoId.value = todoId;
-  nextTick(() => {
-    try {
-      taskTemplateDrawerRef.value?.openWith?.({
-        title: task.title,
-        collaborators: task.collaborators,
-        afterWhen: task.afterWhen ?? "+1 day",
-        startTrigger: task.startTrigger ?? {
-          type: "time",
-          goalId: null,
-          taskId: null,
-        },
-        notes: task.notes ?? "",
-        important: task.important,
-        status: task.status,
-        attachment: task.attachment ?? null,
-        relatedTo: task.relatedTo ?? null,
-        steps: Array.isArray(task.steps)
-          ? task.steps.map((step) => ({ ...step }))
-          : [],
-      });
-    } catch {}
-  });
-  isTaskTemplateDrawerOpen.value = true;
+  editingSalesTaskTemplateId.value = todoId;
+  showImmediateDueOptionOnEdit.value = true;
+  editingTodo.value = mapSalesTaskTemplateToEditableTodo(task);
+  isEditTodoDrawerVisible.value = true;
 };
 
 const deleteTask = (todoId: number | string) => {
@@ -1460,6 +1528,7 @@ const handleDocumentTodoRequest = (payload: {
     avatarUrl?: string | null;
   }>;
 }) => {
+  showImmediateDueOption.value = false;
   addTodoInitial.value = {
     ...(payload?.initial ?? {}),
     collaborators:
@@ -1469,14 +1538,7 @@ const handleDocumentTodoRequest = (payload: {
         ? payload.initial.collaborators
         : dealEmployeeCollaborators.value,
     relatedTo:
-      payload?.initial?.relatedTo ??
-      (deal.value
-        ? {
-            id: deal.value.id,
-            name: deal.value.code || `Deal #${deal.value.id}`,
-            type: "deal",
-          }
-        : null),
+      preferredTaskRelatedRef.value ?? payload?.initial?.relatedTo ?? null,
   };
   isAddTodoDrawerVisible.value = true;
   nextTick(() => {
@@ -1485,90 +1547,6 @@ const handleDocumentTodoRequest = (payload: {
     } catch {}
     addTodoInitial.value = null;
   });
-};
-
-const onTaskTemplateSaved = (
-  payload: Partial<ToDo> & {
-    afterWhen?: string | null;
-    startTrigger?: CatalogueTaskStartTrigger | null;
-  },
-) => {
-  if (!deal.value) return;
-  const relatedTo = {
-    id: deal.value.id,
-    name: deal.value.code || `Deal #${deal.value.id}`,
-    type: "deal",
-  };
-  const existingTasks = resolveDealSalesTasks(deal.value);
-  const editingTask =
-    taskTemplateMode.value === "edit" && taskTemplateTodoId.value !== null
-      ? (existingTasks.find(
-          (task) => String(task.id) === String(taskTemplateTodoId.value),
-        ) ?? null)
-      : null;
-  const normalized: DealSalesTaskTemplate = {
-    id: editingTask?.id ?? nextDealSalesTaskId(existingTasks),
-    title: String(payload.title ?? "").trim(),
-    collaborators: Array.isArray(payload.collaborators)
-      ? payload.collaborators.map((collaborator) => ({ ...collaborator }))
-      : [],
-    afterWhen: payload.afterWhen ?? payload.dueAt ?? null,
-    startTrigger:
-      payload.startTrigger?.type === "goal" ||
-      payload.startTrigger?.type === "task"
-        ? {
-            type: payload.startTrigger.type,
-            goalId: payload.startTrigger.goalId ?? null,
-            taskId: payload.startTrigger.taskId ?? null,
-          }
-        : {
-            type: "time" as const,
-            goalId: null,
-            taskId: null,
-          },
-    manhours: editingTask?.manhours ?? null,
-    status:
-      payload.status === "in_progress" ||
-      payload.status === "for_review" ||
-      payload.status === "completed"
-        ? payload.status
-        : "pending",
-    notes: String(payload.notes ?? "").trim(),
-    important: Boolean(payload.important),
-    attachment: payload.attachment ?? null,
-    relatedTo,
-    steps: Array.isArray(payload.steps)
-      ? payload.steps.map((step, index) => ({
-          ...step,
-          id: step.id ?? index + 1,
-        }))
-      : [],
-    sourceItemId: editingTask?.sourceItemId ?? null,
-    sourceTaskId: editingTask?.sourceTaskId ?? null,
-  };
-
-  const nextSalesTasks =
-    taskTemplateMode.value === "edit" && taskTemplateTodoId.value !== null
-      ? existingTasks.map((task) =>
-          String(task.id) === String(taskTemplateTodoId.value)
-            ? normalized
-            : task,
-        )
-      : [...existingTasks, normalized];
-  const updatedDeal = dealsStore.updateDeal(deal.value.id, {
-    salesTasks: nextSalesTasks,
-  });
-  if (updatedDeal) deal.value = cloneDeal(updatedDeal);
-
-  notifications.push(
-    taskTemplateMode.value === "edit" ? "Task updated" : "Task created",
-    "success",
-    3000,
-  );
-
-  isTaskTemplateDrawerOpen.value = false;
-  taskTemplateTodoId.value = null;
-  taskTemplateMode.value = "create";
 };
 
 const onTodoCreated = (payload: any) => {
@@ -1583,10 +1561,65 @@ const onTodoCreated = (payload: any) => {
     notifications.push("Task created", "success", 3500);
   } finally {
     isAddTodoDrawerVisible.value = false;
+    showImmediateDueOption.value = false;
   }
 };
 
+watch(isAddTodoDrawerVisible, (isOpen) => {
+  if (!isOpen) showImmediateDueOption.value = false;
+});
+
 const onTodoEdited = (payload: any) => {
+  if (editingSalesTaskTemplateId.value !== null && deal.value) {
+    const existingTasks = resolveDealSalesTasks(deal.value);
+    const editingTask =
+      existingTasks.find(
+        (task) => String(task.id) === String(editingSalesTaskTemplateId.value),
+      ) ?? null;
+
+    if (editingTask) {
+      const nextSalesTasks = existingTasks.map((task) =>
+        String(task.id) !== String(editingSalesTaskTemplateId.value)
+          ? task
+          : {
+              ...task,
+              title: String(payload.title ?? "").trim(),
+              collaborators: Array.isArray(payload.collaborators)
+                ? payload.collaborators.map((collaborator: any) => ({
+                    ...collaborator,
+                  }))
+                : [],
+              afterWhen: payload.dueAt ?? null,
+              notes: String(payload.notes ?? "").trim(),
+              important: Boolean(payload.important),
+              status:
+                payload.status === "in_progress" ||
+                payload.status === "for_review" ||
+                payload.status === "completed"
+                  ? payload.status
+                  : "pending",
+              attachment: payload.attachment ?? null,
+              relatedTo:
+                preferredTaskRelatedRef.value ??
+                payload.relatedTo ??
+                task.relatedTo ??
+                null,
+            },
+      );
+
+      const updatedDeal = dealsStore.updateDeal(deal.value.id, {
+        salesTasks: nextSalesTasks,
+      });
+      if (updatedDeal) deal.value = cloneDeal(updatedDeal);
+    }
+
+    isEditTodoDrawerVisible.value = false;
+    showImmediateDueOptionOnEdit.value = false;
+    editingSalesTaskTemplateId.value = null;
+    notifications.push("Task updated", "success", 3500);
+    return;
+  }
+
   const partial: any = {
     title: payload.title,
     collaborators: payload.collaborators,
@@ -1595,7 +1628,7 @@ const onTodoEdited = (payload: any) => {
     notes: payload.notes,
     important: payload.important,
     attachment: payload.attachment,
-    relatedTo: payload.relatedTo,
+    relatedTo: preferredTaskRelatedRef.value ?? payload.relatedTo,
   };
 
   if ("completed" in payload) partial.completed = payload.completed;
@@ -1604,9 +1637,34 @@ const onTodoEdited = (payload: any) => {
 
   todosStore.updateTodo(payload.id, partial);
   isEditTodoDrawerVisible.value = false;
+  showImmediateDueOptionOnEdit.value = false;
+  editingSalesTaskTemplateId.value = null;
+  notifications.push("Task updated", "success", 3500);
 };
 
+watch(isEditTodoDrawerVisible, (isOpen) => {
+  if (!isOpen) {
+    showImmediateDueOptionOnEdit.value = false;
+    editingSalesTaskTemplateId.value = null;
+  }
+});
+
 const onTodoStepsEdited = (payload: { id: number | string; steps: any[] }) => {
+  if (editingSalesTaskTemplateId.value !== null && deal.value) {
+    const updatedDeal = dealsStore.updateDeal(deal.value.id, {
+      salesTasks: resolveDealSalesTasks(deal.value).map((task) =>
+        String(task.id) === String(payload.id)
+          ? {
+              ...task,
+              steps: payload.steps.map((step) => ({ ...step })),
+            }
+          : task,
+      ),
+    });
+    if (updatedDeal) deal.value = cloneDeal(updatedDeal);
+    return;
+  }
+
   todosStore.updateTodo(payload.id, {
     steps: payload.steps.map((step) => ({ ...step })),
   });
@@ -1768,10 +1826,6 @@ watch(
               @open-add-todo="handleDocumentTodoRequest"
             />
           </VWindowItem>
-
-          <VWindowItem>
-            <DealFinancialsTab :deal="deal" />
-          </VWindowItem>
         </VWindow>
       </VCol>
     </VRow>
@@ -1793,6 +1847,8 @@ watch(
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
+      :hide-related-to-field="true"
+      :show-immediate-due-option="showImmediateDueOption"
       source="employees"
       :initial="addTodoInitial ?? undefined"
       @user-data="onTodoCreated"
@@ -1801,16 +1857,11 @@ watch(
     <EditToDoDrawer
       v-model:is-drawer-open="isEditTodoDrawerVisible"
       :todo="editingTodo"
+      :hide-related-to-field="true"
+      :show-immediate-due-option="showImmediateDueOptionOnEdit"
       :collaborators-options="employeeOptions"
       @save="onTodoEdited"
       @saveSteps="onTodoStepsEdited"
-    />
-
-    <CatalogueTaskTemplateDrawer
-      ref="taskTemplateDrawerRef"
-      v-model:is-drawer-open="isTaskTemplateDrawerOpen"
-      :goal-trigger-options="goalTriggerOptions"
-      @save="onTaskTemplateSaved"
     />
 
     <VDialog v-model="isExecutePreviewDialogVisible" max-width="840">

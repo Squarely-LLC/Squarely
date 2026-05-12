@@ -656,6 +656,7 @@ const formatTaskStart = (
   }
 
   return `After ${formatTaskAfterWhen(afterWhen)}`;
+  return afterWhen ? `After ${formatTaskAfterWhen(afterWhen)}` : "Immediately";
 };
 
 onMounted(() => {
@@ -723,7 +724,7 @@ const openSalesTaskTemplateDrawer = () => {
   taskTemplateDrawerRef.value?.openWith({
     title: "",
     collaborators: [],
-    afterWhen: "+1 day",
+    afterWhen: null,
     startTrigger: { type: "time", goalId: null, taskId: null },
     notes: "",
     important: false,
@@ -1357,7 +1358,7 @@ const formatDate = (value?: string | null) => {
   }
 };
 
-const formatTaskAfterWhen = (value?: string | null) => value || "--";
+const formatTaskAfterWhen = (value?: string | null) => value || "Immediately";
 
 const parseAfterWhenValue = (value?: string | null) => {
   const trimmedValue = String(value ?? "").trim();
@@ -5146,6 +5147,7 @@ watch(
     <CatalogueTaskTemplateDrawer
       ref="taskTemplateDrawerRef"
       v-model:is-drawer-open="isTaskTemplateDrawerOpen"
+      :allow-goal-trigger="taskTemplateContext.target !== 'sales'"
       :goal-trigger-options="goalTriggerOptions"
       @save="handleTaskTemplateCreated"
     />

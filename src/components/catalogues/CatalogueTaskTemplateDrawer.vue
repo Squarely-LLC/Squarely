@@ -32,6 +32,7 @@ interface Emit {
 interface Props {
   isDrawerOpen: boolean;
   goalTriggerOptions?: TriggerOption[];
+  allowGoalTrigger?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -48,11 +49,14 @@ const collabSearch = ref("");
 const attachmentFileInputRef = ref<HTMLInputElement | null>(null);
 const syncingAttachmentInput = ref(false);
 const pendingInitial = ref<CatalogueTaskTemplatePayload | null>(null);
+const canUseGoalTrigger = computed(() => props.allowGoalTrigger !== false);
 
 const title = ref("");
 const selectedCollaboratorIds = ref<string[]>([]);
 const startMode = ref<"time" | "goal">("time");
-const afterWhenPreset = ref<"1_day" | "2_days" | "1_week" | "custom">("1_day");
+const afterWhenPreset = ref<
+  "immediately" | "1_day" | "2_days" | "1_week" | "custom"
+>("1_day");
 const afterWhenValue = ref<number | null>(1);
 const selectedGoalTriggerId = ref<string | null>(null);
 const notes = ref("");
@@ -88,6 +92,44 @@ const newDraft = reactive<ToDoStep>({
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 });
+
+const taskAfterWhenPresetOptions = [
+  { title: "Immediately", value: "immediately" },
+  { title: "After 1 day", value: "1_day" },
+  { title: "After 2 days", value: "2_days" },
+  { title: "After 1 week", value: "1_week" },
+  { title: "Custom", value: "custom" },
+] as const;
+
+const stepAfterWhenPresetOptions = [
+  { title: "After 1 day", value: "1_day" },
+  { title: "After 2 days", value: "2_days" },
+  { title: "After 1 week", value: "1_week" },
+  { title: "Custom", value: "custom" },
+] as const;
+
+const startModeOptions = computed(() => {
+  const options: Array<{ title: string; value: "time" | "goal" }> = [
+    { title: "After time", value: "time" },
+  ];
+  if (canUseGoalTrigger.value)
+    options.push({ title: "After goal completion", value: "goal" });
+  return options;
+});
+
+const showStartModeSelector = computed(() => startModeOptions.value.length > 1);
+
+const parseTaskAfterWhenValue = (value?: string | null) => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return { days: 0, preset: "immediately" as const };
+  }
+
+  const parsed = parseAfterWhenValue(value);
+  return {
+    days: parsed.days,
+    preset: parsed.preset,
+  };
+};
 
 const statusOptions: { title: string; value: Status }[] = [
   { title: "Pending", value: "pending" },
@@ -296,12 +338,15 @@ const loadInitial = () => {
     initialCollaborators.value = Array.isArray(init.collaborators)
       ? init.collaborators.map((collaborator) => ({ ...collaborator }))
       : [];
-    startMode.value = init.startTrigger?.type === "goal" ? "goal" : "time";
+    startMode.value =
+      canUseGoalTrigger.value && init.startTrigger?.type === "goal"
+        ? "goal"
+        : "time";
     selectedGoalTriggerId.value = init.startTrigger?.goalId
       ? String(init.startTrigger.goalId)
       : null;
     const initialAfterWhen = init.afterWhen ?? init.dueAt ?? null;
-    const initialAfterWhenState = parseAfterWhenValue(initialAfterWhen);
+    const initialAfterWhenState = parseTaskAfterWhenValue(initialAfterWhen);
     afterWhenValue.value = initialAfterWhenState.days;
     afterWhenPreset.value = initialAfterWhenState.preset;
     notes.value = init.notes ?? "";
@@ -407,6 +452,10 @@ watch(startMode, (mode) => {
   if (mode !== "goal") selectedGoalTriggerId.value = null;
 });
 
+watch(canUseGoalTrigger, (allowGoalTrigger) => {
+  if (!allowGoalTrigger && startMode.value === "goal") startMode.value = "time";
+});
+
 const openWith = (initial?: CatalogueTaskTemplatePayload) => {
   pendingInitial.value = initial ?? null;
   if (props.isDrawerOpen) loadInitial();
@@ -436,6 +485,8 @@ const submitIfNeeded = async () => {
 defineExpose({ openWith, submitIfNeeded });
 
 const buildAfterWhen = () => {
+  if (afterWhenPreset.value === "immediately") return null;
+
   const presetValueMap = {
     "1_day": 1,
     "2_days": 2,
@@ -453,18 +504,6 @@ const buildAfterWhen = () => {
   const rounded = Math.floor(value);
   return `+${rounded} ${rounded === 1 ? "day" : "days"}`;
 };
-
-const afterWhenPresetOptions = [
-  { title: "After 1 day", value: "1_day" },
-  { title: "After 2 days", value: "2_days" },
-  { title: "After 1 week", value: "1_week" },
-  { title: "Custom", value: "custom" },
-] as const;
-
-const startModeOptions = [
-  { title: "After time", value: "time" },
-  { title: "After goal completion", value: "goal" },
-] as const;
 
 const buildStartTrigger = (): CatalogueTaskStartTrigger | null => {
   if (startMode.value === "goal") {
@@ -784,7 +823,7 @@ const drawerTitle = computed(() =>
                     </VAutocomplete>
                   </VCol>
 
-                  <VCol cols="12">
+                  <VCol v-if="showStartModeSelector" cols="12">
                     <AppSelect
                       v-model="startMode"
                       label="Start when"
@@ -799,7 +838,7 @@ const drawerTitle = computed(() =>
                     <div class="after-when-control">
                       <AppSelect
                         v-model="afterWhenPreset"
-                        :items="afterWhenPresetOptions"
+                        :items="taskAfterWhenPresetOptions"
                         item-title="title"
                         item-value="value"
                         hide-details="auto"
@@ -1033,7 +1072,7 @@ const drawerTitle = computed(() =>
                       <div class="after-when-control">
                         <AppSelect
                           v-model="newDraftAfterWhenPreset"
-                          :items="afterWhenPresetOptions"
+                          :items="stepAfterWhenPresetOptions"
                           item-title="title"
                           item-value="value"
                           hide-details="auto"
@@ -1136,7 +1175,7 @@ const drawerTitle = computed(() =>
               <div class="after-when-control">
                 <AppSelect
                   v-model="stepAfterWhenPreset"
-                  :items="afterWhenPresetOptions"
+                  :items="stepAfterWhenPresetOptions"
                   item-title="title"
                   item-value="value"
                   hide-details="auto"

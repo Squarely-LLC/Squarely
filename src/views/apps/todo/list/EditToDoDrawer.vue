@@ -53,6 +53,8 @@ interface Props {
   isDrawerOpen: boolean;
   todo: ToDo | null | undefined;
   collaboratorsOptions: ContactRef[];
+  showImmediateDueOption?: boolean;
+  hideRelatedToField?: boolean;
 }
 const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
@@ -69,6 +71,7 @@ const collabSearch = ref("");
 const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(null);
+const dueMode = ref<"scheduled" | "immediately">("scheduled");
 const notes = ref<string>("");
 const important = ref<boolean>(false);
 const selectedStatus = ref<Status>("pending");
@@ -211,7 +214,12 @@ function loadFromToDo(t: ToDo) {
   syncingAttachmentInput.value = true;
   title.value = t.title ?? "";
   selectedCollaboratorIds.value = (t.collaborators ?? []).map((c) => c.id);
-  dueAt.value = t.dueAt ? new Date(t.dueAt).toISOString() : null;
+  const resolvedDueAt = t.dueAt ? new Date(t.dueAt).toISOString() : null;
+  dueAt.value = resolvedDueAt;
+  dueMode.value =
+    resolvedDueAt && resolvedDueAt !== toDateOnlyISOString(resolvedDueAt)
+      ? "immediately"
+      : "scheduled";
   notes.value = t.notes ?? "";
   important.value = !!t.important;
   attachment.value = t.attachment ?? null;
@@ -238,6 +246,7 @@ function resetForm() {
   refForm.value?.resetValidation();
   title.value = "";
   selectedCollaboratorIds.value = [];
+  dueMode.value = "scheduled";
   dueAt.value = null;
   notes.value = "";
   important.value = false;
@@ -257,6 +266,16 @@ function resetForm() {
   nextTick(() => {
     syncingAttachmentInput.value = false;
   });
+}
+
+function setImmediateDue() {
+  dueMode.value = "immediately";
+  dueAt.value = new Date().toISOString();
+}
+
+function setScheduledDue() {
+  dueMode.value = "scheduled";
+  dueAt.value = toDateOnlyISOString(dueAt.value);
 }
 
 /* Sync to open/prop changes */
@@ -348,7 +367,10 @@ async function onSaveAll() {
     activeTab.value = "details";
     return;
   }
-  const dueISO = toDateOnlyISOString(dueAt.value);
+  const dueISO =
+    dueMode.value === "immediately"
+      ? new Date().toISOString()
+      : toDateOnlyISOString(dueAt.value);
   const relatedOption = relatedOptions.value.find(
     (option) => option.value === selectedRelatedKey.value,
   );
@@ -379,7 +401,7 @@ async function onSaveAll() {
           name: relatedOption.title,
           type: relatedOption.type,
         }
-      : null,
+      : (props.todo.relatedTo ?? null),
   };
 
   if (selectedStatus.value === "completed") {
@@ -498,16 +520,51 @@ async function onSaveAll() {
                   </VCol>
 
                   <VCol cols="12">
+                    <div
+                      v-if="props.showImmediateDueOption"
+                      class="due-mode-toggle mb-2"
+                    >
+                      <VChip
+                        size="small"
+                        class="due-mode-toggle__chip"
+                        :class="{
+                          'due-mode-toggle__chip--active':
+                            dueMode === 'scheduled',
+                        }"
+                        :variant="dueMode === 'scheduled' ? 'flat' : 'text'"
+                        @click="setScheduledDue"
+                      >
+                        Pick date
+                      </VChip>
+                      <VChip
+                        size="small"
+                        class="due-mode-toggle__chip"
+                        :class="{
+                          'due-mode-toggle__chip--active':
+                            dueMode === 'immediately',
+                        }"
+                        :variant="dueMode === 'immediately' ? 'flat' : 'text'"
+                        @click="setImmediateDue"
+                      >
+                        Immediately
+                      </VChip>
+                    </div>
+
                     <AppDateTimePicker
                       v-model="dueAt"
                       :rules="[requiredValidator]"
                       label="Due Date"
-                      placeholder="Select date"
+                      :placeholder="
+                        dueMode === 'immediately'
+                          ? 'Immediately'
+                          : 'Select date'
+                      "
+                      :disabled="dueMode === 'immediately'"
                       :config="{ dateFormat: 'Y-m-d' }"
                     />
                   </VCol>
 
-                  <VCol cols="12">
+                  <VCol v-if="!props.hideRelatedToField" cols="12">
                     <AppSelect
                       v-model="selectedRelatedKey"
                       label="Related to"
@@ -522,6 +579,15 @@ async function onSaveAll() {
                         <VIcon icon="tabler-briefcase" size="20" class="me-2" />
                       </template>
                     </AppSelect>
+                  </VCol>
+
+                  <VCol v-else cols="12">
+                    <div class="task-related-hint">
+                      <VIcon icon="tabler-briefcase" size="16" />
+                      <span>
+                        Will be linked to the related job automatically.
+                      </span>
+                    </div>
                   </VCol>
 
                   <VDivider />
@@ -923,7 +989,42 @@ async function onSaveAll() {
   text-transform: uppercase;
 }
 
-::v-deep(.todo-collaborators .v-field__input) {
+:deep(.todo-collaborators .v-field__input) {
   padding-block: 10px;
 }
+
+/* stylelint-disable order/properties-order */
+.due-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem;
+  border: 1px solid rgba(var(--v-theme-primary), 0.18);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-primary), 0.06);
+  gap: 0.35rem;
+}
+
+.due-mode-toggle__chip {
+  cursor: pointer;
+  font-weight: 600;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.due-mode-toggle__chip--active {
+  background: rgba(var(--v-theme-primary), 0.94);
+  box-shadow: 0 6px 16px rgba(var(--v-theme-primary), 0.24);
+  color: rgb(var(--v-theme-on-primary));
+}
+
+.task-related-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.8rem;
+}
+/* stylelint-enable order/properties-order */
 </style>

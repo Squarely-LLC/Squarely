@@ -2407,6 +2407,7 @@ type DealSalesTaskRow = {
   important: boolean;
   status: Status;
   isImported: boolean;
+  sourceLabel: string | null;
 };
 
 const dealTodos = computed<DealTodo[]>(
@@ -2414,10 +2415,16 @@ const dealTodos = computed<DealTodo[]>(
     (todosStore.items || []).filter((todo) => {
       if (!todo?.relatedTo) return false;
 
-      return (
+      const matchesDeal =
         String(todo.relatedTo.id) === String(props.deal.id) &&
-        todo.relatedTo.type === "deal"
-      );
+        todo.relatedTo.type === "deal";
+      const matchesLinkedJob =
+        props.deal.linkedJobId !== null &&
+        props.deal.linkedJobId !== undefined &&
+        String(todo.relatedTo.id) === String(props.deal.linkedJobId) &&
+        todo.relatedTo.type === "job";
+
+      return matchesDeal || matchesLinkedJob;
     }) as DealTodo[],
 );
 
@@ -2526,6 +2533,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       important: Boolean(todo.important),
       status: (todo.status as Status) || "pending",
       isImported: false,
+      sourceLabel: null,
     })),
     ...fallbackTasks.map((task) => ({
       id: task.id,
@@ -2541,17 +2549,13 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       important: Boolean(task.important),
       status: (task.status as Status) || "pending",
       isImported: task.sourceItemId !== null && task.sourceItemId !== undefined,
+      sourceLabel:
+        task.sourceItemId !== null && task.sourceItemId !== undefined
+          ? "From item sales task template"
+          : null,
     })),
   ];
 });
-
-const manualSalesTasks = computed(() =>
-  salesTasks.value.filter((task) => !task.isImported),
-);
-
-const catalogueTemplateSalesTasks = computed(() =>
-  salesTasks.value.filter((task) => task.isImported),
-);
 
 const collaboratorInitials = (name?: string) =>
   name
@@ -2567,11 +2571,13 @@ const todoStatusLabel = (status?: Status) => {
 };
 
 const formatTaskAfterWhen = (afterWhen?: string | null) => {
+  if (!String(afterWhen ?? "").trim()) return "Immediately";
+
   const match = String(afterWhen ?? "")
     .trim()
     .match(/^\+?\s*(\d+)\s+(day|days|week|weeks|month|months)$/i);
 
-  if (!match) return "1 day";
+  if (!match) return "Immediately";
 
   const rawValue = Number(match[1]);
   const rawUnit = match[2].toLowerCase();
@@ -2591,7 +2597,7 @@ const formatTaskStart = (
   if (startTrigger?.type === "goal" && startTrigger.goalId)
     return "After goal completion";
 
-  return `After ${formatTaskAfterWhen(afterWhen)}`;
+  return afterWhen ? `After ${formatTaskAfterWhen(afterWhen)}` : "Immediately";
 };
 
 const toggleTaskCompleted = (taskId: number | string) => {
@@ -2607,7 +2613,6 @@ const openAddTask = () => {
   emit("open-add-task", {
     initial: {
       relatedTo: buildDealRelatedTo(),
-      dueAt: new Date().toISOString(),
       status: "pending",
     },
   });
@@ -2997,41 +3002,81 @@ const openEditTask = (taskId: number | string) => {
             </div>
           </div>
 
-          <div class="items-overview__metrics">
-            <div class="items-overview__metric items-overview__metric--primary">
-              <span>Total</span>
-              <strong>{{ formatMoney(grandTotal) }}</strong>
+          <div
+            class="items-overview__table"
+            role="table"
+            aria-label="Invoicing summary"
+          >
+            <div class="items-overview__table-head" role="row">
+              <span class="items-overview__head-label" role="columnheader"
+                >Metric</span
+              >
+              <span class="items-overview__head-value" role="columnheader"
+                >Value</span
+              >
             </div>
-            <div class="items-overview__metric items-overview__metric--accent">
-              <span>Invoiced</span>
-              <strong>{{ formatMoney(totalInvoiced) }}</strong>
-            </div>
-            <div class="items-overview__metric items-overview__metric--accent">
-              <span>Remaining</span>
-              <strong>{{ formatMoney(remainingToInvoice) }}</strong>
-            </div>
-          </div>
 
-          <div class="items-overview__details">
-            <div class="items-overview__detail">
-              <span>Subtotal</span>
-              <strong>{{ formatMoney(itemsSubtotal) }}</strong>
+            <div class="items-overview__row" role="row">
+              <span class="items-overview__cell-label" role="cell"
+                >Subtotal</span
+              >
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(itemsSubtotal)
+              }}</strong>
             </div>
-            <div class="items-overview__detail">
-              <span>Discount</span>
-              <strong>{{ formatMoney(totalDiscount) }}</strong>
+            <div class="items-overview__row" role="row">
+              <span class="items-overview__cell-label" role="cell"
+                >Discount</span
+              >
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(totalDiscount)
+              }}</strong>
             </div>
-            <div class="items-overview__detail">
-              <span>Tax</span>
-              <strong>{{ formatMoney(totalTax) }}</strong>
+            <div class="items-overview__row" role="row">
+              <span class="items-overview__cell-label" role="cell">Tax</span>
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(totalTax)
+              }}</strong>
             </div>
-            <div class="items-overview__detail">
-              <span>Quoted</span>
-              <strong>{{ formatMoney(totalQuoted) }}</strong>
+            <div class="items-overview__row" role="row">
+              <span class="items-overview__cell-label" role="cell">Quoted</span>
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(totalQuoted)
+              }}</strong>
             </div>
-            <div class="items-overview__detail">
-              <span>Paid</span>
-              <strong>{{ formatMoney(totalPaid) }}</strong>
+            <div class="items-overview__row" role="row">
+              <span class="items-overview__cell-label" role="cell"
+                >Invoiced</span
+              >
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(totalInvoiced)
+              }}</strong>
+            </div>
+            <div class="items-overview__row" role="row">
+              <span class="items-overview__cell-label" role="cell">Paid</span>
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(totalPaid)
+              }}</strong>
+            </div>
+            <div
+              class="items-overview__row items-overview__row--accent"
+              role="row"
+            >
+              <span class="items-overview__cell-label" role="cell"
+                >Remaining</span
+              >
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(remainingToInvoice)
+              }}</strong>
+            </div>
+            <div
+              class="items-overview__row items-overview__row--total"
+              role="row"
+            >
+              <span class="items-overview__cell-label" role="cell">Total</span>
+              <strong class="items-overview__cell-value" role="cell">{{
+                formatMoney(grandTotal)
+              }}</strong>
             </div>
           </div>
 
@@ -3199,228 +3244,112 @@ const openEditTask = (taskId: number | string) => {
           </VBtn>
         </div>
 
-        <div v-if="salesTasks.length" class="d-flex flex-column gap-4">
-          <div v-if="manualSalesTasks.length" class="d-flex flex-column gap-2">
-            <div class="d-flex align-center justify-space-between gap-3">
-              <div>
-                <div class="text-subtitle-1 font-weight-medium">
-                  Sales Tasks
-                </div>
-                <div class="text-body-2 text-medium-emphasis">
-                  Regular pre-execution tasks added directly to this deal.
-                </div>
+        <div v-if="salesTasks.length" class="d-flex flex-column gap-2">
+          <div class="d-flex align-center justify-space-between gap-3">
+            <div>
+              <div class="text-subtitle-1 font-weight-medium">Sales Tasks</div>
+              <div class="text-body-2 text-medium-emphasis">
+                Tasks added directly to this deal or inherited from item sales
+                task templates.
               </div>
-              <VChip size="small" variant="outlined">
-                {{ manualSalesTasks.length }}
-              </VChip>
             </div>
-
-            <VCard
-              v-for="task in manualSalesTasks"
-              :key="task.id"
-              class="task-row"
-              variant="tonal"
-              @click="openEditTask(task.id)"
-            >
-              <div class="task-row-main">
-                <div class="task-row-left">
-                  <div class="task-copy">
-                    <VTooltip :text="task.title" location="top">
-                      <template #activator="{ props: tooltipProps }">
-                        <strong
-                          v-bind="tooltipProps"
-                          class="text-body-1 truncate-title"
-                        >
-                          {{ task.title }}
-                        </strong>
-                      </template>
-                    </VTooltip>
-                    <span class="text-sm">
-                      {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
-                    </span>
-                    <span
-                      v-if="task.notes"
-                      class="text-sm text-medium-emphasis"
-                    >
-                      {{ task.notes }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="task-row-side">
-                  <div
-                    v-if="task.collaborators?.length"
-                    class="v-avatar-group demo-avatar-group"
-                  >
-                    <VAvatar
-                      v-for="collaborator in task.collaborators.slice(0, 2)"
-                      :key="collaborator.id"
-                      :size="28"
-                      color="primary"
-                    >
-                      <template v-if="collaborator.avatarUrl">
-                        <VImg :src="collaborator.avatarUrl" />
-                      </template>
-                      <template v-else>
-                        <span class="task-mono">
-                          {{ collaboratorInitials(collaborator.name) }}
-                        </span>
-                      </template>
-                      <VTooltip activator="parent" location="top">
-                        {{ collaborator.name }}
-                      </VTooltip>
-                    </VAvatar>
-                    <VAvatar
-                      v-if="task.collaborators.length > 2"
-                      :size="28"
-                      color="secondary"
-                    >
-                      +{{ task.collaborators.length - 2 }}
-                    </VAvatar>
-                  </div>
-
-                  <VIcon
-                    v-if="task.important"
-                    icon="tabler-star-filled"
-                    color="warning"
-                    size="18"
-                  />
-                  <VBtn
-                    icon
-                    variant="text"
-                    size="x-small"
-                    @click.stop="emit('delete-task', task.id)"
-                  >
-                    <VIcon icon="tabler-trash" color="error" size="18" />
-                  </VBtn>
-                  <span
-                    class="text-sm"
-                    :class="{
-                      'text-primary': task.status === 'in_progress',
-                      'text-warning': task.status === 'for_review',
-                      'text-medium-emphasis': task.status === 'pending',
-                      'text-success': task.status === 'completed',
-                    }"
-                  >
-                    {{ todoStatusLabel(task.status) }}
-                  </span>
-                </div>
-              </div>
-            </VCard>
+            <VChip size="small" variant="outlined">
+              {{ salesTasks.length }}
+            </VChip>
           </div>
 
-          <div
-            v-if="catalogueTemplateSalesTasks.length"
-            class="d-flex flex-column gap-2"
+          <VCard
+            v-for="task in salesTasks"
+            :key="task.id"
+            class="task-row"
+            variant="tonal"
+            @click="openEditTask(task.id)"
           >
-            <div class="d-flex align-center justify-space-between gap-3">
-              <div>
-                <div class="text-subtitle-1 font-weight-medium">
-                  Catalogue Template Tasks
-                </div>
-                <div class="text-body-2 text-medium-emphasis">
-                  Tasks inherited from the selected catalogue items.
-                </div>
-              </div>
-              <VChip size="small" variant="outlined">
-                {{ catalogueTemplateSalesTasks.length }}
-              </VChip>
-            </div>
-
-            <VCard
-              v-for="task in catalogueTemplateSalesTasks"
-              :key="task.id"
-              class="task-row"
-              variant="tonal"
-              @click="openEditTask(task.id)"
-            >
-              <div class="task-row-main">
-                <div class="task-row-left">
-                  <div class="task-copy">
-                    <VTooltip :text="task.title" location="top">
-                      <template #activator="{ props: tooltipProps }">
-                        <strong
-                          v-bind="tooltipProps"
-                          class="text-body-1 truncate-title"
-                        >
-                          {{ task.title }}
-                        </strong>
-                      </template>
-                    </VTooltip>
-                    <span class="text-sm">
-                      {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
-                    </span>
-                    <span class="text-sm text-info">From catalogue item</span>
-                    <span
-                      v-if="task.notes"
-                      class="text-sm text-medium-emphasis"
-                    >
-                      {{ task.notes }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="task-row-side">
-                  <div
-                    v-if="task.collaborators?.length"
-                    class="v-avatar-group demo-avatar-group"
-                  >
-                    <VAvatar
-                      v-for="collaborator in task.collaborators.slice(0, 2)"
-                      :key="collaborator.id"
-                      :size="28"
-                      color="primary"
-                    >
-                      <template v-if="collaborator.avatarUrl">
-                        <VImg :src="collaborator.avatarUrl" />
-                      </template>
-                      <template v-else>
-                        <span class="task-mono">
-                          {{ collaboratorInitials(collaborator.name) }}
-                        </span>
-                      </template>
-                      <VTooltip activator="parent" location="top">
-                        {{ collaborator.name }}
-                      </VTooltip>
-                    </VAvatar>
-                    <VAvatar
-                      v-if="task.collaborators.length > 2"
-                      :size="28"
-                      color="secondary"
-                    >
-                      +{{ task.collaborators.length - 2 }}
-                    </VAvatar>
-                  </div>
-
-                  <VIcon
-                    v-if="task.important"
-                    icon="tabler-star-filled"
-                    color="warning"
-                    size="18"
-                  />
-                  <VBtn
-                    icon
-                    variant="text"
-                    size="x-small"
-                    @click.stop="emit('delete-task', task.id)"
-                  >
-                    <VIcon icon="tabler-trash" color="error" size="18" />
-                  </VBtn>
-                  <span
-                    class="text-sm"
-                    :class="{
-                      'text-primary': task.status === 'in_progress',
-                      'text-warning': task.status === 'for_review',
-                      'text-medium-emphasis': task.status === 'pending',
-                      'text-success': task.status === 'completed',
-                    }"
-                  >
-                    {{ todoStatusLabel(task.status) }}
+            <div class="task-row-main">
+              <div class="task-row-left">
+                <div class="task-copy">
+                  <VTooltip :text="task.title" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <strong
+                        v-bind="tooltipProps"
+                        class="text-body-1 truncate-title"
+                      >
+                        {{ task.title }}
+                      </strong>
+                    </template>
+                  </VTooltip>
+                  <span class="text-sm">
+                    {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
+                  </span>
+                  <span v-if="task.sourceLabel" class="text-sm text-info">
+                    {{ task.sourceLabel }}
+                  </span>
+                  <span v-if="task.notes" class="text-sm text-medium-emphasis">
+                    {{ task.notes }}
                   </span>
                 </div>
               </div>
-            </VCard>
-          </div>
+
+              <div class="task-row-side">
+                <div
+                  v-if="task.collaborators?.length"
+                  class="v-avatar-group demo-avatar-group"
+                >
+                  <VAvatar
+                    v-for="collaborator in task.collaborators.slice(0, 2)"
+                    :key="collaborator.id"
+                    :size="28"
+                    color="primary"
+                  >
+                    <template v-if="collaborator.avatarUrl">
+                      <VImg :src="collaborator.avatarUrl" />
+                    </template>
+                    <template v-else>
+                      <span class="task-mono">
+                        {{ collaboratorInitials(collaborator.name) }}
+                      </span>
+                    </template>
+                    <VTooltip activator="parent" location="top">
+                      {{ collaborator.name }}
+                    </VTooltip>
+                  </VAvatar>
+                  <VAvatar
+                    v-if="task.collaborators.length > 2"
+                    :size="28"
+                    color="secondary"
+                  >
+                    +{{ task.collaborators.length - 2 }}
+                  </VAvatar>
+                </div>
+
+                <VIcon
+                  v-if="task.important"
+                  icon="tabler-star-filled"
+                  color="warning"
+                  size="18"
+                />
+                <VBtn
+                  icon
+                  variant="text"
+                  size="x-small"
+                  @click.stop="emit('delete-task', task.id)"
+                >
+                  <VIcon icon="tabler-trash" color="error" size="18" />
+                </VBtn>
+                <span
+                  class="text-sm"
+                  :class="{
+                    'text-primary': task.status === 'in_progress',
+                    'text-warning': task.status === 'for_review',
+                    'text-medium-emphasis': task.status === 'pending',
+                    'text-success': task.status === 'completed',
+                  }"
+                >
+                  {{ todoStatusLabel(task.status) }}
+                </span>
+              </div>
+            </div>
+          </VCard>
         </div>
 
         <div v-else class="text-body-2 text-medium-emphasis empty-tasks">
@@ -4399,6 +4328,7 @@ const openEditTask = (taskId: number | string) => {
 .milestone-actions {
   display: grid;
   flex: 0 0 3.75rem;
+  align-self: center;
   justify-content: end;
   grid-template-columns: 1.75rem 1.75rem;
   inline-size: 3.75rem;
@@ -4444,7 +4374,6 @@ const openEditTask = (taskId: number | string) => {
     ),
     rgba(var(--v-theme-surface), 0.16);
   gap: 1rem;
-  margin-block-start: 1rem;
   padding-block: 1rem;
   padding-inline: 1rem;
 }
@@ -4505,47 +4434,73 @@ const openEditTask = (taskId: number | string) => {
   color: rgba(var(--v-theme-primary), 0.96);
 }
 
-.items-overview__metrics {
+.items-overview__table {
   display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 14px;
 }
 
-.items-overview__metric {
-  display: flex;
-  flex-direction: column;
-  border-radius: 14px;
-  background: rgba(var(--v-theme-surface), 0.24);
-  gap: 0.35rem;
-  padding-block: 0.95rem;
+.items-overview__table-head,
+.items-overview__row {
+  display: grid;
+  align-items: center;
+  column-gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.items-overview__table-head {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding-block: 0.7rem;
+  padding-inline: 1rem;
+  text-transform: uppercase;
+}
+
+.items-overview__head-value,
+.items-overview__cell-value {
+  text-align: end;
+}
+
+.items-overview__row {
+  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  padding-block: 0.85rem;
   padding-inline: 1rem;
 }
 
-.items-overview__metric span {
+.items-overview__cell-label {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.8rem;
+  font-size: 0.86rem;
 }
 
-.items-overview__metric strong {
+.items-overview__cell-value {
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 1.35rem;
+  font-size: 1rem;
   font-weight: 700;
-  line-height: 1.1;
 }
 
-.items-overview__metric--primary {
-  border: 1px solid rgba(var(--v-theme-primary), 0.12);
-  background: rgba(var(--v-theme-primary), 0.08);
+.items-overview__row--accent {
+  background: rgba(var(--v-theme-primary), 0.05);
 }
 
-.items-overview__metric--accent {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+.items-overview__row--accent strong {
+  color: rgba(var(--v-theme-primary), 0.96);
 }
 
-.items-overview__details {
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+.items-overview__row--total {
+  background: rgba(var(--v-theme-primary), 0.1);
+}
+
+.items-overview__row--total .items-overview__cell-label,
+.items-overview__row--total .items-overview__cell-value {
+  color: rgba(var(--v-theme-primary), 0.98);
+}
+
+.items-overview__row--total .items-overview__cell-value {
+  font-size: 1.15rem;
 }
 
 .items-overview__previews {
@@ -4723,31 +4678,6 @@ const openEditTask = (taskId: number | string) => {
   min-block-size: 75vh;
 }
 
-.items-overview__detail {
-  display: flex;
-  flex-direction: column;
-  border-inline-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  gap: 0.25rem;
-  min-inline-size: 0;
-  padding-inline-start: 0.75rem;
-}
-
-.items-overview__detail:first-child {
-  border-inline-start: 0;
-  padding-inline-start: 0;
-}
-
-.items-overview__detail span {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.78rem;
-}
-
-.items-overview__detail strong {
-  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 0.98rem;
-  font-weight: 600;
-}
-
 @media (max-width: 959px) {
   .items-overview__header {
     flex-direction: column;
@@ -4757,35 +4687,20 @@ const openEditTask = (taskId: number | string) => {
     justify-content: flex-start;
   }
 
-  .items-overview__metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .items-overview__details {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .items-overview__previews {
     max-block-size: none;
   }
 }
 
 @media (max-width: 639px) {
-  .items-overview__metrics,
-  .items-overview__details {
+  .items-overview__table-head,
+  .items-overview__row {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .items-overview__detail {
-    border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-    border-inline-start: 0;
-    padding-block-start: 0.6rem;
-    padding-inline-start: 0;
-  }
-
-  .items-overview__detail:first-child {
-    border-block-start: 0;
-    padding-block-start: 0;
+  .items-overview__head-value,
+  .items-overview__cell-value {
+    text-align: start;
   }
 }
 
