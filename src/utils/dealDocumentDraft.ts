@@ -1083,7 +1083,7 @@ export function getQuotationTopLevelDealItems(
   items: DealItem[] | null | undefined,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
-  return (items || [])
+  const topLevelItems = (items || [])
     .filter((item) => !item.parentItemId)
     .map((item) =>
       toSelectableItem(item, {
@@ -1092,6 +1092,22 @@ export function getQuotationTopLevelDealItems(
         resolveCatalogueRecord,
       }),
     );
+
+  const relatedItems = getSelectableDealItems(
+    items,
+    resolveCatalogueRecord,
+  ).filter(
+    (item) => item.catalogueType === "Related Item" && !item.isRootReplacement,
+  );
+
+  return Array.from(
+    new Map(
+      [...topLevelItems, ...relatedItems].map((item) => [
+        item.selectionKey,
+        item,
+      ]),
+    ).values(),
+  );
 }
 
 function buildDistributedCost(totalCost: number, count: number, index: number) {

@@ -13,6 +13,10 @@ import {
   useQuotationsStore,
 } from "@/stores/quotations";
 import {
+  clearDealDocumentDraft,
+  loadDealDocumentDraft,
+} from "@/utils/dealDocumentDraft";
+import {
   buildQuotationNote,
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
@@ -25,10 +29,6 @@ import {
   loadQuotationPreviewDraft,
   saveQuotationPreviewDraft,
 } from "@/utils/quotationPreviewDraft";
-import {
-  clearDealDocumentDraft,
-  loadDealDocumentDraft,
-} from "@/utils/dealDocumentDraft";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import type {
@@ -247,6 +247,17 @@ const pendingNavigationTarget = ref<Parameters<typeof router.push>[0] | null>(
   null,
 );
 const bypassUnsavedWarning = ref(false);
+const isDealDraftRoute = computed(() => route.query.dealDraft === "1");
+
+const buildDealReturnTarget = (dealId?: number | string | null) => {
+  if (dealId === null || dealId === undefined || dealId === "") return null;
+
+  return {
+    name: "operations-deals-view-id" as const,
+    params: { id: dealId },
+    query: { tab: "items" },
+  };
+};
 
 const buildDraftSnapshot = (draft: QuotationData) =>
   JSON.stringify(cloneQuotationRecord(draft));
@@ -457,6 +468,17 @@ const saveQuotation = () => {
   clearQuotationPreviewDraft();
   initialDraftSnapshot.value = buildDraftSnapshot(quotationData.value);
   bypassUnsavedWarning.value = true;
+  if (isDealDraftRoute.value) clearDealDocumentDraft("quotation");
+  const dealReturnTarget = isDealDraftRoute.value
+    ? buildDealReturnTarget(created.quotation.dealId)
+    : null;
+
+  if (dealReturnTarget) {
+    router.push(dealReturnTarget);
+
+    return;
+  }
+
   router.push({
     name: "apps-quotation-preview-id",
     params: { id: created.quotation.id },

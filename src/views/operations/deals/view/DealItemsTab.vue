@@ -59,11 +59,7 @@ import {
   resolveStoredBillingPeriodKey,
   saveDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
-import {
-  getDealDiscountTotal,
-  getDealGrandTotal,
-  getDealItemsSubtotal,
-} from "@/utils/dealValue";
+import {} from "@/utils/dealValue";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -127,6 +123,7 @@ interface DerivedSection {
   name: string;
   note: string | null;
   price: number | null;
+  billingPeriod?: DealBillingPeriod | null;
   goals: DerivedGoal[];
   goalTypeSingular: string;
   goalTypePlural: string;
@@ -225,6 +222,7 @@ const externalDocumentSelectionKind = ref<Extract<
   "proforma" | "invoice"
 > | null>(null);
 const selectedItemIds = ref<string[]>([]);
+const selectedDocumentParentItemId = ref<string | null>(null);
 
 const selectedPreviewDocument = ref<{
   href: string;
@@ -270,6 +268,7 @@ const billingPeriodYearValue = ref(defaultBillingYearValue());
 const billingPeriodCustomStartDate = ref(defaultBillingCustomDateValue());
 const billingPeriodCustomEndDate = ref(defaultBillingCustomDateValue());
 const billingPeriodCustomLabel = ref("");
+const selectedRetainerBillingPeriodKey = ref<string | null>(null);
 
 const billingPeriodKindOptions = [
   { title: "Month", value: "monthly" },
@@ -364,7 +363,17 @@ const syncBillingPeriodDraft = (
     period.kind === "custom" ? getDealBillingPeriodLabel(period) : "";
 };
 
-const billingPeriodPreview = computed(() => {
+const billingPeriodPreview = computed<DealBillingPeriod | null>(() => {
+  if (isRetainerBillingPeriodSelection.value) {
+    return (
+      availableRetainerBillingPeriods.value.find(
+        (period) => period.key === selectedRetainerBillingPeriodKey.value,
+      ) ||
+      availableRetainerBillingPeriods.value[0] ||
+      null
+    );
+  }
+
   if (billingPeriodKind.value === "quarterly") {
     return buildQuarterlyBillingPeriod(
       `${billingPeriodQuarterYearValue.value}-${billingPeriodQuarterValue.value}`,
@@ -388,14 +397,306 @@ const billingPeriodPreview = computed(() => {
 syncBillingPeriodDraft();
 
 const commitBillingPeriod = () => {
-  billingPeriod.value = billingPeriodPreview.value;
+  if (isRetainerBillingPeriodSelection.value) {
+    const selectedPeriod = billingPeriodPreview.value;
+    if (!selectedPeriod) return null;
+
+    billingPeriod.value = selectedPeriod;
+
+    return billingPeriod.value;
+  }
+
+  const nextPeriod = billingPeriodPreview.value;
+  if (!nextPeriod) return null;
+
+  billingPeriod.value = nextPeriod;
   syncBillingPeriodDraft(billingPeriod.value);
 
   return billingPeriod.value;
 };
 
+const formatIsoDateValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const defaultRetainerStartDate = () => {
+  const date = new Date();
+
+  date.setDate(1);
+
+  return formatIsoDateValue(date);
+};
+
+const defaultRetainerEndDate = () => {
+  const startDate = new Date(defaultRetainerStartDate());
+
+  return formatIsoDateValue(
+    new Date(startDate.getFullYear(), startDate.getMonth() + 12, 0),
+  );
+};
+
+const parseIsoDateValue = (value?: string | null) => {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const parsed = new Date(year, monthIndex, day);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(monthIndex) ||
+    !Number.isFinite(day) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== monthIndex ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+};
+
+const formatBillingPeriodOptionLabel = (
+  periodNumber: number,
+  startDate: string,
+  endDate: string,
+) => {
+  const parsedStartDate = parseIsoDateValue(startDate);
+  const parsedEndDate = parseIsoDateValue(endDate);
+
+  if (!parsedStartDate || !parsedEndDate) return `Period ${periodNumber}`;
+
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return `Period ${periodNumber} · ${formatter.format(parsedStartDate)} - ${formatter.format(parsedEndDate)}`;
+};
+
+const buildRetainerBillingPeriods = (item?: DealItem | null) => {
+  const parsedStartDate = parseIsoDateValue(item?.retainerStartDate);
+  const parsedEndDate = parseIsoDateValue(item?.retainerEndDate);
+  const totalPeriods = Number(item?.retainerPeriods ?? 0);
+
+  if (!parsedStartDate || !parsedEndDate || parsedEndDate < parsedStartDate)
+    return [] as DealBillingPeriod[];
+  if (!Number.isInteger(totalPeriods) || totalPeriods <= 0)
+    return [] as DealBillingPeriod[];
+
+  const dayMilliseconds = 24 * 60 * 60 * 1000;
+  const startMilliseconds = parsedStartDate.getTime();
+  const inclusiveDurationMilliseconds =
+    parsedEndDate.getTime() - startMilliseconds + dayMilliseconds;
+
+  return Array.from({ length: totalPeriods }, (_, index) => {
+    const periodStartMilliseconds =
+      startMilliseconds +
+      Math.floor((inclusiveDurationMilliseconds * index) / totalPeriods);
+    const rawPeriodEndMilliseconds =
+      startMilliseconds +
+      Math.floor((inclusiveDurationMilliseconds * (index + 1)) / totalPeriods) -
+      dayMilliseconds;
+    const periodStartDate = new Date(periodStartMilliseconds);
+    const periodEndDate =
+      index === totalPeriods - 1
+        ? new Date(parsedEndDate.getTime())
+        : new Date(Math.max(rawPeriodEndMilliseconds, periodStartMilliseconds));
+    const normalizedStartDate = formatIsoDateValue(periodStartDate);
+    const normalizedEndDate = formatIsoDateValue(periodEndDate);
+
+    return buildCustomBillingPeriod({
+      endDate: normalizedEndDate,
+      key: `retainer:${item?.id ?? "item"}:period:${index + 1}`,
+      label: formatBillingPeriodOptionLabel(
+        index + 1,
+        normalizedStartDate,
+        normalizedEndDate,
+      ),
+      startDate: normalizedStartDate,
+    });
+  });
+};
+
+const buildRecurrentBillingPeriods = (item?: DealItem | null) => {
+  const parsedStartDate = parseIsoDateValue(item?.recurrentStartDate);
+  const parsedEndDate = parseIsoDateValue(item?.recurrentEndDate);
+  const totalPeriods = Number(item?.recurrentPeriods ?? 0);
+
+  if (!parsedStartDate || !parsedEndDate || parsedEndDate < parsedStartDate)
+    return [] as DealBillingPeriod[];
+  if (!Number.isInteger(totalPeriods) || totalPeriods <= 0)
+    return [] as DealBillingPeriod[];
+
+  const dayMilliseconds = 24 * 60 * 60 * 1000;
+  const startMilliseconds = parsedStartDate.getTime();
+  const inclusiveDurationMilliseconds =
+    parsedEndDate.getTime() - startMilliseconds + dayMilliseconds;
+
+  return Array.from({ length: totalPeriods }, (_, index) => {
+    const periodStartMilliseconds =
+      startMilliseconds +
+      Math.floor((inclusiveDurationMilliseconds * index) / totalPeriods);
+    const rawPeriodEndMilliseconds =
+      startMilliseconds +
+      Math.floor((inclusiveDurationMilliseconds * (index + 1)) / totalPeriods) -
+      dayMilliseconds;
+    const periodStartDate = new Date(periodStartMilliseconds);
+    const periodEndDate =
+      index === totalPeriods - 1
+        ? new Date(parsedEndDate.getTime())
+        : new Date(Math.max(rawPeriodEndMilliseconds, periodStartMilliseconds));
+    const normalizedStartDate = formatIsoDateValue(periodStartDate);
+    const normalizedEndDate = formatIsoDateValue(periodEndDate);
+
+    return buildCustomBillingPeriod({
+      endDate: normalizedEndDate,
+      key: `recurrent:${item?.id ?? "item"}:period:${index + 1}`,
+      label: formatBillingPeriodOptionLabel(
+        index + 1,
+        normalizedStartDate,
+        normalizedEndDate,
+      ),
+      startDate: normalizedStartDate,
+    });
+  });
+};
+
+const calculateRetainerBillablePeriods = (
+  startDate?: string | null,
+  endDate?: string | null,
+  periods?: number | string | null,
+) => {
+  const parsedStartDate = parseIsoDateValue(startDate);
+  const parsedEndDate = parseIsoDateValue(endDate);
+  const normalizedPeriods = Number(periods);
+
+  if (
+    !parsedStartDate ||
+    !parsedEndDate ||
+    Number.isNaN(normalizedPeriods) ||
+    !Number.isInteger(normalizedPeriods) ||
+    normalizedPeriods <= 0
+  ) {
+    return null;
+  }
+
+  if (parsedEndDate < parsedStartDate) return null;
+
+  return normalizedPeriods;
+};
+
+const isRetainerCatalogueType = (type?: string | null) =>
+  type === "Retainer Service";
+
+const isRecurrentCatalogueType = (type?: string | null) =>
+  type === "Reccurent Service";
+
+const buildRetainerTermPayload = (input: {
+  endDate?: string | null;
+  periods?: number | string | null;
+  startDate?: string | null;
+}) => {
+  const startDate = String(input.startDate ?? "").trim();
+  const endDate = String(input.endDate ?? "").trim();
+  const periods = Number(input.periods);
+  const billablePeriods = calculateRetainerBillablePeriods(
+    startDate,
+    endDate,
+    periods,
+  );
+
+  if (!startDate || !endDate || !Number.isInteger(periods) || periods <= 0)
+    return null;
+  if (billablePeriods === null) return null;
+
+  return {
+    retainerBillablePeriods: billablePeriods,
+    retainerEndDate: endDate,
+    retainerPeriods: periods,
+    retainerStartDate: startDate,
+  } satisfies Pick<
+    DealItem,
+    | "retainerBillablePeriods"
+    | "retainerEndDate"
+    | "retainerPeriods"
+    | "retainerStartDate"
+  >;
+};
+
+const buildRecurrentTermPayload = (input: {
+  endDate?: string | null;
+  periods?: number | string | null;
+  startDate?: string | null;
+}) => {
+  const startDate = String(input.startDate ?? "").trim();
+  const endDate = String(input.endDate ?? "").trim();
+  const periods = Number(input.periods);
+  const billablePeriods = calculateRetainerBillablePeriods(
+    startDate,
+    endDate,
+    periods,
+  );
+
+  if (!startDate || !endDate || !Number.isInteger(periods) || periods <= 0)
+    return null;
+  if (billablePeriods === null) return null;
+
+  return {
+    recurrentBillablePeriods: billablePeriods,
+    recurrentEndDate: endDate,
+    recurrentPeriods: periods,
+    recurrentStartDate: startDate,
+  } satisfies Pick<
+    DealItem,
+    | "recurrentBillablePeriods"
+    | "recurrentEndDate"
+    | "recurrentPeriods"
+    | "recurrentStartDate"
+  >;
+};
+
+const positiveWholeNumberValidator = (value: unknown) => {
+  const numeric = Number(value);
+
+  return Number.isInteger(numeric) && numeric > 0
+    ? true
+    : "Enter a whole number greater than 0";
+};
+
+const retainerEndDateValidator = (
+  value: unknown,
+  startDate?: string | null,
+) => {
+  const parsedStartDate = parseIsoDateValue(startDate);
+  const parsedEndDate = parseIsoDateValue(String(value ?? ""));
+
+  if (!parsedEndDate) return "Choose an end date";
+  if (!parsedStartDate) return "Choose a start date first";
+
+  return parsedEndDate >= parsedStartDate
+    ? true
+    : "End date must be on or after the start date";
+};
+
 const addItemDraft = reactive({
   quantity: 1,
+  recurrentEndDate: defaultRetainerEndDate(),
+  recurrentPeriods: 12,
+  recurrentStartDate: defaultRetainerStartDate(),
+  retainerEndDate: defaultRetainerEndDate(),
+  retainerPeriods: 12,
+  retainerStartDate: defaultRetainerStartDate(),
 });
 
 const createDraftItem = reactive({
@@ -405,7 +706,61 @@ const createDraftItem = reactive({
   discountPercent: 0,
   taxApplicable: true,
   note: "",
+  recurrentEndDate: defaultRetainerEndDate(),
+  recurrentPeriods: 12,
+  recurrentStartDate: defaultRetainerStartDate(),
+  retainerEndDate: defaultRetainerEndDate(),
+  retainerPeriods: 12,
+  retainerStartDate: defaultRetainerStartDate(),
 });
+
+const addItemRequiresRetainerTerm = computed(() =>
+  isRetainerCatalogueType(selectedCatalogueRecord.value?.type),
+);
+
+const addItemRequiresRecurrentTerm = computed(() =>
+  isRecurrentCatalogueType(selectedCatalogueRecord.value?.type),
+);
+
+const createDraftItemRequiresRetainerTerm = computed(
+  () => selectedCreateItemType.value === "Retainer Service",
+);
+
+const createDraftItemRequiresRecurrentTerm = computed(
+  () => selectedCreateItemType.value === "Reccurent Service",
+);
+
+const addItemBillablePeriods = computed(() =>
+  calculateRetainerBillablePeriods(
+    addItemDraft.retainerStartDate,
+    addItemDraft.retainerEndDate,
+    addItemDraft.retainerPeriods,
+  ),
+);
+
+const addItemRecurrentBillablePeriods = computed(() =>
+  calculateRetainerBillablePeriods(
+    addItemDraft.recurrentStartDate,
+    addItemDraft.recurrentEndDate,
+    addItemDraft.recurrentPeriods,
+  ),
+);
+
+const createDraftItemBillablePeriods = computed(() =>
+  calculateRetainerBillablePeriods(
+    createDraftItem.retainerStartDate,
+    createDraftItem.retainerEndDate,
+    createDraftItem.retainerPeriods,
+  ),
+);
+
+const createDraftItemRecurrentBillablePeriods = computed(() =>
+  calculateRetainerBillablePeriods(
+    createDraftItem.recurrentStartDate,
+    createDraftItem.recurrentEndDate,
+    createDraftItem.recurrentPeriods,
+  ),
+);
 
 const editLine = reactive({
   mode: "item" as "item" | "sub",
@@ -425,7 +780,41 @@ const editLine = reactive({
   canEditDiscount: true,
   canEditTax: true,
   canEditInfo: true,
+  recurrentStartDate: defaultRetainerStartDate(),
+  recurrentEndDate: defaultRetainerEndDate(),
+  recurrentPeriods: 12 as number | null,
+  retainerStartDate: defaultRetainerStartDate(),
+  retainerEndDate: defaultRetainerEndDate(),
+  retainerPeriods: 12 as number | null,
 });
+
+const editLineRequiresRetainerTerm = computed(() => {
+  if (editLine.mode !== "item") return false;
+
+  return isRetainerCatalogueType(getItemById(editLine.itemId)?.catalogueType);
+});
+
+const editLineRequiresRecurrentTerm = computed(() => {
+  if (editLine.mode !== "item") return false;
+
+  return isRecurrentCatalogueType(getItemById(editLine.itemId)?.catalogueType);
+});
+
+const editLineBillablePeriods = computed(() =>
+  calculateRetainerBillablePeriods(
+    editLine.retainerStartDate,
+    editLine.retainerEndDate,
+    editLine.retainerPeriods,
+  ),
+);
+
+const editLineRecurrentBillablePeriods = computed(() =>
+  calculateRetainerBillablePeriods(
+    editLine.recurrentStartDate,
+    editLine.recurrentEndDate,
+    editLine.recurrentPeriods,
+  ),
+);
 
 const phaseDraft = reactive({
   category: "",
@@ -631,6 +1020,20 @@ const addDealItemsFromCatalogueItem = (
   options?: {
     note?: string | null;
     discountPercent?: number | null;
+    recurrentTerm?: Pick<
+      DealItem,
+      | "recurrentBillablePeriods"
+      | "recurrentEndDate"
+      | "recurrentPeriods"
+      | "recurrentStartDate"
+    > | null;
+    retainerTerm?: Pick<
+      DealItem,
+      | "retainerBillablePeriods"
+      | "retainerEndDate"
+      | "retainerPeriods"
+      | "retainerStartDate"
+    > | null;
     taxApplicable?: boolean | null;
   },
 ) => {
@@ -657,6 +1060,8 @@ const addDealItemsFromCatalogueItem = (
       discountPercent: options?.discountPercent ?? 0,
       taxApplicable: options?.taxApplicable ?? null,
       quantity,
+      ...(options?.recurrentTerm || {}),
+      ...(options?.retainerTerm || {}),
       unitPrice: Number(catalogueItem.bestPrice || 0),
       status: "Planned",
       note: options?.note ?? (catalogueItem.description || null),
@@ -706,6 +1111,12 @@ const itemTypeLabel = (item: DealItem) => {
 const openAddItemDialog = () => {
   selectedCatalogueItemId.value = null;
   addItemDraft.quantity = 1;
+  addItemDraft.recurrentStartDate = defaultRetainerStartDate();
+  addItemDraft.recurrentEndDate = defaultRetainerEndDate();
+  addItemDraft.recurrentPeriods = 12;
+  addItemDraft.retainerStartDate = defaultRetainerStartDate();
+  addItemDraft.retainerEndDate = defaultRetainerEndDate();
+  addItemDraft.retainerPeriods = 12;
   addItemDialogVisible.value = true;
 };
 
@@ -720,8 +1131,28 @@ const saveSelectedCatalogueItem = async () => {
 
   const selectedItem = selectedCatalogueItem.value;
   const quantity = Number(addItemDraft.quantity || 1);
+  const recurrentTerm = addItemRequiresRecurrentTerm.value
+    ? buildRecurrentTermPayload({
+        endDate: addItemDraft.recurrentEndDate,
+        periods: addItemDraft.recurrentPeriods,
+        startDate: addItemDraft.recurrentStartDate,
+      })
+    : null;
+  const retainerTerm = addItemRequiresRetainerTerm.value
+    ? buildRetainerTermPayload({
+        endDate: addItemDraft.retainerEndDate,
+        periods: addItemDraft.retainerPeriods,
+        startDate: addItemDraft.retainerStartDate,
+      })
+    : null;
 
-  addDealItemsFromCatalogueItem(selectedItem, quantity);
+  if (addItemRequiresRecurrentTerm.value && !recurrentTerm) return;
+  if (addItemRequiresRetainerTerm.value && !retainerTerm) return;
+
+  addDealItemsFromCatalogueItem(selectedItem, quantity, {
+    recurrentTerm,
+    retainerTerm,
+  });
   notifications.push("Item added to deal", "success", 3000);
   addItemDialogVisible.value = false;
 };
@@ -737,6 +1168,12 @@ const openCreateDraftItemDialog = (type: CatalogueItemType) => {
   createDraftItem.discountPercent = 0;
   createDraftItem.taxApplicable = true;
   createDraftItem.note = "";
+  createDraftItem.recurrentStartDate = defaultRetainerStartDate();
+  createDraftItem.recurrentEndDate = defaultRetainerEndDate();
+  createDraftItem.recurrentPeriods = 12;
+  createDraftItem.retainerStartDate = defaultRetainerStartDate();
+  createDraftItem.retainerEndDate = defaultRetainerEndDate();
+  createDraftItem.retainerPeriods = 12;
   createItemTypeDialogVisible.value = false;
   createDraftItemDialogVisible.value = true;
 };
@@ -747,6 +1184,24 @@ const saveCreatedDraftItem = async () => {
   };
 
   if (!valid || !selectedCreateItemType.value) return;
+
+  const recurrentTerm = createDraftItemRequiresRecurrentTerm.value
+    ? buildRecurrentTermPayload({
+        endDate: createDraftItem.recurrentEndDate,
+        periods: createDraftItem.recurrentPeriods,
+        startDate: createDraftItem.recurrentStartDate,
+      })
+    : null;
+  const retainerTerm = createDraftItemRequiresRetainerTerm.value
+    ? buildRetainerTermPayload({
+        endDate: createDraftItem.retainerEndDate,
+        periods: createDraftItem.retainerPeriods,
+        startDate: createDraftItem.retainerStartDate,
+      })
+    : null;
+
+  if (createDraftItemRequiresRecurrentTerm.value && !recurrentTerm) return;
+  if (createDraftItemRequiresRetainerTerm.value && !retainerTerm) return;
 
   const draftRecord = cataloguesStore.addItem({
     type: selectedCreateItemType.value,
@@ -765,6 +1220,8 @@ const saveCreatedDraftItem = async () => {
     {
       note: String(createDraftItem.note || "").trim() || null,
       discountPercent: Number(createDraftItem.discountPercent || 0),
+      recurrentTerm,
+      retainerTerm,
       taxApplicable: Boolean(createDraftItem.taxApplicable),
     },
   );
@@ -921,6 +1378,14 @@ const openEditItem = (item: DealItemWithPlan) => {
   editLine.discountPercent = item.discountPercent ?? 0;
   editLine.taxApplicable = item.taxApplicable ?? null;
   editLine.note = item.note ?? "";
+  editLine.recurrentStartDate =
+    item.recurrentStartDate ?? defaultRetainerStartDate();
+  editLine.recurrentEndDate = item.recurrentEndDate ?? defaultRetainerEndDate();
+  editLine.recurrentPeriods = item.recurrentPeriods ?? 12;
+  editLine.retainerStartDate =
+    item.retainerStartDate ?? defaultRetainerStartDate();
+  editLine.retainerEndDate = item.retainerEndDate ?? defaultRetainerEndDate();
+  editLine.retainerPeriods = item.retainerPeriods ?? 12;
   setEditFieldConstraints({
     quantity: true,
     price: true,
@@ -975,6 +1440,26 @@ const saveEditedLine = async () => {
 
   const nextItems = (props.deal.items || []).map((item) => {
     if (editLine.mode === "item" && item.id === editLine.itemId) {
+      const recurrentTerm = isRecurrentCatalogueType(item.catalogueType)
+        ? buildRecurrentTermPayload({
+            endDate: editLine.recurrentEndDate,
+            periods: editLine.recurrentPeriods,
+            startDate: editLine.recurrentStartDate,
+          })
+        : null;
+      const retainerTerm = isRetainerCatalogueType(item.catalogueType)
+        ? buildRetainerTermPayload({
+            endDate: editLine.retainerEndDate,
+            periods: editLine.retainerPeriods,
+            startDate: editLine.retainerStartDate,
+          })
+        : null;
+
+      if (isRecurrentCatalogueType(item.catalogueType) && !recurrentTerm)
+        return item;
+      if (isRetainerCatalogueType(item.catalogueType) && !retainerTerm)
+        return item;
+
       return {
         ...item,
         name: payload.name || item.name,
@@ -991,6 +1476,18 @@ const saveEditedLine = async () => {
             ? item.taxApplicable
             : payload.taxApplicable,
         note: payload.note,
+        ...(recurrentTerm || {
+          recurrentBillablePeriods: null,
+          recurrentEndDate: null,
+          recurrentPeriods: null,
+          recurrentStartDate: null,
+        }),
+        ...(retainerTerm || {
+          retainerBillablePeriods: null,
+          retainerEndDate: null,
+          retainerPeriods: null,
+          retainerStartDate: null,
+        }),
       };
     }
 
@@ -1045,6 +1542,144 @@ const formatDocumentDate = (value?: string | null) => {
   }).format(parsed);
 };
 
+const isRetainerParentDealItem = (
+  item?: DealItem | DealItemWithPlan | null,
+): item is DealItem | DealItemWithPlan =>
+  Boolean(
+    item && !item.parentItemId && isRetainerCatalogueType(item.catalogueType),
+  );
+
+const isRecurrentParentDealItem = (
+  item?: DealItem | DealItemWithPlan | null,
+): item is DealItem | DealItemWithPlan =>
+  Boolean(
+    item && !item.parentItemId && isRecurrentCatalogueType(item.catalogueType),
+  );
+
+const buildRetainerSelectionKeyPrefix = (itemId: number | string) =>
+  `item-${itemId}-retainer`;
+
+const buildRecurrentSelectionKeyPrefix = (itemId: number | string) =>
+  `item-${itemId}-recurrent`;
+
+const getRecordProductSelectionKey = (product: {
+  dealSelectionKey?: string | null;
+}) => String(product.dealSelectionKey ?? "").trim();
+
+const getRetainerTotalPeriods = (item?: DealItem | DealItemWithPlan | null) => {
+  const totalPeriods = Number(item?.retainerPeriods ?? 0);
+
+  return Number.isInteger(totalPeriods) && totalPeriods > 0 ? totalPeriods : 0;
+};
+
+const getRecurrentTotalPeriods = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  const totalPeriods = Number(item?.recurrentPeriods ?? 0);
+
+  return Number.isInteger(totalPeriods) && totalPeriods > 0 ? totalPeriods : 0;
+};
+
+const matchesRetainerRecord = (
+  parentItem: DealItem | DealItemWithPlan,
+  record: {
+    purchasedProducts: Array<{ dealSelectionKey?: string | null }>;
+    quotation: { dealId?: number | string | null };
+  },
+) => {
+  if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
+    return false;
+
+  const selectionKeyPrefix = buildRetainerSelectionKeyPrefix(parentItem.id);
+
+  return record.purchasedProducts.some((product) =>
+    getRecordProductSelectionKey(product).startsWith(selectionKeyPrefix),
+  );
+};
+
+const getRetainerConsumedPeriods = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  if (!isRetainerParentDealItem(item)) return 0;
+
+  const proformaCount = proformasStore.items.filter((record) =>
+    matchesRetainerRecord(item, record),
+  ).length;
+
+  const invoiceCount = invoicesStore.items.filter((record) =>
+    matchesRetainerRecord(item, record),
+  ).length;
+
+  return proformaCount + invoiceCount;
+};
+
+const getRecurrentConsumedPeriods = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  if (!isRecurrentParentDealItem(item)) return 0;
+
+  const selectionKeyPrefix = buildRecurrentSelectionKeyPrefix(item.id);
+  const matchesRecord = (record: {
+    purchasedProducts: Array<{ dealSelectionKey?: string | null }>;
+    quotation: { dealId?: number | string | null };
+  }) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
+      return false;
+
+    return record.purchasedProducts.some((product) =>
+      getRecordProductSelectionKey(product).startsWith(selectionKeyPrefix),
+    );
+  };
+
+  const proformaCount = proformasStore.items.filter((record) =>
+    matchesRecord(record),
+  ).length;
+  const invoiceCount = invoicesStore.items.filter((record) =>
+    matchesRecord(record),
+  ).length;
+
+  return proformaCount + invoiceCount;
+};
+
+const getRetainerRemainingPeriods = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  const totalPeriods = getRetainerTotalPeriods(item);
+  if (!totalPeriods) return 0;
+
+  return Math.max(totalPeriods - getRetainerConsumedPeriods(item), 0);
+};
+
+const hasRetainerRemainingPeriods = (
+  item?: DealItem | DealItemWithPlan | null,
+) => getRetainerRemainingPeriods(item) > 0;
+
+const formatRetainerTermSummary = (item: DealItem) => {
+  if (!isRetainerCatalogueType(item.catalogueType)) return null;
+
+  const startDate = formatDocumentDate(item.retainerStartDate);
+  const endDate = formatDocumentDate(item.retainerEndDate);
+  const periods = getRetainerTotalPeriods(item);
+  const consumedPeriods = getRetainerConsumedPeriods(item);
+
+  if (!periods || startDate === "--" || endDate === "--") return null;
+
+  return `Start Date: ${startDate}, End Date: ${endDate}, Paid Periods: ${consumedPeriods}/${periods}`;
+};
+
+const formatRecurrentTermSummary = (item: DealItem) => {
+  if (!isRecurrentCatalogueType(item.catalogueType)) return null;
+
+  const startDate = formatDocumentDate(item.recurrentStartDate);
+  const endDate = formatDocumentDate(item.recurrentEndDate);
+  const periods = getRecurrentTotalPeriods(item);
+  const consumedPeriods = getRecurrentConsumedPeriods(item);
+
+  if (!periods || startDate === "--" || endDate === "--") return null;
+
+  return `Start Date: ${startDate}, End Date: ${endDate}, Paid Periods: ${consumedPeriods}/${periods}`;
+};
+
 const calculateAmount = (
   price?: number | null,
   quantity?: number | null,
@@ -1061,8 +1696,45 @@ const calculateAmount = (
   return subtotal - discount;
 };
 
+const getItemEffectiveQuantity = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  if (!item) return 0;
+  if (!item.parentItemId && isRetainerCatalogueType(item.catalogueType)) {
+    return getRetainerTotalPeriods(item);
+  }
+  if (!item.parentItemId && isRecurrentCatalogueType(item.catalogueType)) {
+    return getRecurrentTotalPeriods(item);
+  }
+
+  return Number(item.quantity ?? 0);
+};
+
+const getItemQuantityLabel = (item?: DealItem | DealItemWithPlan | null) =>
+  isRetainerParentDealItem(item) || isRecurrentParentDealItem(item)
+    ? "Total Periods"
+    : "Qty";
+
+const getItemQuantityDisplayValue = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  if (!item) return "--";
+  if (!item.parentItemId && isRetainerCatalogueType(item.catalogueType)) {
+    return getRetainerTotalPeriods(item);
+  }
+  if (!item.parentItemId && isRecurrentCatalogueType(item.catalogueType)) {
+    return getRecurrentTotalPeriods(item);
+  }
+
+  return item.quantity ?? "--";
+};
+
 const itemAmount = (item: DealItem) =>
-  calculateAmount(item.unitPrice, item.quantity, item.discountPercent || 0);
+  calculateAmount(
+    item.unitPrice,
+    getItemEffectiveQuantity(item),
+    item.discountPercent || 0,
+  );
 
 const goalAmount = (goal: DerivedGoal) =>
   calculateAmount(goal.price, goal.quantity, goal.discountPercent || 0);
@@ -1135,9 +1807,9 @@ const makeDerivedGoal = (
 
 const makeSection = (
   item: DealItem,
-  section: Omit<DerivedSection, "id">,
+  section: Omit<DerivedSection, "id"> & { id?: string },
 ): DerivedSection => ({
-  id: `item-${item.id}`,
+  id: section.id ?? `item-${item.id}`,
   ...section,
 });
 
@@ -1224,8 +1896,8 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
               discountPercent: service.discountPercent,
               discountLabel: null,
               taxApplicable: service.taxApplicable,
-              showQuantity: true,
-              showPrice: true,
+              showQuantity: false,
+              showPrice: false,
               showDiscount: false,
               showTaxApplicable: false,
             },
@@ -1249,6 +1921,47 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
   if (record.type === "Reccurent Service") {
     const recurrent = record as CatalogueReccurentServiceRecord;
     const recurrentLines = getDealRecurrentServiceLines(item, recurrent);
+    const recurrentPeriods = buildRecurrentBillingPeriods(item);
+
+    if (recurrentPeriods.length) {
+      return recurrentPeriods.map((period, index) =>
+        makeSection(item, {
+          id: `item-${item.id}-${period.key}`,
+          name: period.label || `Period ${index + 1}`,
+          note: null,
+          price: null,
+          billingPeriod: period,
+          goals: recurrentLines.map((service) => ({
+            ...makeDerivedGoal(
+              item,
+              `recurrent-period-${index + 1}`,
+              "Recurrent Service",
+              {
+                quantity: service.quantity,
+                discountPercent: service.discountPercent,
+                discountLabel: null,
+                taxApplicable: service.taxApplicable,
+                showQuantity: false,
+                showPrice: false,
+                showDiscount: false,
+                showTaxApplicable: false,
+              },
+              {
+                id: service.id,
+                name: service.name,
+                category: service.category,
+                description: service.note,
+                note: service.note,
+                price: service.price,
+              },
+            ),
+            overrideKey: service.overrideKey,
+          })),
+          goalTypeSingular: "Recurrent Service",
+          goalTypePlural: "Recurrent Services",
+        }),
+      );
+    }
 
     return [
       makeSection(item, {
@@ -1266,7 +1979,7 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
               discountLabel: null,
               taxApplicable: service.taxApplicable,
               showQuantity: false,
-              showPrice: true,
+              showPrice: false,
               showDiscount: false,
               showTaxApplicable: false,
             },
@@ -1454,13 +2167,26 @@ const toggleItemExpanded = (panelId: number | string) => {
   expandedItems.value = [...expandedItems.value, panelId];
 };
 
-const itemsSubtotal = computed(() => getDealItemsSubtotal(props.deal));
+const itemsSubtotal = computed(() =>
+  (props.deal.items || []).reduce(
+    (sum, item) =>
+      sum + Number(item.unitPrice || 0) * getItemEffectiveQuantity(item),
+    0,
+  ),
+);
 
-const totalDiscount = computed(() => getDealDiscountTotal(props.deal));
+const totalDiscount = computed(() =>
+  (props.deal.items || []).reduce((sum, item) => {
+    const subtotal =
+      Number(item.unitPrice || 0) * getItemEffectiveQuantity(item);
+
+    return sum + subtotal * (Number(item.discountPercent || 0) / 100);
+  }, 0),
+);
 const totalTax = computed(() => 0);
 
 const grandTotal = computed(
-  () => getDealGrandTotal(props.deal) + totalTax.value,
+  () => itemsSubtotal.value - totalDiscount.value + totalTax.value,
 );
 
 const financialRows = computed(() => props.deal.financials || []);
@@ -1894,6 +2620,43 @@ const getPeriodSelectionConflicts = (
   });
 };
 
+const selectedDocumentParentItem = computed(
+  () =>
+    (props.deal.items || []).find(
+      (item) =>
+        String(item.id) === String(selectedDocumentParentItemId.value ?? ""),
+    ) ?? null,
+);
+
+const isRetainerBillingPeriodSelection = computed(() => {
+  if (!selectedDocumentParentItemId.value) return false;
+
+  return Boolean(selectedDocumentParentItem.value);
+});
+
+const retainerBillingPeriods = computed(() => {
+  if (
+    isRetainerCatalogueType(selectedDocumentParentItem.value?.catalogueType)
+  ) {
+    return buildRetainerBillingPeriods(selectedDocumentParentItem.value);
+  }
+
+  if (
+    isRecurrentCatalogueType(selectedDocumentParentItem.value?.catalogueType)
+  ) {
+    return buildRecurrentBillingPeriods(selectedDocumentParentItem.value);
+  }
+
+  return [] as DealBillingPeriod[];
+});
+
+const availableRetainerBillingPeriods = computed(() =>
+  retainerBillingPeriods.value.filter(
+    (period) =>
+      !getPeriodSelectionConflicts(pendingDocumentItems.value, period).length,
+  ),
+);
+
 const findGoalSelectableItem = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
@@ -1904,15 +2667,47 @@ const findGoalSelectableItem = (
       item.selectionKey.endsWith(goal.overrideKey),
   ) ?? null;
 
+const findRetainerSelectableItems = (parentItem: DealItem | DealItemWithPlan) =>
+  selectableDocumentItems.value.filter(
+    (item) =>
+      String(item.id) === String(parentItem.id) &&
+      item.catalogueType === "Retainer Service Line",
+  );
+
+const isRetainerGoal = (goal: DerivedGoal) =>
+  goal.typeLabel === "Retainer Service";
+
+const isRecurrentGoal = (goal: DerivedGoal) =>
+  goal.typeLabel === "Recurrent Service";
+
+const isCompactGoal = (goal: DerivedGoal) =>
+  isRetainerGoal(goal) || isRecurrentGoal(goal);
+
+const resolveGoalBillingPeriodKey = (
+  selectableItem: DealDocumentSelectableItem | null,
+  period?: DealBillingPeriod | null,
+) => {
+  if (!selectableItem) return "";
+
+  const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
+
+  if (itemMode !== "retainer-period" && itemMode !== "recurrent-period") {
+    return resolveSelectableItemBillingPeriodKey(selectableItem.selectionKey);
+  }
+
+  return getDealBillingPeriodKey(period ?? billingPeriod.value);
+};
+
 const getGoalDocumentUsage = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
+  period?: DealBillingPeriod | null,
 ) => {
   const selectableItem = findGoalSelectableItem(parentItem, goal);
 
   return getDocumentUsage(
     selectableItem?.selectionKey,
-    resolveSelectableItemBillingPeriodKey(selectableItem?.selectionKey),
+    resolveGoalBillingPeriodKey(selectableItem, period),
   );
 };
 
@@ -1955,22 +2750,76 @@ const getGoalInvoiceState = (
   return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
 };
 
+const getSectionInvoiceState = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  if (!section.billingPeriod) return null;
+
+  const usageByGoal = section.goals.map((goal) =>
+    getGoalDocumentUsage(parentItem, goal, section.billingPeriod),
+  );
+
+  const hasInvoice = usageByGoal.some((usage) => usage.invoiceCount > 0);
+  if (!hasInvoice) return "Not invoiced";
+
+  const periodKey = getDealBillingPeriodKey(section.billingPeriod);
+
+  const matchingInvoices = invoicesStore.items.filter((record) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
+      return false;
+
+    return record.purchasedProducts.some((product) => {
+      const billingKey = resolveStoredBillingPeriodKey(product);
+      if (billingKey !== periodKey) return false;
+
+      const selectionKey = resolveProductSelectionKey(product);
+
+      return section.goals.some((goal) => {
+        const selectableItem = findGoalSelectableItem(parentItem, goal);
+
+        return selectableItem?.selectionKey === selectionKey;
+      });
+    });
+  });
+
+  const isPaid = matchingInvoices.some(
+    (record) => String(record.quotation.quotationStatus) === "Paid",
+  );
+
+  return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
+};
+
 const isGoalProformaActionDisabled = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
-) => getGoalDocumentUsage(parentItem, goal).proformaCount > 0;
+  period?: DealBillingPeriod | null,
+) =>
+  isRetainerGoal(goal) ||
+  getGoalDocumentUsage(parentItem, goal, period).proformaCount > 0;
 
 const isGoalInvoiceActionDisabled = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
-) => getGoalDocumentUsage(parentItem, goal).invoiceCount > 0;
+  period?: DealBillingPeriod | null,
+) =>
+  isRetainerGoal(goal) ||
+  getGoalDocumentUsage(parentItem, goal, period).invoiceCount > 0;
 
-const filteredSelectableDocumentItems = computed(() =>
-  filterDealDocumentItemsByBillingMode(
+const filteredSelectableDocumentItems = computed(() => {
+  const filteredItems = filterDealDocumentItemsByBillingMode(
     selectableDocumentItems.value,
     effectiveBillingMode.value,
-  ),
-);
+  );
+
+  if (selectedDocumentParentItemId.value) {
+    return filteredItems.filter(
+      (item) => String(item.id) === selectedDocumentParentItemId.value,
+    );
+  }
+
+  return filteredItems;
+});
 
 const billingModeOptions = computed(() => {
   const availableModes = Array.from(
@@ -2178,6 +3027,7 @@ const resetDocumentWorkflowState = () => {
   resetBillingPeriodPrices();
   selectedBillingMode.value = null;
   selectedDocumentKind.value = null;
+  selectedDocumentParentItemId.value = null;
   selectedItemIds.value = [];
 };
 
@@ -2187,6 +3037,34 @@ const selectionNeedsBillingPeriod = (items: DealDocumentSelectableItem[]) =>
 
     return itemMode === "retainer-period" || itemMode === "recurrent-period";
   });
+
+const resolveRetainerBillingParentItemId = (
+  items: DealDocumentSelectableItem[],
+) => {
+  const periodBasedItems = items.filter((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+    return itemMode === "retainer-period" || itemMode === "recurrent-period";
+  });
+
+  if (!periodBasedItems.length) return null;
+
+  const periodMode = resolveDealDocumentBillingModeForItem(periodBasedItems[0]);
+
+  if (
+    periodBasedItems.some(
+      (item) => resolveDealDocumentBillingModeForItem(item) !== periodMode,
+    )
+  ) {
+    return null;
+  }
+
+  const parentIds = Array.from(
+    new Set(periodBasedItems.map((item) => String(item.id))),
+  );
+
+  return parentIds.length === 1 ? parentIds[0] : null;
+};
 
 const pendingBillingPeriodItems = computed(() =>
   pendingDocumentItems.value.filter((item) => {
@@ -2344,6 +3222,7 @@ const openGoalDocumentPage = async (
   kind: Extract<DealDocumentKind, "proforma" | "invoice">,
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
+  preferredPeriod?: DealBillingPeriod | null,
 ) => {
   const selectableItem = findGoalSelectableItem(parentItem, goal);
 
@@ -2353,6 +3232,20 @@ const openGoalDocumentPage = async (
       "warning",
       3000,
     );
+
+    return;
+  }
+
+  const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
+
+  if (itemMode === "recurrent-period") {
+    pendingDocumentItems.value = [selectableItem];
+    selectedDocumentParentItemId.value = String(parentItem.id);
+    selectedRetainerBillingPeriodKey.value =
+      preferredPeriod?.key ??
+      availableRetainerBillingPeriods.value[0]?.key ??
+      null;
+    openBillingPeriodDialog(kind, "recurrent-period");
 
     return;
   }
@@ -2375,6 +3268,10 @@ const openExternalDocumentSelectionDialog = (
   externalDocumentSelectionKind.value = kind;
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
+  if (mode !== "retainer-period" && mode !== "recurrent-period") {
+    selectedDocumentParentItemId.value = null;
+    selectedRetainerBillingPeriodKey.value = null;
+  }
   selectedItemIds.value = [];
   selectionDialogVisible.value = true;
 };
@@ -2385,6 +3282,10 @@ const openSelectionDialog = (
 ) => {
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
+  if (mode !== "retainer-period" && mode !== "recurrent-period") {
+    selectedDocumentParentItemId.value = null;
+    selectedRetainerBillingPeriodKey.value = null;
+  }
   selectedItemIds.value = [];
   selectionDialogVisible.value = true;
 };
@@ -2447,6 +3348,7 @@ const openGoalExternalDocumentDialog = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
+  preferredPeriod?: DealBillingPeriod | null,
 ) => {
   const selectableItem = findGoalSelectableItem(parentItem, goal);
 
@@ -2461,10 +3363,23 @@ const openGoalExternalDocumentDialog = (
   }
 
   const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
-  const period =
-    itemMode === "retainer-period" || itemMode === "recurrent-period"
-      ? billingPeriod.value
-      : null;
+  if (itemMode === "recurrent-period") {
+    pendingDocumentItems.value = [selectableItem];
+    selectedDocumentParentItemId.value = String(parentItem.id);
+    selectedRetainerBillingPeriodKey.value =
+      preferredPeriod?.key ??
+      availableRetainerBillingPeriods.value[0]?.key ??
+      null;
+    externalDocumentSelectionKind.value = kind;
+    selectedDocumentKind.value = kind;
+    selectedBillingMode.value = "recurrent-period";
+    initializeBillingPeriodPrices([selectableItem]);
+    billingPeriodDialogVisible.value = true;
+
+    return;
+  }
+
+  const period = itemMode === "retainer-period" ? billingPeriod.value : null;
 
   openExternalDocumentDialog(kind, [selectableItem], period);
 };
@@ -2478,7 +3393,12 @@ const openBillingPeriodDialog = (
 ) => {
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
-  syncBillingPeriodDraft();
+  if (selectedDocumentParentItemId.value) {
+    selectedRetainerBillingPeriodKey.value =
+      availableRetainerBillingPeriods.value[0]?.key ?? null;
+  } else {
+    syncBillingPeriodDraft();
+  }
   initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
   billingPeriodDialogVisible.value = true;
 };
@@ -2487,6 +3407,12 @@ const confirmBillingPeriod = () => {
   if (!selectedDocumentKind.value) return;
 
   const nextBillingPeriod = commitBillingPeriod();
+  if (!nextBillingPeriod) {
+    notifications.push("Select a billing period first", "warning", 2500);
+
+    return;
+  }
+
   if (!getDealBillingPeriodKey(nextBillingPeriod)) {
     notifications.push("Select a billing period first", "warning", 2500);
 
@@ -2563,6 +3489,7 @@ const closeSelectionDialog = () => {
   if (!billingModeDialogVisible.value && !billingPeriodDialogVisible.value) {
     selectedBillingMode.value = null;
     selectedDocumentKind.value = null;
+    selectedDocumentParentItemId.value = null;
   }
   selectedItemIds.value = [];
 };
@@ -2575,7 +3502,13 @@ const confirmSelectedDocumentItems = async () => {
   const items = [...selectedDocumentItems.value];
 
   if (selectionNeedsBillingPeriod(items)) {
+    const retainerParentItemId = resolveRetainerBillingParentItemId(items);
+
     pendingDocumentItems.value = items;
+    selectedDocumentParentItemId.value = retainerParentItemId;
+    selectedRetainerBillingPeriodKey.value = retainerParentItemId
+      ? (availableRetainerBillingPeriods.value[0]?.key ?? null)
+      : null;
     initializeBillingPeriodPrices(
       items.filter((item) => {
         const itemMode = resolveDealDocumentBillingModeForItem(item);
@@ -2643,6 +3576,161 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
   }
 
   await router.push({ name: routeNameForDocument(kind) });
+};
+
+const notifyRetainerPeriodsExhausted = () => {
+  notifications.push(
+    "No more periods are billable for this retainer.",
+    "warning",
+    3000,
+  );
+};
+
+const openRetainerDocumentPage = async (
+  kind: DealDocumentKind,
+  parentItem: DealItemWithPlan,
+) => {
+  if (!isRetainerParentDealItem(parentItem)) return;
+
+  if (kind === "quotation") {
+    await openDocumentPage(kind);
+
+    return;
+  }
+
+  if (!hasRetainerRemainingPeriods(parentItem)) {
+    notifyRetainerPeriodsExhausted();
+
+    return;
+  }
+
+  const retainerItems = findRetainerSelectableItems(parentItem);
+
+  if (!retainerItems.length) {
+    notifications.push(
+      "This retainer has no billable service lines yet.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  selectedDocumentParentItemId.value = String(parentItem.id);
+  openSelectionDialog(kind, "retainer-period");
+};
+
+const openRetainerExternalDocumentDialog = (
+  kind: DealPreviewKind,
+  parentItem: DealItemWithPlan,
+) => {
+  if (!isRetainerParentDealItem(parentItem)) return;
+
+  if (kind === "quotation") {
+    openExternalDocumentFlow(kind);
+
+    return;
+  }
+
+  if (!hasRetainerRemainingPeriods(parentItem)) {
+    notifyRetainerPeriodsExhausted();
+
+    return;
+  }
+
+  const retainerItems = findRetainerSelectableItems(parentItem);
+
+  if (!retainerItems.length) {
+    notifications.push(
+      "This retainer has no billable service lines yet.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  selectedDocumentParentItemId.value = String(parentItem.id);
+  openExternalDocumentSelectionDialog(kind, "retainer-period");
+};
+
+const isRetainerParentDocumentActionDisabled = (
+  kind: DealPreviewKind,
+  parentItem: DealItemWithPlan,
+) => {
+  if (!isRetainerParentDealItem(parentItem)) return false;
+  if (kind === "quotation") return false;
+
+  return !hasRetainerRemainingPeriods(parentItem);
+};
+
+const retainerParentItems = computed(() =>
+  dealItemsWithPlan.value.filter((item) => isRetainerParentDealItem(item)),
+);
+
+const getSingleRetainerParentItem = () => {
+  if (retainerParentItems.value.length === 1)
+    return retainerParentItems.value[0];
+
+  if (!retainerParentItems.value.length) {
+    notifications.push(
+      "This deal has no retainer ready for billing.",
+      "warning",
+      3000,
+    );
+
+    return null;
+  }
+
+  notifications.push(
+    "Choose the mother retainer row to create or attach documents.",
+    "info",
+    3000,
+  );
+
+  return null;
+};
+
+const isSingleModeRetainerPanelFlow = computed(
+  () =>
+    billingModeOptions.value.length === 1 &&
+    billingModeOptions.value[0]?.value === "retainer-period",
+);
+
+const openPanelDocumentPage = async (kind: DealDocumentKind) => {
+  if (!isSingleModeRetainerPanelFlow.value) {
+    await openDocumentPage(kind);
+
+    return;
+  }
+
+  const parentItem = getSingleRetainerParentItem();
+  if (!parentItem) return;
+
+  await openRetainerDocumentPage(kind, parentItem);
+};
+
+const openPanelExternalDocumentFlow = (kind: DealPreviewKind) => {
+  if (!isSingleModeRetainerPanelFlow.value) {
+    openExternalDocumentFlow(kind);
+
+    return;
+  }
+
+  const parentItem = getSingleRetainerParentItem();
+  if (!parentItem) return;
+
+  openRetainerExternalDocumentDialog(kind, parentItem);
+};
+
+const isRetainerPanelDocumentActionDisabled = (kind: DealPreviewKind) => {
+  if (!isSingleModeRetainerPanelFlow.value) return false;
+  if (retainerParentItems.value.length !== 1) return false;
+
+  return isRetainerParentDocumentActionDisabled(
+    kind,
+    retainerParentItems.value[0],
+  );
 };
 
 const positiveAmountValidator = (value: unknown) => {
@@ -3411,24 +4499,42 @@ const openEditTask = (taskId: number | string) => {
               <div class="item-card-shell" @click.stop="openEditItem(item)">
                 <div class="flex-grow-1 min-w-0">
                   <div class="item-card-header">
-                    <VTooltip :text="item.name" location="top">
-                      <template #activator="{ props: tooltipProps }">
-                        <div
-                          v-bind="tooltipProps"
-                          class="item-card-title truncate-title"
+                    <div class="flex-grow-1 min-w-0">
+                      <div class="item-card-title-row">
+                        <VTooltip :text="item.name" location="top">
+                          <template #activator="{ props: tooltipProps }">
+                            <div
+                              v-bind="tooltipProps"
+                              class="item-card-title truncate-title"
+                            >
+                              {{ item.name }}
+                            </div>
+                          </template>
+                        </VTooltip>
+
+                        <VChip
+                          size="small"
+                          variant="plain"
+                          color="primary"
+                          class="item-type-chip"
                         >
-                          {{ item.name }}
-                        </div>
-                      </template>
-                    </VTooltip>
-                    <VChip
-                      size="small"
-                      variant="plain"
-                      color="primary"
-                      class="item-type-chip"
-                    >
-                      {{ itemTypeLabel(item) }}
-                    </VChip>
+                          {{ itemTypeLabel(item) }}
+                        </VChip>
+                      </div>
+
+                      <div
+                        v-if="
+                          formatRetainerTermSummary(item) ||
+                          formatRecurrentTermSummary(item)
+                        "
+                        class="item-card-note text-body-2 text-medium-emphasis"
+                      >
+                        {{
+                          formatRetainerTermSummary(item) ||
+                          formatRecurrentTermSummary(item)
+                        }}
+                      </div>
+                    </div>
                   </div>
 
                   <div class="product-metrics">
@@ -3437,8 +4543,8 @@ const openEditTask = (taskId: number | string) => {
                       <strong>{{ formatMoney(item.unitPrice) }}</strong>
                     </div>
                     <div class="product-metric">
-                      <span>Qty</span>
-                      <strong>{{ item.quantity ?? "--" }}</strong>
+                      <span>{{ getItemQuantityLabel(item) }}</span>
+                      <strong>{{ getItemQuantityDisplayValue(item) }}</strong>
                     </div>
                     <div class="product-metric">
                       <span>Discount</span>
@@ -3493,6 +4599,103 @@ const openEditTask = (taskId: number | string) => {
                             Add {{ item.childTypeSingular }}
                           </VListItemTitle>
                         </VListItem>
+                        <template v-if="isRetainerParentDealItem(item)">
+                          <VDivider />
+                          <VListItem
+                            @click="openRetainerDocumentPage('quotation', item)"
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-file-text" />
+                            </template>
+                            <VListItemTitle>Create Quotation</VListItemTitle>
+                          </VListItem>
+                          <VListItem
+                            :disabled="
+                              isRetainerParentDocumentActionDisabled(
+                                'proforma',
+                                item,
+                              )
+                            "
+                            @click="openRetainerDocumentPage('proforma', item)"
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-file-certificate" />
+                            </template>
+                            <VListItemTitle>Create Proforma</VListItemTitle>
+                          </VListItem>
+                          <VListItem
+                            :disabled="
+                              isRetainerParentDocumentActionDisabled(
+                                'invoice',
+                                item,
+                              )
+                            "
+                            @click="openRetainerDocumentPage('invoice', item)"
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-file-invoice" />
+                            </template>
+                            <VListItemTitle>Create Invoice</VListItemTitle>
+                          </VListItem>
+                          <VDivider />
+                          <VListItem
+                            @click="
+                              openRetainerExternalDocumentDialog(
+                                'quotation',
+                                item,
+                              )
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-paperclip" />
+                            </template>
+                            <VListItemTitle
+                              >Attach External Quotation</VListItemTitle
+                            >
+                          </VListItem>
+                          <VListItem
+                            :disabled="
+                              isRetainerParentDocumentActionDisabled(
+                                'proforma',
+                                item,
+                              )
+                            "
+                            @click="
+                              openRetainerExternalDocumentDialog(
+                                'proforma',
+                                item,
+                              )
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-paperclip" />
+                            </template>
+                            <VListItemTitle
+                              >Attach External Proforma</VListItemTitle
+                            >
+                          </VListItem>
+                          <VListItem
+                            :disabled="
+                              isRetainerParentDocumentActionDisabled(
+                                'invoice',
+                                item,
+                              )
+                            "
+                            @click="
+                              openRetainerExternalDocumentDialog(
+                                'invoice',
+                                item,
+                              )
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-paperclip" />
+                            </template>
+                            <VListItemTitle
+                              >Attach External Invoice</VListItemTitle
+                            >
+                          </VListItem>
+                        </template>
                         <VDivider />
                         <VListItem @click="removeDealItem(item)">
                           <template #prepend>
@@ -3529,187 +4732,283 @@ const openEditTask = (taskId: number | string) => {
             <VExpansionPanelText v-if="item.isExpandable">
               <VCard variant="flat" class="pa-3 milestone-panel-body">
                 <div
-                  v-if="derivedGoalsForItem(item).length"
-                  class="d-flex flex-column gap-2 goal-panels"
+                  v-if="
+                    item.derivedSections.some((section) => section.goals.length)
+                  "
+                  class="d-flex flex-column gap-2 goal-sections"
                 >
                   <VCard
-                    v-for="goal in derivedGoalsForItem(item)"
-                    :key="goal.id"
-                    variant="tonal"
-                    class="goal-panel goal-panel--static"
+                    v-for="section in item.derivedSections.filter(
+                      (section) => section.goals.length,
+                    )"
+                    :key="section.id"
+                    variant="flat"
+                    class="goal-section-panel"
+                    :class="{
+                      'goal-section-panel--grouped':
+                        item.derivedSections.length > 1,
+                    }"
                   >
-                    <div class="phase-card-shell">
-                      <div class="flex-grow-1 min-w-0">
-                        <div class="item-card-header">
-                          <VTooltip :text="goal.name" location="top">
-                            <template #activator="{ props: tooltipProps }">
-                              <div
-                                v-bind="tooltipProps"
-                                class="item-card-title item-card-title--phase truncate-title"
-                              >
-                                {{ goal.name }}
-                              </div>
-                            </template>
-                          </VTooltip>
-                          <VChip
-                            color="primary"
-                            size="x-small"
-                            variant="plain"
-                            class="item-type-chip item-type-chip--phase"
-                          >
-                            {{
-                              goal.typeLabel === "Phase" && goal.phaseNumber
-                                ? `Phase ${goal.phaseNumber}`
-                                : goal.typeLabel
-                            }}
-                          </VChip>
+                    <div
+                      v-if="item.derivedSections.length > 1"
+                      class="goal-section-header"
+                    >
+                      <div class="item-card-title-row">
+                        <div class="item-card-title item-card-title--phase">
+                          {{ section.name }}
                         </div>
-
-                        <div
-                          v-if="goal.typeLabel === 'Phase'"
-                          class="item-card-note text-body-2 text-medium-emphasis"
-                        >
-                          {{ getGoalInvoiceState(item, goal) }}
-                        </div>
-
-                        <div
-                          v-if="
-                            goal.showQuantity ||
-                            goal.showPrice ||
-                            goal.showDiscount ||
-                            goal.showTaxApplicable
-                          "
-                          class="product-metrics product-metrics--phase"
-                        >
-                          <div v-if="goal.showPrice" class="product-metric">
-                            <span>Price</span>
-                            <strong>{{ formatMoney(goal.price) }}</strong>
-                          </div>
-                          <div v-if="goal.showQuantity" class="product-metric">
-                            <span>Qty</span>
-                            <strong>{{ goal.quantity ?? "--" }}</strong>
-                          </div>
-                          <div v-if="goal.showDiscount" class="product-metric">
-                            <span>Discount</span>
-                            <strong>{{
-                              formatGoalDiscount(goal) || "--"
-                            }}</strong>
-                          </div>
-                          <div
-                            v-if="goal.showTaxApplicable"
-                            class="product-metric"
-                          >
-                            <span>Tax</span>
-                            <strong>
-                              {{ formatTaxApplicable(goal.taxApplicable) }}
-                            </strong>
-                          </div>
-                          <div v-if="goal.showPrice" class="product-metric">
-                            <span>Amount</span>
-                            <strong>{{ formatMoney(goalAmount(goal)) }}</strong>
-                          </div>
-                        </div>
-
-                        <div
-                          v-if="goal.note"
-                          class="item-card-note text-body-2 text-medium-emphasis"
-                        >
-                          {{ goal.note }}
-                        </div>
-                      </div>
-
-                      <div class="goal-card-actions">
-                        <VBtn
-                          icon
-                          variant="text"
+                        <VChip
+                          color="secondary"
                           size="x-small"
-                          class="phase-edit-btn"
+                          variant="plain"
+                          class="item-type-chip item-type-chip--phase"
                         >
-                          <VIcon icon="tabler-dots-vertical" size="16" />
-                          <VMenu activator="parent">
-                            <VList>
-                              <VListItem @click="openEditGoal(item, goal)">
-                                <template #prepend>
-                                  <VIcon icon="tabler-pencil" />
-                                </template>
-                                <VListItemTitle>Edit</VListItemTitle>
-                              </VListItem>
-                              <VDivider />
-                              <VListItem
-                                :disabled="
-                                  isGoalProformaActionDisabled(item, goal)
-                                "
-                                @click="
-                                  openGoalDocumentPage('proforma', item, goal)
-                                "
-                              >
-                                <template #prepend>
-                                  <VIcon icon="tabler-file-certificate" />
-                                </template>
-                                <VListItemTitle>Create Proforma</VListItemTitle>
-                              </VListItem>
-                              <VListItem
-                                :disabled="
-                                  isGoalInvoiceActionDisabled(item, goal)
-                                "
-                                @click="
-                                  openGoalDocumentPage('invoice', item, goal)
-                                "
-                              >
-                                <template #prepend>
-                                  <VIcon icon="tabler-file-invoice" />
-                                </template>
-                                <VListItemTitle>Create Invoice</VListItemTitle>
-                              </VListItem>
-                              <VDivider />
-                              <VListItem
-                                @click="
-                                  openGoalExternalDocumentDialog(
-                                    'proforma',
-                                    item,
-                                    goal,
-                                  )
-                                "
-                              >
-                                <template #prepend>
-                                  <VIcon icon="tabler-paperclip" />
-                                </template>
-                                <VListItemTitle>
-                                  Attach External Proforma
-                                </VListItemTitle>
-                              </VListItem>
-                              <VListItem
-                                @click="
-                                  openGoalExternalDocumentDialog(
-                                    'invoice',
-                                    item,
-                                    goal,
-                                  )
-                                "
-                              >
-                                <template #prepend>
-                                  <VIcon icon="tabler-paperclip" />
-                                </template>
-                                <VListItemTitle>
-                                  Attach External Invoice
-                                </VListItemTitle>
-                              </VListItem>
-                              <VDivider v-if="isRemovableChildGoal(goal)" />
-                              <VListItem
-                                v-if="isRemovableChildGoal(goal)"
-                                @click="removeGoal(item, goal)"
-                              >
-                                <template #prepend>
-                                  <VIcon icon="tabler-trash" color="error" />
-                                </template>
-                                <VListItemTitle>
-                                  Remove {{ goal.typeLabel }}
-                                </VListItemTitle>
-                              </VListItem>
-                            </VList>
-                          </VMenu>
-                        </VBtn>
+                          Period
+                        </VChip>
                       </div>
+                      <div
+                        v-if="
+                          getSectionInvoiceState(item, section) || section.note
+                        "
+                        class="item-card-note text-body-2 text-medium-emphasis"
+                      >
+                        {{
+                          getSectionInvoiceState(item, section) || section.note
+                        }}
+                      </div>
+                    </div>
+
+                    <div class="d-flex flex-column gap-2 goal-panels">
+                      <VCard
+                        v-for="goal in section.goals"
+                        :key="goal.id"
+                        variant="tonal"
+                        class="goal-panel goal-panel--static"
+                      >
+                        <div class="phase-card-shell">
+                          <div class="flex-grow-1 min-w-0">
+                            <div class="item-card-header">
+                              <div class="item-card-title-row">
+                                <VTooltip :text="goal.name" location="top">
+                                  <template
+                                    #activator="{ props: tooltipProps }"
+                                  >
+                                    <div
+                                      v-bind="tooltipProps"
+                                      class="item-card-title item-card-title--phase truncate-title"
+                                    >
+                                      {{ goal.name }}
+                                      <span
+                                        v-if="
+                                          isCompactGoal(goal) && goal.quantity
+                                        "
+                                        class="text-body-2 text-medium-emphasis"
+                                      >
+                                        · Qty {{ goal.quantity }}
+                                      </span>
+                                    </div>
+                                  </template>
+                                </VTooltip>
+                                <VChip
+                                  color="primary"
+                                  size="x-small"
+                                  variant="plain"
+                                  class="item-type-chip item-type-chip--phase"
+                                >
+                                  {{
+                                    goal.typeLabel === "Phase" &&
+                                    goal.phaseNumber
+                                      ? `Phase ${goal.phaseNumber}`
+                                      : goal.typeLabel
+                                  }}
+                                </VChip>
+                              </div>
+                            </div>
+
+                            <div
+                              v-if="goal.typeLabel === 'Phase'"
+                              class="item-card-note text-body-2 text-medium-emphasis"
+                            >
+                              {{ getGoalInvoiceState(item, goal) }}
+                            </div>
+
+                            <div
+                              v-if="
+                                goal.showQuantity ||
+                                goal.showPrice ||
+                                goal.showDiscount ||
+                                goal.showTaxApplicable
+                              "
+                              class="product-metrics product-metrics--phase"
+                            >
+                              <div v-if="goal.showPrice" class="product-metric">
+                                <span>Price</span>
+                                <strong>{{ formatMoney(goal.price) }}</strong>
+                              </div>
+                              <div
+                                v-if="goal.showQuantity"
+                                class="product-metric"
+                              >
+                                <span>Qty</span>
+                                <strong>{{ goal.quantity ?? "--" }}</strong>
+                              </div>
+                              <div
+                                v-if="goal.showDiscount"
+                                class="product-metric"
+                              >
+                                <span>Discount</span>
+                                <strong>{{
+                                  formatGoalDiscount(goal) || "--"
+                                }}</strong>
+                              </div>
+                              <div
+                                v-if="goal.showTaxApplicable"
+                                class="product-metric"
+                              >
+                                <span>Tax</span>
+                                <strong>
+                                  {{ formatTaxApplicable(goal.taxApplicable) }}
+                                </strong>
+                              </div>
+                              <div v-if="goal.showPrice" class="product-metric">
+                                <span>Amount</span>
+                                <strong>{{
+                                  formatMoney(goalAmount(goal))
+                                }}</strong>
+                              </div>
+                            </div>
+
+                            <div
+                              v-if="goal.note && !isCompactGoal(goal)"
+                              class="item-card-note text-body-2 text-medium-emphasis"
+                            >
+                              {{ goal.note }}
+                            </div>
+                          </div>
+
+                          <div class="goal-card-actions">
+                            <VBtn
+                              icon
+                              variant="text"
+                              size="x-small"
+                              class="phase-edit-btn"
+                            >
+                              <VIcon icon="tabler-dots-vertical" size="16" />
+                              <VMenu activator="parent">
+                                <VList>
+                                  <VListItem @click="openEditGoal(item, goal)">
+                                    <template #prepend>
+                                      <VIcon icon="tabler-pencil" />
+                                    </template>
+                                    <VListItemTitle>Edit</VListItemTitle>
+                                  </VListItem>
+                                  <template v-if="!isRetainerGoal(goal)">
+                                    <VDivider />
+                                    <VListItem
+                                      :disabled="
+                                        isGoalProformaActionDisabled(
+                                          item,
+                                          goal,
+                                          section.billingPeriod,
+                                        )
+                                      "
+                                      @click="
+                                        openGoalDocumentPage(
+                                          'proforma',
+                                          item,
+                                          goal,
+                                          section.billingPeriod,
+                                        )
+                                      "
+                                    >
+                                      <template #prepend>
+                                        <VIcon icon="tabler-file-certificate" />
+                                      </template>
+                                      <VListItemTitle
+                                        >Create Proforma</VListItemTitle
+                                      >
+                                    </VListItem>
+                                    <VListItem
+                                      :disabled="
+                                        isGoalInvoiceActionDisabled(
+                                          item,
+                                          goal,
+                                          section.billingPeriod,
+                                        )
+                                      "
+                                      @click="
+                                        openGoalDocumentPage(
+                                          'invoice',
+                                          item,
+                                          goal,
+                                          section.billingPeriod,
+                                        )
+                                      "
+                                    >
+                                      <template #prepend>
+                                        <VIcon icon="tabler-file-invoice" />
+                                      </template>
+                                      <VListItemTitle
+                                        >Create Invoice</VListItemTitle
+                                      >
+                                    </VListItem>
+                                    <VDivider />
+                                    <VListItem
+                                      @click="
+                                        openGoalExternalDocumentDialog(
+                                          'proforma',
+                                          item,
+                                          goal,
+                                          section.billingPeriod,
+                                        )
+                                      "
+                                    >
+                                      <template #prepend>
+                                        <VIcon icon="tabler-paperclip" />
+                                      </template>
+                                      <VListItemTitle>
+                                        Attach External Proforma
+                                      </VListItemTitle>
+                                    </VListItem>
+                                    <VListItem
+                                      @click="
+                                        openGoalExternalDocumentDialog(
+                                          'invoice',
+                                          item,
+                                          goal,
+                                          section.billingPeriod,
+                                        )
+                                      "
+                                    >
+                                      <template #prepend>
+                                        <VIcon icon="tabler-paperclip" />
+                                      </template>
+                                      <VListItemTitle>
+                                        Attach External Invoice
+                                      </VListItemTitle>
+                                    </VListItem>
+                                  </template>
+                                  <VDivider v-if="isRemovableChildGoal(goal)" />
+                                  <VListItem
+                                    v-if="isRemovableChildGoal(goal)"
+                                    @click="removeGoal(item, goal)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon
+                                        icon="tabler-trash"
+                                        color="error"
+                                      />
+                                    </template>
+                                    <VListItemTitle>
+                                      Remove {{ goal.typeLabel }}
+                                    </VListItemTitle>
+                                  </VListItem>
+                                </VList>
+                              </VMenu>
+                            </VBtn>
+                          </div>
+                        </div>
+                      </VCard>
                     </div>
                   </VCard>
                 </div>
@@ -3828,7 +5127,12 @@ const openEditTask = (taskId: number | string) => {
                       <VIcon icon="tabler-plus" size="14" />
                       <VMenu activator="parent">
                         <VList density="compact">
-                          <VListItem @click="openDocumentPage(panel.key)">
+                          <VListItem
+                            :disabled="
+                              isRetainerPanelDocumentActionDisabled(panel.key)
+                            "
+                            @click="openPanelDocumentPage(panel.key)"
+                          >
                             <template #prepend>
                               <VIcon icon="tabler-plus" />
                             </template>
@@ -3838,7 +5142,10 @@ const openEditTask = (taskId: number | string) => {
                           </VListItem>
                           <VDivider />
                           <VListItem
-                            @click="openExternalDocumentFlow(panel.key)"
+                            :disabled="
+                              isRetainerPanelDocumentActionDisabled(panel.key)
+                            "
+                            @click="openPanelExternalDocumentFlow(panel.key)"
                           >
                             <template #prepend>
                               <VIcon icon="tabler-paperclip" />
@@ -4217,6 +5524,95 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
+            <template v-if="addItemRequiresRecurrentTerm">
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="addItemDraft.recurrentStartDate"
+                  label="Start Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="addItemDraft.recurrentEndDate"
+                  label="End Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[
+                    requiredValidator,
+                    (value: unknown) =>
+                      retainerEndDateValidator(
+                        value,
+                        addItemDraft.recurrentStartDate,
+                      ),
+                  ]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppTextField
+                  v-model="addItemDraft.recurrentPeriods"
+                  type="number"
+                  min="1"
+                  label="Periods"
+                  placeholder="12"
+                  :rules="[requiredValidator, positiveWholeNumberValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VAlert variant="tonal" color="primary">
+                  Billable periods:
+                  {{ addItemRecurrentBillablePeriods ?? "--" }}
+                </VAlert>
+              </VCol>
+            </template>
+
+            <template v-if="addItemRequiresRetainerTerm">
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="addItemDraft.retainerStartDate"
+                  label="Start Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="addItemDraft.retainerEndDate"
+                  label="End Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[
+                    requiredValidator,
+                    (value: unknown) =>
+                      retainerEndDateValidator(
+                        value,
+                        addItemDraft.retainerStartDate,
+                      ),
+                  ]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppTextField
+                  v-model="addItemDraft.retainerPeriods"
+                  type="number"
+                  min="1"
+                  label="Periods"
+                  placeholder="12"
+                  :rules="[requiredValidator, positiveWholeNumberValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VAlert variant="tonal" color="primary">
+                  Billable periods: {{ addItemBillablePeriods ?? "--" }}
+                </VAlert>
+              </VCol>
+            </template>
+
             <VCol v-if="selectedCatalogueItem" cols="12">
               <VCard variant="tonal" class="pa-4">
                 <div class="font-weight-medium mb-1">
@@ -4321,6 +5717,95 @@ const openEditTask = (taskId: number | string) => {
                 auto-grow
               />
             </VCol>
+
+            <template v-if="editLineRequiresRecurrentTerm">
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="editLine.recurrentStartDate"
+                  label="Start Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="editLine.recurrentEndDate"
+                  label="End Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[
+                    requiredValidator,
+                    (value: unknown) =>
+                      retainerEndDateValidator(
+                        value,
+                        editLine.recurrentStartDate,
+                      ),
+                  ]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppTextField
+                  v-model="editLine.recurrentPeriods"
+                  type="number"
+                  min="1"
+                  label="Periods"
+                  placeholder="12"
+                  :rules="[requiredValidator, positiveWholeNumberValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VAlert variant="tonal" color="primary">
+                  Billable periods:
+                  {{ editLineRecurrentBillablePeriods ?? "--" }}
+                </VAlert>
+              </VCol>
+            </template>
+
+            <template v-if="editLineRequiresRetainerTerm">
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="editLine.retainerStartDate"
+                  label="Start Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="editLine.retainerEndDate"
+                  label="End Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[
+                    requiredValidator,
+                    (value: unknown) =>
+                      retainerEndDateValidator(
+                        value,
+                        editLine.retainerStartDate,
+                      ),
+                  ]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppTextField
+                  v-model="editLine.retainerPeriods"
+                  type="number"
+                  min="1"
+                  label="Periods"
+                  placeholder="12"
+                  :rules="[requiredValidator, positiveWholeNumberValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VAlert variant="tonal" color="primary">
+                  Billable periods: {{ editLineBillablePeriods ?? "--" }}
+                </VAlert>
+              </VCol>
+            </template>
 
             <VCol cols="12">
               <DialogActionBar
@@ -4487,81 +5972,104 @@ const openEditTask = (taskId: number | string) => {
         </div>
 
         <div class="rounded border pa-4 bg-var-theme-background">
-          <VRow>
-            <VCol cols="12" md="6">
-              <VSelect
-                v-model="billingPeriodKind"
-                label="Period Type"
-                :items="billingPeriodKindOptions"
-              />
-            </VCol>
+          <template v-if="isRetainerBillingPeriodSelection">
+            <VSelect
+              v-model="selectedRetainerBillingPeriodKey"
+              label="Retainer Period"
+              :items="
+                availableRetainerBillingPeriods.map((period) => ({
+                  title: period.label,
+                  value: period.key,
+                }))
+              "
+              :disabled="!availableRetainerBillingPeriods.length"
+            />
 
-            <VCol cols="12" md="6">
-              <VTextField
-                v-if="billingPeriodKind === 'monthly'"
-                v-model="billingPeriodMonthValue"
-                type="month"
-                label="Billing Month"
-              />
+            <div
+              v-if="!availableRetainerBillingPeriods.length"
+              class="text-sm text-warning mt-3"
+            >
+              No billable retainer periods remain available.
+            </div>
+          </template>
 
-              <VTextField
-                v-else-if="billingPeriodKind === 'quarterly'"
-                v-model="billingPeriodQuarterYearValue"
-                type="number"
-                min="2000"
-                label="Billing Year"
-              />
+          <template v-else>
+            <VRow>
+              <VCol cols="12" md="6">
+                <VSelect
+                  v-model="billingPeriodKind"
+                  label="Period Type"
+                  :items="billingPeriodKindOptions"
+                />
+              </VCol>
 
-              <VTextField
-                v-else-if="billingPeriodKind === 'yearly'"
-                v-model="billingPeriodYearValue"
-                type="number"
-                min="2000"
-                label="Billing Year"
-              />
+              <VCol cols="12" md="6">
+                <VTextField
+                  v-if="billingPeriodKind === 'monthly'"
+                  v-model="billingPeriodMonthValue"
+                  type="month"
+                  label="Billing Month"
+                />
 
-              <VTextField
-                v-else
-                v-model="billingPeriodCustomStartDate"
-                type="date"
-                label="Start Date"
-              />
-            </VCol>
-          </VRow>
+                <VTextField
+                  v-else-if="billingPeriodKind === 'quarterly'"
+                  v-model="billingPeriodQuarterYearValue"
+                  type="number"
+                  min="2000"
+                  label="Billing Year"
+                />
 
-          <VRow v-if="billingPeriodKind === 'quarterly'">
-            <VCol cols="12" md="6" offset-md="6">
-              <VSelect
-                v-model="billingPeriodQuarterValue"
-                label="Billing Quarter"
-                :items="billingQuarterOptions"
-              />
-            </VCol>
-          </VRow>
+                <VTextField
+                  v-else-if="billingPeriodKind === 'yearly'"
+                  v-model="billingPeriodYearValue"
+                  type="number"
+                  min="2000"
+                  label="Billing Year"
+                />
 
-          <VRow v-else-if="billingPeriodKind === 'custom'">
-            <VCol cols="12" md="6">
-              <VTextField
-                v-model="billingPeriodCustomEndDate"
-                type="date"
-                label="End Date"
-              />
-            </VCol>
+                <VTextField
+                  v-else
+                  v-model="billingPeriodCustomStartDate"
+                  type="date"
+                  label="Start Date"
+                />
+              </VCol>
+            </VRow>
 
-            <VCol cols="12">
-              <VTextField
-                v-model="billingPeriodCustomLabel"
-                label="Custom Label"
-                placeholder="Optional"
-              />
-            </VCol>
-          </VRow>
+            <VRow v-if="billingPeriodKind === 'quarterly'">
+              <VCol cols="12" md="6" offset-md="6">
+                <VSelect
+                  v-model="billingPeriodQuarterValue"
+                  label="Billing Quarter"
+                  :items="billingQuarterOptions"
+                />
+              </VCol>
+            </VRow>
+
+            <VRow v-else-if="billingPeriodKind === 'custom'">
+              <VCol cols="12" md="6">
+                <VTextField
+                  v-model="billingPeriodCustomEndDate"
+                  type="date"
+                  label="End Date"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VTextField
+                  v-model="billingPeriodCustomLabel"
+                  label="Custom Label"
+                  placeholder="Optional"
+                />
+              </VCol>
+            </VRow>
+          </template>
         </div>
 
         <div class="rounded border pa-3 bg-var-theme-background">
           <div class="text-xs text-medium-emphasis mb-1">Selected period</div>
           <div class="text-body-1 font-weight-medium">
-            {{ billingPeriodPreview.label }}
+            {{ billingPeriodPreview?.label || "--" }}
           </div>
         </div>
 
@@ -4596,7 +6104,13 @@ const openEditTask = (taskId: number | string) => {
 
       <VCardActions class="justify-end pa-4">
         <VBtn variant="text" @click="resetDocumentWorkflowState"> Cancel </VBtn>
-        <VBtn color="primary" @click="confirmBillingPeriod"> Continue </VBtn>
+        <VBtn
+          color="primary"
+          :disabled="isRetainerBillingPeriodSelection && !billingPeriodPreview"
+          @click="confirmBillingPeriod"
+        >
+          Continue
+        </VBtn>
       </VCardActions>
     </VCard>
   </VDialog>
@@ -4882,6 +6396,95 @@ const openEditTask = (taskId: number | string) => {
               </div>
             </VCol>
 
+            <template v-if="createDraftItemRequiresRecurrentTerm">
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="createDraftItem.recurrentStartDate"
+                  label="Start Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="createDraftItem.recurrentEndDate"
+                  label="End Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[
+                    requiredValidator,
+                    (value: unknown) =>
+                      retainerEndDateValidator(
+                        value,
+                        createDraftItem.recurrentStartDate,
+                      ),
+                  ]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppTextField
+                  v-model="createDraftItem.recurrentPeriods"
+                  type="number"
+                  min="1"
+                  label="Periods"
+                  placeholder="12"
+                  :rules="[requiredValidator, positiveWholeNumberValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VAlert variant="tonal" color="primary">
+                  Billable periods:
+                  {{ createDraftItemRecurrentBillablePeriods ?? "--" }}
+                </VAlert>
+              </VCol>
+            </template>
+
+            <template v-if="createDraftItemRequiresRetainerTerm">
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="createDraftItem.retainerStartDate"
+                  label="Start Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppDateTimePicker
+                  v-model="createDraftItem.retainerEndDate"
+                  label="End Date"
+                  :config="{ dateFormat: 'Y-m-d' }"
+                  :rules="[
+                    requiredValidator,
+                    (value: unknown) =>
+                      retainerEndDateValidator(
+                        value,
+                        createDraftItem.retainerStartDate,
+                      ),
+                  ]"
+                />
+              </VCol>
+
+              <VCol cols="12" md="4">
+                <AppTextField
+                  v-model="createDraftItem.retainerPeriods"
+                  type="number"
+                  min="1"
+                  label="Periods"
+                  placeholder="12"
+                  :rules="[requiredValidator, positiveWholeNumberValidator]"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <VAlert variant="tonal" color="primary">
+                  Billable periods: {{ createDraftItemBillablePeriods ?? "--" }}
+                </VAlert>
+              </VCol>
+            </template>
+
             <VCol cols="12">
               <AppTextarea
                 v-model="createDraftItem.note"
@@ -5009,6 +6612,29 @@ const openEditTask = (taskId: number | string) => {
   margin-block-start: 0;
 }
 
+.goal-sections {
+  gap: 0.75rem;
+}
+
+.goal-section-panel {
+  background: transparent;
+  box-shadow: none;
+}
+
+.goal-section-panel--grouped {
+  padding: 0.8rem;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-surface), 0.12);
+}
+
+.goal-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-block-end: 0.65rem;
+}
+
 .item-card-shell,
 .phase-card-shell {
   display: flex;
@@ -5031,6 +6657,14 @@ const openEditTask = (taskId: number | string) => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.item-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
   min-inline-size: 0;
 }
 

@@ -56,6 +56,14 @@ export interface DealItem {
   discountPercent?: number | null;
   taxApplicable?: boolean | null;
   quantity: number;
+  recurrentStartDate?: string | null;
+  recurrentEndDate?: string | null;
+  recurrentPeriods?: number | null;
+  recurrentBillablePeriods?: number | null;
+  retainerStartDate?: string | null;
+  retainerEndDate?: string | null;
+  retainerPeriods?: number | null;
+  retainerBillablePeriods?: number | null;
   unitPrice?: number | null;
   status?: string | null;
   note?: string | null;

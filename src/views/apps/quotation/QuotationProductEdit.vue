@@ -61,7 +61,9 @@ const catalogueOptions = computed<CatalogueOption[]>(() =>
     .sort((a, b) => a.title.localeCompare(b.title)),
 );
 
-const itemOptions = computed(() => catalogueOptions.value.map((item) => item.title));
+const itemOptions = computed(() =>
+  catalogueOptions.value.map((item) => item.title),
+);
 
 const selectedItem = computed({
   get: () => props.data.title,
@@ -95,7 +97,9 @@ const discountOptions = [
   { title: "Currency", value: "currency" },
 ] as const;
 
-const canEditPrice = computed(() => props.data.lineConstraints?.price !== false);
+const canEditPrice = computed(
+  () => props.data.lineConstraints?.price !== false,
+);
 const canEditQuantity = computed(
   () => props.data.lineConstraints?.quantity !== false,
 );
@@ -139,7 +143,12 @@ watch(
 );
 
 watch(
-  () => [props.data.discountValue, props.data.discountType, props.data.cost, props.data.hours],
+  () => [
+    props.data.discountValue,
+    props.data.discountType,
+    props.data.cost,
+    props.data.hours,
+  ],
   () => {
     if (
       props.data.discountType !== "percent" &&
@@ -195,6 +204,7 @@ const totalPrice = computed(() => getLineTotal(props.data));
           <AppTextarea
             id="item-description"
             v-model="props.data.description"
+            auto-grow
             rows="2"
             placeholder="Item description"
             persistent-placeholder
@@ -231,11 +241,16 @@ const totalPrice = computed(() => getLineTotal(props.data));
           />
 
           <AppTextField
-            v-if="props.data.discountType === 'percent' || props.data.discountType === 'currency'"
+            v-if="
+              props.data.discountType === 'percent' ||
+              props.data.discountType === 'currency'
+            "
             id="item-discount-value"
             v-model="props.data.discountValue"
             type="number"
-            :placeholder="props.data.discountType === 'percent' ? '%' : 'Amount'"
+            :placeholder="
+              props.data.discountType === 'percent' ? '%' : 'Amount'
+            "
             min="0"
             :max="discountValueMax"
             class="mb-2"

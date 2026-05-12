@@ -203,6 +203,7 @@ const totalPrice = computed(() => getLineTotal(props.data));
           <AppTextarea
             id="item-description"
             v-model="props.data.description"
+            auto-grow
             rows="2"
             placeholder="Item description"
             persistent-placeholder
