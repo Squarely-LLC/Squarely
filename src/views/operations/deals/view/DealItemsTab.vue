@@ -2946,8 +2946,12 @@ const openEditTask = (taskId: number | string) => {
             </VExpansionPanelText>
           </VExpansionPanel>
         </VExpansionPanels>
+      </VCardText>
+    </VCard>
 
-        <div v-if="dealItemsWithPlan.length" class="items-overview mt-4">
+    <VCard v-if="dealItemsWithPlan.length">
+      <VCardText>
+        <div class="items-overview">
           <div class="items-overview__header">
             <div class="items-overview__heading">
               <div class="text-h6 mb-1">Invoicing Summary</div>
