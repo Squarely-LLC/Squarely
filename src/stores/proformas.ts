@@ -1,24 +1,24 @@
 import { database } from "@/plugins/fake-api/handlers/apps/proforma/db";
 import type {
-    Client,
-    PaymentDetails,
-    Proforma,
-    ProformaPaymentEntry,
-    ProformaRecord,
-    ProformaStatus,
-    PurchasedProduct,
+  Client,
+  PaymentDetails,
+  Proforma,
+  ProformaPaymentEntry,
+  ProformaRecord,
+  ProformaStatus,
+  PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import {
-    cloneDealBillingPeriod,
-    inferDealBillingPeriodFromKey,
+  cloneDealBillingPeriod,
+  inferDealBillingPeriodFromKey,
 } from "@/utils/dealDocumentDraft";
 import {
-    buildProformaNote,
-    buildQuotationPaymentDetails,
-    buildQuotationSalesperson,
-    buildQuotationThanksNote,
-    getDocumentSequencePrefix,
-    loadActiveAppConfigurations,
+  buildProformaNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
@@ -726,15 +726,16 @@ export const useProformasStore = defineStore("proformas", {
     },
   },
   actions: {
+    persistItems() {
+      saveToStorage(cloneProformaArray(this.items));
+    },
+
     init(force = false) {
       if (this.initialized && !force) return;
 
       // Migrate: remove all older storage versions
       if (typeof window !== "undefined") {
         for (const key of Object.keys(localStorage)) {
-          if (key.startsWith("app.quotations.") && key !== STORAGE_KEY) {
-            localStorage.removeItem(key);
-          }
           if (key.startsWith("app.proformas.") && key !== STORAGE_KEY) {
             localStorage.removeItem(key);
           }
@@ -784,6 +785,7 @@ export const useProformasStore = defineStore("proformas", {
       );
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       triggerReceiptReconciliation();
       return this.byId(id);
     },
@@ -798,6 +800,7 @@ export const useProformasStore = defineStore("proformas", {
       const updated = mergeProformaRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       triggerReceiptReconciliation();
       return this.byId(id);
     },
@@ -831,11 +834,13 @@ export const useProformasStore = defineStore("proformas", {
       });
 
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       triggerReceiptReconciliation();
     },
 
     replaceAll(records: ProformaRecord[]) {
       this.items = resequenceRevisions(records);
+      this.persistItems();
       triggerReceiptReconciliation();
     },
   },

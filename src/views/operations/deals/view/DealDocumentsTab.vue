@@ -487,7 +487,8 @@ async function openPreview(d: JobDocument) {
 function removeDocument(d: JobDocument) {
   if (isReadonlyDocument(d)) return;
 
-  if (!deal.value) return;
+  const currentDeal = dealsStore.byId(props.dealId);
+  if (!currentDeal) return;
 
   try {
     const raw = String(d.fileUrl || "").trim();
@@ -502,9 +503,12 @@ function removeDocument(d: JobDocument) {
     }
   } catch {}
 
-  const existing = (deal.value.documents || []).filter((x) => x.id !== d.id);
-  dealsStore.updateDeal(deal.value.id, { documents: existing });
-  localDocs.value = existing;
+  const existing = (currentDeal.documents || []).filter((x) => x.id !== d.id);
+  const updatedDeal = dealsStore.updateDeal(currentDeal.id, {
+    documents: existing,
+  });
+
+  localDocs.value = updatedDeal?.documents ?? existing;
 }
 
 function confirmRemoveDocument(d: JobDocument) {
@@ -670,10 +674,11 @@ async function whatsappUserForDocument(d: JobDocument) {
 }
 
 function onDialogSave(payload: JobDocument) {
-  if (!deal.value) return;
+  const currentDeal = dealsStore.byId(props.dealId);
+  if (!currentDeal) return;
 
-  const existing = Array.isArray(deal.value.documents)
-    ? [...deal.value.documents]
+  const existing = Array.isArray(currentDeal.documents)
+    ? [...currentDeal.documents]
     : [];
 
   if (editing.value) {
@@ -683,8 +688,12 @@ function onDialogSave(payload: JobDocument) {
     existing.push(payload);
   }
 
-  dealsStore.updateDeal(deal.value.id, { documents: existing });
-  localDocs.value = existing;
+  const updatedDeal = dealsStore.updateDeal(currentDeal.id, {
+    documents: existing,
+  });
+
+  localDocs.value = updatedDeal?.documents ?? existing;
+  notifications.push("Document saved", "success", 2500);
   dialogOpen.value = false;
 }
 

@@ -8,6 +8,7 @@ interface Props {
   deal: DealProperties;
   linkedToName: string;
   collaboratorNames: string[];
+  executionNotice?: string | null;
   hoverMode?: boolean;
 }
 
@@ -243,7 +244,22 @@ const formatAmount = (value?: number | null) => {
   </VCard>
 
   <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-2">
-    <VBtn aria-label="Execute deal" variant="elevated" @click="emit('execute')">
+    <VAlert
+      v-if="executionNotice"
+      type="info"
+      variant="tonal"
+      density="comfortable"
+      class="mb-3 w-100"
+    >
+      {{ executionNotice }}
+    </VAlert>
+
+    <VBtn
+      aria-label="Execute deal"
+      variant="elevated"
+      :disabled="Boolean(executionNotice)"
+      @click="emit('execute')"
+    >
       <VIcon left>tabler-play</VIcon>
       Execute Deal
     </VBtn>

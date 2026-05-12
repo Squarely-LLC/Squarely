@@ -481,6 +481,10 @@ export const useDealsStore = defineStore("deals", {
       state.items.find((deal) => String(deal.id) === String(id)) ?? null,
   },
   actions: {
+    persistItems() {
+      saveToStorage(cloneDealsArray(this.items));
+    },
+
     init(force = false) {
       if (this.initialized && !force) return;
 
@@ -525,6 +529,7 @@ export const useDealsStore = defineStore("deals", {
       const normalised = normaliseDeal(payload, id, nextDealCode(this.items));
 
       this.items.unshift(normalised);
+      this.persistItems();
 
       return normalised;
     },
@@ -538,6 +543,7 @@ export const useDealsStore = defineStore("deals", {
       const updated = mergeDeal(this.items[index], patch);
 
       this.items.splice(index, 1, updated);
+      this.persistItems();
 
       return updated;
     },
@@ -545,6 +551,7 @@ export const useDealsStore = defineStore("deals", {
     syncCodePrefix() {
       const nextItems = sanitizeDeals(cloneDealsArray(this.items));
       this.items = nextItems;
+      this.persistItems();
 
       const todosStore = useTodos();
       todosStore.init();
@@ -560,10 +567,12 @@ export const useDealsStore = defineStore("deals", {
       if (index === -1) return;
 
       this.items.splice(index, 1);
+      this.persistItems();
     },
 
     replaceAll(deals: DealProperties[]) {
       this.items = cloneDealsArray(deals);
+      this.persistItems();
     },
   },
 });

@@ -1,5 +1,6 @@
 import { db } from "@/plugins/fake-api/handlers/operations/jobs/db";
 import type {
+  JobDocument,
   JobGoal,
   JobMilestone,
   JobProperties,
@@ -22,10 +23,7 @@ function safeClone<T extends object>(value: T, label: string): T {
           return undefined;
         }
 
-        if (
-          typeof Window !== "undefined" &&
-          currentValue instanceof Window
-        ) {
+        if (typeof Window !== "undefined" && currentValue instanceof Window) {
           return undefined;
         }
 
@@ -51,6 +49,9 @@ function cloneMilestone(milestone: JobMilestone): JobMilestone {
 function cloneGoal(goal: JobGoal): JobGoal {
   return safeClone(goal, "goal");
 }
+function cloneDocument(document: JobDocument): JobDocument {
+  return safeClone(document, "job document");
+}
 function cloneJob(job: JobProperties): JobProperties {
   const raw = toRaw(job) as JobProperties;
   try {
@@ -62,6 +63,7 @@ function cloneJob(job: JobProperties): JobProperties {
       stakeholders: ensureStakeholders(raw.stakeholders),
       milestones: ensureMilestones(raw.milestones),
       goals: ensureGoals(raw.goals),
+      documents: ensureDocuments(raw.documents),
     };
   }
 }
@@ -69,13 +71,13 @@ function cloneJobsArray(jobs: JobProperties[]) {
   return jobs.map((job) => cloneJob(job));
 }
 function ensureStakeholders(
-  stakeholders: JobStakeholder[] | undefined | null
+  stakeholders: JobStakeholder[] | undefined | null,
 ): JobStakeholder[] {
   if (!Array.isArray(stakeholders)) return [];
   return stakeholders.map((stakeholder) => cloneStakeholder(stakeholder));
 }
 function ensureMilestones(
-  milestones: JobMilestone[] | undefined | null
+  milestones: JobMilestone[] | undefined | null,
 ): JobMilestone[] {
   if (!Array.isArray(milestones)) return [];
   return milestones.map((milestone) => cloneMilestone(milestone));
@@ -83,6 +85,12 @@ function ensureMilestones(
 function ensureGoals(goals: JobGoal[] | undefined | null): JobGoal[] {
   if (!Array.isArray(goals)) return [];
   return goals.map((goal) => cloneGoal(goal));
+}
+function ensureDocuments(
+  documents: JobDocument[] | undefined | null,
+): JobDocument[] {
+  if (!Array.isArray(documents)) return [];
+  return documents.map((document) => cloneDocument(document));
 }
 function loadFromStorage(): JobProperties[] | null {
   if (typeof window === "undefined") return null;
@@ -107,7 +115,7 @@ function saveToStorage(jobs: JobProperties[]) {
 }
 function normaliseJob(
   payload: Partial<JobProperties>,
-  assignedId: number
+  assignedId: number,
 ): JobProperties {
   const now = new Date().toISOString();
   return {
@@ -117,7 +125,7 @@ function normaliseJob(
     avatar:
       typeof payload.avatar === "string"
         ? payload.avatar.trim() || null
-        : payload.avatar ?? null,
+        : (payload.avatar ?? null),
     startDate: payload.startDate || undefined,
     location: payload.location?.trim() || undefined,
     stage: payload.stage ?? "PRPSL",
@@ -131,12 +139,13 @@ function normaliseJob(
     stakeholders: ensureStakeholders(payload.stakeholders),
     milestones: ensureMilestones(payload.milestones),
     goals: ensureGoals(payload.goals),
+    documents: ensureDocuments(payload.documents),
     createdAt: payload.createdAt ?? now,
   };
 }
 function mergeJob(
   original: JobProperties,
-  patch: Partial<JobProperties>
+  patch: Partial<JobProperties>,
 ): JobProperties {
   const merged: JobProperties = {
     ...original,
@@ -145,10 +154,11 @@ function mergeJob(
       ? patch.collaborators.map((value) => Number(value))
       : original.collaborators,
     stakeholders: ensureStakeholders(
-      patch.stakeholders ?? original.stakeholders
+      patch.stakeholders ?? original.stakeholders,
     ),
     milestones: ensureMilestones(patch.milestones ?? original.milestones),
     goals: ensureGoals(patch.goals ?? original.goals),
+    documents: ensureDocuments(patch.documents ?? original.documents),
   };
   if (typeof merged.avatar === "string") {
     merged.avatar = merged.avatar.trim() || null;
@@ -197,7 +207,7 @@ export const useJobsStore = defineStore("jobs", {
           (_mutation, state) => {
             saveToStorage(cloneJobsArray(state.items));
           },
-          { detached: true }
+          { detached: true },
         );
       }
     },
@@ -211,7 +221,7 @@ export const useJobsStore = defineStore("jobs", {
     },
     updateJob(id: number | string, patch: Partial<JobProperties>) {
       const index = this.items.findIndex(
-        (job) => String(job.id) === String(id)
+        (job) => String(job.id) === String(id),
       );
       if (index === -1) return null;
       const updated = mergeJob(this.items[index], patch);
@@ -220,7 +230,7 @@ export const useJobsStore = defineStore("jobs", {
     },
     removeJob(id: number | string) {
       const index = this.items.findIndex(
-        (job) => String(job.id) === String(id)
+        (job) => String(job.id) === String(id),
       );
       if (index === -1) return;
       this.items.splice(index, 1);
@@ -250,12 +260,12 @@ export const useJobsStore = defineStore("jobs", {
     updateMilestone(
       jobId: number | string,
       milestoneId: number | string,
-      patch: Partial<JobMilestone>
+      patch: Partial<JobMilestone>,
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
       const index = job.milestones.findIndex(
-        (milestone) => String(milestone.id) === String(milestoneId)
+        (milestone) => String(milestone.id) === String(milestoneId),
       );
       if (index === -1) return null;
       const existing = job.milestones[index];
@@ -274,19 +284,20 @@ export const useJobsStore = defineStore("jobs", {
       const job = this.byId(jobId);
       if (!job) return;
       const milestones = job.milestones.filter(
-        (milestone) => String(milestone.id) !== String(milestoneId)
+        (milestone) => String(milestone.id) !== String(milestoneId),
       );
       const goals = job.goals.map((goal) =>
         String(goal.milestoneId) === String(milestoneId)
           ? { ...goal, milestoneId: null }
-          : goal
+          : goal,
       );
       this.updateJob(jobId, { milestones, goals });
     },
     addGoal(jobId: number | string, goal: Partial<JobGoal>) {
       const job = this.byId(jobId);
       if (!job) return null;
-      if (goal.milestoneId === undefined || goal.milestoneId === null) return null;
+      if (goal.milestoneId === undefined || goal.milestoneId === null)
+        return null;
       const nextIdValue = nextNestedId(job.goals);
       const normalized: JobGoal = {
         id: goal.id && Number(goal.id) > 0 ? Number(goal.id) : nextIdValue,
@@ -304,12 +315,12 @@ export const useJobsStore = defineStore("jobs", {
     updateGoal(
       jobId: number | string,
       goalId: number | string,
-      patch: Partial<JobGoal>
+      patch: Partial<JobGoal>,
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
       const index = job.goals.findIndex(
-        (goal) => String(goal.id) === String(goalId)
+        (goal) => String(goal.id) === String(goalId),
       );
       if (index === -1) return null;
       const existing = job.goals[index];
@@ -332,13 +343,13 @@ export const useJobsStore = defineStore("jobs", {
       const job = this.byId(jobId);
       if (!job) return;
       const goals = job.goals.filter(
-        (goal) => String(goal.id) !== String(goalId)
+        (goal) => String(goal.id) !== String(goalId),
       );
       this.updateJob(jobId, { goals });
     },
     addStakeholder(
       jobId: number | string,
-      stakeholder: Partial<JobStakeholder>
+      stakeholder: Partial<JobStakeholder>,
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
@@ -361,12 +372,12 @@ export const useJobsStore = defineStore("jobs", {
     updateStakeholder(
       jobId: number | string,
       stakeholderId: number | string,
-      patch: Partial<JobStakeholder>
+      patch: Partial<JobStakeholder>,
     ) {
       const job = this.byId(jobId);
       if (!job) return null;
       const index = job.stakeholders.findIndex(
-        (stakeholder) => String(stakeholder.id) === String(stakeholderId)
+        (stakeholder) => String(stakeholder.id) === String(stakeholderId),
       );
       if (index === -1) return null;
       const existing = job.stakeholders[index];
@@ -378,8 +389,8 @@ export const useJobsStore = defineStore("jobs", {
           patch.contactId === undefined
             ? existing.contactId
             : patch.contactId === null
-            ? null
-            : Number(patch.contactId),
+              ? null
+              : Number(patch.contactId),
       };
       const stakeholders = [...job.stakeholders];
       stakeholders.splice(index, 1, updated);
@@ -390,7 +401,7 @@ export const useJobsStore = defineStore("jobs", {
       const job = this.byId(jobId);
       if (!job) return;
       const stakeholders = job.stakeholders.filter(
-        (stakeholder) => String(stakeholder.id) !== String(stakeholderId)
+        (stakeholder) => String(stakeholder.id) !== String(stakeholderId),
       );
       this.updateJob(jobId, { stakeholders });
     },

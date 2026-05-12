@@ -1,24 +1,24 @@
 import { database } from "@/plugins/fake-api/handlers/apps/invoice/db";
 import type {
-    Client,
-    Invoice,
-    InvoicePaymentEntry,
-    InvoiceRecord,
-    InvoiceStatus,
-    PaymentDetails,
-    PurchasedProduct,
+  Client,
+  Invoice,
+  InvoicePaymentEntry,
+  InvoiceRecord,
+  InvoiceStatus,
+  PaymentDetails,
+  PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import {
-    cloneDealBillingPeriod,
-    inferDealBillingPeriodFromKey,
+  cloneDealBillingPeriod,
+  inferDealBillingPeriodFromKey,
 } from "@/utils/dealDocumentDraft";
 import {
-    buildDocumentNote,
-    buildQuotationPaymentDetails,
-    buildQuotationSalesperson,
-    buildQuotationThanksNote,
-    getDocumentSequencePrefix,
-    loadActiveAppConfigurations,
+  buildDocumentNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
@@ -709,18 +709,16 @@ export const useInvoicesStore = defineStore("invoices", {
     },
   },
   actions: {
+    persistItems() {
+      saveToStorage(cloneInvoiceArray(this.items));
+    },
+
     init(force = false) {
       if (this.initialized && !force) return;
 
       // Migrate: remove all older storage versions
       if (typeof window !== "undefined") {
         for (const key of Object.keys(localStorage)) {
-          if (key.startsWith("app.quotations.") && key !== STORAGE_KEY) {
-            localStorage.removeItem(key);
-          }
-          if (key.startsWith("app.proformas.")) {
-            localStorage.removeItem(key);
-          }
           if (key.startsWith("app.invoices.") && key !== STORAGE_KEY) {
             localStorage.removeItem(key);
           }
@@ -770,6 +768,7 @@ export const useInvoicesStore = defineStore("invoices", {
       );
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       triggerReceiptReconciliation();
       return this.byId(id);
     },
@@ -784,6 +783,7 @@ export const useInvoicesStore = defineStore("invoices", {
       const updated = mergeInvoiceRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       triggerReceiptReconciliation();
       return this.byId(id);
     },
@@ -817,11 +817,13 @@ export const useInvoicesStore = defineStore("invoices", {
       });
 
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       triggerReceiptReconciliation();
     },
 
     replaceAll(records: InvoiceRecord[]) {
       this.items = resequenceRevisions(records);
+      this.persistItems();
       triggerReceiptReconciliation();
     },
   },

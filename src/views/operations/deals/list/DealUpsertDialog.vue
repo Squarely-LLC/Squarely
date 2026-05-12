@@ -282,6 +282,31 @@ const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
 const localDeal = ref<Partial<DealProperties>>(buildEmptyDeal());
 const showDetails = ref(false);
 
+const hasLinkedJob = computed(() => {
+  const linkedJobId = Number(localDeal.value.linkedJobId ?? NaN);
+
+  return Number.isFinite(linkedJobId);
+});
+
+const hasProjectCodeChanged = computed(() => {
+  if (!props.deal) return false;
+
+  const originalProjectCode = String(props.deal.projectCode ?? "").trim();
+  const currentProjectCode = String(localDeal.value.projectCode ?? "").trim();
+
+  return currentProjectCode !== originalProjectCode;
+});
+
+const linkedJobProjectCodeWarning = computed(() => {
+  if (!hasLinkedJob.value || !hasProjectCodeChanged.value) return null;
+
+  const linkedJobCode = String(selectedLinkedJob.value?.code ?? "").trim();
+
+  return linkedJobCode
+    ? `This deal is linked to job ${linkedJobCode}. Changing the deal project code will not update the linked job code automatically.`
+    : "This deal is linked to a job. Changing the deal project code will not update the linked job code automatically.";
+});
+
 watch(
   () =>
     [props.isDialogVisible, props.deal, customFieldDefinitions.value] as const,
@@ -373,6 +398,14 @@ const onCancel = () => {
 const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
+
+  if (linkedJobProjectCodeWarning.value && typeof window !== "undefined") {
+    const confirmed = window.confirm(
+      `${linkedJobProjectCodeWarning.value} Continue saving this change?`,
+    );
+
+    if (!confirmed) return;
+  }
 
   emit("submit", {
     ...localDeal.value,
@@ -607,6 +640,16 @@ const toggleDetails = () => {
                   label="Project Code"
                   placeholder="Generated from linked job or contact and type"
                 />
+
+                <VAlert
+                  v-if="linkedJobProjectCodeWarning"
+                  type="warning"
+                  variant="tonal"
+                  density="comfortable"
+                  class="mt-3"
+                >
+                  {{ linkedJobProjectCodeWarning }}
+                </VAlert>
               </VCol>
 
               <VCol cols="12">

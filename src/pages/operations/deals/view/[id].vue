@@ -14,6 +14,7 @@ import type {
   DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import type {
+  JobDocument,
   JobFlag,
   JobProperties,
   JobType,
@@ -22,8 +23,11 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
+import { useInvoicesStore } from "@/stores/invoices";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useProformasStore } from "@/stores/proformas";
+import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
@@ -44,6 +48,9 @@ const contactsStore = useContactsStore();
 const employeesStore = useEmployeesStore();
 const jobsStore = useJobsStore();
 const notifications = useNotificationsStore();
+const quotationsStore = useQuotationsStore();
+const proformasStore = useProformasStore();
+const invoicesStore = useInvoicesStore();
 const todosStore = useTodos();
 
 cataloguesStore.init();
@@ -51,6 +58,9 @@ dealsStore.init();
 contactsStore.init();
 employeesStore.init();
 jobsStore.init();
+quotationsStore.init();
+proformasStore.init();
+invoicesStore.init();
 todosStore.init();
 
 const loading = ref(true);
@@ -140,6 +150,7 @@ type ExecutionPreviewSummary = {
   goalCount: number;
   jobTaskCount: number;
   customMilestoneCount: number;
+  documentCount: number;
 };
 
 type ExecutionPreviewJob = Pick<
@@ -159,6 +170,7 @@ type ExecutionPreviewJob = Pick<
 type DealExecutionPreview = {
   executedAt: string;
   job: ExecutionPreviewJob;
+  documents: JobDocument[];
   milestones: ExecutionPreviewMilestone[];
   generalTasks: ExecutionPreviewTask[];
   summary: ExecutionPreviewSummary;
@@ -486,8 +498,159 @@ const flattenPreviewTasks = (preview: DealExecutionPreview) => [
     ...milestone.tasks,
     ...milestone.goals.flatMap((goal) => goal.tasks),
   ]),
-  ...preview.generalTasks,
+  ...preview.generalTasks.filter((task) => task.kind !== "sales"),
 ];
+
+const cloneJobDocument = (document: JobDocument): JobDocument => ({
+  ...document,
+});
+
+const buildStoredAttachmentUrl = (
+  fileKey?: string | null,
+  fileName?: string | null,
+) => {
+  const normalizedFileKey = String(fileKey ?? "").trim();
+
+  if (!normalizedFileKey) return "";
+
+  const normalizedFileName = String(fileName ?? "").trim();
+
+  return normalizedFileName
+    ? `idb:${normalizedFileKey}|${encodeURIComponent(normalizedFileName)}`
+    : `idb:${normalizedFileKey}`;
+};
+
+const buildExecutionFinanceDocumentRows = <
+  TRecord extends {
+    note?: string | null;
+    quotation: {
+      attachmentFileKey?: string | null;
+      attachmentName?: string | null;
+      dealId?: number | string | null;
+      id: number | string;
+      issuedDate?: string | null;
+      quoteNumber?: string | null;
+      quotationStatus?: string | null;
+      source?: string | null;
+    };
+  },
+>(
+  kind: "quotation" | "proforma" | "invoice",
+  currentDealId: number | string,
+  records: TRecord[],
+): JobDocument[] =>
+  records
+    .filter(
+      (record) =>
+        String(record.quotation.dealId ?? "") === String(currentDealId) &&
+        (String(record.quotation.attachmentFileKey ?? "").trim() ||
+          String(record.quotation.attachmentName ?? "").trim()),
+    )
+    .map((record, index) => {
+      const quoteNumber = String(record.quotation.quoteNumber ?? "").trim();
+      const attachmentName = String(
+        record.quotation.attachmentName ?? "",
+      ).trim();
+      const fileUrl = buildStoredAttachmentUrl(
+        record.quotation.attachmentFileKey,
+        attachmentName,
+      );
+      const numericRecordId = Number(record.quotation.id);
+      const fallbackId = index + 1;
+      const stableId = Number.isFinite(numericRecordId)
+        ? numericRecordId
+        : fallbackId;
+      const idBase = kind === "quotation" ? 1 : kind === "proforma" ? 2 : 3;
+
+      return {
+        category:
+          record.quotation.source === "external"
+            ? "External Attachment"
+            : "Linked Attachment",
+        createdAt:
+          String(record.quotation.issuedDate ?? "").trim() || undefined,
+        expiry: null,
+        expiryReminder: false,
+        fileUrl,
+        id: -(idBase * 1000000 + stableId),
+        name:
+          attachmentName ||
+          `${kind.toUpperCase()} ${quoteNumber || `#${record.quotation.id}`}`,
+        note:
+          [
+            quoteNumber ? `Number: ${quoteNumber}` : "",
+            record.quotation.quotationStatus
+              ? `Status: ${record.quotation.quotationStatus}`
+              : "",
+            String(record.note ?? "").trim(),
+          ]
+            .filter(Boolean)
+            .join(" • ") || undefined,
+        type:
+          kind === "quotation"
+            ? "Quotation"
+            : kind === "proforma"
+              ? "Proforma"
+              : "Invoice",
+      } satisfies JobDocument;
+    });
+
+const buildExecutionDocuments = (currentDeal: DealProperties) => {
+  const dealDocuments = Array.isArray(currentDeal.documents)
+    ? currentDeal.documents.map((document) => cloneJobDocument(document))
+    : [];
+  const linkedFinanceDocuments = [
+    ...buildExecutionFinanceDocumentRows(
+      "quotation",
+      currentDeal.id,
+      quotationsStore.items,
+    ),
+    ...buildExecutionFinanceDocumentRows(
+      "proforma",
+      currentDeal.id,
+      proformasStore.items,
+    ),
+    ...buildExecutionFinanceDocumentRows(
+      "invoice",
+      currentDeal.id,
+      invoicesStore.items,
+    ),
+  ];
+
+  return mergeJobDocuments(dealDocuments, linkedFinanceDocuments);
+};
+
+const resolveExecutionTargetJob = (currentDeal: DealProperties) => {
+  const linkedJobId = currentDeal.linkedJobId;
+  if (linkedJobId === null || linkedJobId === undefined) {
+    return null;
+  }
+
+  return jobsStore.byId(linkedJobId);
+};
+
+const mergeJobDocuments = (
+  existing: JobDocument[] | undefined | null,
+  incoming: JobDocument[] | undefined | null,
+) => {
+  const merged = new Map<string, JobDocument>();
+
+  (existing || []).forEach((document, index) => {
+    const key = String(
+      document.id ?? `${document.name}:${document.fileUrl}:${index}`,
+    );
+    merged.set(key, cloneJobDocument(document));
+  });
+
+  (incoming || []).forEach((document, index) => {
+    const key = String(
+      document.id ?? `${document.name}:${document.fileUrl}:${index}`,
+    );
+    if (!merged.has(key)) merged.set(key, cloneJobDocument(document));
+  });
+
+  return Array.from(merged.values());
+};
 
 const buildExecutionPreview = (
   currentDeal: DealProperties,
@@ -498,15 +661,14 @@ const buildExecutionPreview = (
   const rootItems = (currentDeal.items || []).filter(
     (item) => !item.parentItemId,
   );
-  const dealSalesTasks = resolveDealSalesTasks(currentDeal);
   const dealReference =
     currentDeal.code?.trim() ||
     currentDeal.name?.trim() ||
     `Deal #${currentDeal.id}`;
 
   const job: ExecutionPreviewJob = {
-    name: `Job for ${dealReference}`,
-    code: currentDeal.code?.trim() || null,
+    name: currentDeal.projectCode?.trim() || `Job for ${dealReference}`,
+    code: currentDeal.projectCode?.trim() || currentDeal.code?.trim() || null,
     startDate: executedAt,
     location: currentDeal.location?.trim() || null,
     stage: "Project | In Progress",
@@ -527,9 +689,6 @@ const buildExecutionPreview = (
         )
       : null;
     const configMilestones = resolveJobConfigMilestones(record);
-    const salesTasks = dealSalesTasks.filter(
-      (task) => Number(task.sourceItemId ?? 0) === Number(item.id),
-    );
     const goalTemplateMap = new Map<string, string>();
     const goalMilestoneMap = new Map<string, string>();
     const taskTemplateMap = new Map<string, string | null>();
@@ -697,31 +856,6 @@ const buildExecutionPreview = (
       });
     }
 
-    salesTasks.forEach((task, taskIndex) => {
-      const previewTask = createPreviewTask(task, {
-        key: `task:sales:${item.id}:${task.id}:${taskIndex}`,
-        kind: "sales",
-        sourceLabel: `${item.name} / Sales Task`,
-      });
-
-      if (previewTask.goalKey) {
-        const milestoneKey = previewTask.milestoneKey;
-        const milestoneTarget = milestones.find(
-          (entry) => entry.key === milestoneKey,
-        );
-        const goalTarget = milestoneTarget?.goals.find(
-          (entry) => entry.key === previewTask.goalKey,
-        );
-
-        if (goalTarget) {
-          goalTarget.tasks.push(previewTask);
-          return;
-        }
-      }
-
-      generalTasks.push(previewTask);
-    });
-
     itemTasks.forEach((task) => {
       if (task.startTriggerType !== "task" || !task.startTriggerTaskSourceId)
         return;
@@ -733,48 +867,14 @@ const buildExecutionPreview = (
     });
   });
 
-  dealSalesTasks
-    .filter(
-      (task) => task.sourceItemId === null || task.sourceItemId === undefined,
-    )
-    .forEach((task, taskIndex) => {
-      generalTasks.push({
-        key: `task:deal-sales:${task.id}:${taskIndex}`,
-        title: String(task.title || "").trim() || "Untitled Task",
-        dueAt: resolveTaskDueAt(task.afterWhen, executedAt),
-        notes: String(task.notes || "").trim(),
-        status:
-          task.status === "in_progress" ||
-          task.status === "for_review" ||
-          task.status === "completed"
-            ? task.status
-            : "pending",
-        important: Boolean(task.important),
-        collaborators: Array.isArray(task.collaborators)
-          ? task.collaborators.map((collaborator) => ({ ...collaborator }))
-          : [],
-        attachment: task.attachment ? { ...task.attachment } : null,
-        steps: Array.isArray(task.steps)
-          ? task.steps.map((step) => ({ ...step }))
-          : [],
-        sourceLabel: "Deal / Sales Task",
-        kind: "sales",
-        afterWhen: task.afterWhen ?? null,
-        milestoneKey: null,
-        goalKey: null,
-        startTriggerType: task.startTrigger?.type ?? null,
-        startTriggerGoalKey:
-          task.startTrigger?.type === "goal" ||
-          task.startTrigger?.type === "task"
-            ? String(task.startTrigger.goalId ?? "").trim() || null
-            : null,
-        startTriggerTaskSourceId:
-          task.startTrigger?.type === "task"
-            ? String(task.startTrigger.taskId ?? "").trim() || null
-            : null,
-        startTriggerTaskKey: null,
-      });
-    });
+  const documents = buildExecutionDocuments(currentDeal);
+  const jobTaskCount = [
+    ...milestones.flatMap((milestone) => [
+      ...milestone.tasks,
+      ...milestone.goals.flatMap((goal) => goal.tasks),
+    ]),
+    ...generalTasks.filter((task) => task.kind !== "sales"),
+  ].length;
 
   const summary: ExecutionPreviewSummary = {
     milestoneCount: milestones.length,
@@ -782,25 +882,16 @@ const buildExecutionPreview = (
       (sum, milestone) => sum + milestone.goals.length,
       0,
     ),
-    jobTaskCount: flattenPreviewTasks({
-      executedAt,
-      job,
-      milestones,
-      generalTasks,
-      summary: {
-        milestoneCount: 0,
-        goalCount: 0,
-        jobTaskCount: 0,
-        customMilestoneCount: 0,
-      },
-    }).length,
+    jobTaskCount,
     customMilestoneCount: milestones.filter((milestone) => milestone.isFallback)
       .length,
+    documentCount: documents.length,
   };
 
   return {
     executedAt,
     job,
+    documents,
     milestones,
     generalTasks,
     summary,
@@ -996,6 +1087,25 @@ const linkedJob = computed(() => {
   return jobsStore.byId(linkedJobId) ?? null;
 });
 
+const dealExecutionNotice = computed(() => {
+  if (!linkedJob.value) return null;
+
+  const linkedJobLabel =
+    linkedJob.value.code?.trim() ||
+    linkedJob.value.name?.trim() ||
+    "linked job";
+
+  return `Already executed into ${linkedJobLabel}.`;
+});
+
+const executionTargetSummary = computed(() => {
+  if (linkedJob.value) {
+    return `Merge into ${linkedJob.value.name}`;
+  }
+
+  return "Create a new job";
+});
+
 const dealRelatedRef = computed(() =>
   deal.value
     ? {
@@ -1050,6 +1160,7 @@ const openEditDialog = () => {
 const openExecutePreviewDialog = () => {
   const currentDeal = resolveLatestDealState();
   if (!currentDeal) return;
+  if (linkedJob.value) return;
 
   const executedAt = new Date().toISOString();
 
@@ -1073,6 +1184,7 @@ const confirmDealExecution = () => {
   const currentDealId = currentDeal.id;
   const createdTodoIds: Array<number | string> = [];
   let createdJobId: number | string | null = null;
+  const targetJob = resolveExecutionTargetJob(currentDeal);
 
   try {
     const preview = executePreview.value;
@@ -1086,29 +1198,41 @@ const confirmDealExecution = () => {
           },
         ]
       : [];
-    const createdJob = jobsStore.addJob({
-      name: preview.job.name,
-      code: preview.job.code,
-      startDate: preview.job.startDate,
-      location: preview.job.location,
-      stage: preview.job.stage,
-      type: preview.job.type,
-      flag: preview.job.flag,
-      relatedTo: preview.job.relatedTo,
-      collaborators: [...preview.job.collaborators],
-      note: preview.job.note,
-      milestones: [],
-      goals: [],
-      stakeholders,
-    });
-    createdJobId = createdJob.id;
+    const executionJob =
+      targetJob ??
+      jobsStore.addJob({
+        name: preview.job.name,
+        code: preview.job.code,
+        startDate: preview.job.startDate,
+        location: preview.job.location,
+        stage: preview.job.stage,
+        type: preview.job.type,
+        flag: preview.job.flag,
+        relatedTo: preview.job.relatedTo,
+        collaborators: [...preview.job.collaborators],
+        note: preview.job.note,
+        milestones: [],
+        goals: [],
+        documents: preview.documents.map((document) =>
+          cloneJobDocument(document),
+        ),
+        stakeholders,
+      });
+    if (!targetJob) createdJobId = executionJob.id;
+
+    if (targetJob) {
+      jobsStore.updateJob(targetJob.id, {
+        documents: mergeJobDocuments(targetJob.documents, preview.documents),
+      });
+    }
+
     const relatedTo = {
-      id: createdJob.id,
-      name: createdJob.name,
+      id: executionJob.id,
+      name: executionJob.name,
       type: "job",
     };
     const updatedDeal = dealsStore.updateDeal(currentDealId, {
-      linkedJobId: Number(createdJob.id),
+      linkedJobId: Number(executionJob.id),
     });
     if (updatedDeal) deal.value = cloneDeal(updatedDeal);
 
@@ -1117,7 +1241,7 @@ const confirmDealExecution = () => {
     const taskIdByKey = new Map<string, number | string>();
 
     preview.milestones.forEach((milestone) => {
-      const createdMilestone = jobsStore.addMilestone(createdJob.id, {
+      const createdMilestone = jobsStore.addMilestone(executionJob.id, {
         name: milestone.name,
         startDate: milestone.startDate,
         dueDate: milestone.dueDate,
@@ -1134,7 +1258,7 @@ const confirmDealExecution = () => {
       if (!milestoneId) return;
 
       milestone.goals.forEach((goal) => {
-        const createdGoal = jobsStore.addGoal(createdJob.id, {
+        const createdGoal = jobsStore.addGoal(executionJob.id, {
           milestoneId,
           name: goal.name,
           startDate: goal.startDate,
@@ -1214,14 +1338,14 @@ const confirmDealExecution = () => {
     });
 
     notifications.push(
-      `Deal executed into ${createdJob.name} with ${preview.summary.jobTaskCount} tasks`,
+      `Deal executed into ${executionJob.name} with ${preview.summary.jobTaskCount} tasks`,
       "success",
       4000,
     );
     closeExecutePreviewDialog();
     void router.push({
       name: "operations-jobs-view-id",
-      params: { id: createdJob.id },
+      params: { id: executionJob.id },
     });
   } catch (executionError) {
     createdTodoIds.forEach((todoId) => todosStore.removeTodo(todoId));
@@ -1785,6 +1909,7 @@ watch(
           :deal="deal"
           :linked-to-name="linkedToName"
           :collaborator-names="collaboratorNames"
+          :execution-notice="dealExecutionNotice"
           @edit="openEditDialog"
           @execute="openExecutePreviewDialog"
           @open-add-task="handleAddTaskFromCommunication"
@@ -1906,12 +2031,16 @@ watch(
                 <VCard variant="tonal" class="pa-4 h-100">
                   <div class="text-overline mb-2">Execution Summary</div>
                   <div class="d-flex flex-column gap-1 text-body-2">
+                    <span>{{ executionTargetSummary }}</span>
                     <span>
                       {{ executePreview.summary.milestoneCount }} milestones
                     </span>
                     <span>{{ executePreview.summary.goalCount }} goals</span>
                     <span>
                       {{ executePreview.summary.jobTaskCount }} new job tasks
+                    </span>
+                    <span>
+                      {{ executePreview.summary.documentCount }} documents
                     </span>
                     <span>
                       {{ executePreview.summary.customMilestoneCount }} custom

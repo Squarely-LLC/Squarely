@@ -1,22 +1,22 @@
 import { database } from "@/plugins/fake-api/handlers/apps/quotation/db";
 import type {
-    Client,
-    PaymentDetails,
-    PurchasedProduct,
-    Quotation,
-    QuotationRecord,
+  Client,
+  PaymentDetails,
+  PurchasedProduct,
+  Quotation,
+  QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import {
-    cloneDealBillingPeriod,
-    inferDealBillingPeriodFromKey,
+  cloneDealBillingPeriod,
+  inferDealBillingPeriodFromKey,
 } from "@/utils/dealDocumentDraft";
 import {
-    buildQuotationNote,
-    buildQuotationPaymentDetails,
-    buildQuotationSalesperson,
-    buildQuotationThanksNote,
-    getDocumentSequencePrefix,
-    loadActiveAppConfigurations,
+  buildQuotationNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
@@ -587,6 +587,10 @@ export const useQuotationsStore = defineStore("quotations", {
     },
   },
   actions: {
+    persistItems() {
+      saveToStorage(cloneQuotationArray(this.items));
+    },
+
     init(force = false) {
       if (this.initialized && !force) return;
 
@@ -641,6 +645,7 @@ export const useQuotationsStore = defineStore("quotations", {
       );
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       return this.byId(id);
     },
 
@@ -654,6 +659,7 @@ export const useQuotationsStore = defineStore("quotations", {
       const updated = mergeQuotationRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
       return this.byId(id);
     },
 
@@ -678,10 +684,12 @@ export const useQuotationsStore = defineStore("quotations", {
       });
 
       this.items = resequenceRevisions(this.items);
+      this.persistItems();
     },
 
     replaceAll(records: QuotationRecord[]) {
       this.items = resequenceRevisions(records);
+      this.persistItems();
     },
   },
 });
