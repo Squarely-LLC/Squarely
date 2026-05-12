@@ -2,6 +2,9 @@
 import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { Status, ToDo } from "@/data/schema";
+import type { InvoiceStatus } from "@/plugins/fake-api/handlers/apps/invoice/types";
+import type { ProformaStatus } from "@/plugins/fake-api/handlers/apps/proforma/types";
+import type { QuotationStatus } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import type {
   CatalogueActiveState,
   CatalogueContractualServiceRecord,
@@ -32,6 +35,9 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
+  type DealDocumentBillingMode,
+  type DealDocumentKind,
+  type DealDocumentSelectableItem,
   buildCustomBillingPeriod,
   buildDealDocumentDraftRecord,
   buildDealDocumentUsageKey,
@@ -52,21 +58,25 @@ import {
   resolveDealDocumentBillingModeForItem,
   resolveStoredBillingPeriodKey,
   saveDealDocumentDraft,
-  type DealDocumentBillingMode,
-  type DealDocumentKind,
-  type DealDocumentSelectableItem,
 } from "@/utils/dealDocumentDraft";
 import {
   getDealDiscountTotal,
   getDealGrandTotal,
   getDealItemsSubtotal,
 } from "@/utils/dealValue";
-import { computed, reactive, ref } from "vue";
+import { saveFile } from "@/utils/fileStore";
+import {
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+} from "@/utils/quotationConfig";
+import { computed, nextTick, reactive, ref } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
   deal: DealProperties;
 }>();
+
 const emit = defineEmits<{
   (e: "open-add-task", payload: { initial: Partial<ToDo> }): void;
   (e: "open-edit-task", todoId: number | string): void;
@@ -93,7 +103,7 @@ proformasStore.init();
 invoicesStore.init();
 todosStore.init();
 
-type DerivedGoal = {
+interface DerivedGoal {
   id: string;
   overrideKey: string;
   name: string;
@@ -110,9 +120,9 @@ type DerivedGoal = {
   showPrice: boolean;
   showDiscount: boolean;
   showTaxApplicable: boolean;
-};
+}
 
-type DerivedSection = {
+interface DerivedSection {
   id: string;
   name: string;
   note: string | null;
@@ -120,7 +130,7 @@ type DerivedSection = {
   goals: DerivedGoal[];
   goalTypeSingular: string;
   goalTypePlural: string;
-};
+}
 
 type DealItemWithPlan = DealItem & {
   panelId: number | string;
@@ -132,17 +142,17 @@ type DealItemWithPlan = DealItem & {
   actionsEnabled: boolean;
 };
 
-type ItemTypeChoice = {
+interface ItemTypeChoice {
   title: string;
   value: CatalogueItemType;
   description: string;
   icon: string;
   comingSoon?: boolean;
-};
+}
 
 type DealPreviewKind = "quotation" | "proforma" | "invoice";
 
-type DealDocumentContainer = {
+interface DealDocumentContainer {
   quotation: {
     id: number | string;
     quoteNumber: string;
@@ -152,24 +162,38 @@ type DealDocumentContainer = {
     quotationStatus: string;
     dealId: number | null;
   };
-};
+}
 
-type DealDocumentPanelRecord = {
+interface DealDocumentPanelRecord {
   id: number | string;
   issuedDate: string;
   quoteNumber: string;
   status: string;
   total: number;
-};
+}
 
-type DealDocumentPanel = {
+interface DealDocumentPanel {
   count: number;
   emptyText: string;
   key: DealPreviewKind;
   latest: DealDocumentPanelRecord | null;
   records: DealDocumentPanelRecord[];
   title: string;
-};
+}
+
+type ExternalDealDocumentStatus =
+  | InvoiceStatus
+  | ProformaStatus
+  | QuotationStatus;
+
+interface ExternalDealDocumentForm {
+  attachment: File | File[] | null;
+  amount: number | null;
+  date: string | null;
+  paidAmount: number | null;
+  quoteNumber: string;
+  status: ExternalDealDocumentStatus | null;
+}
 
 const addItemDialogVisible = ref(false);
 const billingModeDialogVisible = ref(false);
@@ -180,39 +204,57 @@ const editLineDialogVisible = ref(false);
 const phaseDialogVisible = ref(false);
 const previewDialogVisible = ref(false);
 const selectionDialogVisible = ref(false);
+const externalDocumentDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const phaseFormRef = ref<VForm>();
 const createDraftItemFormRef = ref<VForm>();
 const editLineFormRef = ref<VForm>();
+const externalDocumentFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
 const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
 const selectedCatalogueItemId = ref<string | null>(null);
 const selectedCreateItemType = ref<CatalogueItemType | null>(null);
 const selectedDocumentKind = ref<DealDocumentKind | null>(null);
+const selectedExternalDocumentKind = ref<DealPreviewKind | null>(null);
+const selectedExternalDocumentItems = ref<DealDocumentSelectableItem[]>([]);
+const selectedExternalDocumentBillingPeriod = ref<DealBillingPeriod | null>(
+  null,
+);
+const externalDocumentSelectionKind = ref<Extract<
+  DealPreviewKind,
+  "proforma" | "invoice"
+> | null>(null);
 const selectedItemIds = ref<string[]>([]);
+
 const selectedPreviewDocument = ref<{
   href: string;
   id: number | string;
   kind: DealPreviewKind;
   title: string;
 } | null>(null);
+
 const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
+
 const billingPeriodKind = ref<DealBillingPeriod["kind"]>(
   billingPeriod.value.kind,
 );
+
 const billingPeriodMonthValue = ref(
   getDealBillingPeriodMonthValue(billingPeriod.value),
 );
+
 const defaultBillingYearValue = () => String(new Date().getFullYear());
+
 const defaultBillingQuarterValue = () => {
   const today = new Date();
 
   return `Q${Math.floor(today.getMonth() / 3) + 1}`;
 };
+
 const defaultBillingCustomDateValue = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -221,24 +263,78 @@ const defaultBillingCustomDateValue = () => {
 
   return `${year}-${month}-${day}`;
 };
+
 const billingPeriodQuarterYearValue = ref(defaultBillingYearValue());
 const billingPeriodQuarterValue = ref(defaultBillingQuarterValue());
 const billingPeriodYearValue = ref(defaultBillingYearValue());
 const billingPeriodCustomStartDate = ref(defaultBillingCustomDateValue());
 const billingPeriodCustomEndDate = ref(defaultBillingCustomDateValue());
 const billingPeriodCustomLabel = ref("");
+
 const billingPeriodKindOptions = [
   { title: "Month", value: "monthly" },
   { title: "Quarter", value: "quarterly" },
   { title: "Year", value: "yearly" },
   { title: "Custom", value: "custom" },
 ] as const;
+
 const billingQuarterOptions = [
   { title: "Q1", value: "Q1" },
   { title: "Q2", value: "Q2" },
   { title: "Q3", value: "Q3" },
   { title: "Q4", value: "Q4" },
 ] as const;
+
+const isExternalDocumentFormValid = ref(false);
+const externalDocumentError = ref("");
+
+const allowedExternalAttachmentTypes = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "image/png",
+  "image/jpeg",
+];
+
+const allowedExternalAttachmentExtensions = [
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".png",
+  ".jpg",
+  ".jpeg",
+];
+
+const externalAttachmentAccept = allowedExternalAttachmentExtensions.join(",");
+const maxExternalAttachmentSizeBytes = 10 * 1024 * 1024;
+
+const getExternalDocumentDefaultStatus = (
+  kind: DealPreviewKind | null,
+): ExternalDealDocumentStatus | null => {
+  if (kind === "quotation") return "Pending";
+  if (kind === "proforma" || kind === "invoice") return "Not Paid";
+
+  return null;
+};
+
+const emptyExternalDocumentForm = (
+  kind: DealPreviewKind | null = selectedExternalDocumentKind.value,
+): ExternalDealDocumentForm => ({
+  attachment: null,
+  amount: null,
+  date: null,
+  paidAmount: null,
+  quoteNumber: "",
+  status: getExternalDocumentDefaultStatus(kind),
+});
+
+const externalDocumentForm = ref<ExternalDealDocumentForm>(
+  emptyExternalDocumentForm(),
+);
 
 const syncBillingPeriodDraft = (
   period: DealBillingPeriod = billingPeriod.value,
@@ -250,6 +346,7 @@ const syncBillingPeriodDraft = (
   const yearMatch = periodKey.match(/^(\d{4})$/);
   const startDateMatch = startDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const fallbackYear = startDateMatch?.[1] || defaultBillingYearValue();
+
   const fallbackQuarter = startDateMatch
     ? `Q${Math.floor((Number(startDateMatch[2]) - 1) / 3) + 1}`
     : defaultBillingQuarterValue();
@@ -274,9 +371,8 @@ const billingPeriodPreview = computed(() => {
     );
   }
 
-  if (billingPeriodKind.value === "yearly") {
+  if (billingPeriodKind.value === "yearly")
     return buildYearlyBillingPeriod(billingPeriodYearValue.value);
-  }
 
   if (billingPeriodKind.value === "custom") {
     return buildCustomBillingPeriod({
@@ -425,9 +521,11 @@ const buildDealRelatedTo = () => ({
 
 const parseAfterWhen = (raw?: string | null) => {
   const base = new Date();
+
   const value = String(raw || "")
     .trim()
     .toLowerCase();
+
   const match = value.match(
     /^([+-]?\d+)\s*(day|days|week|weeks|month|months)$/,
   );
@@ -538,6 +636,7 @@ const addDealItemsFromCatalogueItem = (
 ) => {
   const baseId = nextItemId();
   const catalogueRecord = cataloguesStore.recordById(catalogueItem.id);
+
   const relatedItems =
     catalogueRecord?.type === "Onetime Service"
       ? (catalogueRecord as CatalogueOnetimeServiceRecord).relatedItems || []
@@ -580,6 +679,7 @@ const addDealItemsFromCatalogueItem = (
   ];
 
   const existingSalesTasks = buildEditableSalesTasks();
+
   const importedSalesTasks = buildImportedSalesTaskTemplates(
     nextItems.filter((item) => item.id === baseId),
     nextDealSalesTaskId(existingSalesTasks),
@@ -620,6 +720,7 @@ const saveSelectedCatalogueItem = async () => {
 
   const selectedItem = selectedCatalogueItem.value;
   const quantity = Number(addItemDraft.quantity || 1);
+
   addDealItemsFromCatalogueItem(selectedItem, quantity);
   notifications.push("Item added to deal", "success", 3000);
   addItemDialogVisible.value = false;
@@ -644,6 +745,7 @@ const saveCreatedDraftItem = async () => {
   const { valid } = (await createDraftItemFormRef.value?.validate()) ?? {
     valid: true,
   };
+
   if (!valid || !selectedCreateItemType.value) return;
 
   const draftRecord = cataloguesStore.addItem({
@@ -686,6 +788,7 @@ const removeDealItem = (item: DealItemWithPlan) => {
       return existingItem;
 
     const excluded = new Set(existingItem.excludedRelatedItemIds || []);
+
     excluded.add(item.sourceRelatedItemId);
 
     return {
@@ -744,11 +847,12 @@ const buildOverridePayload = (): DealItemOverride => {
     payload.quantity = normalizeEditableNumber(editLine.quantity, null);
   if (editLine.canEditPrice)
     payload.unitPrice = normalizeEditableNumber(editLine.unitPrice, null);
-  if (editLine.canEditDiscount)
+  if (editLine.canEditDiscount) {
     payload.discountPercent = normalizeEditableNumber(
       editLine.discountPercent,
       0,
     );
+  }
   if (editLine.canEditTax) payload.taxApplicable = editLine.taxApplicable;
 
   return payload;
@@ -830,6 +934,7 @@ const openEditItem = (item: DealItemWithPlan) => {
 const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   if (goal.overrideKey.includes("-custom-")) {
     openEditCustomPhase(parentItem, goal);
+
     return;
   }
 
@@ -863,9 +968,11 @@ const saveEditedLine = async () => {
   const { valid } = (await editLineFormRef.value?.validate()) ?? {
     valid: true,
   };
+
   if (!valid) return;
 
   const payload = buildOverridePayload();
+
   const nextItems = (props.deal.items || []).map((item) => {
     if (editLine.mode === "item" && item.id === editLine.itemId) {
       return {
@@ -947,6 +1054,7 @@ const calculateAmount = (
 
   const normalizedQuantity =
     quantity === null || quantity === undefined ? 1 : Number(quantity);
+
   const subtotal = Number(price) * normalizedQuantity;
   const discount = subtotal * (Number(discountPercent || 0) / 100);
 
@@ -1350,15 +1458,19 @@ const itemsSubtotal = computed(() => getDealItemsSubtotal(props.deal));
 
 const totalDiscount = computed(() => getDealDiscountTotal(props.deal));
 const totalTax = computed(() => 0);
+
 const grandTotal = computed(
   () => getDealGrandTotal(props.deal) + totalTax.value,
 );
+
 const financialRows = computed(() => props.deal.financials || []);
+
 const totalQuoted = computed(() =>
   financialRows.value
     .filter((entry) => entry.type === "quotation" || entry.type === "invoice")
     .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
 );
+
 const totalInvoiced = computed(() =>
   invoicesStore.items
     .filter(
@@ -1367,6 +1479,7 @@ const totalInvoiced = computed(() =>
     )
     .reduce((sum, record) => sum + Number(record.quotation.total || 0), 0),
 );
+
 const totalPaid = computed(() =>
   financialRows.value
     .filter(
@@ -1376,35 +1489,119 @@ const totalPaid = computed(() =>
     )
     .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
 );
+
 const remainingToInvoice = computed(() =>
   Math.max(grandTotal.value - totalInvoiced.value, 0),
 );
+
 const dealItems = computed(() => props.deal.items || []);
+
 const billableRootItems = computed(() =>
   getBillableRootDealItems(dealItems.value, (id, typeHint) =>
     cataloguesStore.recordById(id, typeHint),
   ),
 );
+
 const quotationItems = computed(() =>
   getQuotationTopLevelDealItems(dealItems.value, (id, typeHint) =>
     cataloguesStore.recordById(id, typeHint),
   ),
 );
+
 const selectableDocumentItems = computed(() =>
   getSelectableDealItems(dealItems.value, (id, typeHint) =>
     cataloguesStore.recordById(id, typeHint),
   ),
 );
+
 const billingMode = computed<DealDocumentBillingMode>(() =>
   resolveDealDocumentBillingMode(billableRootItems.value),
 );
+
 const effectiveBillingMode = computed<DealDocumentBillingMode>(
   () => selectedBillingMode.value ?? billingMode.value,
 );
+
 const contact = computed(() => {
   if (!props.deal.relatedTo) return null;
 
   return contactsStore.byId(props.deal.relatedTo) ?? null;
+});
+
+const externalDocumentKindLabel = computed(() => {
+  if (selectedExternalDocumentKind.value === "quotation") return "Quotation";
+  if (selectedExternalDocumentKind.value === "proforma") return "Proforma";
+  if (selectedExternalDocumentKind.value === "invoice") return "Invoice";
+
+  return "Document";
+});
+
+const externalDocumentDialogTitle = computed(
+  () => `Attach External ${externalDocumentKindLabel.value}`,
+);
+
+const externalDocumentNumberLabel = computed(
+  () => `${externalDocumentKindLabel.value} Number`,
+);
+
+const externalDocumentStatusOptions = computed(() => {
+  if (selectedExternalDocumentKind.value === "quotation") {
+    return [
+      { title: "Pending", value: "Pending" },
+      { title: "Approved", value: "Approved" },
+      { title: "Lost", value: "Lost" },
+    ] as const;
+  }
+
+  return [
+    { title: "Not Paid", value: "Not Paid" },
+    { title: "Paid", value: "Paid" },
+    { title: "Partially Paid", value: "Partially Paid" },
+  ] as const;
+});
+
+const selectedExternalAttachment = computed<File | null>(() => {
+  const value = externalDocumentForm.value.attachment;
+
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+
+  return value;
+});
+
+const externalDocumentTracksPayments = computed(
+  () =>
+    selectedExternalDocumentKind.value === "proforma" ||
+    selectedExternalDocumentKind.value === "invoice",
+);
+
+const requiresExternalPaidAmount = computed(
+  () =>
+    externalDocumentTracksPayments.value &&
+    externalDocumentForm.value.status === "Partially Paid",
+);
+
+const externalPaidAmountHint = computed(() => {
+  const amount = Number(externalDocumentForm.value.amount || 0);
+
+  if (amount <= 0) return "Enter the total amount first.";
+
+  return `Enter the amount already received from the ${externalDocumentKindLabel.value.toLowerCase()}.`;
+});
+
+const externalDocumentClient = computed(() => {
+  const contactName = String(contact.value?.fullName ?? "").trim();
+  const dealName = String(props.deal.name ?? "").trim();
+  const name = contactName || dealName || `Deal #${props.deal.id}`;
+
+  return {
+    address: String(contact.value?.address ?? "").trim(),
+    company: name,
+    companyEmail: String(contact.value?.email ?? "").trim(),
+    contact: contactName,
+    country: String(contact.value?.country ?? "").trim() || "Lebanon",
+    name,
+  };
 });
 
 const sortDealDocumentRecords = <T extends DealDocumentContainer>(
@@ -1439,12 +1636,15 @@ const dealQuotationRecords = computed(() =>
     mapDealDocumentPanelRecord,
   ),
 );
+
 const dealProformaRecords = computed(() =>
   sortDealDocumentRecords(proformasStore.items).map(mapDealDocumentPanelRecord),
 );
+
 const dealInvoiceRecords = computed(() =>
   sortDealDocumentRecords(invoicesStore.items).map(mapDealDocumentPanelRecord),
 );
+
 const quotationCount = computed(() => dealQuotationRecords.value.length);
 const proformaCount = computed(() => dealProformaRecords.value.length);
 const invoiceCount = computed(() => dealInvoiceRecords.value.length);
@@ -1482,9 +1682,8 @@ const resolvedActiveDocumentPanelKey = computed<DealPreviewKind | null>(() => {
     dealDocumentPanels.value.some(
       (panel) => panel.key === activeDocumentPanelKey.value,
     )
-  ) {
+  )
     return activeDocumentPanelKey.value;
-  }
 
   return null;
 });
@@ -1552,9 +1751,11 @@ const resolveProductSelectionKey = (product: {
 
   const matches = selectableDocumentItems.value.filter((item) => {
     const sameTitle = item.name.trim() === String(product.title ?? "").trim();
+
     const sameCatalogueItemId =
       String(item.catalogueItemId ?? "") ===
       String(product.catalogueItemId ?? "");
+
     const sameHours = Number(item.quantity ?? 1) === Number(product.hours ?? 1);
     const sameCost = Number(item.unitPrice ?? 0) === Number(product.cost ?? 0);
 
@@ -1573,6 +1774,7 @@ const resolveSelectableItemBillingPeriodKey = (
   const selectableItem = selectableDocumentItems.value.find(
     (item) => item.selectionKey === normalizedSelectionKey,
   );
+
   if (!selectableItem) return "";
 
   const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
@@ -1589,6 +1791,7 @@ const isPeriodBasedSelectableItem = (selectionKey?: string | null) => {
   const selectableItem = selectableDocumentItems.value.find(
     (item) => item.selectionKey === normalizedSelectionKey,
   );
+
   if (!selectableItem) return false;
 
   const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
@@ -1604,10 +1807,12 @@ const proformaUsageBySelectionKey = computed(() => {
 
     record.purchasedProducts.forEach((product) => {
       const selectionKey = resolveProductSelectionKey(product);
+
       const usageKey = buildDealDocumentUsageKey(
         selectionKey,
         resolveStoredBillingPeriodKey(product),
       );
+
       if (!usageKey) return;
 
       usage.set(usageKey, (usage.get(usageKey) ?? 0) + 1);
@@ -1625,10 +1830,12 @@ const invoiceUsageBySelectionKey = computed(() => {
 
     record.purchasedProducts.forEach((product) => {
       const selectionKey = resolveProductSelectionKey(product);
+
       const usageKey = buildDealDocumentUsageKey(
         selectionKey,
         resolveStoredBillingPeriodKey(product),
       );
+
       if (!usageKey) return;
 
       usage.set(usageKey, (usage.get(usageKey) ?? 0) + 1);
@@ -1674,16 +1881,14 @@ const getPeriodSelectionConflicts = (
 
   return items.filter((item) => {
     const itemMode = resolveDealDocumentBillingModeForItem(item);
-    if (itemMode !== "retainer-period" && itemMode !== "recurrent-period") {
+    if (itemMode !== "retainer-period" && itemMode !== "recurrent-period")
       return false;
-    }
 
     const usage = getDocumentUsage(item.selectionKey, periodKey);
 
     if (selectedDocumentKind.value === "invoice") return usage.invoiceCount > 0;
-    if (selectedDocumentKind.value === "proforma") {
+    if (selectedDocumentKind.value === "proforma")
       return usage.proformaCount > 0;
-    }
 
     return false;
   });
@@ -1726,12 +1931,12 @@ const getGoalInvoiceState = (
   if (!usageKey) return "Not invoiced";
 
   const matchingInvoices = invoicesStore.items.filter((record) => {
-    if (String(record.quotation.dealId ?? "") !== String(props.deal.id)) {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
       return false;
-    }
 
     return record.purchasedProducts.some((product) => {
       const productSelectionKey = resolveProductSelectionKey(product);
+
       const productUsageKey = buildDealDocumentUsageKey(
         productSelectionKey,
         resolveStoredBillingPeriodKey(product),
@@ -1813,6 +2018,7 @@ const selectableGroups = computed(() => {
       item.groupKey === "billable-root"
         ? "These rows drive quotation and direct invoice/proforma eligibility."
         : "Nested rows are available only through manual selection.";
+
     const existing = groups.get(item.groupKey);
 
     if (existing) {
@@ -1868,37 +2074,30 @@ const selectionDialogTitle = computed(() => {
 });
 
 const selectionDialogIntro = computed(() => {
-  if (effectiveBillingMode.value === "contractual-stage") {
+  if (effectiveBillingMode.value === "contractual-stage")
     return "Select one or more contractual stages to include in this document.";
-  }
 
-  if (effectiveBillingMode.value === "retainer-period") {
+  if (effectiveBillingMode.value === "retainer-period")
     return "Select one or more retainer lines to include in this document.";
-  }
 
-  if (effectiveBillingMode.value === "recurrent-period") {
+  if (effectiveBillingMode.value === "recurrent-period")
     return "Select one or more recurrent lines to include in this document.";
-  }
 
   return "Select one or more items to include in this document.";
 });
 
 const selectionDialogHint = computed(() => {
-  if (effectiveBillingMode.value === "contractual-stage") {
+  if (effectiveBillingMode.value === "contractual-stage")
     return "Contractual deals bill at stage level. Choose only the stages you want billed in this document.";
-  }
 
-  if (effectiveBillingMode.value === "retainer-period") {
+  if (effectiveBillingMode.value === "retainer-period")
     return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
-  }
 
-  if (effectiveBillingMode.value === "recurrent-period") {
+  if (effectiveBillingMode.value === "recurrent-period")
     return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
-  }
 
-  if (effectiveBillingMode.value === "mixed-manual") {
+  if (effectiveBillingMode.value === "mixed-manual")
     return "This deal mixes billing bases. Choose any combination of billable rows for this document.";
-  }
 
   return "No rows are preselected. Choose only the rows you want billed.";
 });
@@ -1974,6 +2173,7 @@ const resetDocumentWorkflowState = () => {
   billingModeDialogVisible.value = false;
   billingPeriodDialogVisible.value = false;
   selectionDialogVisible.value = false;
+  externalDocumentSelectionKind.value = null;
   pendingDocumentItems.value = [];
   resetBillingPeriodPrices();
   selectedBillingMode.value = null;
@@ -2012,6 +2212,7 @@ const getStoredBillingPeriodPrice = (
 
   const value =
     item.subItemOverrides?.[overrideKey]?.periodUnitPrices?.[periodKey];
+
   if (value === null || value === undefined) return null;
 
   const numeric = Number(value);
@@ -2053,6 +2254,7 @@ const applyBillingPeriodPricing = (
       return;
 
     const numeric = Number(billingPeriodPrices[item.selectionKey]);
+
     updatedPrices.set(
       item.selectionKey,
       Number.isFinite(numeric) ? numeric : 0,
@@ -2071,6 +2273,7 @@ const applyBillingPeriodPricing = (
       if (nextPrice === undefined) return;
 
       const currentOverride = nextOverrides[overrideKey] || {};
+
       nextOverrides[overrideKey] = {
         ...currentOverride,
         unitPrice: nextPrice,
@@ -2109,6 +2312,7 @@ const saveAndNavigateDocumentDraft = async (
 ) => {
   if (!selectedItems.length) {
     notifications.push("This deal has no billable items yet", "warning", 2500);
+
     return;
   }
 
@@ -2149,10 +2353,30 @@ const openGoalDocumentPage = async (
       "warning",
       3000,
     );
+
     return;
   }
 
   await saveAndNavigateDocumentDraft(kind, [selectableItem]);
+};
+
+const setExternalDocumentTargets = (
+  items: DealDocumentSelectableItem[],
+  period: DealBillingPeriod | null = null,
+) => {
+  selectedExternalDocumentItems.value = [...items];
+  selectedExternalDocumentBillingPeriod.value = period ? { ...period } : null;
+};
+
+const openExternalDocumentSelectionDialog = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  mode: DealDocumentBillingMode = billingMode.value,
+) => {
+  externalDocumentSelectionKind.value = kind;
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = mode;
+  selectedItemIds.value = [];
+  selectionDialogVisible.value = true;
 };
 
 const openSelectionDialog = (
@@ -2163,6 +2387,86 @@ const openSelectionDialog = (
   selectedBillingMode.value = mode;
   selectedItemIds.value = [];
   selectionDialogVisible.value = true;
+};
+
+const openExternalDocumentFlow = (kind: DealPreviewKind) => {
+  if (kind === "quotation") {
+    if (!quotationItems.value.length) {
+      notifications.push(
+        "This deal has no billable items yet",
+        "warning",
+        2500,
+      );
+
+      return;
+    }
+
+    openExternalDocumentDialog(kind, quotationItems.value);
+
+    return;
+  }
+
+  if (billingMode.value === "simple-root") {
+    if (!billableRootItems.value.length) {
+      notifications.push(
+        "This deal has no billable items yet",
+        "warning",
+        2500,
+      );
+
+      return;
+    }
+
+    openExternalDocumentDialog(kind, billableRootItems.value);
+
+    return;
+  }
+
+  if (billingMode.value === "contractual-stage") {
+    openExternalDocumentSelectionDialog(kind, "contractual-stage");
+
+    return;
+  }
+
+  if (billingMode.value === "retainer-period") {
+    openExternalDocumentSelectionDialog(kind, "retainer-period");
+
+    return;
+  }
+
+  if (billingMode.value === "recurrent-period") {
+    openExternalDocumentSelectionDialog(kind, "recurrent-period");
+
+    return;
+  }
+
+  openExternalDocumentSelectionDialog(kind, "mixed-manual");
+};
+
+const openGoalExternalDocumentDialog = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => {
+  const selectableItem = findGoalSelectableItem(parentItem, goal);
+
+  if (!selectableItem) {
+    notifications.push(
+      "Could not resolve this item for external document import.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  const itemMode = resolveDealDocumentBillingModeForItem(selectableItem);
+  const period =
+    itemMode === "retainer-period" || itemMode === "recurrent-period"
+      ? billingPeriod.value
+      : null;
+
+  openExternalDocumentDialog(kind, [selectableItem], period);
 };
 
 const openBillingPeriodDialog = (
@@ -2185,6 +2489,7 @@ const confirmBillingPeriod = () => {
   const nextBillingPeriod = commitBillingPeriod();
   if (!getDealBillingPeriodKey(nextBillingPeriod)) {
     notifications.push("Select a billing period first", "warning", 2500);
+
     return;
   }
 
@@ -2192,11 +2497,13 @@ const confirmBillingPeriod = () => {
     pendingDocumentItems.value,
     nextBillingPeriod,
   );
+
   if (conflictingItems.length) {
     const conflictingNames = conflictingItems
       .slice(0, 2)
       .map((item) => item.name)
       .join(", ");
+
     const conflictSuffix = conflictingItems.length > 2 ? " and more" : "";
 
     notifications.push(
@@ -2204,6 +2511,7 @@ const confirmBillingPeriod = () => {
       "warning",
       3500,
     );
+
     return;
   }
 
@@ -2211,13 +2519,27 @@ const confirmBillingPeriod = () => {
 
   if (pendingDocumentItems.value.length) {
     const kind = selectedDocumentKind.value;
+
     const items = applyBillingPeriodPricing(
       [...pendingDocumentItems.value],
       nextBillingPeriod,
     );
 
     pendingDocumentItems.value = [];
+
+    if (externalDocumentSelectionKind.value) {
+      openExternalDocumentDialog(
+        externalDocumentSelectionKind.value,
+        items,
+        nextBillingPeriod,
+      );
+      resetDocumentWorkflowState();
+
+      return;
+    }
+
     void saveAndNavigateDocumentDraft(kind, items);
+
     return;
   }
 
@@ -2227,6 +2549,7 @@ const confirmBillingPeriod = () => {
 const confirmBillingModeSelection = () => {
   if (!selectedDocumentKind.value || !selectedBillingMode.value) {
     notifications.push("Choose a billing basis first", "warning", 2500);
+
     return;
   }
 
@@ -2264,10 +2587,19 @@ const confirmSelectedDocumentItems = async () => {
     );
     selectionDialogVisible.value = false;
     billingPeriodDialogVisible.value = true;
+
     return;
   }
 
   selectionDialogVisible.value = false;
+
+  if (externalDocumentSelectionKind.value) {
+    openExternalDocumentDialog(externalDocumentSelectionKind.value, items);
+    resetDocumentWorkflowState();
+
+    return;
+  }
+
   await saveAndNavigateDocumentDraft(kind, items);
 };
 
@@ -2275,25 +2607,30 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
   if (kind !== "quotation") {
     if (billingMode.value === "simple-root") {
       await saveAndNavigateDocumentDraft(kind, billableRootItems.value);
+
       return;
     }
 
     if (billingMode.value === "contractual-stage") {
       openSelectionDialog(kind, "contractual-stage");
+
       return;
     }
 
     if (billingMode.value === "retainer-period") {
       openSelectionDialog(kind, "retainer-period");
+
       return;
     }
 
     if (billingMode.value === "recurrent-period") {
       openSelectionDialog(kind, "recurrent-period");
+
       return;
     }
 
     openSelectionDialog(kind, "mixed-manual");
+
     return;
   }
 
@@ -2301,10 +2638,336 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
 
   if (selectedItems.length) {
     await saveAndNavigateDocumentDraft(kind, selectedItems);
+
     return;
   }
 
   await router.push({ name: routeNameForDocument(kind) });
+};
+
+const positiveAmountValidator = (value: unknown) => {
+  if (value === null || value === undefined || value === "")
+    return "This field is required";
+
+  return Number(value) > 0 || "Amount must be greater than 0";
+};
+
+const validateExternalAttachment = () => {
+  const file = selectedExternalAttachment.value;
+
+  if (!file) return "";
+
+  const fileName = file.name.toLowerCase();
+
+  const hasAllowedExtension = allowedExternalAttachmentExtensions.some(
+    (extension) => fileName.endsWith(extension),
+  );
+
+  const hasAllowedMimeType = allowedExternalAttachmentTypes.includes(file.type);
+
+  if (!hasAllowedExtension && !hasAllowedMimeType)
+    return "Attachment type is not allowed. Use PDF, Word, Excel, PNG, or JPG files only.";
+
+  if (file.size > maxExternalAttachmentSizeBytes)
+    return "Attachment must be 10MB or smaller.";
+
+  return "";
+};
+
+const attachmentValidator = () => validateExternalAttachment() || true;
+
+const partialPaidAmountValidator = (value: unknown) => {
+  if (!requiresExternalPaidAmount.value) return true;
+
+  const totalAmount = Number(externalDocumentForm.value.amount || 0);
+  if (totalAmount <= 0) return "Enter the total amount first";
+
+  if (value === null || value === undefined || value === "")
+    return "Enter the paid amount";
+
+  const paidAmount = Number(value);
+
+  if (!Number.isFinite(paidAmount) || paidAmount <= 0)
+    return "Paid amount must be greater than 0";
+
+  if (paidAmount >= totalAmount)
+    return "Paid amount must be less than the total for a partially paid document";
+
+  return true;
+};
+
+const uniqueExternalDocumentNumberValidator = (value: unknown) => {
+  const documentNumber = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (!documentNumber) return true;
+
+  const exists =
+    selectedExternalDocumentKind.value === "quotation"
+      ? quotationsStore.items.some(
+          (record) =>
+            record.quotation.quoteNumber.trim().toLowerCase() ===
+            documentNumber,
+        )
+      : selectedExternalDocumentKind.value === "proforma"
+        ? proformasStore.items.some(
+            (record) =>
+              record.quotation.quoteNumber.trim().toLowerCase() ===
+              documentNumber,
+          )
+        : invoicesStore.items.some(
+            (record) =>
+              record.quotation.quoteNumber.trim().toLowerCase() ===
+              documentNumber,
+          );
+
+  return exists
+    ? `${externalDocumentKindLabel.value} number already exists`
+    : true;
+};
+
+const closeExternalDocumentDialog = () => {
+  externalDocumentDialogVisible.value = false;
+  selectedExternalDocumentKind.value = null;
+  setExternalDocumentTargets([]);
+  isExternalDocumentFormValid.value = false;
+  externalDocumentError.value = "";
+  externalDocumentForm.value = emptyExternalDocumentForm(null);
+  nextTick(() => {
+    externalDocumentFormRef.value?.resetValidation();
+  });
+};
+
+const openExternalDocumentDialog = (
+  kind: DealPreviewKind,
+  items: DealDocumentSelectableItem[] = [],
+  period: DealBillingPeriod | null = null,
+) => {
+  selectedExternalDocumentKind.value = kind;
+  setExternalDocumentTargets(items, period);
+  isExternalDocumentFormValid.value = false;
+  externalDocumentError.value = "";
+  externalDocumentForm.value = emptyExternalDocumentForm(kind);
+  externalDocumentDialogVisible.value = true;
+  nextTick(() => {
+    externalDocumentFormRef.value?.resetValidation();
+  });
+};
+
+const buildImportedPaymentEntries = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  totalAmount: number,
+  status: ProformaStatus | InvoiceStatus,
+  date: string,
+  paidAmountInput: number | null,
+) => {
+  if (status === "Not Paid") {
+    return {
+      balance: totalAmount,
+      payments: [],
+    };
+  }
+
+  const paidAmount =
+    status === "Paid"
+      ? totalAmount
+      : Math.min(Math.max(Number(paidAmountInput || 0), 0), totalAmount);
+
+  if (paidAmount <= 0) {
+    return {
+      balance: totalAmount,
+      payments: [],
+    };
+  }
+
+  const balanceAfter = Math.max(totalAmount - paidAmount, 0);
+  const paymentId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `imported-${Date.now()}`;
+
+  return {
+    balance: balanceAfter,
+    payments: [
+      {
+        amount: paidAmount,
+        balanceAfter,
+        balanceBefore: totalAmount,
+        createdAt: new Date().toISOString(),
+        date,
+        id: paymentId,
+        method: "Bank Transfer",
+        note: `Imported ${kind} payment state from external system.`,
+      },
+    ],
+  };
+};
+
+const buildExternalDocumentPurchasedProducts = () => {
+  if (!selectedExternalDocumentItems.value.length) {
+    return [
+      {
+        cost: 0,
+        description: "Imported from another system.",
+        hours: 1,
+        title: `Imported ${selectedExternalDocumentKind.value ?? "document"} amount`,
+      },
+    ];
+  }
+
+  const period = selectedExternalDocumentBillingPeriod.value;
+  const periodKey = period ? getDealBillingPeriodKey(period) : null;
+
+  return selectedExternalDocumentItems.value.map((item) => {
+    const itemMode = resolveDealDocumentBillingModeForItem(item);
+    const usesPeriod =
+      itemMode === "retainer-period" || itemMode === "recurrent-period";
+
+    return {
+      billingPeriod: usesPeriod ? period : null,
+      billingPeriodKey: usesPeriod ? periodKey : null,
+      catalogueItemId: item.catalogueItemId ?? null,
+      cost: Number(item.unitPrice ?? 0),
+      dealSelectionKey: item.selectionKey,
+      description:
+        String(item.note ?? "").trim() ||
+        String(item.expansionSummary ?? "").trim() ||
+        "Imported from another system.",
+      discountType:
+        Number(item.discountPercent || 0) > 0
+          ? ("percent" as const)
+          : ("none" as const),
+      discountValue: Number(item.discountPercent || 0),
+      hours: Number(item.quantity ?? 1),
+      lineConstraints: item.lineConstraintsOverride || undefined,
+      title: item.name,
+    };
+  });
+};
+
+const saveExternalDocument = async () => {
+  externalDocumentError.value = "";
+
+  const kind = selectedExternalDocumentKind.value;
+  if (!kind) return;
+
+  const { valid } = (await externalDocumentFormRef.value?.validate()) ?? {
+    valid: true,
+  };
+
+  if (!valid) {
+    externalDocumentError.value = "Fix the highlighted fields before saving.";
+
+    return;
+  }
+
+  const attachmentValidationError = validateExternalAttachment();
+  if (attachmentValidationError) {
+    externalDocumentError.value = attachmentValidationError;
+
+    return;
+  }
+
+  const amount = Number(externalDocumentForm.value.amount || 0);
+  const documentDate = externalDocumentForm.value.date!;
+  const documentStatus = externalDocumentForm.value.status;
+  const attachmentFile = selectedExternalAttachment.value;
+  let attachmentFileKey: string | null = null;
+
+  if (attachmentFile) {
+    try {
+      attachmentFileKey = await saveFile(attachmentFile);
+    } catch {
+      externalDocumentError.value =
+        "Attachment could not be saved locally for preview.";
+
+      return;
+    }
+  }
+
+  const payload = {
+    note: `Imported ${kind} linked to this deal.${selectedExternalDocumentItems.value.length ? ` ${selectedExternalDocumentItems.value.length} line(s) mapped to deal billing.` : ""}`,
+    paymentDetails: buildQuotationPaymentDetails(
+      amount,
+      configStore.legal,
+      configStore.financial,
+    ),
+    paymentMethod: "Bank Transfer",
+    purchasedProducts: buildExternalDocumentPurchasedProducts(),
+    quotation: {
+      attachmentFileKey,
+      attachmentName: attachmentFile?.name ?? null,
+      avatar: "",
+      balance: 0,
+      client: externalDocumentClient.value,
+      dealId: props.deal.id,
+      dueDate: documentDate,
+      issuedDate: documentDate,
+      linkedRecordType: "deal" as const,
+      quoteNumber: externalDocumentForm.value.quoteNumber.trim(),
+      service: `Imported ${kind}`,
+      source: "external" as const,
+      total: amount,
+    },
+    salesperson: buildQuotationSalesperson(configStore.legal),
+    thanksNote: buildQuotationThanksNote(configStore.legal),
+  };
+
+  if (kind === "quotation") {
+    quotationsStore.addQuotation({
+      ...payload,
+      quotation: {
+        ...payload.quotation,
+        quotationStatus:
+          (documentStatus as QuotationStatus | null) ?? "Pending",
+      },
+    });
+  } else if (kind === "proforma") {
+    const importedPaymentState = buildImportedPaymentEntries(
+      kind,
+      amount,
+      (documentStatus as ProformaStatus | null) ?? "Not Paid",
+      documentDate,
+      externalDocumentForm.value.paidAmount,
+    );
+
+    proformasStore.addProforma({
+      ...payload,
+      payments: importedPaymentState.payments,
+      quotation: {
+        ...payload.quotation,
+        balance: importedPaymentState.balance,
+        quotationStatus:
+          (documentStatus as ProformaStatus | null) ?? "Not Paid",
+      },
+    });
+  } else {
+    const importedPaymentState = buildImportedPaymentEntries(
+      kind,
+      amount,
+      (documentStatus as InvoiceStatus | null) ?? "Not Paid",
+      documentDate,
+      externalDocumentForm.value.paidAmount,
+    );
+
+    invoicesStore.addInvoice({
+      ...payload,
+      payments: importedPaymentState.payments,
+      quotation: {
+        ...payload.quotation,
+        balance: importedPaymentState.balance,
+        quotationStatus: (documentStatus as InvoiceStatus | null) ?? "Not Paid",
+      },
+    });
+  }
+
+  notifications.push(
+    `External ${kind} attached to this deal.`,
+    "success",
+    3500,
+  );
+  closeExternalDocumentDialog();
 };
 
 const openAddPhase = (item: DealItemWithPlan) => {
@@ -2325,12 +2988,14 @@ const openAddPhase = (item: DealItemWithPlan) => {
 
 const openEditCustomPhase = (item: DealItemWithPlan, goal: DerivedGoal) => {
   const sourceItem = getItemById(item.id);
+
   const customPhase = sourceItem?.customPhases?.find(
     (phase) =>
       `phase-custom-${phase.id}` === goal.overrideKey ||
       `retainer-custom-${phase.id}` === goal.overrideKey ||
       `recurrent-custom-${phase.id}` === goal.overrideKey,
   );
+
   if (!customPhase) return;
 
   phaseDraft.parentItemId = Number(item.id);
@@ -2400,6 +3065,7 @@ const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
       "info",
       2500,
     );
+
     return;
   }
 
@@ -2423,6 +3089,7 @@ const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
     if (Number.isFinite(phaseId)) removedPhaseIds.add(phaseId);
 
     const nextOverrides = { ...(item.subItemOverrides || {}) };
+
     delete nextOverrides[goal.overrideKey];
 
     return {
@@ -2447,7 +3114,7 @@ type DealTodo = ToDo & {
   milestoneId?: number | string | null;
 };
 
-type DealSalesTaskRow = {
+interface DealSalesTaskRow {
   id: number | string;
   title: string;
   afterWhen: string | null;
@@ -2458,7 +3125,7 @@ type DealSalesTaskRow = {
   status: Status;
   isImported: boolean;
   sourceLabel: string | null;
-};
+}
 
 const dealTodos = computed<DealTodo[]>(
   () =>
@@ -2468,6 +3135,7 @@ const dealTodos = computed<DealTodo[]>(
       const matchesDeal =
         String(todo.relatedTo.id) === String(props.deal.id) &&
         todo.relatedTo.type === "deal";
+
       const matchesLinkedJob =
         props.deal.linkedJobId !== null &&
         props.deal.linkedJobId !== undefined &&
@@ -2491,10 +3159,12 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
   const storedSalesTasks = Array.isArray(props.deal.salesTasks)
     ? props.deal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
     : [];
+
   const importedSalesTasks = buildImportedSalesTaskTemplates(
     props.deal.items || [],
     nextDealSalesTaskId(storedSalesTasks),
   );
+
   const missingImportedSalesTasks = importedSalesTasks.filter(
     (task) =>
       !storedSalesTasks.some(
@@ -2505,6 +3175,7 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
             Number(task.sourceTaskId ?? 0),
       ),
   );
+
   const legacyManualSalesTasks = dealTodos.value
     .filter((todo) => {
       const milestoneId = String(todo.milestoneId ?? "").trim();
@@ -2561,6 +3232,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       (todo) => `${todo.title || ""}::${todo.notes || ""}`,
     ),
   );
+
   const fallbackTasks = buildEditableSalesTasks().filter((task) => {
     if (task.sourceItemId !== null && task.sourceItemId !== undefined)
       return true;
@@ -2631,6 +3303,7 @@ const formatTaskAfterWhen = (afterWhen?: string | null) => {
 
   const rawValue = Number(match[1]);
   const rawUnit = match[2].toLowerCase();
+
   const normalizedDays = rawUnit.startsWith("week")
     ? rawValue * 7
     : rawUnit.startsWith("month")
@@ -2808,6 +3481,7 @@ const openEditTask = (taskId: number | string) => {
                           </template>
                           <VListItemTitle>Edit</VListItemTitle>
                         </VListItem>
+                        <VDivider v-if="getExpandableServiceRecord(item)" />
                         <VListItem
                           v-if="getExpandableServiceRecord(item)"
                           @click="openAddPhase(item)"
@@ -2819,6 +3493,7 @@ const openEditTask = (taskId: number | string) => {
                             Add {{ item.childTypeSingular }}
                           </VListItemTitle>
                         </VListItem>
+                        <VDivider />
                         <VListItem @click="removeDealItem(item)">
                           <template #prepend>
                             <VIcon icon="tabler-trash" color="error" />
@@ -2959,6 +3634,7 @@ const openEditTask = (taskId: number | string) => {
                                 </template>
                                 <VListItemTitle>Edit</VListItemTitle>
                               </VListItem>
+                              <VDivider />
                               <VListItem
                                 :disabled="
                                   isGoalProformaActionDisabled(item, goal)
@@ -2985,6 +3661,40 @@ const openEditTask = (taskId: number | string) => {
                                 </template>
                                 <VListItemTitle>Create Invoice</VListItemTitle>
                               </VListItem>
+                              <VDivider />
+                              <VListItem
+                                @click="
+                                  openGoalExternalDocumentDialog(
+                                    'proforma',
+                                    item,
+                                    goal,
+                                  )
+                                "
+                              >
+                                <template #prepend>
+                                  <VIcon icon="tabler-paperclip" />
+                                </template>
+                                <VListItemTitle>
+                                  Attach External Proforma
+                                </VListItemTitle>
+                              </VListItem>
+                              <VListItem
+                                @click="
+                                  openGoalExternalDocumentDialog(
+                                    'invoice',
+                                    item,
+                                    goal,
+                                  )
+                                "
+                              >
+                                <template #prepend>
+                                  <VIcon icon="tabler-paperclip" />
+                                </template>
+                                <VListItemTitle>
+                                  Attach External Invoice
+                                </VListItemTitle>
+                              </VListItem>
+                              <VDivider v-if="isRemovableChildGoal(goal)" />
                               <VListItem
                                 v-if="isRemovableChildGoal(goal)"
                                 @click="removeGoal(item, goal)"
@@ -3017,7 +3727,7 @@ const openEditTask = (taskId: number | string) => {
 
     <VCard v-if="dealItemsWithPlan.length" class="items-overview-card">
       <VCardItem>
-        <template #title>Invoicing Summary</template>
+        <template #title> Invoicing Summary </template>
         <template #append>
           <button
             type="button"
@@ -3107,14 +3817,39 @@ const openEditTask = (taskId: number | string) => {
                     <div class="items-overview__preview-count">
                       {{ panel.count }}
                     </div>
-                    <button
-                      type="button"
+                    <VBtn
+                      icon
+                      variant="text"
+                      size="x-small"
                       class="items-overview__preview-add"
-                      :aria-label="`Create ${panel.title.slice(0, -1).toLowerCase()}`"
-                      @click.stop="openDocumentPage(panel.key)"
+                      :aria-label="`Add ${panel.title.slice(0, -1).toLowerCase()}`"
+                      @click.stop
                     >
                       <VIcon icon="tabler-plus" size="14" />
-                    </button>
+                      <VMenu activator="parent">
+                        <VList density="compact">
+                          <VListItem @click="openDocumentPage(panel.key)">
+                            <template #prepend>
+                              <VIcon icon="tabler-plus" />
+                            </template>
+                            <VListItemTitle>
+                              Create {{ panel.title.slice(0, -1) }}
+                            </VListItemTitle>
+                          </VListItem>
+                          <VDivider />
+                          <VListItem
+                            @click="openExternalDocumentFlow(panel.key)"
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-paperclip" />
+                            </template>
+                            <VListItemTitle>
+                              Attach External {{ panel.title.slice(0, -1) }}
+                            </VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
+                    </VBtn>
                     <VIcon
                       :icon="
                         isDocumentPanelExpanded(panel.key)
@@ -3221,6 +3956,118 @@ const openEditTask = (taskId: number | string) => {
               class="items-preview-dialog__frame"
               title="Document quick preview"
             />
+          </VCardText>
+        </VCard>
+      </VDialog>
+      <VDialog v-model="externalDocumentDialogVisible" max-width="680">
+        <VCard>
+          <VCardItem>
+            <VCardTitle>{{ externalDocumentDialogTitle }}</VCardTitle>
+          </VCardItem>
+
+          <VCardText>
+            <VAlert
+              v-if="externalDocumentError"
+              type="error"
+              variant="tonal"
+              density="comfortable"
+              class="mb-4"
+            >
+              {{ externalDocumentError }}
+            </VAlert>
+
+            <div class="text-sm text-medium-emphasis mb-4">
+              This document will be linked directly to this deal and shown in
+              the invoicing summary.
+            </div>
+
+            <VForm
+              ref="externalDocumentFormRef"
+              v-model="isExternalDocumentFormValid"
+              @submit.prevent="saveExternalDocument"
+            >
+              <VRow>
+                <VCol cols="12" md="6">
+                  <AppDateTimePicker
+                    v-model="externalDocumentForm.date"
+                    label="Date"
+                    placeholder="Select date"
+                    clearable
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="externalDocumentForm.quoteNumber"
+                    :label="externalDocumentNumberLabel"
+                    :placeholder="`${externalDocumentKindLabel} number`"
+                    :rules="[
+                      requiredValidator,
+                      uniqueExternalDocumentNumberValidator,
+                    ]"
+                  />
+                </VCol>
+
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="externalDocumentForm.amount"
+                    type="number"
+                    min="0"
+                    label="Amount"
+                    placeholder="0"
+                    :rules="[positiveAmountValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" md="6">
+                  <AppSelect
+                    v-model="externalDocumentForm.status"
+                    label="Status"
+                    :items="externalDocumentStatusOptions"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol v-if="requiresExternalPaidAmount" cols="12" md="6">
+                  <AppTextField
+                    v-model="externalDocumentForm.paidAmount"
+                    type="number"
+                    min="0"
+                    :max="externalDocumentForm.amount ?? undefined"
+                    label="Paid Amount"
+                    :hint="externalPaidAmountHint"
+                    persistent-hint
+                    :rules="[partialPaidAmountValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12">
+                  <VFileInput
+                    v-model="externalDocumentForm.attachment"
+                    label="Attachment"
+                    prepend-icon="tabler-paperclip"
+                    :accept="externalAttachmentAccept"
+                    :rules="[attachmentValidator]"
+                    show-size
+                    clearable
+                  />
+                </VCol>
+
+                <VCol cols="12">
+                  <div class="d-flex justify-end flex-wrap gap-3 w-100">
+                    <VBtn
+                      variant="tonal"
+                      color="secondary"
+                      @click="closeExternalDocumentDialog"
+                    >
+                      Cancel
+                    </VBtn>
+                    <VBtn type="submit" color="primary"> Attach </VBtn>
+                  </div>
+                </VCol>
+              </VRow>
+            </VForm>
           </VCardText>
         </VCard>
       </VDialog>
@@ -3491,7 +4338,9 @@ const openEditTask = (taskId: number | string) => {
   <VDialog v-model="phaseDialogVisible" max-width="760">
     <VCard>
       <VCardText>
-        <h5 class="text-h5 mb-4">{{ phaseDialogTitle }}</h5>
+        <h5 class="text-h5 mb-4">
+          {{ phaseDialogTitle }}
+        </h5>
 
         <VForm ref="phaseFormRef" @submit.prevent="savePhase">
           <VRow>
@@ -3615,10 +4464,10 @@ const openEditTask = (taskId: number | string) => {
       <VDivider />
 
       <VCardActions class="justify-end pa-4">
-        <VBtn variant="text" @click="resetDocumentWorkflowState">Cancel</VBtn>
-        <VBtn color="primary" @click="confirmBillingModeSelection"
-          >Continue</VBtn
-        >
+        <VBtn variant="text" @click="resetDocumentWorkflowState"> Cancel </VBtn>
+        <VBtn color="primary" @click="confirmBillingModeSelection">
+          Continue
+        </VBtn>
       </VCardActions>
     </VCard>
   </VDialog>
@@ -3746,8 +4595,8 @@ const openEditTask = (taskId: number | string) => {
       <VDivider />
 
       <VCardActions class="justify-end pa-4">
-        <VBtn variant="text" @click="resetDocumentWorkflowState">Cancel</VBtn>
-        <VBtn color="primary" @click="confirmBillingPeriod">Continue</VBtn>
+        <VBtn variant="text" @click="resetDocumentWorkflowState"> Cancel </VBtn>
+        <VBtn color="primary" @click="confirmBillingPeriod"> Continue </VBtn>
       </VCardActions>
     </VCard>
   </VDialog>
@@ -3893,7 +4742,7 @@ const openEditTask = (taskId: number | string) => {
       <VDivider />
 
       <VCardActions class="justify-end pa-4">
-        <VBtn variant="text" @click="closeSelectionDialog">Cancel</VBtn>
+        <VBtn variant="text" @click="closeSelectionDialog"> Cancel </VBtn>
         <VBtn
           color="primary"
           :disabled="!selectedDocumentItems.length"
@@ -3907,7 +4756,7 @@ const openEditTask = (taskId: number | string) => {
 
   <VDialog v-model="createItemTypeDialogVisible" max-width="920">
     <VCard class="pa-sm-6 pa-4">
-      <VCardTitle class="text-h4 pb-2">Choose Item Type</VCardTitle>
+      <VCardTitle class="text-h4 pb-2"> Choose Item Type </VCardTitle>
       <VCardText class="text-body-1 text-medium-emphasis pb-6">
         Select kind of catalogue item you want to create. Each option opens
         matching add flow.
@@ -4524,6 +5373,7 @@ const openEditTask = (taskId: number | string) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: rgba(var(--v-theme-on-surface), 0.05);
@@ -4531,6 +5381,7 @@ const openEditTask = (taskId: number | string) => {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   cursor: pointer;
   inline-size: 1.9rem;
+  min-inline-size: 1.9rem;
 }
 
 .items-overview__preview-body {

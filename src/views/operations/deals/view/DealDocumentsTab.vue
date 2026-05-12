@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { formatSystemDate } from "@core/utils/formatters";
 import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
 import { useDealsStore } from "@/stores/deals";
+import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useProformasStore } from "@/stores/proformas";
+import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import { deleteFile, getFileObjectUrl } from "@/utils/fileStore";
 import { shareToWhatsApp } from "@/utils/shareToWhatsApp";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import JobDocumentDialog from "@/views/operations/jobs/view/JobDocumentDialog.vue";
+import { formatSystemDate } from "@core/utils/formatters";
 import type { PropType } from "vue";
 import { computed, defineComponent, nextTick, reactive, ref, watch } from "vue";
 import { useTheme } from "vuetify";
@@ -32,6 +35,19 @@ const emit = defineEmits<{
 
 const dealsStore = useDealsStore();
 dealsStore.init();
+const quotationsStore = useQuotationsStore();
+const proformasStore = useProformasStore();
+const invoicesStore = useInvoicesStore();
+
+quotationsStore.init();
+proformasStore.init();
+invoicesStore.init();
+
+type DealDocumentRow = JobDocument & {
+  isReadonly?: boolean;
+  linkedRecordId?: number | string;
+  linkedRecordKind?: "quotation" | "proforma" | "invoice";
+};
 
 const AutoOpenGroups = defineComponent({
   name: "AutoOpenGroups",
@@ -144,10 +160,10 @@ const isDocumentRenewable = computed(() => {
 
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;
 const tableHeaders = [
-  { title: "Name", key: "name" },
-  { title: "Type", key: "type" },
-  { title: "Category", key: "category" },
-  { title: "Actions", key: "actions", sortable: false },
+  { title: "Name", key: "name", width: "56%" },
+  { title: "Type", key: "type", width: "14%" },
+  { title: "Category", key: "category", width: "15%" },
+  { title: "Actions", key: "actions", sortable: false, width: "15%" },
 ] as const;
 const groupHeaderStyle = computed(() => ({
   backgroundColor: theme.current.value.dark
@@ -180,10 +196,115 @@ function docStatus(doc: JobDocument) {
 
 const deal = computed(() => dealsStore.byId(props.dealId));
 
-const docsList = computed<JobDocument[]>(() => {
+const buildStoredAttachmentUrl = (
+  fileKey?: string | null,
+  fileName?: string | null,
+) => {
+  const normalizedFileKey = String(fileKey ?? "").trim();
+
+  if (!normalizedFileKey) return "";
+
+  const normalizedFileName = String(fileName ?? "").trim();
+
+  return normalizedFileName
+    ? `idb:${normalizedFileKey}|${encodeURIComponent(normalizedFileName)}`
+    : `idb:${normalizedFileKey}`;
+};
+
+const buildFinanceDocumentRows = <
+  TRecord extends {
+    note?: string | null;
+    quotation: {
+      attachmentFileKey?: string | null;
+      attachmentName?: string | null;
+      dealId?: number | null;
+      id: number | string;
+      issuedDate?: string | null;
+      quoteNumber?: string | null;
+      quotationStatus?: string | null;
+      source?: string | null;
+    };
+  },
+>(
+  kind: DealDocumentRow["linkedRecordKind"],
+  records: TRecord[],
+): DealDocumentRow[] =>
+  records
+    .filter(
+      (record) =>
+        String(record.quotation.dealId ?? "") === String(props.dealId) &&
+        (String(record.quotation.attachmentFileKey ?? "").trim() ||
+          String(record.quotation.attachmentName ?? "").trim()),
+    )
+    .map((record, index) => {
+      const quoteNumber = String(record.quotation.quoteNumber ?? "").trim();
+      const attachmentName = String(
+        record.quotation.attachmentName ?? "",
+      ).trim();
+      const fileUrl = buildStoredAttachmentUrl(
+        record.quotation.attachmentFileKey,
+        attachmentName,
+      );
+      const numericRecordId = Number(record.quotation.id);
+      const fallbackId = index + 1;
+      const stableId = Number.isFinite(numericRecordId)
+        ? numericRecordId
+        : fallbackId;
+      const idBase = kind === "quotation" ? 1 : kind === "proforma" ? 2 : 3;
+
+      return {
+        category:
+          record.quotation.source === "external"
+            ? "External Attachment"
+            : "Linked Attachment",
+        createdAt:
+          String(record.quotation.issuedDate ?? "").trim() || undefined,
+        expiry: null,
+        expiryReminder: false,
+        fileUrl,
+        id: -(idBase * 1000000 + stableId),
+        isReadonly: true,
+        linkedRecordId: record.quotation.id,
+        linkedRecordKind: kind,
+        name:
+          attachmentName ||
+          `${kind.toUpperCase()} ${quoteNumber || `#${record.quotation.id}`}`,
+        note:
+          [
+            quoteNumber ? `Number: ${quoteNumber}` : "",
+            record.quotation.quotationStatus
+              ? `Status: ${record.quotation.quotationStatus}`
+              : "",
+            String(record.note ?? "").trim(),
+          ]
+            .filter(Boolean)
+            .join(" • ") || undefined,
+        type:
+          kind === "quotation"
+            ? "Quotation"
+            : kind === "proforma"
+              ? "Proforma"
+              : "Invoice",
+      };
+    });
+
+const linkedFinanceDocs = computed<DealDocumentRow[]>(() => [
+  ...buildFinanceDocumentRows("quotation", quotationsStore.items),
+  ...buildFinanceDocumentRows("proforma", proformasStore.items),
+  ...buildFinanceDocumentRows("invoice", invoicesStore.items),
+]);
+
+const isReadonlyDocument = (doc: JobDocument | DealDocumentRow) =>
+  Boolean((doc as DealDocumentRow).isReadonly);
+
+const docsList = computed<DealDocumentRow[]>(() => {
   const fromStore = deal.value;
   const docs = localDocs.value ?? fromStore?.documents ?? [];
-  return (Array.isArray(docs) ? docs.slice().reverse() : []).slice();
+
+  return [
+    ...(Array.isArray(docs) ? docs.slice().reverse() : []),
+    ...linkedFinanceDocs.value,
+  ];
 });
 
 const localDocs = ref<JobDocument[] | null>(null);
@@ -273,6 +394,8 @@ const updateItemsPerPage = (value: number | string) => {
 };
 
 function openEdit(d: JobDocument) {
+  if (isReadonlyDocument(d)) return;
+
   editing.value = d;
   dialogDoc.value = d;
   dialogOpen.value = true;
@@ -362,6 +485,8 @@ async function openPreview(d: JobDocument) {
 }
 
 function removeDocument(d: JobDocument) {
+  if (isReadonlyDocument(d)) return;
+
   if (!deal.value) return;
 
   try {
@@ -383,6 +508,8 @@ function removeDocument(d: JobDocument) {
 }
 
 function confirmRemoveDocument(d: JobDocument) {
+  if (isReadonlyDocument(d)) return;
+
   deleteCandidate.value = d;
   isConfirmDeleteVisible.value = true;
 }
@@ -651,7 +778,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           item-value="id"
           :headers="tableHeaders"
           :group-by="[{ key: 'type' }]"
-          class="text-no-wrap document-table"
+          class="document-table"
         >
           <template #body.prepend="{ groupedItems, toggleGroup, isGroupOpen }">
             <AutoOpenGroups
@@ -686,26 +813,34 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           </template>
 
           <template #item.name="{ item }">
-            <div>
+            <div class="document-cell document-cell--name">
               <a class="text-link">{{ item.name }}</a>
               <div
                 v-if="isDocumentRenewable"
-                class="text-sm text-medium-emphasis"
+                class="text-sm text-medium-emphasis document-cell__meta"
               >
                 {{
                   item.expiry
-                    ? "Expiry: " +
-                      formatSystemDate(String(item.expiry))
+                    ? "Expiry: " + formatSystemDate(String(item.expiry))
                     : ""
                 }}
               </div>
-              <div class="text-sm text-medium-emphasis">
+              <div class="text-sm text-medium-emphasis document-cell__meta">
                 {{ item.note ? item.note : "" }}
               </div>
             </div>
           </template>
 
-          <template #item.type="{ item }">{{ item.type }}</template>
+          <template #item.type="{ item }">
+            <div class="document-cell document-cell--type">{{ item.type }}</div>
+          </template>
+
+          <template #item.category="{ item }">
+            <div class="document-cell document-cell--category">
+              {{ item.category || "-" }}
+            </div>
+          </template>
+
           <template #item.number="{ item }">-</template>
           <template #item.expiry="{ item }">{{
             item.expiry ? formatSystemDate(String(item.expiry)) : "-"
@@ -731,58 +866,65 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           </template>
 
           <template #item.actions="{ item }">
-            <IconBtn @click="openEdit(item)">
-              <VIcon icon="tabler-edit" />
-            </IconBtn>
+            <div class="document-cell document-cell--actions">
+              <IconBtn
+                :disabled="isReadonlyDocument(item)"
+                @click="openEdit(item)"
+              >
+                <VIcon icon="tabler-edit" />
+              </IconBtn>
 
-            <VBtn icon variant="text" color="medium-emphasis">
-              <VIcon icon="tabler-dots-vertical" />
-              <VMenu activator="parent">
-                <VList>
-                  <VListItem
-                    @click.prevent="openPreview(item)"
-                    v-if="item.fileUrl"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-eye" />
+              <VBtn icon variant="text" color="medium-emphasis">
+                <VIcon icon="tabler-dots-vertical" />
+                <VMenu activator="parent">
+                  <VList>
+                    <VListItem
+                      @click.prevent="openPreview(item)"
+                      v-if="item.fileUrl"
+                    >
+                      <template #prepend>
+                        <VIcon icon="tabler-eye" />
+                      </template>
+                      <VListItemTitle>View</VListItemTitle>
+                    </VListItem>
+
+                    <VListItem @click.prevent="emailUserForDocument(item)">
+                      <template #prepend>
+                        <VIcon icon="tabler-mail" />
+                      </template>
+                      <VListItemTitle>Email</VListItemTitle>
+                    </VListItem>
+
+                    <VListItem @click.prevent="whatsappUserForDocument(item)">
+                      <template #prepend>
+                        <VIcon icon="tabler-brand-whatsapp" />
+                      </template>
+                      <VListItemTitle>WhatsApp</VListItemTitle>
+                    </VListItem>
+
+                    <VDivider />
+
+                    <VListItem @click.prevent="createTodoForDocument(item)">
+                      <template #prepend>
+                        <VIcon icon="tabler-list-check" />
+                      </template>
+                      <VListItemTitle>Todo</VListItemTitle>
+                    </VListItem>
+
+                    <template v-if="!isReadonlyDocument(item)">
+                      <VDivider />
+
+                      <VListItem @click.prevent="confirmRemoveDocument(item)">
+                        <template #prepend>
+                          <VIcon icon="tabler-trash" color="error" />
+                        </template>
+                        <VListItemTitle>Delete</VListItemTitle>
+                      </VListItem>
                     </template>
-                    <VListItemTitle>View</VListItemTitle>
-                  </VListItem>
-
-                  <VListItem @click.prevent="emailUserForDocument(item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-mail" />
-                    </template>
-                    <VListItemTitle>Email</VListItemTitle>
-                  </VListItem>
-
-                  <VListItem @click.prevent="whatsappUserForDocument(item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-brand-whatsapp" />
-                    </template>
-                    <VListItemTitle>WhatsApp</VListItemTitle>
-                  </VListItem>
-
-                  <VDivider />
-
-                  <VListItem @click.prevent="createTodoForDocument(item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-list-check" />
-                    </template>
-                    <VListItemTitle>Todo</VListItemTitle>
-                  </VListItem>
-
-                  <VDivider />
-
-                  <VListItem @click.prevent="confirmRemoveDocument(item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-trash" color="error" />
-                    </template>
-                    <VListItemTitle>Delete</VListItemTitle>
-                  </VListItem>
-                </VList>
-              </VMenu>
-            </VBtn>
+                  </VList>
+                </VMenu>
+              </VBtn>
+            </div>
           </template>
 
           <template #bottom>
@@ -834,8 +976,9 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 <style lang="scss" scoped>
 .document-table {
   :deep(table) {
-  border-collapse: collapse;
-  inline-size: 100%;
+    border-collapse: collapse;
+    inline-size: 100%;
+    table-layout: fixed;
   }
 
   :deep(th),
@@ -844,6 +987,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
     padding-block: 12px;
     padding-inline: 8px;
     text-align: start;
+    vertical-align: top;
   }
 
   :deep(thead tr th:first-child) {
@@ -857,19 +1001,69 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
   :deep(tbody tr:not(.document-group-header) > td) {
     padding-block: 18px !important;
   }
+
+  :deep(thead th:nth-child(2)),
+  :deep(tbody td:nth-child(2)) {
+    inline-size: 56%;
+  }
+
+  :deep(thead th:nth-child(3)),
+  :deep(tbody td:nth-child(3)) {
+    inline-size: 14%;
+  }
+
+  :deep(thead th:nth-child(4)),
+  :deep(tbody td:nth-child(4)) {
+    inline-size: 15%;
+  }
+
+  :deep(thead th:nth-child(5)),
+  :deep(tbody td:nth-child(5)) {
+    inline-size: 15%;
+  }
 }
 
 .document-group-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: transparent;
+  padding: 0;
   border: 0;
+  background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
   font-weight: 600;
+  gap: 8px;
+}
+
+.document-cell {
+  min-inline-size: 0;
+}
+
+.document-cell--name {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.document-cell--type,
+.document-cell--category {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-cell--actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.document-cell__meta {
   padding: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .text-link {
