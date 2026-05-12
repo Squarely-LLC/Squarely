@@ -8,7 +8,9 @@ import type {
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
+import { useJobsStore } from "@/stores/jobs";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -37,17 +39,27 @@ const isFormValid = ref(false);
 
 const configStore = useConfigStore();
 const contactsStore = useContactsStore();
+const dealsStore = useDealsStore();
 const employeesStore = useEmployeesStore();
+const jobsStore = useJobsStore();
 
 configStore.init();
 contactsStore.init();
+dealsStore.init();
 employeesStore.init();
+jobsStore.init();
 
 const stageOptions = computed(
   () => configStore.configurations?.deals?.dealStages || [],
 );
 const typeOptions = computed(
   () => configStore.configurations?.deals?.salesType || [],
+);
+const typeLabel = computed(
+  () =>
+    String(
+      configStore.configurations?.deals?.fieldLabels?.type ?? "Type",
+    ).trim() || "Type",
 );
 
 const defaultLocation = computed(() => {
@@ -80,13 +92,115 @@ const contactOptions = computed(() =>
   })),
 );
 
-const collaboratorOptions = computed(() =>
-  employeesStore.all.map((employee) => ({
-    title: employee.fullName,
-    value: employee.id,
-    avatar: employee.picture || null,
-  })),
+const salesmanOptions = computed(() =>
+  [
+    ...contactsStore.all
+      .filter((contact) => contact.worksInSales)
+      .map((contact) => ({
+        title: contact.fullName,
+        value: `contact:${contact.id}`,
+        avatar: contact.picture || null,
+      })),
+    ...employeesStore.all
+      .filter((employee) => employee.employment?.isSalesTeamMember)
+      .map((employee) => ({
+        title: employee.fullName,
+        value: employee.id,
+        avatar: employee.picture || null,
+      })),
+  ].sort((left, right) => left.title.localeCompare(right.title)),
 );
+
+const allCollaboratorOptions = computed(() =>
+  [
+    ...contactsStore.all.map((contact) => ({
+      title: contact.fullName,
+      value: `contact:${contact.id}`,
+      avatar: contact.picture || null,
+    })),
+    ...employeesStore.all.map((employee) => ({
+      title: employee.fullName,
+      value: employee.id,
+      avatar: employee.picture || null,
+    })),
+  ].sort((left, right) => left.title.localeCompare(right.title)),
+);
+
+const selectedSalesman = computed({
+  get: () => localDeal.value.salesman ?? null,
+  set: (value: number | string | null) => {
+    localDeal.value.salesman =
+      value === null || value === undefined || value === "" ? null : value;
+  },
+});
+
+const selectedContact = computed(() => {
+  const contactId = Number(localDeal.value.relatedTo ?? NaN);
+  if (!Number.isFinite(contactId)) return null;
+
+  return contactsStore.byId(contactId) ?? null;
+});
+
+const buildInitials = (value?: string | null) => {
+  const safe = String(value ?? "").trim();
+  if (!safe) return "";
+
+  return safe
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 4)
+    .toUpperCase();
+};
+
+const buildGeneratedProjectCode = () => {
+  const contactCode = buildInitials(selectedContact.value?.fullName);
+  const typeCode = buildInitials(localDeal.value.type);
+  const parts = [contactCode, typeCode].filter(Boolean);
+
+  return parts.length ? parts.join("-") : null;
+};
+
+const selectedLinkedJob = computed(() => {
+  const linkedJobId = Number(localDeal.value.linkedJobId ?? NaN);
+  if (!Number.isFinite(linkedJobId)) return null;
+
+  return jobsStore.byId(linkedJobId) ?? null;
+});
+
+const linkedJobOptions = computed(() => {
+  const contactId = Number(localDeal.value.relatedTo ?? NaN);
+  if (!Number.isFinite(contactId)) return [];
+
+  const currentDealId = props.deal?.id ?? null;
+  const reservedJobIds = new Set(
+    dealsStore.all
+      .filter((deal) => {
+        if (currentDealId !== null && String(deal.id) === String(currentDealId))
+          return false;
+
+        return Number(deal.relatedTo) === contactId && deal.linkedJobId;
+      })
+      .map((deal) => Number(deal.linkedJobId))
+      .filter(Number.isFinite),
+  );
+
+  return jobsStore.all
+    .filter((job) => Number(job.relatedTo) === contactId)
+    .filter(
+      (job) =>
+        !reservedJobIds.has(Number(job.id)) ||
+        Number(localDeal.value.linkedJobId) === Number(job.id),
+    )
+    .map((job) => ({
+      title: job.code?.trim() ? `${job.code} - ${job.name}` : job.name,
+      value: job.id,
+      subtitle: job.location || null,
+    }));
+});
+
+const lastAutoProjectCode = ref<string | null>(null);
 
 const avatarText = (name?: string | null) => {
   const safe = (name || "").trim();
@@ -132,6 +246,8 @@ const buildEmptyDeal = (): Partial<DealProperties> => ({
   projectCode: null,
   projectName: null,
   relatedTo: null,
+  linkedJobId: null,
+  salesman: null,
   type: typeOptions.value[0] || null,
   estimatedDeliveryDate: null,
   stage: stageOptions.value[0] || null,
@@ -156,6 +272,8 @@ const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
       : [],
     projectCode: raw.projectCode || null,
     projectName: raw.projectName || null,
+    linkedJobId: raw.linkedJobId ?? null,
+    salesman: raw.salesman ?? raw.collaborators?.[0] ?? null,
     location: raw.location || defaultLocation.value || null,
     customFieldValues: buildDefaultCustomFieldValues(raw.customFieldValues),
   };
@@ -163,22 +281,6 @@ const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
 
 const localDeal = ref<Partial<DealProperties>>(buildEmptyDeal());
 const showDetails = ref(false);
-
-const primaryCustomField = computed<DealCustomFieldDefinition | null>(() => {
-  const occasionField = customFieldDefinitions.value.find((field) =>
-    `${field.key} ${field.label}`.match(/occation|occasion/i),
-  );
-
-  return occasionField || null;
-});
-
-const remainingCustomFields = computed(() => {
-  if (!primaryCustomField.value) return customFieldDefinitions.value;
-
-  return customFieldDefinitions.value.filter(
-    (field) => field.key !== primaryCustomField.value?.key,
-  );
-});
 
 watch(
   () =>
@@ -188,6 +290,11 @@ watch(
 
     localDeal.value = sanitiseDeal(props.deal ?? null);
     showDetails.value = Boolean(props.deal);
+    lastAutoProjectCode.value =
+      localDeal.value.projectCode ===
+      (selectedLinkedJob.value?.code?.trim() || buildGeneratedProjectCode())
+        ? (localDeal.value.projectCode ?? null)
+        : null;
 
     nextTick(() => {
       refForm.value?.resetValidation();
@@ -220,6 +327,42 @@ const setCustomFieldValue = (key: string, value: DealFieldValue) => {
 
 const getCustomFieldValue = (key: string) =>
   localDeal.value.customFieldValues?.[key] ?? null;
+
+const syncProjectCode = () => {
+  const autoCode =
+    selectedLinkedJob.value?.code?.trim() || buildGeneratedProjectCode();
+  const currentCode = String(localDeal.value.projectCode ?? "").trim() || null;
+  const previousAutoCode = lastAutoProjectCode.value;
+
+  if (!currentCode || currentCode === previousAutoCode) {
+    localDeal.value.projectCode = autoCode;
+  }
+
+  lastAutoProjectCode.value = autoCode;
+};
+
+watch(
+  () => [
+    localDeal.value.relatedTo,
+    localDeal.value.type,
+    localDeal.value.linkedJobId,
+  ],
+  ([nextRelatedTo]) => {
+    const hasLinkedJob = linkedJobOptions.value.some(
+      (job) => String(job.value) === String(localDeal.value.linkedJobId),
+    );
+
+    if (!hasLinkedJob) {
+      localDeal.value.linkedJobId = null;
+    }
+
+    if (!nextRelatedTo) {
+      localDeal.value.linkedJobId = null;
+    }
+
+    syncProjectCode();
+  },
+);
 
 const onCancel = () => {
   localDeal.value = sanitiseDeal(props.deal ?? null);
@@ -274,47 +417,70 @@ const toggleDetails = () => {
         <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
           <VRow class="deal-form-grid">
             <VCol cols="12" md="6">
-              <AppTextField
-                v-model="localDeal.name"
-                label="Name"
-                placeholder="Enter deal name"
+              <AppSelect
+                v-model="localDeal.relatedTo"
+                label="Contact Name"
+                placeholder="Select contact"
+                :items="contactOptions"
+                item-title="title"
+                item-value="value"
+                :rules="[requiredValidator]"
+                clearable
+                clear-icon="tabler-x"
+              >
+                <template #item="{ item, props: itemProps }">
+                  <VListItem v-bind="itemProps">
+                    <template #prepend>
+                      <VAvatar
+                        size="28"
+                        :color="item.raw.avatar ? undefined : 'primary'"
+                        :class="
+                          item.raw.avatar
+                            ? null
+                            : 'text-white font-weight-medium'
+                        "
+                      >
+                        <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
+                        <span v-else class="text-caption font-weight-bold">
+                          {{ avatarText(item.raw.title) }}
+                        </span>
+                      </VAvatar>
+                    </template>
+                  </VListItem>
+                </template>
+              </AppSelect>
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="localDeal.type"
+                :label="typeLabel"
+                placeholder="Select type"
+                :items="typeOptions"
                 :rules="[requiredValidator]"
               />
             </VCol>
 
             <VCol cols="12" md="6">
-              <AppDateTimePicker
-                v-model="localDeal.estimatedDeliveryDate"
-                label="Delivery Date"
-                placeholder="YYYY-MM-DD"
-                clearable
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
               <AppSelect
-                v-model="localDeal.collaborators"
-                label="Salesmen"
-                placeholder="Select salesmen"
-                :items="collaboratorOptions"
+                v-model="selectedSalesman"
+                label="Salesman"
+                placeholder="Select salesman"
+                :items="salesmanOptions"
                 item-title="title"
                 item-value="value"
-                multiple
-                chips
                 clearable
                 clear-icon="tabler-x"
+                :messages="
+                  salesmanOptions.length
+                    ? undefined
+                    : 'No sales contacts or employees are available.'
+                "
               >
-                <template #selection="{ item, index }">
-                  <VChip
-                    v-if="index < 4"
-                    class="me-1 mb-1"
-                    size="small"
-                    variant="elevated"
-                  >
+                <template #selection="{ item }">
+                  <div class="d-flex align-center gap-2 py-1">
                     <VAvatar
-                      size="20"
-                      start
-                      class="me-2"
+                      size="22"
                       :color="item.raw.avatar ? undefined : 'primary'"
                       :class="
                         item.raw.avatar ? null : 'text-white font-weight-medium'
@@ -326,32 +492,12 @@ const toggleDetails = () => {
                       </span>
                     </VAvatar>
                     <span class="text-truncate">{{ item.raw.title }}</span>
-                  </VChip>
-
-                  <span
-                    v-else-if="index === 4"
-                    class="text-caption text-medium-emphasis"
-                  >
-                    +{{ (localDeal.collaborators?.length || 0) - index }}
-                  </span>
+                  </div>
                 </template>
               </AppSelect>
             </VCol>
 
-            <VCol cols="12" md="3">
-              <AppTextField
-                :model-value="localDeal.amount ?? ''"
-                label="Amount"
-                placeholder="Enter amount"
-                type="number"
-                @update:model-value="
-                  localDeal.amount =
-                    $event === '' || $event === null ? null : Number($event)
-                "
-              />
-            </VCol>
-
-            <VCol cols="12" md="3">
+            <VCol cols="12" md="6">
               <AppSelect
                 v-model="localDeal.stage"
                 label="Stage"
@@ -361,165 +507,97 @@ const toggleDetails = () => {
               />
             </VCol>
 
-            <VCol cols="12" class="detail-toggle-col" v-if="!showDetails">
-              <VBtn block variant="tonal" @click="toggleDetails">
-                Show More Details
-              </VBtn>
+            <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localDeal.location"
+                label="Location"
+                placeholder="City, Country"
+              />
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <div
+                class="deal-important-spacer mb-1 text-body-2"
+                aria-hidden="true"
+              >
+                Important
+              </div>
+
+              <AppTextField
+                model-value=""
+                placeholder="Important"
+                persistent-placeholder
+                readonly
+                class="deal-important-input"
+                @click="localDeal.important = !localDeal.important"
+              >
+                <template #append-inner>
+                  <VBtn
+                    class="deal-important-trigger"
+                    :color="localDeal.important ? 'warning' : 'secondary'"
+                    variant="text"
+                    icon
+                    @click.stop="localDeal.important = !localDeal.important"
+                  >
+                    <VIcon
+                      :icon="
+                        localDeal.important
+                          ? 'tabler-star-filled'
+                          : 'tabler-star'
+                      "
+                      size="20"
+                    />
+                  </VBtn>
+                </template>
+              </AppTextField>
+            </VCol>
+
+            <VCol cols="12">
+              <AppTextarea
+                v-model="localDeal.note"
+                label="Note"
+                placeholder="Short note"
+                auto-grow
+                rows="1"
+              />
+            </VCol>
+
+            <VCol cols="12" class="detail-toggle-col">
+              <button
+                type="button"
+                class="detail-toggle-line"
+                :aria-label="
+                  showDetails ? 'Hide extra details' : 'Show more details'
+                "
+                @click="toggleDetails"
+              >
+                <span class="detail-toggle-line__track" />
+                <span class="detail-toggle-line__icon">
+                  <VIcon
+                    :icon="showDetails ? 'tabler-minus' : 'tabler-plus'"
+                    size="16"
+                  />
+                </span>
+              </button>
             </VCol>
 
             <template v-if="showDetails">
-              <VCol cols="12" class="sketch-separator">
-                <VDivider />
-              </VCol>
-
-              <VCol v-if="primaryCustomField" cols="12" md="6">
-                <AppTextField
-                  v-if="primaryCustomField?.type === 'text'"
-                  :model-value="
-                    String(getCustomFieldValue(primaryCustomField.key) ?? '')
-                  "
-                  :label="primaryCustomField.label"
-                  @update:model-value="
-                    setCustomFieldValue(
-                      primaryCustomField.key,
-                      String($event ?? ''),
-                    )
-                  "
-                />
-
-                <AppTextField
-                  v-else-if="primaryCustomField?.type === 'number'"
-                  :model-value="getCustomFieldValue(primaryCustomField.key)"
-                  :label="primaryCustomField.label"
-                  type="number"
-                  @update:model-value="
-                    setCustomFieldValue(
-                      primaryCustomField.key,
-                      $event === '' ? null : Number($event),
-                    )
-                  "
-                />
-
-                <AppDateTimePicker
-                  v-else-if="primaryCustomField?.type === 'date'"
-                  :model-value="
-                    String(getCustomFieldValue(primaryCustomField.key) ?? '')
-                  "
-                  :label="primaryCustomField.label"
-                  clearable
-                  @update:model-value="
-                    setCustomFieldValue(
-                      primaryCustomField.key,
-                      $event ? String($event) : null,
-                    )
-                  "
-                />
-
-                <AppSelect
-                  v-else-if="primaryCustomField?.type === 'select'"
-                  :model-value="getCustomFieldValue(primaryCustomField.key)"
-                  :label="primaryCustomField.label"
-                  :items="primaryCustomField.options || []"
-                  clearable
-                  clear-icon="tabler-x"
-                  @update:model-value="
-                    setCustomFieldValue(
-                      primaryCustomField.key,
-                      $event ? String($event) : null,
-                    )
-                  "
-                />
-
-                <div
-                  v-else-if="primaryCustomField?.type === 'boolean'"
-                  class="d-flex align-center justify-space-between rounded border pa-3"
-                >
-                  <div class="text-body-1 font-weight-medium">
-                    {{ primaryCustomField.label }}
-                  </div>
-
-                  <VSwitch
-                    :model-value="
-                      Boolean(getCustomFieldValue(primaryCustomField.key))
-                    "
-                    inset
-                    hide-details
-                    density="compact"
-                    class="ma-0"
-                    @update:model-value="
-                      setCustomFieldValue(
-                        primaryCustomField.key,
-                        Boolean($event),
-                      )
-                    "
-                  />
-                </div>
-
-                <AppTextarea
-                  v-else-if="primaryCustomField"
-                  :model-value="
-                    String(getCustomFieldValue(primaryCustomField.key) ?? '')
-                  "
-                  :label="primaryCustomField.label"
-                  auto-grow
-                  rows="2"
-                  @update:model-value="
-                    setCustomFieldValue(
-                      primaryCustomField.key,
-                      String($event ?? ''),
-                    )
-                  "
-                />
-              </VCol>
-
               <VCol cols="12" md="6">
                 <AppSelect
-                  v-model="localDeal.relatedTo"
-                  label="Linked to"
-                  placeholder="Select Contact"
-                  :items="contactOptions"
+                  v-model="localDeal.linkedJobId"
+                  label="Linked To"
+                  placeholder="Select job"
+                  :items="linkedJobOptions"
                   item-title="title"
                   item-value="value"
-                  :rules="[requiredValidator]"
                   clearable
                   clear-icon="tabler-x"
-                >
-                  <template #item="{ item, props: itemProps }">
-                    <VListItem v-bind="itemProps">
-                      <template #prepend>
-                        <VAvatar
-                          size="28"
-                          :color="item.raw.avatar ? undefined : 'primary'"
-                          :class="
-                            item.raw.avatar
-                              ? null
-                              : 'text-white font-weight-medium'
-                          "
-                        >
-                          <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
-                          <span v-else class="text-caption font-weight-bold">
-                            {{ avatarText(item.raw.title) }}
-                          </span>
-                        </VAvatar>
-                      </template>
-                    </VListItem>
-                  </template>
-                </AppSelect>
-              </VCol>
-
-              <VCol cols="12" md="6">
-                <AppTextField
-                  v-model="localDeal.projectName"
-                  label="Project Name"
-                  placeholder="Enter project name"
-                />
-              </VCol>
-
-              <VCol cols="12" md="6">
-                <AppTextField
-                  v-model="localDeal.location"
-                  label="Location"
-                  placeholder="City, Country"
+                  :disabled="!localDeal.relatedTo"
+                  :messages="
+                    localDeal.relatedTo && !linkedJobOptions.length
+                      ? 'No available jobs for this contact.'
+                      : undefined
+                  "
                 />
               </VCol>
 
@@ -527,71 +605,64 @@ const toggleDetails = () => {
                 <AppTextField
                   v-model="localDeal.projectCode"
                   label="Project Code"
-                  placeholder="Enter project code"
+                  placeholder="Generated from linked job or contact and type"
                 />
               </VCol>
 
-              <VCol cols="12" class="sketch-separator">
-                <VDivider />
-              </VCol>
-
-              <VCol cols="12" md="6">
+              <VCol cols="12">
                 <AppSelect
-                  v-model="localDeal.type"
-                  label="Type"
-                  placeholder="Select Type"
-                  :items="typeOptions"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="6">
-                <div
-                  class="deal-important-spacer mb-1 text-body-2"
-                  aria-hidden="true"
+                  v-model="localDeal.collaborators"
+                  label="Collaborators"
+                  placeholder="Select collaborators"
+                  :items="allCollaboratorOptions"
+                  item-title="title"
+                  item-value="value"
+                  multiple
+                  chips
+                  clearable
+                  clear-icon="tabler-x"
                 >
-                  Important
-                </div>
-
-                <AppTextField
-                  model-value=""
-                  placeholder="Important"
-                  persistent-placeholder
-                  readonly
-                  class="deal-important-input"
-                  @click="localDeal.important = !localDeal.important"
-                >
-                  <template #append-inner>
-                    <VBtn
-                      class="deal-important-trigger"
-                      :color="localDeal.important ? 'warning' : 'secondary'"
-                      variant="text"
-                      icon
-                      @click.stop="localDeal.important = !localDeal.important"
+                  <template #selection="{ item, index }">
+                    <VChip
+                      v-if="index < 3"
+                      class="me-1 mb-1"
+                      size="small"
+                      variant="elevated"
                     >
-                      <VIcon
-                        :icon="
-                          localDeal.important
-                            ? 'tabler-star-filled'
-                            : 'tabler-star'
-                        "
+                      <VAvatar
                         size="20"
-                      />
-                    </VBtn>
+                        start
+                        class="me-2"
+                        :color="item.raw.avatar ? undefined : 'primary'"
+                        :class="
+                          item.raw.avatar
+                            ? null
+                            : 'text-white font-weight-medium'
+                        "
+                      >
+                        <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
+                        <span v-else class="text-xxs font-weight-bold">
+                          {{ avatarText(item.raw.title) }}
+                        </span>
+                      </VAvatar>
+                      <span class="text-truncate">{{ item.raw.title }}</span>
+                    </VChip>
+
+                    <span
+                      v-else-if="index === 3"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      +{{ (localDeal.collaborators?.length || 0) - index }}
+                    </span>
                   </template>
-                </AppTextField>
+                </AppSelect>
               </VCol>
 
-              <VCol
-                cols="12"
-                class="sketch-separator"
-                v-if="remainingCustomFields.length"
+              <template
+                v-for="field in customFieldDefinitions"
+                :key="field.key"
               >
-                <VDivider />
-              </VCol>
-
-              <template v-for="field in remainingCustomFields" :key="field.key">
-                <VCol cols="12" md="6" class="additional-field-col">
+                <VCol cols="12" md="6">
                   <AppTextField
                     v-if="field.type === 'text'"
                     :model-value="String(getCustomFieldValue(field.key) ?? '')"
@@ -644,7 +715,7 @@ const toggleDetails = () => {
 
                   <div
                     v-else-if="field.type === 'boolean'"
-                    class="d-flex align-center justify-space-between rounded border pa-3"
+                    class="d-flex align-center justify-space-between rounded border pa-3 deal-custom-boolean"
                   >
                     <div class="text-body-1 font-weight-medium">
                       {{ field.label }}
@@ -674,27 +745,7 @@ const toggleDetails = () => {
                   />
                 </VCol>
               </template>
-
-              <VCol cols="12" class="sketch-separator">
-                <VDivider />
-              </VCol>
-
-              <VCol cols="12">
-                <AppTextarea
-                  v-model="localDeal.note"
-                  label="Notes"
-                  placeholder="Short note"
-                  auto-grow
-                  rows="1"
-                />
-              </VCol>
             </template>
-
-            <VCol cols="12" class="detail-toggle-col" v-if="showDetails">
-              <VBtn block variant="text" @click="toggleDetails">
-                Hide Extra Details
-              </VBtn>
-            </VCol>
 
             <VCol cols="12" class="mt-4">
               <DialogActionBar
@@ -734,10 +785,6 @@ const toggleDetails = () => {
   cursor: pointer;
 }
 
-.sketch-separator {
-  padding-block: 0;
-}
-
 .deal-form-grid {
   row-gap: 0.25rem;
 }
@@ -746,15 +793,51 @@ const toggleDetails = () => {
   padding-block: 0.5rem;
 }
 
-.deal-form-grid :deep(.v-divider) {
-  opacity: 0.52;
-}
-
 .detail-toggle-col {
   padding-block-start: 0.25rem;
 }
 
-.additional-field-col {
-  align-self: stretch;
+.deal-custom-boolean {
+  min-block-size: 56px;
+}
+
+.detail-toggle-line {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+  gap: 0.75rem;
+  inline-size: 100%;
+}
+
+.detail-toggle-line__track {
+  flex: 1 1 auto;
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 58%, transparent);
+  block-size: 1px;
+}
+
+.detail-toggle-line__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid
+    color-mix(in srgb, rgb(var(--v-theme-primary)) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 12%, transparent);
+  block-size: 28px;
+  inline-size: 28px;
+}
+
+.detail-toggle-line:hover .detail-toggle-line__track,
+.detail-toggle-line:hover .detail-toggle-line__icon {
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 18%, transparent);
+}
+
+.detail-toggle-line:hover .detail-toggle-line__track {
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 82%, transparent);
 }
 </style>

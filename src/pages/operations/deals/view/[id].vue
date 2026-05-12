@@ -519,7 +519,9 @@ const buildExecutionPreview = (
     type: isJobType(currentDeal.type) ? currentDeal.type : "Other",
     flag: currentDeal.important ? "High" : "Normal",
     relatedTo: currentDeal.relatedTo ?? null,
-    collaborators: [...(currentDeal.collaborators || [])],
+    collaborators: (currentDeal.collaborators || [])
+      .map((value) => (typeof value === "string" ? null : Number(value)))
+      .filter((value): value is number => Number.isFinite(value)),
     note: currentDeal.note?.trim() || null,
   };
 
@@ -869,24 +871,74 @@ const linkedToName = computed(() => {
   return contactsStore.byId(Number(relatedId))?.fullName || "--";
 });
 
+const resolveDealCollaborator = (value: number | string) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("contact:")) {
+    const contactId = Number(raw.slice("contact:".length));
+    const contact = contactsStore.byId(contactId);
+
+    return {
+      id: raw,
+      name: contact?.fullName || `Contact ${contactId}`,
+      avatarUrl: contact?.picture || null,
+      type: "contact" as const,
+      contactId,
+    };
+  }
+
+  const employeeId = Number(value);
+  const employee = employeesStore.byId(employeeId);
+
+  return {
+    id: employeeId,
+    name: employee?.fullName || `Employee ${employeeId}`,
+    avatarUrl: employee?.picture || null,
+    type: "employee" as const,
+    employeeId,
+  };
+};
+
 const collaboratorNames = computed(() =>
   (deal.value?.collaborators || []).map((id) => {
-    const employee = employeesStore.byId(Number(id));
+    const collaborator = resolveDealCollaborator(id);
 
-    return employee?.fullName || `Employee ${id}`;
+    return collaborator?.name || String(id);
   }),
 );
 
-const dealEmployeeCollaborators = computed(() =>
-  (deal.value?.collaborators || []).map((id) => {
-    const employee = employeesStore.byId(Number(id));
+const dealEmployeeCollaborators = computed(
+  () =>
+    (deal.value?.collaborators || [])
+      .map((id) => {
+        const collaborator = resolveDealCollaborator(id);
 
-    return {
-      id: Number(id),
-      name: employee?.fullName || `Employee ${id}`,
-      avatarUrl: employee?.picture || null,
-    };
-  }),
+        return collaborator
+          ? {
+              id: collaborator.id,
+              name: collaborator.name,
+              avatarUrl: collaborator.avatarUrl,
+              type: collaborator.type,
+              employeeId:
+                collaborator.type === "employee"
+                  ? collaborator.employeeId
+                  : undefined,
+              contactId:
+                collaborator.type === "contact"
+                  ? collaborator.contactId
+                  : undefined,
+            }
+          : null;
+      })
+      .filter(Boolean) as Array<{
+      id: number | string;
+      name: string;
+      avatarUrl: string | null;
+      type: "contact" | "employee";
+      employeeId?: number;
+      contactId?: number;
+    }>,
 );
 
 const employeeOptions = computed(() =>
@@ -915,11 +967,12 @@ const dealLinkedEntities = computed(() => {
   dealEmployeeCollaborators.value.forEach((collaborator) => {
     entries.push({
       id: collaborator.id,
-      employeeId: collaborator.id,
       name: collaborator.name,
       avatarUrl: collaborator.avatarUrl,
-      type: "employee" as const,
-      roles: ["employee"] as ["employee"],
+      type: collaborator.type,
+      contactId: collaborator.contactId,
+      employeeId: collaborator.employeeId,
+      roles: [collaborator.type] as ["contact" | "employee"],
     });
   });
 

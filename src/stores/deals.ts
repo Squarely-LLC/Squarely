@@ -150,6 +150,59 @@ function normalizeAmount(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeCollaborators(
+  collaborators: DealProperties["collaborators"] | undefined | null,
+): DealProperties["collaborators"] {
+  if (!Array.isArray(collaborators)) return [];
+
+  return collaborators
+    .map((value) => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (trimmed.startsWith("contact:")) return trimmed;
+
+        const numeric = Number(trimmed);
+
+        return Number.isFinite(numeric) ? numeric : trimmed;
+      }
+
+      const numeric = Number(value);
+
+      return Number.isFinite(numeric) ? numeric : null;
+    })
+    .filter(
+      (value): value is number | string =>
+        value !== null && value !== undefined && value !== "",
+    );
+}
+
+function normalizeSalesman(
+  salesman: DealProperties["salesman"] | undefined | null,
+  collaborators?: DealProperties["collaborators"] | undefined | null,
+) {
+  const normalizedCollaborators = normalizeCollaborators(collaborators);
+
+  if (salesman === null || salesman === undefined || salesman === "")
+    return normalizedCollaborators[0] ?? null;
+
+  if (typeof salesman === "string") {
+    const trimmed = salesman.trim();
+    if (!trimmed) return normalizedCollaborators[0] ?? null;
+    if (trimmed.startsWith("contact:")) return trimmed;
+
+    const numeric = Number(trimmed);
+
+    return Number.isFinite(numeric) ? numeric : trimmed;
+  }
+
+  const numeric = Number(salesman);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : (normalizedCollaborators[0] ?? null);
+}
+
 function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
   if (!Array.isArray(items)) return [];
 
@@ -271,6 +324,11 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
       normalizeAmount(quotationAmount),
     projectCode: deal.projectCode?.trim() || seedMatch?.projectCode || null,
     projectName: deal.projectName?.trim() || seedMatch?.projectName || null,
+    linkedJobId:
+      deal.linkedJobId === null || deal.linkedJobId === undefined
+        ? null
+        : Number(deal.linkedJobId),
+    salesman: normalizeSalesman(deal.salesman, deal.collaborators),
   };
 }
 
@@ -317,16 +375,17 @@ function normaliseDeal(
     projectCode: payload.projectCode?.trim() || null,
     projectName: payload.projectName?.trim() || null,
     relatedTo: payload.relatedTo ?? null,
+    linkedJobId:
+      payload.linkedJobId === null || payload.linkedJobId === undefined
+        ? null
+        : Number(payload.linkedJobId),
+    salesman: normalizeSalesman(payload.salesman, payload.collaborators),
     type: payload.type?.trim() || null,
     estimatedDeliveryDate: payload.estimatedDeliveryDate || null,
     stage: payload.stage?.trim() || null,
     important: Boolean(payload.important),
     location: payload.location?.trim() || null,
-    collaborators: Array.isArray(payload.collaborators)
-      ? payload.collaborators
-          .map((value) => Number(value))
-          .filter(Number.isFinite)
-      : [],
+    collaborators: normalizeCollaborators(payload.collaborators),
     note: payload.note?.trim() || null,
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
     items: normalizeItems(payload.items),
@@ -364,6 +423,16 @@ function mergeDeal(
       patch.projectName === undefined
         ? original.projectName
         : patch.projectName?.trim() || null,
+    linkedJobId:
+      patch.linkedJobId === undefined
+        ? (original.linkedJobId ?? null)
+        : patch.linkedJobId === null
+          ? null
+          : Number(patch.linkedJobId),
+    salesman:
+      patch.salesman === undefined
+        ? normalizeSalesman(original.salesman, original.collaborators)
+        : normalizeSalesman(patch.salesman, patch.collaborators),
     type: patch.type === undefined ? original.type : patch.type?.trim() || null,
     stage:
       patch.stage === undefined ? original.stage : patch.stage?.trim() || null,
@@ -372,11 +441,10 @@ function mergeDeal(
         ? original.location
         : patch.location?.trim() || null,
     note: patch.note === undefined ? original.note : patch.note?.trim() || null,
-    collaborators: Array.isArray(patch.collaborators)
-      ? patch.collaborators
-          .map((value) => Number(value))
-          .filter(Number.isFinite)
-      : original.collaborators,
+    collaborators:
+      patch.collaborators === undefined
+        ? normalizeCollaborators(original.collaborators)
+        : normalizeCollaborators(patch.collaborators),
     customFieldValues:
       patch.customFieldValues === undefined
         ? { ...(original.customFieldValues || {}) }

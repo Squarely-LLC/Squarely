@@ -84,12 +84,14 @@ export interface DealProperties {
   projectCode?: string | null;
   projectName?: string | null;
   relatedTo?: number | null;
+  linkedJobId?: number | null;
+  salesman?: number | string | null;
   type?: string | null;
   estimatedDeliveryDate?: string | null;
   stage?: string | null;
   important: boolean;
   location?: string | null;
-  collaborators: number[];
+  collaborators: Array<number | string>;
   note?: string | null;
   customFieldValues: Record<string, DealFieldValue>;
   items: DealItem[];

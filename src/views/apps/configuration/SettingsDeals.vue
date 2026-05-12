@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import EditableChipList from "@/components/EditableChipList.vue";
 import type {
-    DealCustomFieldDefinition,
-    DealCustomFieldType,
+  DealCustomFieldDefinition,
+  DealCustomFieldType,
 } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useDealsStore } from "@/stores/deals";
@@ -17,11 +17,13 @@ const salesType = ref<string[]>([]);
 const dealStages = ref<string[]>([]);
 const customFields = ref<DealCustomFieldDefinition[]>([]);
 const dealPrefix = ref("DL-");
+const typeLabel = ref("Type");
 
 const isSavingSalesType = ref(false);
 const isSavingDealStages = ref(false);
 const isSavingCustomFields = ref(false);
 const isSavingDealPrefix = ref(false);
+const isSavingTypeLabel = ref(false);
 
 const notifyWarn = (message: string) =>
   notifications.push(message, "warning", 2000);
@@ -75,16 +77,19 @@ const sanitizeCustomField = (
 const loadData = () => {
   const deals = store.configurations.deals || {};
   dealPrefix.value = String(deals.dealPrefix ?? "DL-").trim() || "DL-";
+  typeLabel.value = String(deals.fieldLabels?.type ?? "Type").trim() || "Type";
   salesType.value = cleanEntries(deals.salesType || []);
   dealStages.value = cleanEntries(deals.dealStages || []);
 
   const configuredCustomFields = Array.isArray(deals.customFields)
     ? deals.customFields
-    : Object.entries(deals.fieldLabels || {}).map(([key, label]) => ({
-        key,
-        label,
-        type: "text" as DealCustomFieldType,
-      }));
+    : Object.entries(deals.fieldLabels || {})
+        .filter(([key]) => key !== "type")
+        .map(([key, label]) => ({
+          key,
+          label,
+          type: "text" as DealCustomFieldType,
+        }));
 
   customFields.value = configuredCustomFields.map((field) =>
     sanitizeCustomField(field),
@@ -113,6 +118,30 @@ const saveDealPrefix = async () => {
     notifications.push("Deal prefix saved", "success", 2000);
   } else {
     notifications.push("Failed to save deal prefix", "error", 3000);
+    loadData();
+  }
+};
+
+const saveTypeLabel = async () => {
+  const cleaned = formatEntry(typeLabel.value || "") || "Type";
+
+  isSavingTypeLabel.value = true;
+  const res = await store.saveRemote({
+    deals: {
+      ...(store.configurations.deals || {}),
+      fieldLabels: {
+        ...(store.configurations.deals?.fieldLabels || {}),
+        type: cleaned,
+      },
+    },
+  } as any);
+  isSavingTypeLabel.value = false;
+
+  if (res) {
+    typeLabel.value = cleaned;
+    notifications.push("Type label saved", "success", 2000);
+  } else {
+    notifications.push("Failed to save type label", "error", 3000);
     loadData();
   }
 };
@@ -165,7 +194,11 @@ const saveDealStages = makeListSaver({
 });
 
 const buildFieldLabels = (fields: DealCustomFieldDefinition[]) => {
-  return Object.fromEntries(fields.map((field) => [field.key, field.label]));
+  return {
+    ...(store.configurations.deals?.fieldLabels || {}),
+    ...Object.fromEntries(fields.map((field) => [field.key, field.label])),
+    type: formatEntry(typeLabel.value || "") || "Type",
+  };
 };
 
 const saveCustomFields = async () => {
@@ -266,6 +299,29 @@ const removeCustomField = (index: number) => {
             @click="saveDealPrefix"
           >
             Save deal prefix
+          </VBtn>
+        </VCol>
+      </VRow>
+
+      <VRow class="mb-2">
+        <VCol cols="12" md="8">
+          <AppTextField
+            v-model="typeLabel"
+            label="Type field label"
+            placeholder="Type"
+            @keyup.enter="saveTypeLabel"
+          />
+        </VCol>
+
+        <VCol cols="12" md="4" class="d-flex align-end">
+          <VBtn
+            block
+            color="primary"
+            :loading="isSavingTypeLabel"
+            :disabled="isSavingTypeLabel"
+            @click="saveTypeLabel"
+          >
+            Save type label
           </VBtn>
         </VCol>
       </VRow>

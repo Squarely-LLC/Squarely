@@ -72,21 +72,6 @@ const sortBy = ref<SortKey | undefined>(selectedSort.value.key);
 const orderBy = ref<SortOrder | undefined>(selectedSort.value.order);
 const selectedRows = ref<number[]>([]);
 
-const headers = [
-  { title: "Deal", key: "deal", width: "18%" },
-  { title: "Linked to", key: "contact", width: "20%" },
-  { title: "Value", key: "value", width: "11%" },
-  { title: "Stage", key: "stage", width: "13%" },
-  { title: "Type", key: "type", width: "10%" },
-  {
-    title: "Collaborators",
-    key: "collaborators",
-    sortable: false,
-    width: "14%",
-  },
-  { title: "Actions", key: "actions", sortable: false, width: "8%" },
-];
-
 const stageOptions = computed(() =>
   (configStore.configurations?.deals?.dealStages || []).map((stage) => ({
     title: stage,
@@ -100,6 +85,28 @@ const typeOptions = computed(() =>
     value: type,
   })),
 );
+
+const typeLabel = computed(
+  () =>
+    String(
+      configStore.configurations?.deals?.fieldLabels?.type ?? "Type",
+    ).trim() || "Type",
+);
+
+const headers = computed(() => [
+  { title: "Deal", key: "deal", width: "18%" },
+  { title: "Linked to", key: "contact", width: "20%" },
+  { title: "Value", key: "value", width: "11%" },
+  { title: "Stage", key: "stage", width: "13%" },
+  { title: typeLabel.value, key: "type", width: "10%" },
+  {
+    title: "Collaborators",
+    key: "collaborators",
+    sortable: false,
+    width: "14%",
+  },
+  { title: "Actions", key: "actions", sortable: false, width: "8%" },
+]);
 
 const importanceOptions = [
   { title: "Important", value: "important" },
@@ -208,6 +215,26 @@ const getContactEntry = (id: number | string | null | undefined) => {
   if (!Number.isFinite(numericId)) return null;
 
   return contactDirectory.value.get(numericId) ?? null;
+};
+
+const getDealCollaboratorEntry = (value: number | string) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("contact:")) {
+    const contact = getContactEntry(raw.slice("contact:".length));
+
+    return contact
+      ? {
+          name: contact.name,
+          picture: contact.picture,
+        }
+      : null;
+  }
+
+  const employee = employeeDirectory.value.get(Number(value));
+
+  return employee ?? null;
 };
 
 const relatedContactName = (deal: DealProperties) =>
@@ -341,7 +368,7 @@ const totalDeals = computed(() => sortedDeals.value.length);
 
 const decoratedCollaborators = (deal: DealProperties) =>
   (deal.collaborators || [])
-    .map((id) => employeeDirectory.value.get(Number(id)) ?? null)
+    .map((id) => getDealCollaboratorEntry(id))
     .filter(Boolean) as Array<{ name: string; picture: string | null }>;
 
 const formatDate = (value?: string | null) => {
@@ -539,6 +566,8 @@ const duplicateDeal = (deal: DealProperties) => {
     projectCode: deal.projectCode ?? null,
     projectName: deal.projectName ?? null,
     relatedTo: deal.relatedTo ?? null,
+    linkedJobId: null,
+    salesman: deal.salesman ?? null,
     type: deal.type ?? null,
     estimatedDeliveryDate: deal.estimatedDeliveryDate ?? null,
     stage: deal.stage ?? null,
