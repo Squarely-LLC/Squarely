@@ -14,11 +14,11 @@ importers:
   .:
     dependencies:
       '@casl/ability':
-        specifier: 6.7.3
-        version: 6.7.3
+        specifier: 6.7.5
+        version: 6.7.5
       '@casl/vue':
         specifier: 2.2.2
-        version: 2.2.2(@casl/ability@6.7.3)(vue@3.5.14(typescript@5.8.3))
+        version: 2.2.2(@casl/ability@6.7.5)(vue@3.5.14(typescript@5.8.3))
       '@floating-ui/dom':
         specifier: 1.6.8
         version: 1.6.8
@@ -541,8 +541,8 @@ packages:
   '@bundled-es-modules/tough-cookie@0.1.6':
     resolution: {integrity: sha512-dvMHbL464C0zI+Yqxbz6kZ5TOEp7GLW+pry/RWndAR8MJQAXZ2rPmIs8tziTZjeIyhSNZgZbCePtfSbdWqStJw==}
 
-  '@casl/ability@6.7.3':
-    resolution: {integrity: sha512-A4L28Ko+phJAsTDhRjzCOZWECQWN2jzZnJPnROWWHjJpyMq1h7h9ZqjwS2WbIUa3Z474X1ZPSgW0f1PboZGC0A==}
+  '@casl/ability@6.7.5':
+    resolution: {integrity: sha512-NaOHPi9JMn8Kesh+GRkjNKAYkl4q8qMFAlqw7w2yrE+cBQZSbV9GkBGKvgzs3CdzEc5Yl1cn3JwDxxbBN5gjog==}
 
   '@casl/vue@2.2.2':
     resolution: {integrity: sha512-xWy4i5+3+WuBgENVesPalRTKpSJZ2cEMXtbqjWjqj7FDvoeso7jT1pBVk9ujKlIRhgfVWGdCRb7XzeISi2VLcA==}
@@ -5457,13 +5457,13 @@ snapshots:
       '@types/tough-cookie': 4.0.5
       tough-cookie: 4.1.4
 
-  '@casl/ability@6.7.3':
+  '@casl/ability@6.7.5':
     dependencies:
       '@ucast/mongo2js': 1.4.0
 
-  '@casl/vue@2.2.2(@casl/ability@6.7.3)(vue@3.5.14(typescript@5.8.3))':
+  '@casl/vue@2.2.2(@casl/ability@6.7.5)(vue@3.5.14(typescript@5.8.3))':
     dependencies:
-      '@casl/ability': 6.7.3
+      '@casl/ability': 6.7.5
       vue: 3.5.14(typescript@5.8.3)
 
   '@csstools/css-parser-algorithms@2.7.1(@csstools/css-tokenizer@2.4.1)':
