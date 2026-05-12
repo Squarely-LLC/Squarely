@@ -2961,7 +2961,7 @@ const openEditTask = (taskId: number | string) => {
             <div class="items-overview__heading">
               <div class="text-h6 mb-1">Invoicing Summary</div>
               <p class="text-body-2 text-medium-emphasis mb-0">
-                Totals, billed amount, remaining balance, and documents.
+                Totals, balance, and latest document activity.
               </p>
             </div>
 
@@ -3002,176 +3002,122 @@ const openEditTask = (taskId: number | string) => {
             </div>
           </div>
 
-          <div
-            class="items-overview__table"
-            role="table"
-            aria-label="Invoicing summary"
-          >
-            <div class="items-overview__table-head" role="row">
-              <span class="items-overview__head-label" role="columnheader"
-                >Metric</span
-              >
-              <span class="items-overview__head-value" role="columnheader"
-                >Value</span
-              >
-            </div>
-
-            <div class="items-overview__row" role="row">
-              <span class="items-overview__cell-label" role="cell"
-                >Subtotal</span
-              >
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(itemsSubtotal)
-              }}</strong>
-            </div>
-            <div class="items-overview__row" role="row">
-              <span class="items-overview__cell-label" role="cell"
-                >Discount</span
-              >
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(totalDiscount)
-              }}</strong>
-            </div>
-            <div class="items-overview__row" role="row">
-              <span class="items-overview__cell-label" role="cell">Tax</span>
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(totalTax)
-              }}</strong>
-            </div>
-            <div class="items-overview__row" role="row">
-              <span class="items-overview__cell-label" role="cell">Quoted</span>
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(totalQuoted)
-              }}</strong>
-            </div>
-            <div class="items-overview__row" role="row">
-              <span class="items-overview__cell-label" role="cell"
-                >Invoiced</span
-              >
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(totalInvoiced)
-              }}</strong>
-            </div>
-            <div class="items-overview__row" role="row">
-              <span class="items-overview__cell-label" role="cell">Paid</span>
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(totalPaid)
-              }}</strong>
-            </div>
+          <div class="items-overview__body">
             <div
-              class="items-overview__row items-overview__row--accent"
-              role="row"
+              class="items-overview__table"
+              role="group"
+              aria-label="Invoicing summary"
             >
-              <span class="items-overview__cell-label" role="cell"
-                >Remaining</span
-              >
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(remainingToInvoice)
-              }}</strong>
-            </div>
-            <div
-              class="items-overview__row items-overview__row--total"
-              role="row"
-            >
-              <span class="items-overview__cell-label" role="cell">Total</span>
-              <strong class="items-overview__cell-value" role="cell">{{
-                formatMoney(grandTotal)
-              }}</strong>
-            </div>
-          </div>
-
-          <div class="items-overview__previews">
-            <section
-              v-for="panel in dealDocumentPanels"
-              :key="panel.key"
-              class="items-overview__preview-panel"
-              :class="[
-                `items-overview__preview-panel--${panel.key}`,
-                {
-                  'items-overview__preview-panel--expanded':
-                    isDocumentPanelExpanded(panel.key),
-                },
-              ]"
-            >
-              <button
-                type="button"
-                class="items-overview__preview-summary"
-                @click="setActiveDocumentPanel(panel.key)"
-              >
-                <div>
-                  <div class="items-overview__preview-kicker">
-                    {{ panel.title }}
-                  </div>
-                  <strong class="items-overview__preview-title">
-                    {{
-                      panel.latest?.quoteNumber ||
-                      `No ${panel.title.toLowerCase()}`
-                    }}
-                  </strong>
-                </div>
-
-                <div class="items-overview__preview-summary-side">
-                  <div class="items-overview__preview-count">
-                    {{ panel.count }}
-                  </div>
-                  <VIcon
-                    :icon="
-                      isDocumentPanelExpanded(panel.key)
-                        ? 'tabler-chevron-up'
-                        : 'tabler-chevron-down'
-                    "
-                    size="16"
-                  />
-                </div>
-              </button>
-
-              <div
-                v-if="isDocumentPanelExpanded(panel.key)"
-                class="items-overview__preview-body"
-              >
-                <template v-if="panel.latest">
-                  <button
-                    type="button"
-                    class="items-overview__preview-primary"
-                    @click="openQuickDocumentPreview(panel.key, panel.latest)"
-                  >
-                    <div class="items-overview__preview-meta">
-                      <span>{{ panel.latest.status }}</span>
-                      <span>{{
-                        formatDocumentDate(panel.latest.issuedDate)
-                      }}</span>
-                    </div>
-
-                    <div class="items-overview__preview-total">
-                      {{ formatMoney(panel.latest.total) }}
-                    </div>
-                  </button>
-
-                  <div class="items-overview__preview-list">
-                    <button
-                      v-for="record in panel.records.slice(0, 4)"
-                      :key="`${panel.key}-${record.id}`"
-                      type="button"
-                      class="items-overview__preview-chip"
-                      @click="openQuickDocumentPreview(panel.key, record)"
-                    >
-                      {{ record.quoteNumber }}
-                    </button>
-
-                    <span
-                      v-if="panel.records.length > 4"
-                      class="items-overview__preview-more"
-                    >
-                      +{{ panel.records.length - 4 }} more
-                    </span>
-                  </div>
-                </template>
-
-                <p v-else class="items-overview__preview-empty mb-0 px-4">
-                  {{ panel.emptyText }}
-                </p>
+              <div class="items-overview__row" role="presentation">
+                <span class="items-overview__cell-label">Total</span>
+                <strong class="items-overview__cell-value">{{
+                  formatMoney(grandTotal)
+                }}</strong>
               </div>
-            </section>
+              <div class="items-overview__row" role="presentation">
+                <span class="items-overview__cell-label">Invoiced</span>
+                <strong class="items-overview__cell-value">{{
+                  formatMoney(totalInvoiced)
+                }}</strong>
+              </div>
+              <div
+                class="items-overview__row items-overview__row--accent"
+                role="presentation"
+              >
+                <span class="items-overview__cell-label">Remaining</span>
+                <strong class="items-overview__cell-value">{{
+                  formatMoney(remainingToInvoice)
+                }}</strong>
+              </div>
+            </div>
+
+            <div class="items-overview__previews">
+              <section
+                v-for="panel in dealDocumentPanels"
+                :key="panel.key"
+                class="items-overview__preview-panel"
+                :class="[
+                  `items-overview__preview-panel--${panel.key}`,
+                  {
+                    'items-overview__preview-panel--expanded':
+                      isDocumentPanelExpanded(panel.key),
+                  },
+                ]"
+              >
+                <button
+                  type="button"
+                  class="items-overview__preview-summary"
+                  @click="setActiveDocumentPanel(panel.key)"
+                >
+                  <div>
+                    <div class="items-overview__preview-kicker">
+                      {{ panel.title }}
+                    </div>
+                    <strong class="items-overview__preview-title">
+                      {{
+                        panel.latest?.quoteNumber ||
+                        `No ${panel.title.toLowerCase()}`
+                      }}
+                    </strong>
+                  </div>
+
+                  <div class="items-overview__preview-summary-side">
+                    <div class="items-overview__preview-count">
+                      {{ panel.count }}
+                    </div>
+                    <VIcon
+                      :icon="
+                        isDocumentPanelExpanded(panel.key)
+                          ? 'tabler-chevron-up'
+                          : 'tabler-chevron-down'
+                      "
+                      size="16"
+                    />
+                  </div>
+                </button>
+
+                <div
+                  v-if="isDocumentPanelExpanded(panel.key)"
+                  class="items-overview__preview-body"
+                >
+                  <template v-if="panel.latest">
+                    <div class="items-overview__preview-table" role="table">
+                      <div
+                        class="items-overview__preview-table-head"
+                        role="row"
+                      >
+                        <span role="columnheader">Number</span>
+                        <span role="columnheader">Status</span>
+                        <span role="columnheader">Date</span>
+                        <span role="columnheader">Total</span>
+                      </div>
+
+                      <button
+                        v-for="record in panel.records"
+                        :key="`${panel.key}-${record.id}`"
+                        type="button"
+                        class="items-overview__preview-table-row"
+                        role="row"
+                        @click="openQuickDocumentPreview(panel.key, record)"
+                      >
+                        <span role="cell">{{ record.quoteNumber }}</span>
+                        <span role="cell">{{ record.status }}</span>
+                        <span role="cell">{{
+                          formatDocumentDate(record.issuedDate)
+                        }}</span>
+                        <strong role="cell">{{
+                          formatMoney(record.total)
+                        }}</strong>
+                      </button>
+                    </div>
+                  </template>
+
+                  <p v-else class="items-overview__preview-empty mb-0 px-4">
+                    {{ panel.emptyText }}
+                  </p>
+                </div>
+              </section>
+            </div>
           </div>
         </div>
       </VCardText>
@@ -4395,8 +4341,8 @@ const openEditTask = (taskId: number | string) => {
   display: flex;
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  justify-content: flex-end;
   gap: 0.5rem;
+  max-inline-size: 28rem;
 }
 
 .items-overview__document-pill {
@@ -4434,81 +4380,83 @@ const openEditTask = (taskId: number | string) => {
   color: rgba(var(--v-theme-primary), 0.96);
 }
 
+.items-overview__body {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 0.9rem;
+}
+
 .items-overview__table {
   display: grid;
   overflow: hidden;
+  align-self: stretch;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 14px;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface), 0.16);
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.items-overview__table-head,
 .items-overview__row {
+  position: relative;
   display: grid;
-  align-items: center;
-  column-gap: 1rem;
-  grid-template-columns: minmax(0, 1fr) auto;
+  background: transparent;
+  min-inline-size: 0;
+  padding-block: 0.45rem;
+  padding-inline: 0.65rem;
 }
 
-.items-overview__table-head {
-  background: rgba(var(--v-theme-on-surface), 0.04);
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding-block: 0.7rem;
-  padding-inline: 1rem;
-  text-transform: uppercase;
-}
-
-.items-overview__head-value,
-.items-overview__cell-value {
-  text-align: end;
-}
-
-.items-overview__row {
-  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  padding-block: 0.85rem;
-  padding-inline: 1rem;
+.items-overview__row:not(:last-child)::after {
+  position: absolute;
+  background: rgba(var(--v-theme-on-surface), 0.12);
+  block-size: calc(100% - 0.6rem);
+  content: "";
+  inline-size: 1px;
+  inset-block-start: 0.3rem;
+  inset-inline-end: 0;
 }
 
 .items-overview__cell-label {
+  display: block;
+  overflow: hidden;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.86rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .items-overview__cell-value {
+  display: block;
+  overflow: hidden;
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
+  line-height: 1.25;
+  margin-block-start: 0.14rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .items-overview__row--accent {
-  background: rgba(var(--v-theme-primary), 0.05);
+  background: rgba(var(--v-theme-primary), 0.06);
 }
 
-.items-overview__row--accent strong {
+.items-overview__row--accent .items-overview__cell-value {
   color: rgba(var(--v-theme-primary), 0.96);
-}
-
-.items-overview__row--total {
-  background: rgba(var(--v-theme-primary), 0.1);
-}
-
-.items-overview__row--total .items-overview__cell-label,
-.items-overview__row--total .items-overview__cell-value {
-  color: rgba(var(--v-theme-primary), 0.98);
-}
-
-.items-overview__row--total .items-overview__cell-value {
-  font-size: 1.15rem;
 }
 
 .items-overview__previews {
   display: flex;
-  overflow: auto;
+  overflow: hidden;
   flex-direction: column;
-  gap: 0.75rem;
-  max-block-size: 18rem;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 12px;
+  gap: 0.55rem;
   min-inline-size: 0;
   padding-inline-end: 0.25rem;
 }
@@ -4518,39 +4466,38 @@ const openEditTask = (taskId: number | string) => {
   flex: 0 0 auto;
   flex-direction: column;
   align-items: stretch;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 14px;
-  background: rgba(var(--v-theme-surface), 0.2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   color: inherit;
   min-inline-size: 0;
-  transition:
-    border-color 0.18s ease,
-    transform 0.18s ease,
-    background 0.18s ease;
+}
+
+.items-overview__preview-panel:first-child {
+  border-block-start: 0;
 }
 
 .items-overview__preview-panel:hover {
-  border-color: rgba(var(--v-theme-primary), 0.24);
-  background: rgba(var(--v-theme-primary), 0.06);
-  transform: translateY(-1px);
+  background: rgba(var(--v-theme-primary), 0.03);
 }
 
 .items-overview__preview-panel--quotation {
-  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-info), 0.08);
+  box-shadow: none;
 }
 
 .items-overview__preview-panel--proforma {
-  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-warning), 0.08);
+  box-shadow: none;
 }
 
 .items-overview__preview-panel--invoice {
-  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-success), 0.08);
+  box-shadow: none;
 }
 
 .items-overview__preview-summary,
 .items-overview__preview-primary {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   border: 0;
   background: transparent;
@@ -4558,8 +4505,8 @@ const openEditTask = (taskId: number | string) => {
   cursor: pointer;
   font: inherit;
   inline-size: 100%;
-  padding-block: 0.95rem;
-  padding-inline: 1rem;
+  padding-block: 0.78rem;
+  padding-inline: 0.9rem;
   text-align: start;
 }
 
@@ -4572,26 +4519,12 @@ const openEditTask = (taskId: number | string) => {
 .items-overview__preview-body {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding-block-end: 0.95rem;
-}
-
-.items-overview__preview-header,
-.items-overview__preview-meta,
-.items-overview__preview-list {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-}
-
-.items-overview__preview-header {
-  align-items: flex-start;
+  padding-block-end: 0.75rem;
 }
 
 .items-overview__preview-kicker {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   line-height: 1.1;
   margin-block-end: 0.25rem;
   text-transform: uppercase;
@@ -4600,8 +4533,8 @@ const openEditTask = (taskId: number | string) => {
 .items-overview__preview-title {
   display: block;
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.92rem;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -4628,35 +4561,59 @@ const openEditTask = (taskId: number | string) => {
 
 .items-overview__preview-total {
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.1;
 }
 
-.items-overview__preview-primary {
+.items-overview__preview-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 12px;
+  margin-inline: 0.9rem;
+}
+
+.items-overview__preview-table-head,
+.items-overview__preview-table-row {
+  display: grid;
   align-items: center;
-  padding-block: 0;
+  column-gap: 0.75rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) auto;
 }
 
-.items-overview__preview-list {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  padding-inline: 1rem;
+.items-overview__preview-table-head {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding-block: 0.55rem;
+  padding-inline: 0.8rem;
+  text-transform: uppercase;
 }
 
-.items-overview__preview-chip {
-  border: 1px solid rgba(var(--v-theme-primary), 0.18);
-  border-radius: 999px;
-  background: rgba(var(--v-theme-primary), 0.08);
-  color: rgba(var(--v-theme-primary), 0.96);
+.items-overview__preview-table-row {
+  border: 0;
+  background: transparent;
+  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding-block: 0.25rem;
-  padding-inline: 0.6rem;
+  font: inherit;
+  inline-size: 100%;
+  padding-block: 0.72rem;
+  padding-inline: 0.8rem;
+  text-align: start;
 }
 
-.items-overview__preview-more,
+.items-overview__preview-table-row:hover {
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.items-overview__preview-table-row strong {
+  text-align: end;
+}
+
 .items-overview__preview-empty {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.78rem;
@@ -4686,21 +4643,27 @@ const openEditTask = (taskId: number | string) => {
   .items-overview__documents {
     justify-content: flex-start;
   }
-
-  .items-overview__previews {
-    max-block-size: none;
-  }
 }
 
 @media (max-width: 639px) {
-  .items-overview__table-head,
-  .items-overview__row {
+  .items-overview__table {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .items-overview__head-value,
-  .items-overview__cell-value {
-    text-align: start;
+  .items-overview__row {
+    padding-block: 0.55rem;
+  }
+
+  .items-overview__preview-table-head,
+  .items-overview__preview-table-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .items-overview__row:not(:last-child)::after {
+    block-size: 1px;
+    inline-size: calc(100% - 1rem);
+    inset-block: auto 0;
+    inset-inline-start: 0.5rem;
   }
 }
 
