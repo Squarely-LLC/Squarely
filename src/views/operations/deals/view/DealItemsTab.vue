@@ -99,6 +99,7 @@ type DerivedGoal = {
   name: string;
   category: string | null;
   note: string | null;
+  phaseNumber?: number | null;
   price: number | null;
   typeLabel: string;
   quantity: number | null;
@@ -195,6 +196,7 @@ const selectedPreviewDocument = ref<{
   kind: DealPreviewKind;
   title: string;
 } | null>(null);
+const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
@@ -1060,32 +1062,35 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
         name: contractual.name,
         note: contractual.description || null,
         price: contractual.bestPrice,
-        goals: getDealContractualPhaseLines(item, contractual).map((phase) => ({
-          ...makeDerivedGoal(
-            item,
-            "phase",
-            "Phase",
-            {
-              quantity: phase.quantity,
-              discountPercent: phase.discountPercent,
-              discountLabel: formatPercent(phase.discountPercent ?? 0),
-              taxApplicable: phase.taxApplicable,
-              showQuantity: true,
-              showPrice: true,
-              showDiscount: true,
-              showTaxApplicable: true,
-            },
-            {
-              category: phase.category,
-              description: phase.note,
-              id: phase.id,
-              name: phase.name,
-              note: phase.note,
-              price: phase.price,
-            },
-          ),
-          overrideKey: phase.overrideKey,
-        })),
+        goals: getDealContractualPhaseLines(item, contractual).map(
+          (phase, index) => ({
+            ...makeDerivedGoal(
+              item,
+              "phase",
+              "Phase",
+              {
+                quantity: phase.quantity,
+                discountPercent: phase.discountPercent,
+                discountLabel: formatPercent(phase.discountPercent ?? 0),
+                taxApplicable: phase.taxApplicable,
+                showQuantity: true,
+                showPrice: true,
+                showDiscount: true,
+                showTaxApplicable: true,
+              },
+              {
+                category: phase.category,
+                description: phase.note,
+                id: phase.id,
+                name: phase.name,
+                note: phase.note,
+                price: phase.price,
+              },
+            ),
+            overrideKey: phase.overrideKey,
+            phaseNumber: index + 1,
+          }),
+        ),
         goalTypeSingular: "Phase",
         goalTypePlural: "Phases",
       }),
@@ -1492,6 +1497,12 @@ const setActiveDocumentPanel = (key: DealPreviewKind) => {
     activeDocumentPanelKey.value === key ? null : key;
 };
 
+const toggleItemsOverviewCollapsed = () => {
+  isItemsOverviewCollapsed.value = !isItemsOverviewCollapsed.value;
+
+  if (isItemsOverviewCollapsed.value) activeDocumentPanelKey.value = null;
+};
+
 const getPreviewRouteName = (kind: DealPreviewKind) => {
   if (kind === "quotation") return "apps-quotation-preview-id";
   if (kind === "proforma") return "apps-proforma-preview-id";
@@ -1698,6 +1709,45 @@ const getGoalDocumentUsage = (
     selectableItem?.selectionKey,
     resolveSelectableItemBillingPeriodKey(selectableItem?.selectionKey),
   );
+};
+
+const getGoalInvoiceState = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => {
+  if (goal.typeLabel !== "Phase") return null;
+
+  const selectableItem = findGoalSelectableItem(parentItem, goal);
+  const selectionKey = selectableItem?.selectionKey;
+  if (!selectionKey) return "Not invoiced";
+
+  const billingPeriodKey = resolveSelectableItemBillingPeriodKey(selectionKey);
+  const usageKey = buildDealDocumentUsageKey(selectionKey, billingPeriodKey);
+  if (!usageKey) return "Not invoiced";
+
+  const matchingInvoices = invoicesStore.items.filter((record) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id)) {
+      return false;
+    }
+
+    return record.purchasedProducts.some((product) => {
+      const productSelectionKey = resolveProductSelectionKey(product);
+      const productUsageKey = buildDealDocumentUsageKey(
+        productSelectionKey,
+        resolveStoredBillingPeriodKey(product),
+      );
+
+      return productUsageKey === usageKey;
+    });
+  });
+
+  if (!matchingInvoices.length) return "Not invoiced";
+
+  const isPaid = matchingInvoices.some(
+    (record) => String(record.quotation.quotationStatus) === "Paid",
+  );
+
+  return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
 };
 
 const isGoalProformaActionDisabled = (
@@ -2832,8 +2882,19 @@ const openEditTask = (taskId: number | string) => {
                             variant="plain"
                             class="item-type-chip item-type-chip--phase"
                           >
-                            {{ goal.typeLabel }}
+                            {{
+                              goal.typeLabel === "Phase" && goal.phaseNumber
+                                ? `Phase ${goal.phaseNumber}`
+                                : goal.typeLabel
+                            }}
                           </VChip>
+                        </div>
+
+                        <div
+                          v-if="goal.typeLabel === 'Phase'"
+                          class="item-card-note text-body-2 text-medium-emphasis"
+                        >
+                          {{ getGoalInvoiceState(item, goal) }}
                         </div>
 
                         <div
@@ -2954,55 +3015,30 @@ const openEditTask = (taskId: number | string) => {
       </VCardText>
     </VCard>
 
-    <VCard v-if="dealItemsWithPlan.length">
-      <VCardText>
+    <VCard v-if="dealItemsWithPlan.length" class="items-overview-card">
+      <VCardItem>
+        <template #title>Invoicing Summary</template>
+        <template #append>
+          <button
+            type="button"
+            class="items-overview__collapse-toggle"
+            :aria-expanded="!isItemsOverviewCollapsed"
+            @click="toggleItemsOverviewCollapsed"
+          >
+            <VIcon
+              :icon="
+                isItemsOverviewCollapsed
+                  ? 'tabler-chevron-down'
+                  : 'tabler-chevron-up'
+              "
+              size="18"
+            />
+          </button>
+        </template>
+      </VCardItem>
+      <VCardText class="items-overview-card__content">
         <div class="items-overview">
-          <div class="items-overview__header">
-            <div class="items-overview__heading">
-              <div class="text-h6 mb-1">Invoicing Summary</div>
-              <p class="text-body-2 text-medium-emphasis mb-0">
-                Totals, balance, and latest document activity.
-              </p>
-            </div>
-
-            <div class="items-overview__documents">
-              <div class="items-overview__document-pill">
-                <button
-                  type="button"
-                  class="items-overview__document-action"
-                  @click="openDocumentPage('quotation')"
-                >
-                  <VIcon icon="tabler-plus" size="14" />
-                  <span>QT</span>
-                </button>
-                <strong>{{ quotationCount }}</strong>
-              </div>
-              <div class="items-overview__document-pill">
-                <button
-                  type="button"
-                  class="items-overview__document-action"
-                  @click="openDocumentPage('proforma')"
-                >
-                  <VIcon icon="tabler-plus" size="14" />
-                  <span>PF</span>
-                </button>
-                <strong>{{ proformaCount }}</strong>
-              </div>
-              <div class="items-overview__document-pill">
-                <button
-                  type="button"
-                  class="items-overview__document-action"
-                  @click="openDocumentPage('invoice')"
-                >
-                  <VIcon icon="tabler-plus" size="14" />
-                  <span>INV</span>
-                </button>
-                <strong>{{ invoiceCount }}</strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="items-overview__body">
+          <div v-if="!isItemsOverviewCollapsed" class="items-overview__body">
             <div
               class="items-overview__table"
               role="group"
@@ -3051,7 +3087,13 @@ const openEditTask = (taskId: number | string) => {
                 >
                   <div>
                     <div class="items-overview__preview-kicker">
-                      {{ panel.title }}
+                      <span class="items-overview__preview-code">{{
+                        panel.key === "quotation"
+                          ? "QT"
+                          : panel.key === "proforma"
+                            ? "PF"
+                            : "INV"
+                      }}</span>
                     </div>
                     <strong class="items-overview__preview-title">
                       {{
@@ -3065,6 +3107,14 @@ const openEditTask = (taskId: number | string) => {
                     <div class="items-overview__preview-count">
                       {{ panel.count }}
                     </div>
+                    <button
+                      type="button"
+                      class="items-overview__preview-add"
+                      :aria-label="`Create ${panel.title.slice(0, -1).toLowerCase()}`"
+                      @click.stop="openDocumentPage(panel.key)"
+                    >
+                      <VIcon icon="tabler-plus" size="14" />
+                    </button>
                     <VIcon
                       :icon="
                         isDocumentPanelExpanded(panel.key)
@@ -3191,19 +3241,6 @@ const openEditTask = (taskId: number | string) => {
         </div>
 
         <div v-if="salesTasks.length" class="d-flex flex-column gap-2">
-          <div class="d-flex align-center justify-space-between gap-3">
-            <div>
-              <div class="text-subtitle-1 font-weight-medium">Sales Tasks</div>
-              <div class="text-body-2 text-medium-emphasis">
-                Tasks added directly to this deal or inherited from item sales
-                task templates.
-              </div>
-            </div>
-            <VChip size="small" variant="outlined">
-              {{ salesTasks.length }}
-            </VChip>
-          </div>
-
           <VCard
             v-for="task in salesTasks"
             :key="task.id"
@@ -4307,47 +4344,20 @@ const openEditTask = (taskId: number | string) => {
   max-inline-size: min(28rem, 100%);
 }
 
+.items-overview-card__content {
+  padding-block-start: 0;
+}
+
 .items-overview {
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 16px;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(var(--v-theme-surface), 0.36),
-      rgba(var(--v-theme-surface), 0.18)
-    ),
-    rgba(var(--v-theme-surface), 0.16);
-  gap: 1rem;
-  padding-block: 1rem;
-  padding-inline: 1rem;
-}
-
-.items-overview__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.items-overview__heading {
-  flex: 1 1 auto;
-  max-inline-size: 34rem;
-  min-inline-size: 0;
-}
-
-.items-overview__documents {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
-  gap: 0.5rem;
-  max-inline-size: 28rem;
+  gap: 0.9rem;
 }
 
 .items-overview__document-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   border: 1px solid rgba(var(--v-theme-primary), 0.16);
   border-radius: 999px;
   background: rgba(var(--v-theme-primary), 0.06);
@@ -4356,6 +4366,7 @@ const openEditTask = (taskId: number | string) => {
   font-weight: 600;
   gap: 0.5rem;
   letter-spacing: 0.04em;
+  min-inline-size: 4.6rem;
   padding-block: 0.4rem;
   padding-inline: 0.7rem;
 }
@@ -4364,27 +4375,48 @@ const openEditTask = (taskId: number | string) => {
   color: rgba(var(--v-theme-primary), 0.92);
 }
 
-.items-overview__document-action {
+.items-overview__collapse-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 0;
   border: 0;
+  border-radius: 999px;
   background: transparent;
+  block-size: 2rem;
   color: inherit;
   cursor: pointer;
   font: inherit;
-  gap: 0.35rem;
+  inline-size: 2rem;
 }
 
-.items-overview__document-action:hover {
+.items-overview__collapse-toggle:hover,
+.items-overview__preview-add:hover {
+  background: rgba(var(--v-theme-primary), 0.08);
   color: rgba(var(--v-theme-primary), 0.96);
 }
 
 .items-overview__body {
   display: flex;
   flex-direction: column;
-  align-items: start;
+  align-items: stretch;
   gap: 0.9rem;
+}
+
+.items-overview__previews {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.items-overview__preview-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  inline-size: 100%;
+  min-inline-size: 0;
 }
 
 .items-overview__table {
@@ -4450,34 +4482,6 @@ const openEditTask = (taskId: number | string) => {
   color: rgba(var(--v-theme-primary), 0.96);
 }
 
-.items-overview__previews {
-  display: flex;
-  overflow: hidden;
-  flex-direction: column;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 12px;
-  gap: 0.55rem;
-  min-inline-size: 0;
-  padding-inline-end: 0.25rem;
-}
-
-.items-overview__preview-panel {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: stretch;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  color: inherit;
-  min-inline-size: 0;
-}
-
-.items-overview__preview-panel:first-child {
-  border-block-start: 0;
-}
-
 .items-overview__preview-panel:hover {
   background: rgba(var(--v-theme-primary), 0.03);
 }
@@ -4516,6 +4520,19 @@ const openEditTask = (taskId: number | string) => {
   gap: 0.45rem;
 }
 
+.items-overview__preview-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.05);
+  block-size: 1.9rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  cursor: pointer;
+  inline-size: 1.9rem;
+}
+
 .items-overview__preview-body {
   display: flex;
   flex-direction: column;
@@ -4523,11 +4540,29 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .items-overview__preview-kicker {
+  display: inline-flex;
+  align-items: center;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.68rem;
+  gap: 0.4rem;
   line-height: 1.1;
   margin-block-end: 0.25rem;
   text-transform: uppercase;
+}
+
+.items-overview__preview-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--v-theme-warning), 0.22);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-warning), 0.12);
+  color: rgba(var(--v-theme-warning), 0.98);
+  font-size: 0.66rem;
+  font-weight: 700;
+  min-inline-size: 2.1rem;
+  padding-block: 0.18rem;
+  padding-inline: 0.42rem;
 }
 
 .items-overview__preview-title {
@@ -4633,16 +4668,6 @@ const openEditTask = (taskId: number | string) => {
   background: #fff;
   inline-size: 100%;
   min-block-size: 75vh;
-}
-
-@media (max-width: 959px) {
-  .items-overview__header {
-    flex-direction: column;
-  }
-
-  .items-overview__documents {
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 639px) {
