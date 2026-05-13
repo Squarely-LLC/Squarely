@@ -5054,9 +5054,9 @@ const openEditTask = (taskId: number | string) => {
               aria-label="Invoicing summary"
             >
               <div class="items-overview__row" role="presentation">
-                <span class="items-overview__cell-label">Total</span>
+                <span class="items-overview__cell-label">Paid</span>
                 <strong class="items-overview__cell-value">{{
-                  formatMoney(grandTotal)
+                  formatMoney(totalPaid)
                 }}</strong>
               </div>
               <div class="items-overview__row" role="presentation">
@@ -5069,7 +5069,7 @@ const openEditTask = (taskId: number | string) => {
                 class="items-overview__row items-overview__row--accent"
                 role="presentation"
               >
-                <span class="items-overview__cell-label">Remaining</span>
+                <span class="items-overview__cell-label">Outstanding</span>
                 <strong class="items-overview__cell-value">{{
                   formatMoney(remainingToInvoice)
                 }}</strong>
@@ -5077,138 +5077,132 @@ const openEditTask = (taskId: number | string) => {
             </div>
 
             <div class="items-overview__previews">
-              <section
-                v-for="panel in dealDocumentPanels"
+              <template
+                v-for="(panel, index) in dealDocumentPanels"
                 :key="panel.key"
-                class="items-overview__preview-panel"
-                :class="[
-                  `items-overview__preview-panel--${panel.key}`,
-                  {
-                    'items-overview__preview-panel--expanded':
-                      isDocumentPanelExpanded(panel.key),
-                  },
-                ]"
               >
-                <button
-                  type="button"
-                  class="items-overview__preview-summary"
-                  @click="setActiveDocumentPanel(panel.key)"
+                <VDivider v-if="index > 0" class="my-3" />
+
+                <section
+                  class="items-overview__preview-panel"
+                  :class="[
+                    `items-overview__preview-panel--${panel.key}`,
+                    {
+                      'items-overview__preview-panel--expanded':
+                        isDocumentPanelExpanded(panel.key),
+                    },
+                  ]"
                 >
-                  <div>
-                    <div class="items-overview__preview-kicker">
-                      <span class="items-overview__preview-code">{{
-                        panel.key === "quotation"
-                          ? "QT"
-                          : panel.key === "proforma"
-                            ? "PF"
-                            : "INV"
-                      }}</span>
-                    </div>
+                  <button
+                    type="button"
+                    class="items-overview__preview-summary"
+                    @click="setActiveDocumentPanel(panel.key)"
+                  >
                     <strong class="items-overview__preview-title">
                       {{
                         panel.latest?.quoteNumber ||
-                        `No ${panel.title.toLowerCase()}`
+                        `No ${panel.title.slice(0, -1).toLowerCase()}`
                       }}
                     </strong>
-                  </div>
 
-                  <div class="items-overview__preview-summary-side">
-                    <div class="items-overview__preview-count">
-                      {{ panel.count }}
-                    </div>
-                    <VBtn
-                      icon
-                      variant="text"
-                      size="x-small"
-                      class="items-overview__preview-add"
-                      :aria-label="`Add ${panel.title.slice(0, -1).toLowerCase()}`"
-                      @click.stop
-                    >
-                      <VIcon icon="tabler-plus" size="14" />
-                      <VMenu activator="parent">
-                        <VList density="compact">
-                          <VListItem
-                            :disabled="
-                              isRetainerPanelDocumentActionDisabled(panel.key)
-                            "
-                            @click="openPanelDocumentPage(panel.key)"
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-plus" />
-                            </template>
-                            <VListItemTitle>
-                              Create {{ panel.title.slice(0, -1) }}
-                            </VListItemTitle>
-                          </VListItem>
-                          <VDivider />
-                          <VListItem
-                            :disabled="
-                              isRetainerPanelDocumentActionDisabled(panel.key)
-                            "
-                            @click="openPanelExternalDocumentFlow(panel.key)"
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-paperclip" />
-                            </template>
-                            <VListItemTitle>
-                              Attach External {{ panel.title.slice(0, -1) }}
-                            </VListItemTitle>
-                          </VListItem>
-                        </VList>
-                      </VMenu>
-                    </VBtn>
-                    <VIcon
-                      :icon="
-                        isDocumentPanelExpanded(panel.key)
-                          ? 'tabler-chevron-up'
-                          : 'tabler-chevron-down'
-                      "
-                      size="16"
-                    />
-                  </div>
-                </button>
-
-                <div
-                  v-if="isDocumentPanelExpanded(panel.key)"
-                  class="items-overview__preview-body"
-                >
-                  <template v-if="panel.latest">
-                    <div class="items-overview__preview-table" role="table">
-                      <div
-                        class="items-overview__preview-table-head"
-                        role="row"
-                      >
-                        <span role="columnheader">Number</span>
-                        <span role="columnheader">Status</span>
-                        <span role="columnheader">Date</span>
-                        <span role="columnheader">Total</span>
+                    <div class="items-overview__preview-summary-side">
+                      <div class="items-overview__preview-count">
+                        {{ panel.count }}
                       </div>
-
-                      <button
-                        v-for="record in panel.records"
-                        :key="`${panel.key}-${record.id}`"
-                        type="button"
-                        class="items-overview__preview-table-row"
-                        role="row"
-                        @click="openQuickDocumentPreview(panel.key, record)"
+                      <VBtn
+                        icon
+                        variant="text"
+                        size="x-small"
+                        class="items-overview__preview-add"
+                        :aria-label="`Add ${panel.title.slice(0, -1).toLowerCase()}`"
+                        @click.stop
                       >
-                        <span role="cell">{{ record.quoteNumber }}</span>
-                        <span role="cell">{{ record.status }}</span>
-                        <span role="cell">{{
-                          formatDocumentDate(record.issuedDate)
-                        }}</span>
-                        <strong role="cell">{{
-                          formatMoney(record.total)
-                        }}</strong>
-                      </button>
+                        <VIcon icon="tabler-plus" size="14" />
+                        <VMenu activator="parent">
+                          <VList density="compact">
+                            <VListItem
+                              :disabled="
+                                isRetainerPanelDocumentActionDisabled(panel.key)
+                              "
+                              @click="openPanelDocumentPage(panel.key)"
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-plus" />
+                              </template>
+                              <VListItemTitle>
+                                Create {{ panel.title.slice(0, -1) }}
+                              </VListItemTitle>
+                            </VListItem>
+                            <VDivider />
+                            <VListItem
+                              :disabled="
+                                isRetainerPanelDocumentActionDisabled(panel.key)
+                              "
+                              @click="openPanelExternalDocumentFlow(panel.key)"
+                            >
+                              <template #prepend>
+                                <VIcon icon="tabler-paperclip" />
+                              </template>
+                              <VListItemTitle>
+                                Attach External {{ panel.title.slice(0, -1) }}
+                              </VListItemTitle>
+                            </VListItem>
+                          </VList>
+                        </VMenu>
+                      </VBtn>
+                      <VIcon
+                        :icon="
+                          isDocumentPanelExpanded(panel.key)
+                            ? 'tabler-chevron-up'
+                            : 'tabler-chevron-down'
+                        "
+                        size="16"
+                      />
                     </div>
-                  </template>
+                  </button>
 
-                  <p v-else class="items-overview__preview-empty mb-0 px-4">
-                    {{ panel.emptyText }}
-                  </p>
-                </div>
-              </section>
+                  <div
+                    v-if="isDocumentPanelExpanded(panel.key)"
+                    class="items-overview__preview-body"
+                  >
+                    <template v-if="panel.latest">
+                      <div class="items-overview__preview-table" role="table">
+                        <div
+                          class="items-overview__preview-table-head"
+                          role="row"
+                        >
+                          <span role="columnheader">Number</span>
+                          <span role="columnheader">Status</span>
+                          <span role="columnheader">Date</span>
+                          <span role="columnheader">Total</span>
+                        </div>
+
+                        <button
+                          v-for="record in panel.records"
+                          :key="`${panel.key}-${record.id}`"
+                          type="button"
+                          class="items-overview__preview-table-row"
+                          role="row"
+                          @click="openQuickDocumentPreview(panel.key, record)"
+                        >
+                          <span role="cell">{{ record.quoteNumber }}</span>
+                          <span role="cell">{{ record.status }}</span>
+                          <span role="cell">{{
+                            formatDocumentDate(record.issuedDate)
+                          }}</span>
+                          <strong role="cell">{{
+                            formatMoney(record.total)
+                          }}</strong>
+                        </button>
+                      </div>
+                    </template>
+
+                    <p v-else class="items-overview__preview-empty mb-0 px-4">
+                      {{ panel.emptyText }}
+                    </p>
+                  </div>
+                </section>
+              </template>
             </div>
           </div>
         </div>
