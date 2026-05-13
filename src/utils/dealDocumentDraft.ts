@@ -658,7 +658,7 @@ export const getDealRetainerServiceLines = (
       name: service.name,
       category: service.category,
       description: service.description,
-      quantity: service.qty ?? item.quantity,
+      quantity: item.retainerPeriods ?? service.qty ?? item.quantity,
     })),
   });
 
@@ -1357,40 +1357,88 @@ function buildRetainerProducts(
   billingPeriod?: DealBillingPeriod | null,
 ) {
   const services = getDealRetainerServiceLines(item, record);
-  const billingPeriodKey = getDealBillingPeriodKey(billingPeriod);
-  const totalCost = normalizeLineCost(item.unitPrice ?? record.bestPrice ?? 0);
+  const uniqueServiceNames = Array.from(
+    new Set(
+      services
+        .map((service) => String(service.name || "").trim())
+        .filter(Boolean),
+    ),
+  );
 
-  return services.map((service, index) => {
-    const override = item.subItemOverrides?.[service.overrideKey] || {};
-    const periodUnitPrice = resolvePeriodUnitPrice(
-      override.periodUnitPrices,
-      billingPeriod,
-    );
+  const descriptionParts = [
+    String(item.note || record.description || item.category || "").trim(),
+    uniqueServiceNames.length
+      ? `Items included: ${uniqueServiceNames.join(", ")}`
+      : "",
+  ].filter(Boolean);
 
-    return createPurchasedProduct({
+  return [
+    createPurchasedProduct({
       billingPeriod: billingPeriod ?? null,
-      billingPeriodKey: billingPeriodKey || null,
+      billingPeriodKey: getDealBillingPeriodKey(billingPeriod) || null,
       catalogueItemId: item.catalogueItemId ?? null,
-      dealSelectionKey: item.selectionKey.endsWith(service.overrideKey)
-        ? item.selectionKey
-        : `item-${item.id}-${service.overrideKey}`,
-      cost:
-        periodUnitPrice ??
-        service.price ??
-        override.unitPrice ??
-        buildDistributedCost(totalCost, services.length, index),
+      dealSelectionKey: item.selectionKey,
+      cost: item.unitPrice ?? record.bestPrice ?? 0,
       description: appendBillingPeriodLabel(
-        service.note ?? item.note ?? record.description,
+        descriptionParts.join("\n"),
         billingPeriod,
       ),
-      discountPercent: service.discountPercent ?? 0,
-      hours: service.quantity ?? item.quantity,
-      lineConstraints: {
-        discount: false,
-        price: false,
-      },
-      title: service.name,
-    });
+      discountPercent: item.discountPercent ?? 0,
+      hours: 1,
+      title: item.name,
+    }),
+  ];
+}
+
+function buildCollapsedRetainerPeriodProduct(
+  items: DealDocumentSelectableItem[],
+  deal: DealProperties,
+  billingPeriod?: DealBillingPeriod | null,
+  resolveCatalogueRecord?: CatalogueRecordResolver,
+) {
+  const firstItem = items[0];
+  if (!firstItem) return null;
+
+  const rootItem =
+    deal.items.find(
+      (item) => String(item.id) === String(firstItem.id) && !item.parentItemId,
+    ) || firstItem;
+
+  const rootRecord =
+    rootItem.catalogueItemId && resolveCatalogueRecord
+      ? resolveCatalogueRecord(
+          rootItem.catalogueItemId,
+          rootItem.catalogueType || undefined,
+        )
+      : null;
+
+  const itemNames = items
+    .map((item) => String(item.name || "").trim())
+    .filter(Boolean);
+
+  const uniqueItemNames = Array.from(new Set(itemNames));
+  const descriptionParts = [
+    String(
+      rootItem.note || rootItem.category || rootRecord?.description || "",
+    ).trim(),
+    uniqueItemNames.length
+      ? `Items included: ${uniqueItemNames.join(", ")}`
+      : "",
+  ].filter(Boolean);
+
+  return createPurchasedProduct({
+    billingPeriod: billingPeriod ?? null,
+    billingPeriodKey: getDealBillingPeriodKey(billingPeriod) || null,
+    catalogueItemId: rootItem.catalogueItemId ?? null,
+    dealSelectionKey: buildSelectionKey(rootItem, false),
+    cost: rootItem.unitPrice ?? rootRecord?.bestPrice ?? 0,
+    description: appendBillingPeriodLabel(
+      descriptionParts.join("\n"),
+      billingPeriod,
+    ),
+    discountPercent: rootItem.discountPercent ?? 0,
+    hours: 1,
+    title: rootItem.name,
   });
 }
 
@@ -1515,6 +1563,12 @@ function expandDealItemToPurchasedProducts(
     return buildContractualProducts(item, record);
   }
   if (record.type === "Retainer Service") {
+    if (billingPeriods?.length) {
+      return billingPeriods.flatMap((period) =>
+        buildRetainerProducts(item, record, period),
+      );
+    }
+
     return buildRetainerProducts(item, record, billingPeriod);
   }
   if (record.type === "Reccurent Service") {
@@ -1538,10 +1592,13 @@ function buildPurchasedProducts(
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   const orderedProducts: PurchasedProductLike[] = [];
-  const recurrentGroups = new Map<string, DealDocumentSelectableItem[]>();
+  const periodLineGroups = new Map<string, DealDocumentSelectableItem[]>();
 
   items.forEach((item) => {
-    if (item.catalogueType !== "Recurrent Service Line") {
+    if (
+      item.catalogueType !== "Retainer Service Line" &&
+      item.catalogueType !== "Recurrent Service Line"
+    ) {
       orderedProducts.push(
         ...expandDealItemToPurchasedProducts(
           item,
@@ -1554,23 +1611,33 @@ function buildPurchasedProducts(
       return;
     }
 
-    const groupKey = `${item.id}:${getDealBillingPeriodKey(billingPeriod) || ""}`;
-    const existingGroup = recurrentGroups.get(groupKey);
+    const groupKey = `${item.catalogueType}:${item.id}:${getDealBillingPeriodKey(billingPeriod) || ""}`;
+    const existingGroup = periodLineGroups.get(groupKey);
 
     if (existingGroup) {
       existingGroup.push(item);
       return;
     }
 
-    recurrentGroups.set(groupKey, [item]);
-    orderedProducts.push(
-      buildCollapsedRecurrentPeriodProduct(
-        recurrentGroups.get(groupKey)!,
-        deal,
-        billingPeriod,
-        resolveCatalogueRecord,
-      )!,
-    );
+    periodLineGroups.set(groupKey, [item]);
+
+    const groupItems = periodLineGroups.get(groupKey)!;
+    const collapsedProduct =
+      item.catalogueType === "Retainer Service Line"
+        ? buildCollapsedRetainerPeriodProduct(
+            groupItems,
+            deal,
+            billingPeriod,
+            resolveCatalogueRecord,
+          )
+        : buildCollapsedRecurrentPeriodProduct(
+            groupItems,
+            deal,
+            billingPeriod,
+            resolveCatalogueRecord,
+          );
+
+    if (collapsedProduct) orderedProducts.push(collapsedProduct);
   });
 
   const purchasedProducts = orderedProducts;

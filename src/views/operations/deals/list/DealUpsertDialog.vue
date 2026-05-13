@@ -657,7 +657,9 @@ const toggleDetails = () => {
                 <span class="detail-toggle-line__track" />
                 <span class="detail-toggle-line__icon">
                   <VIcon
-                    :icon="showDetails ? 'tabler-minus' : 'tabler-plus'"
+                    :icon="
+                      showDetails ? 'tabler-chevron-up' : 'tabler-chevron-down'
+                    "
                     size="16"
                   />
                 </span>

@@ -366,7 +366,7 @@ const syncBillingPeriodDraft = (
 
 const billingPeriodPreview = computed<DealBillingPeriod | null>(() => {
   if (isRetainerBillingPeriodSelection.value) {
-    if (isMultiRecurrentBillingSelection.value) {
+    if (isMultiPeriodBillingSelection.value) {
       return (
         availableRetainerBillingPeriods.value.find((period) =>
           selectedRecurrentBillingPeriodKeys.value.includes(period.key),
@@ -425,7 +425,7 @@ const commitBillingPeriod = () => {
 };
 
 const commitBillingPeriods = () => {
-  if (!isMultiRecurrentBillingSelection.value) {
+  if (!isMultiPeriodBillingSelection.value) {
     const nextPeriod = commitBillingPeriod();
 
     return nextPeriod ? [nextPeriod] : [];
@@ -790,11 +790,21 @@ const createDraftItemRecurrentBillablePeriods = computed(() =>
   ),
 );
 
-const resolveRecurrentItemQuantity = (periods?: number | string | null) => {
+const resolvePeriodDrivenItemQuantity = (periods?: number | string | null) => {
   const quantity = Number(periods);
 
   return Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
 };
+
+const addItemUsesPeriodQuantity = computed(
+  () => addItemRequiresRecurrentTerm.value || addItemRequiresRetainerTerm.value,
+);
+
+const createDraftItemUsesPeriodQuantity = computed(
+  () =>
+    createDraftItemRequiresRecurrentTerm.value ||
+    createDraftItemRequiresRetainerTerm.value,
+);
 
 const editLine = reactive({
   mode: "item" as "item" | "sub",
@@ -1183,8 +1193,10 @@ const saveSelectedCatalogueItem = async () => {
   if (addItemRequiresRetainerTerm.value && !retainerTerm) return;
 
   const quantity = recurrentTerm
-    ? resolveRecurrentItemQuantity(recurrentTerm.recurrentPeriods)
-    : Number(addItemDraft.quantity || 1);
+    ? resolvePeriodDrivenItemQuantity(recurrentTerm.recurrentPeriods)
+    : retainerTerm
+      ? resolvePeriodDrivenItemQuantity(retainerTerm.retainerPeriods)
+      : Number(addItemDraft.quantity || 1);
 
   addDealItemsFromCatalogueItem(selectedItem, quantity, {
     recurrentTerm,
@@ -1241,13 +1253,15 @@ const saveCreatedDraftItem = async () => {
   if (createDraftItemRequiresRetainerTerm.value && !retainerTerm) return;
 
   const quantity = recurrentTerm
-    ? resolveRecurrentItemQuantity(recurrentTerm.recurrentPeriods)
-    : Number(createDraftItem.quantity || 1);
+    ? resolvePeriodDrivenItemQuantity(recurrentTerm.recurrentPeriods)
+    : retainerTerm
+      ? resolvePeriodDrivenItemQuantity(retainerTerm.retainerPeriods)
+      : Number(createDraftItem.quantity || 1);
 
   const draftRecord = cataloguesStore.addItem({
     type: selectedCreateItemType.value,
     name: createDraftItem.name,
-    qty: createDraftItemRequiresRecurrentTerm.value ? 1 : quantity,
+    qty: createDraftItemUsesPeriodQuantity.value ? 1 : quantity,
     bestPrice: Number(createDraftItem.price || 0),
     chargeTax: Boolean(createDraftItem.taxApplicable),
     description: String(createDraftItem.note || "").trim(),
@@ -1424,7 +1438,9 @@ const openEditItem = (item: DealItemWithPlan) => {
   editLine.retainerEndDate = item.retainerEndDate ?? defaultRetainerEndDate();
   editLine.retainerPeriods = item.retainerPeriods ?? 12;
   setEditFieldConstraints({
-    quantity: !isRecurrentCatalogueType(item.catalogueType),
+    quantity:
+      !isRecurrentCatalogueType(item.catalogueType) &&
+      !isRetainerCatalogueType(item.catalogueType),
     price: true,
     discount: true,
     tax: true,
@@ -1498,8 +1514,10 @@ const saveEditedLine = async () => {
         return item;
 
       const resolvedQuantity = recurrentTerm
-        ? resolveRecurrentItemQuantity(recurrentTerm.recurrentPeriods)
-        : (payload.quantity ?? item.quantity);
+        ? resolvePeriodDrivenItemQuantity(recurrentTerm.recurrentPeriods)
+        : retainerTerm
+          ? resolvePeriodDrivenItemQuantity(retainerTerm.retainerPeriods)
+          : (payload.quantity ?? item.quantity);
 
       return {
         ...item,
@@ -2826,9 +2844,9 @@ const isRecurrentBillingPeriodSelection = computed(
     isRecurrentCatalogueType(selectedDocumentParentItem.value?.catalogueType),
 );
 
-const isMultiRecurrentBillingSelection = computed(
+const isMultiPeriodBillingSelection = computed(
   () =>
-    isRecurrentBillingPeriodSelection.value &&
+    isRetainerBillingPeriodSelection.value &&
     !externalDocumentSelectionKind.value,
 );
 
@@ -2839,7 +2857,7 @@ const selectedRecurrentBillingPeriods = computed(() =>
 );
 
 const billingPeriodPreviewLabel = computed(() => {
-  if (isMultiRecurrentBillingSelection.value) {
+  if (isMultiPeriodBillingSelection.value) {
     return selectedRecurrentBillingPeriods.value.length
       ? selectedRecurrentBillingPeriods.value
           .map((period) => period.label)
@@ -2851,7 +2869,7 @@ const billingPeriodPreviewLabel = computed(() => {
 });
 
 const isBillingPeriodConfirmationDisabled = computed(() => {
-  if (isMultiRecurrentBillingSelection.value)
+  if (isMultiPeriodBillingSelection.value)
     return !selectedRecurrentBillingPeriods.value.length;
 
   return isRetainerBillingPeriodSelection.value && !billingPeriodPreview.value;
@@ -2866,13 +2884,6 @@ const findGoalSelectableItem = (
       String(item.id) === String(parentItem.id) &&
       item.selectionKey.endsWith(goal.overrideKey),
   ) ?? null;
-
-const findRetainerSelectableItems = (parentItem: DealItem | DealItemWithPlan) =>
-  selectableDocumentItems.value.filter(
-    (item) =>
-      String(item.id) === String(parentItem.id) &&
-      item.catalogueType === "Retainer Service Line",
-  );
 
 const isRetainerGoal = (goal: DerivedGoal) =>
   goal.typeLabel === "Retainer Service";
@@ -3196,14 +3207,21 @@ const filteredSelectableDocumentItems = computed(() => {
 
   const normalizedItems =
     effectiveBillingMode.value === "mixed-manual" ||
-    effectiveBillingMode.value === "recurrent-period"
+    effectiveBillingMode.value === "recurrent-period" ||
+    effectiveBillingMode.value === "retainer-period"
       ? Array.from(
           new Map(
             filteredItems.map((item) => {
-              if (item.catalogueType !== "Recurrent Service Line")
+              if (
+                item.catalogueType !== "Recurrent Service Line" &&
+                item.catalogueType !== "Retainer Service Line"
+              )
                 return [item.selectionKey, item] as const;
 
-              const parentItem = buildRecurrentDocumentTargetItem(item);
+              const parentItem =
+                item.catalogueType === "Retainer Service Line"
+                  ? buildRetainerDocumentTargetItem(item)
+                  : buildRecurrentDocumentTargetItem(item);
 
               return [
                 parentItem?.selectionKey ?? item.selectionKey,
@@ -3303,7 +3321,7 @@ const selectionDialogTitle = computed(() => {
     if (effectiveBillingMode.value === "contractual-stage")
       return "Select Stages for Invoice";
     if (effectiveBillingMode.value === "retainer-period")
-      return "Select Retainer Lines for Invoice";
+      return "Select Retainer Item for Invoice";
     if (effectiveBillingMode.value === "recurrent-period")
       return "Select Recurrent Items for Invoice";
 
@@ -3314,7 +3332,7 @@ const selectionDialogTitle = computed(() => {
     if (effectiveBillingMode.value === "contractual-stage")
       return "Select Stages for Proforma";
     if (effectiveBillingMode.value === "retainer-period")
-      return "Select Retainer Lines for Proforma";
+      return "Select Retainer Item for Proforma";
     if (effectiveBillingMode.value === "recurrent-period")
       return "Select Recurrent Items for Proforma";
 
@@ -3329,7 +3347,7 @@ const selectionDialogIntro = computed(() => {
     return "Select one or more contractual stages to include in this document.";
 
   if (effectiveBillingMode.value === "retainer-period")
-    return "Select one or more retainer lines to include in this document.";
+    return "Select one retainer item, then choose the period you want to bill.";
 
   if (effectiveBillingMode.value === "recurrent-period")
     return "Select one recurrent item to choose the period you want to bill.";
@@ -3342,7 +3360,7 @@ const selectionDialogHint = computed(() => {
     return "Contractual deals bill at stage level. Choose only the stages you want billed in this document.";
 
   if (effectiveBillingMode.value === "retainer-period")
-    return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
+    return "Retainer billing is period-based. Choose the retainer item first, then choose the period you want to bill.";
 
   if (effectiveBillingMode.value === "recurrent-period")
     return "Recurrent billing is period-based. Choose the recurrent item first, then choose the period you want to bill.";
@@ -3825,11 +3843,7 @@ const openBillingPeriodDialog = (
 
     selectedRetainerBillingPeriodKey.value = defaultPeriodKey;
     selectedRecurrentBillingPeriodKeys.value =
-      isRecurrentCatalogueType(
-        selectedDocumentParentItem.value?.catalogueType,
-      ) &&
-      !externalDocumentSelectionKind.value &&
-      defaultPeriodKey
+      isMultiPeriodBillingSelection.value && defaultPeriodKey
         ? [defaultPeriodKey]
         : [];
   } else {
@@ -3889,7 +3903,7 @@ const confirmBillingPeriod = () => {
   if (pendingDocumentItems.value.length) {
     const kind = selectedDocumentKind.value;
 
-    const items = isMultiRecurrentBillingSelection.value
+    const items = isMultiPeriodBillingSelection.value
       ? [...pendingDocumentItems.value]
       : nextBillingPeriods.flatMap((period) =>
           applyBillingPeriodPricing([...pendingDocumentItems.value], period),
@@ -4083,11 +4097,10 @@ const openRetainerDocumentPage = async (
     return;
   }
 
-  const retainerItems = findRetainerSelectableItems(parentItem);
-
-  if (!retainerItems.length) {
+  const targetItem = buildRetainerDocumentTargetItem(parentItem);
+  if (!targetItem) {
     notifications.push(
-      "This retainer has no billable service lines yet.",
+      "This retainer has no billable periods yet.",
       "warning",
       3000,
     );
@@ -4095,8 +4108,31 @@ const openRetainerDocumentPage = async (
     return;
   }
 
+  pendingDocumentItems.value = [targetItem];
   selectedDocumentParentItemId.value = String(parentItem.id);
-  openSelectionDialog(kind, "retainer-period");
+  selectedRetainerBillingPeriodKey.value =
+    availableRetainerBillingPeriods.value[0]?.key ?? null;
+  openBillingPeriodDialog(kind, "retainer-period");
+};
+
+const buildRetainerDocumentTargetItem = (parentItem: {
+  id: string | number;
+}): DealDocumentSelectableItem | null => {
+  const rootItem = getItemById(parentItem.id);
+  if (!rootItem) return null;
+
+  return {
+    ...rootItem,
+    expansionSummary: null,
+    groupKey: "billable-root",
+    groupLabel: "Billable Root Items",
+    hint: null,
+    isAutoBillable: true,
+    isBillableRoot: true,
+    isGenerated: false,
+    parentName: null,
+    selectionKey: `item-${rootItem.id}`,
+  };
 };
 
 const buildRecurrentDocumentTargetItem = (parentItem: {
@@ -4171,11 +4207,10 @@ const openRetainerExternalDocumentDialog = (
     return;
   }
 
-  const retainerItems = findRetainerSelectableItems(parentItem);
-
-  if (!retainerItems.length) {
+  const targetItem = buildRetainerDocumentTargetItem(parentItem);
+  if (!targetItem) {
     notifications.push(
-      "This retainer has no billable service lines yet.",
+      "This retainer has no billable periods yet.",
       "warning",
       3000,
     );
@@ -4183,8 +4218,15 @@ const openRetainerExternalDocumentDialog = (
     return;
   }
 
+  pendingDocumentItems.value = [targetItem];
   selectedDocumentParentItemId.value = String(parentItem.id);
-  openExternalDocumentSelectionDialog(kind, "retainer-period");
+  selectedRetainerBillingPeriodKey.value =
+    availableRetainerBillingPeriods.value[0]?.key ?? null;
+  externalDocumentSelectionKind.value = kind;
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = "retainer-period";
+  initializeBillingPeriodPrices([targetItem]);
+  billingPeriodDialogVisible.value = true;
 };
 
 const openRecurrentExternalDocumentDialog = (
@@ -6254,7 +6296,7 @@ const openEditTask = (taskId: number | string) => {
 
         <VForm ref="addItemFormRef" @submit.prevent="saveSelectedCatalogueItem">
           <VRow>
-            <VCol cols="12" :md="addItemRequiresRecurrentTerm ? 12 : 8">
+            <VCol cols="12" :md="addItemUsesPeriodQuantity ? 12 : 8">
               <AppAutocomplete
                 v-model="selectedCatalogueItemId"
                 label="Catalogue Item"
@@ -6264,7 +6306,7 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol v-if="!addItemRequiresRecurrentTerm" cols="12" md="4">
+            <VCol v-if="!addItemUsesPeriodQuantity" cols="12" md="4">
               <AppTextField
                 v-model="addItemDraft.quantity"
                 type="number"
@@ -6718,16 +6760,23 @@ const openEditTask = (taskId: number | string) => {
 
       <VCardText class="d-flex flex-column gap-4">
         <div class="text-sm text-medium-emphasis">
-          Enter the billing period and explicit prices for the selected
-          period-based lines.
+          {{
+            isMultiPeriodBillingSelection
+              ? "Select one or more billing periods. The saved item price will be used for each selected period."
+              : "Select the billing period for this period-based item."
+          }}
         </div>
 
         <div class="rounded border pa-4 bg-var-theme-background">
           <template v-if="isRetainerBillingPeriodSelection">
             <VSelect
-              v-if="isMultiRecurrentBillingSelection"
+              v-if="isMultiPeriodBillingSelection"
               v-model="selectedRecurrentBillingPeriodKeys"
-              label="Recurrent Periods"
+              :label="
+                isRecurrentBillingPeriodSelection
+                  ? 'Recurrent Periods'
+                  : 'Retainer Periods'
+              "
               :items="
                 availableRetainerBillingPeriods.map((period) => ({
                   title: period.label,
@@ -6842,7 +6891,7 @@ const openEditTask = (taskId: number | string) => {
         <div class="rounded border pa-3 bg-var-theme-background">
           <div class="text-xs text-medium-emphasis mb-1">
             {{
-              isMultiRecurrentBillingSelection
+              isMultiPeriodBillingSelection
                 ? "Selected periods"
                 : "Selected period"
             }}
@@ -6857,11 +6906,18 @@ const openEditTask = (taskId: number | string) => {
           class="d-flex flex-column gap-3 mt-4"
         >
           <div
-            v-if="isMultiRecurrentBillingSelection"
+            v-if="isMultiPeriodBillingSelection"
             class="border rounded-lg pa-4 bg-var-theme-background text-sm text-medium-emphasis"
           >
-            {{ pendingBillingPeriodItems[0]?.name || "This recurrent item" }}
-            will use its saved recurrent price for each selected period.
+            {{
+              pendingBillingPeriodItems[0]?.name ||
+              (isRecurrentBillingPeriodSelection
+                ? "This recurrent item"
+                : "This retainer item")
+            }}
+            will use its saved
+            {{ isRecurrentBillingPeriodSelection ? "recurrent" : "retainer" }}
+            price for each selected period.
           </div>
 
           <div
@@ -7139,7 +7195,7 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol v-if="!createDraftItemRequiresRecurrentTerm" cols="12" md="3">
+            <VCol v-if="!createDraftItemUsesPeriodQuantity" cols="12" md="3">
               <AppTextField
                 v-model="createDraftItem.quantity"
                 type="number"
