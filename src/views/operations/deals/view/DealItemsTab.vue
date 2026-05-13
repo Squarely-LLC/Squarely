@@ -762,6 +762,12 @@ const createDraftItemRecurrentBillablePeriods = computed(() =>
   ),
 );
 
+const resolveRecurrentItemQuantity = (periods?: number | string | null) => {
+  const quantity = Number(periods);
+
+  return Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+};
+
 const editLine = reactive({
   mode: "item" as "item" | "sub",
   itemId: null as number | null,
@@ -1130,7 +1136,6 @@ const saveSelectedCatalogueItem = async () => {
   if (!valid || !selectedCatalogueItem.value) return;
 
   const selectedItem = selectedCatalogueItem.value;
-  const quantity = Number(addItemDraft.quantity || 1);
   const recurrentTerm = addItemRequiresRecurrentTerm.value
     ? buildRecurrentTermPayload({
         endDate: addItemDraft.recurrentEndDate,
@@ -1148,6 +1153,10 @@ const saveSelectedCatalogueItem = async () => {
 
   if (addItemRequiresRecurrentTerm.value && !recurrentTerm) return;
   if (addItemRequiresRetainerTerm.value && !retainerTerm) return;
+
+  const quantity = recurrentTerm
+    ? resolveRecurrentItemQuantity(recurrentTerm.recurrentPeriods)
+    : Number(addItemDraft.quantity || 1);
 
   addDealItemsFromCatalogueItem(selectedItem, quantity, {
     recurrentTerm,
@@ -1203,10 +1212,14 @@ const saveCreatedDraftItem = async () => {
   if (createDraftItemRequiresRecurrentTerm.value && !recurrentTerm) return;
   if (createDraftItemRequiresRetainerTerm.value && !retainerTerm) return;
 
+  const quantity = recurrentTerm
+    ? resolveRecurrentItemQuantity(recurrentTerm.recurrentPeriods)
+    : Number(createDraftItem.quantity || 1);
+
   const draftRecord = cataloguesStore.addItem({
     type: selectedCreateItemType.value,
     name: createDraftItem.name,
-    qty: Number(createDraftItem.quantity || 1),
+    qty: createDraftItemRequiresRecurrentTerm.value ? 1 : quantity,
     bestPrice: Number(createDraftItem.price || 0),
     chargeTax: Boolean(createDraftItem.taxApplicable),
     description: String(createDraftItem.note || "").trim(),
@@ -1214,17 +1227,13 @@ const saveCreatedDraftItem = async () => {
     activeState: "Draft" as CatalogueActiveState,
   });
 
-  addDealItemsFromCatalogueItem(
-    draftRecord,
-    Number(createDraftItem.quantity || 1),
-    {
-      note: String(createDraftItem.note || "").trim() || null,
-      discountPercent: Number(createDraftItem.discountPercent || 0),
-      recurrentTerm,
-      retainerTerm,
-      taxApplicable: Boolean(createDraftItem.taxApplicable),
-    },
-  );
+  addDealItemsFromCatalogueItem(draftRecord, quantity, {
+    note: String(createDraftItem.note || "").trim() || null,
+    discountPercent: Number(createDraftItem.discountPercent || 0),
+    recurrentTerm,
+    retainerTerm,
+    taxApplicable: Boolean(createDraftItem.taxApplicable),
+  });
 
   createDraftItemDialogVisible.value = false;
   notifications.push("Draft catalogue item created and added", "success", 3000);
@@ -1387,7 +1396,7 @@ const openEditItem = (item: DealItemWithPlan) => {
   editLine.retainerEndDate = item.retainerEndDate ?? defaultRetainerEndDate();
   editLine.retainerPeriods = item.retainerPeriods ?? 12;
   setEditFieldConstraints({
-    quantity: true,
+    quantity: !isRecurrentCatalogueType(item.catalogueType),
     price: true,
     discount: true,
     tax: true,
@@ -1460,11 +1469,15 @@ const saveEditedLine = async () => {
       if (isRetainerCatalogueType(item.catalogueType) && !retainerTerm)
         return item;
 
+      const resolvedQuantity = recurrentTerm
+        ? resolveRecurrentItemQuantity(recurrentTerm.recurrentPeriods)
+        : (payload.quantity ?? item.quantity);
+
       return {
         ...item,
         name: payload.name || item.name,
         category: payload.category,
-        quantity: payload.quantity ?? item.quantity,
+        quantity: resolvedQuantity,
         unitPrice:
           payload.unitPrice === undefined ? item.unitPrice : payload.unitPrice,
         discountPercent:
@@ -1688,6 +1701,10 @@ const getRecurrentConsumedPeriods = (
 
   return proformaCount + invoiceCount;
 };
+
+const hasRecurrentRemainingPeriods = (
+  item?: DealItem | DealItemWithPlan | null,
+) => getRecurrentConsumedPeriods(item) < getRecurrentTotalPeriods(item);
 
 const getRetainerRemainingPeriods = (
   item?: DealItem | DealItemWithPlan | null,
@@ -2784,6 +2801,33 @@ const isBillableChildGoal = (goal: DerivedGoal) =>
 const isCompactGoal = (goal: DerivedGoal) =>
   isRetainerGoal(goal) || isRecurrentGoal(goal);
 
+const shouldShowPeriodSectionGoals = (
+  item: DealItemWithPlan,
+  section: DerivedSection,
+  sectionIndex: number,
+) => {
+  if (!section.billingPeriod) return true;
+
+  return !isRecurrentParentDealItem(item) || sectionIndex === 0;
+};
+
+const getVisibleSectionGoals = (
+  item: DealItemWithPlan,
+  section: DerivedSection,
+  sectionIndex: number,
+) =>
+  shouldShowPeriodSectionGoals(item, section, sectionIndex)
+    ? section.goals
+    : [];
+
+const shouldRenderGoalSection = (
+  item: DealItemWithPlan,
+  section: DerivedSection,
+  sectionIndex: number,
+) =>
+  getVisibleSectionGoals(item, section, sectionIndex).length > 0 ||
+  Boolean(section.billingPeriod);
+
 const resolveGoalBillingPeriodKey = (
   selectableItem: DealDocumentSelectableItem | null,
   period?: DealBillingPeriod | null,
@@ -2857,6 +2901,40 @@ const getSectionInvoiceState = (
 ) => {
   if (!section.billingPeriod) return null;
 
+  const recurrentSectionBillingKey = isRecurrentParentDealItem(parentItem)
+    ? getDealBillingPeriodKey(section.billingPeriod)
+    : "";
+
+  if (recurrentSectionBillingKey) {
+    const usage = getDocumentUsage(
+      `item-${parentItem.id}`,
+      recurrentSectionBillingKey,
+    );
+
+    if (!usage.invoiceCount) return "Not invoiced";
+
+    const matchingInvoices = invoicesStore.items.filter((record) => {
+      if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
+        return false;
+
+      return record.purchasedProducts.some((product) => {
+        const billingKey = resolveStoredBillingPeriodKey(product);
+        const selectionKey = resolveProductSelectionKey(product);
+
+        return (
+          billingKey === recurrentSectionBillingKey &&
+          selectionKey === `item-${parentItem.id}`
+        );
+      });
+    });
+
+    const isPaid = matchingInvoices.some(
+      (record) => String(record.quotation.quotationStatus) === "Paid",
+    );
+
+    return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
+  }
+
   const usageByGoal = section.goals.map((goal) =>
     getGoalDocumentUsage(parentItem, goal, section.billingPeriod),
   );
@@ -2891,6 +2969,124 @@ const getSectionInvoiceState = (
   return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
 };
 
+const getSectionSelectableItems = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) =>
+  section.goals
+    .map((goal) => findGoalSelectableItem(parentItem, goal))
+    .filter((item): item is DealDocumentSelectableItem =>
+      Boolean(
+        item &&
+        (!section.billingPeriod || isRecurrentParentDealItem(parentItem)),
+      ),
+    );
+
+const getSectionDocumentTargetItems = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const sectionItems = getSectionSelectableItems(parentItem, section);
+
+  if (!section.billingPeriod || !isRecurrentParentDealItem(parentItem)) {
+    return sectionItems;
+  }
+
+  const rootItem = getItemById(parentItem.id);
+  if (!rootItem) return [] as DealDocumentSelectableItem[];
+
+  return [
+    {
+      ...sectionItems[0],
+      ...rootItem,
+      catalogueType: rootItem.catalogueType,
+      isAutoBillable: true,
+      isBillableRoot: true,
+      isGenerated: false,
+      isRootReplacement: undefined,
+      lineConstraintsOverride: null,
+      parentName: null,
+      selectionKey: `item-${rootItem.id}`,
+    },
+  ];
+};
+
+const getSectionDocumentUsage = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const usage = getSectionDocumentTargetItems(parentItem, section).map((item) =>
+    getDocumentUsage(
+      item.selectionKey,
+      resolveGoalBillingPeriodKey(item, section.billingPeriod),
+    ),
+  );
+
+  return {
+    invoiceCount: usage.reduce((sum, entry) => sum + entry.invoiceCount, 0),
+    proformaCount: usage.reduce((sum, entry) => sum + entry.proformaCount, 0),
+  };
+};
+
+const isSectionDocumentActionDisabled = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const usage = getSectionDocumentUsage(parentItem, section);
+
+  if (kind === "invoice") return usage.invoiceCount > 0;
+
+  return usage.proformaCount > 0;
+};
+
+const openSectionDocumentPage = async (
+  kind: Extract<DealDocumentKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const sectionItems = getSectionDocumentTargetItems(parentItem, section);
+
+  if (!sectionItems.length) {
+    notifications.push(
+      "This period has no billable lines yet.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  const preferredPeriod = section.billingPeriod ?? null;
+
+  if (preferredPeriod) {
+    billingPeriod.value = preferredPeriod;
+    syncBillingPeriodDraft(preferredPeriod);
+  }
+
+  await saveAndNavigateDocumentDraft(kind, sectionItems);
+};
+
+const openSectionExternalDocumentDialog = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const sectionItems = getSectionDocumentTargetItems(parentItem, section);
+
+  if (!sectionItems.length) {
+    notifications.push(
+      "This period has no billable lines yet.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  openExternalDocumentDialog(kind, sectionItems, section.billingPeriod ?? null);
+};
+
 const isGoalProformaActionDisabled = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
@@ -2913,13 +3109,33 @@ const filteredSelectableDocumentItems = computed(() => {
     effectiveBillingMode.value,
   );
 
+  const normalizedItems =
+    effectiveBillingMode.value === "mixed-manual" ||
+    effectiveBillingMode.value === "recurrent-period"
+      ? Array.from(
+          new Map(
+            filteredItems.map((item) => {
+              if (item.catalogueType !== "Recurrent Service Line")
+                return [item.selectionKey, item] as const;
+
+              const parentItem = buildRecurrentDocumentTargetItem(item);
+
+              return [
+                parentItem?.selectionKey ?? item.selectionKey,
+                parentItem ?? item,
+              ] as const;
+            }),
+          ).values(),
+        )
+      : filteredItems;
+
   if (selectedDocumentParentItemId.value) {
-    return filteredItems.filter(
+    return normalizedItems.filter(
       (item) => String(item.id) === selectedDocumentParentItemId.value,
     );
   }
 
-  return filteredItems;
+  return normalizedItems;
 });
 
 const billingModeOptions = computed(() => {
@@ -3004,7 +3220,7 @@ const selectionDialogTitle = computed(() => {
     if (effectiveBillingMode.value === "retainer-period")
       return "Select Retainer Lines for Invoice";
     if (effectiveBillingMode.value === "recurrent-period")
-      return "Select Recurrent Lines for Invoice";
+      return "Select Recurrent Items for Invoice";
 
     return "Select Items for Invoice";
   }
@@ -3015,7 +3231,7 @@ const selectionDialogTitle = computed(() => {
     if (effectiveBillingMode.value === "retainer-period")
       return "Select Retainer Lines for Proforma";
     if (effectiveBillingMode.value === "recurrent-period")
-      return "Select Recurrent Lines for Proforma";
+      return "Select Recurrent Items for Proforma";
 
     return "Select Items for Proforma";
   }
@@ -3031,7 +3247,7 @@ const selectionDialogIntro = computed(() => {
     return "Select one or more retainer lines to include in this document.";
 
   if (effectiveBillingMode.value === "recurrent-period")
-    return "Select one or more recurrent lines to include in this document.";
+    return "Select one recurrent item to choose the period you want to bill.";
 
   return "Select one or more items to include in this document.";
 });
@@ -3044,7 +3260,7 @@ const selectionDialogHint = computed(() => {
     return `Retainer billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
 
   if (effectiveBillingMode.value === "recurrent-period")
-    return `Recurrent billing uses the selected period. Choose only the service lines you want billed for ${getDealBillingPeriodLabel(billingPeriod.value)}.`;
+    return "Recurrent billing is period-based. Choose the recurrent item first, then choose the period you want to bill.";
 
   if (effectiveBillingMode.value === "mixed-manual")
     return "This deal mixes billing bases. Choose any combination of billable rows for this document.";
@@ -3437,7 +3653,25 @@ const openExternalDocumentFlow = (kind: DealPreviewKind) => {
   }
 
   if (billingMode.value === "recurrent-period") {
-    openExternalDocumentSelectionDialog(kind, "recurrent-period");
+    if (!recurrentParentItems.value.length) {
+      notifications.push(
+        "This deal has no recurrent item ready for billing.",
+        "warning",
+        3000,
+      );
+
+      return;
+    }
+
+    if (recurrentParentItems.value.length > 1) {
+      openExternalDocumentSelectionDialog(kind, "recurrent-period");
+
+      return;
+    }
+
+    const parentItem = recurrentParentItems.value[0];
+
+    openRecurrentExternalDocumentDialog(kind, parentItem);
 
     return;
   }
@@ -3605,6 +3839,23 @@ const confirmSelectedDocumentItems = async () => {
   if (selectionNeedsBillingPeriod(items)) {
     const retainerParentItemId = resolveRetainerBillingParentItemId(items);
 
+    if (!retainerParentItemId) {
+      const hasRecurrentItem = items.some(
+        (item) =>
+          resolveDealDocumentBillingModeForItem(item) === "recurrent-period",
+      );
+
+      notifications.push(
+        hasRecurrentItem
+          ? "Choose one recurrent item, then select the period you want to bill."
+          : "Choose items from one retainer, then select the period you want to bill.",
+        "warning",
+        3000,
+      );
+
+      return;
+    }
+
     pendingDocumentItems.value = items;
     selectedDocumentParentItemId.value = retainerParentItemId;
     selectedRetainerBillingPeriodKey.value = retainerParentItemId
@@ -3658,7 +3909,25 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
     }
 
     if (billingMode.value === "recurrent-period") {
-      openSelectionDialog(kind, "recurrent-period");
+      if (!recurrentParentItems.value.length) {
+        notifications.push(
+          "This deal has no recurrent item ready for billing.",
+          "warning",
+          3000,
+        );
+
+        return;
+      }
+
+      if (recurrentParentItems.value.length > 1) {
+        openSelectionDialog(kind, "recurrent-period");
+
+        return;
+      }
+
+      const parentItem = recurrentParentItems.value[0];
+
+      await openRecurrentDocumentPage(kind, parentItem);
 
       return;
     }
@@ -3721,6 +3990,60 @@ const openRetainerDocumentPage = async (
   openSelectionDialog(kind, "retainer-period");
 };
 
+const buildRecurrentDocumentTargetItem = (parentItem: {
+  id: string | number;
+}): DealDocumentSelectableItem | null => {
+  const rootItem = getItemById(parentItem.id);
+  if (!rootItem) return null;
+
+  return {
+    ...rootItem,
+    expansionSummary: null,
+    groupKey: "billable-root",
+    groupLabel: "Billable Root Items",
+    hint: null,
+    isAutoBillable: true,
+    isBillableRoot: true,
+    isGenerated: false,
+    parentName: null,
+    selectionKey: `item-${rootItem.id}`,
+  };
+};
+
+const openRecurrentDocumentPage = async (
+  kind: Extract<DealDocumentKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+) => {
+  if (!isRecurrentParentDealItem(parentItem)) return;
+
+  if (!hasRecurrentRemainingPeriods(parentItem)) {
+    notifications.push(
+      "No more periods are billable for this recurrent item.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  const targetItem = buildRecurrentDocumentTargetItem(parentItem);
+  if (!targetItem) {
+    notifications.push(
+      "This recurrent item has no billable periods yet.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  pendingDocumentItems.value = [targetItem];
+  selectedDocumentParentItemId.value = String(parentItem.id);
+  selectedRetainerBillingPeriodKey.value =
+    availableRetainerBillingPeriods.value[0]?.key ?? null;
+  openBillingPeriodDialog(kind, "recurrent-period");
+};
+
 const openRetainerExternalDocumentDialog = (
   kind: DealPreviewKind,
   parentItem: DealItemWithPlan,
@@ -3755,6 +4078,44 @@ const openRetainerExternalDocumentDialog = (
   openExternalDocumentSelectionDialog(kind, "retainer-period");
 };
 
+const openRecurrentExternalDocumentDialog = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+) => {
+  if (!isRecurrentParentDealItem(parentItem)) return;
+
+  if (!hasRecurrentRemainingPeriods(parentItem)) {
+    notifications.push(
+      "No more periods are billable for this recurrent item.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  const targetItem = buildRecurrentDocumentTargetItem(parentItem);
+  if (!targetItem) {
+    notifications.push(
+      "This recurrent item has no billable periods yet.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  pendingDocumentItems.value = [targetItem];
+  selectedDocumentParentItemId.value = String(parentItem.id);
+  selectedRetainerBillingPeriodKey.value =
+    availableRetainerBillingPeriods.value[0]?.key ?? null;
+  externalDocumentSelectionKind.value = kind;
+  selectedDocumentKind.value = kind;
+  selectedBillingMode.value = "recurrent-period";
+  initializeBillingPeriodPrices([targetItem]);
+  billingPeriodDialogVisible.value = true;
+};
+
 const isRetainerParentDocumentActionDisabled = (
   kind: DealPreviewKind,
   parentItem: DealItemWithPlan,
@@ -3767,6 +4128,10 @@ const isRetainerParentDocumentActionDisabled = (
 
 const retainerParentItems = computed(() =>
   dealItemsWithPlan.value.filter((item) => isRetainerParentDealItem(item)),
+);
+
+const recurrentParentItems = computed(() =>
+  dealItemsWithPlan.value.filter((item) => isRecurrentParentDealItem(item)),
 );
 
 const getSingleRetainerParentItem = () => {
@@ -3785,6 +4150,29 @@ const getSingleRetainerParentItem = () => {
 
   notifications.push(
     "Choose the mother retainer row to create or attach documents.",
+    "info",
+    3000,
+  );
+
+  return null;
+};
+
+const getSingleRecurrentParentItem = () => {
+  if (recurrentParentItems.value.length === 1)
+    return recurrentParentItems.value[0];
+
+  if (!recurrentParentItems.value.length) {
+    notifications.push(
+      "This deal has no recurrent item ready for billing.",
+      "warning",
+      3000,
+    );
+
+    return null;
+  }
+
+  notifications.push(
+    "Choose the recurrent item period you want to bill.",
     "info",
     3000,
   );
@@ -4854,8 +5242,10 @@ const openEditTask = (taskId: number | string) => {
                   class="d-flex flex-column gap-2 goal-sections"
                 >
                   <VCard
-                    v-for="section in item.derivedSections.filter(
-                      (section) => section.goals.length,
+                    v-for="(
+                      section, sectionIndex
+                    ) in item.derivedSections.filter((section, index) =>
+                      shouldRenderGoalSection(item, section, index),
                     )"
                     :key="section.id"
                     variant="flat"
@@ -4869,34 +5259,150 @@ const openEditTask = (taskId: number | string) => {
                       v-if="item.derivedSections.length > 1"
                       class="goal-section-header"
                     >
-                      <div class="item-card-title-row">
-                        <div class="item-card-title item-card-title--phase">
-                          {{ section.name }}
+                      <div class="goal-section-header-row">
+                        <div class="item-card-title-row">
+                          <div class="item-card-title item-card-title--phase">
+                            {{ section.name }}
+                          </div>
+                          <VChip
+                            color="secondary"
+                            size="x-small"
+                            variant="plain"
+                            class="item-type-chip item-type-chip--phase"
+                          >
+                            Period
+                          </VChip>
                         </div>
-                        <VChip
-                          color="secondary"
-                          size="x-small"
-                          variant="plain"
-                          class="item-type-chip item-type-chip--phase"
+                        <div class="item-card-title item-card-title--phase">
+                          <span
+                            v-if="
+                              getSectionInvoiceState(item, section) ||
+                              section.note
+                            "
+                            class="goal-section-status text-body-2 text-medium-emphasis"
+                          >
+                            {{
+                              getSectionInvoiceState(item, section) ||
+                              section.note
+                            }}
+                          </span>
+                        </div>
+                        <div
+                          v-if="section.billingPeriod"
+                          class="goal-section-actions"
+                          @click.stop
                         >
-                          Period
-                        </VChip>
-                      </div>
-                      <div
-                        v-if="
-                          getSectionInvoiceState(item, section) || section.note
-                        "
-                        class="item-card-note text-body-2 text-medium-emphasis"
-                      >
-                        {{
-                          getSectionInvoiceState(item, section) || section.note
-                        }}
+                          <VBtn icon variant="text" size="x-small">
+                            <VIcon icon="tabler-dots-vertical" size="16" />
+                            <VMenu activator="parent">
+                              <VList>
+                                <VListItem
+                                  :disabled="
+                                    isSectionDocumentActionDisabled(
+                                      'proforma',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionDocumentPage(
+                                      'proforma',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-file-certificate" />
+                                  </template>
+                                  <VListItemTitle
+                                    >Create Proforma</VListItemTitle
+                                  >
+                                </VListItem>
+                                <VListItem
+                                  :disabled="
+                                    isSectionDocumentActionDisabled(
+                                      'invoice',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionDocumentPage(
+                                      'invoice',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-file-invoice" />
+                                  </template>
+                                  <VListItemTitle
+                                    >Create Invoice</VListItemTitle
+                                  >
+                                </VListItem>
+                                <VDivider />
+                                <VListItem
+                                  :disabled="
+                                    isSectionDocumentActionDisabled(
+                                      'proforma',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionExternalDocumentDialog(
+                                      'proforma',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-paperclip" />
+                                  </template>
+                                  <VListItemTitle
+                                    >Attach External Proforma</VListItemTitle
+                                  >
+                                </VListItem>
+                                <VListItem
+                                  :disabled="
+                                    isSectionDocumentActionDisabled(
+                                      'invoice',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionExternalDocumentDialog(
+                                      'invoice',
+                                      item,
+                                      section,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-paperclip" />
+                                  </template>
+                                  <VListItemTitle
+                                    >Attach External Invoice</VListItemTitle
+                                  >
+                                </VListItem>
+                              </VList>
+                            </VMenu>
+                          </VBtn>
+                        </div>
                       </div>
                     </div>
 
                     <div class="d-flex flex-column gap-2 goal-panels">
                       <VCard
-                        v-for="goal in section.goals"
+                        v-for="goal in getVisibleSectionGoals(
+                          item,
+                          section,
+                          sectionIndex,
+                        )"
                         :key="goal.id"
                         variant="tonal"
                         class="goal-panel goal-panel--static"
@@ -5018,7 +5524,12 @@ const openEditTask = (taskId: number | string) => {
                                     </template>
                                     <VListItemTitle>Edit</VListItemTitle>
                                   </VListItem>
-                                  <template v-if="isBillableChildGoal(goal)">
+                                  <template
+                                    v-if="
+                                      isBillableChildGoal(goal) &&
+                                      !section.billingPeriod
+                                    "
+                                  >
                                     <VDivider />
                                     <VListItem
                                       :disabled="
@@ -5613,7 +6124,7 @@ const openEditTask = (taskId: number | string) => {
 
         <VForm ref="addItemFormRef" @submit.prevent="saveSelectedCatalogueItem">
           <VRow>
-            <VCol cols="12" md="8">
+            <VCol cols="12" :md="addItemRequiresRecurrentTerm ? 12 : 8">
               <AppAutocomplete
                 v-model="selectedCatalogueItemId"
                 label="Catalogue Item"
@@ -5623,7 +6134,7 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="4">
+            <VCol v-if="!addItemRequiresRecurrentTerm" cols="12" md="4">
               <AppTextField
                 v-model="addItemDraft.quantity"
                 type="number"
@@ -6461,7 +6972,7 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol v-if="!createDraftItemRequiresRecurrentTerm" cols="12" md="3">
               <AppTextField
                 v-model="createDraftItem.quantity"
                 type="number"
@@ -6741,8 +7252,22 @@ const openEditTask = (taskId: number | string) => {
 .goal-section-header {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.2rem;
   margin-block-end: 0.65rem;
+}
+
+.goal-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.goal-section-status {
+  flex: 0 0 auto;
+  margin-block-start: 0;
+  white-space: nowrap;
 }
 
 .item-card-shell,
