@@ -1528,6 +1528,54 @@ const formatTaxApplicable = (value: boolean | null) => {
 const formatPercent = (value?: number | null) =>
   value === null || value === undefined ? "--" : `${Number(value)}%`;
 
+const getProducedProductRecord = (
+  item?: DealItem | DealItemWithPlan | null,
+): CatalogueProducedProductRecord | null => {
+  if (!item?.catalogueItemId) return null;
+
+  const record = cataloguesStore.recordById(
+    item.catalogueItemId,
+    item.catalogueType || undefined,
+  );
+
+  return record?.type === "Produced Product"
+    ? (record as CatalogueProducedProductRecord)
+    : null;
+};
+
+const getProducedProductCustomizationSummary = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  const produced = getProducedProductRecord(item);
+  if (!produced) return null;
+
+  const labels = [
+    ...(Array.isArray(produced.options) ? produced.options : []).map((field) =>
+      String(field.name ?? "").trim(),
+    ),
+    ...(Array.isArray(produced.measurements) ? produced.measurements : []).map(
+      (field) => String(field.name ?? "").trim(),
+    ),
+  ].filter(Boolean);
+
+  const uniqueLabels = Array.from(new Set(labels));
+
+  return uniqueLabels.length ? uniqueLabels.join(", ") : null;
+};
+
+const getProducedProductSubItemsSummary = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  const produced = getProducedProductRecord(item);
+  if (!produced) return null;
+
+  const labels = (Array.isArray(produced.subItems) ? produced.subItems : [])
+    .map((subItem) => String(subItem.name ?? "").trim())
+    .filter(Boolean);
+
+  return labels.length ? labels.join(", ") : null;
+};
+
 const formatDocumentDate = (value?: string | null) => {
   const normalized = String(value ?? "").trim();
   if (!normalized) return "--";
@@ -2021,11 +2069,56 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
     return [
       makeSection(item, {
         name: produced.name,
-        note: produced.description || null,
+        note:
+          getProducedProductCustomizationSummary(item) ||
+          produced.description ||
+          null,
         price: produced.bestPrice,
-        goals: [],
-        goalTypeSingular: "Item",
-        goalTypePlural: "Items",
+        goals: (Array.isArray(produced.subItems) ? produced.subItems : []).map(
+          (subItem) =>
+            makeDerivedGoal(
+              item,
+              "produced-sub-item",
+              "Sub Item",
+              {
+                quantity: null,
+                discountLabel: null,
+                taxApplicable: null,
+                showQuantity: false,
+                showPrice: false,
+                showDiscount: false,
+                showTaxApplicable: false,
+              },
+              {
+                id: subItem.id,
+                name: subItem.name,
+                note: [
+                  subItem.options.length
+                    ? `Customizations: ${subItem.options
+                        .map((field) => String(field.name ?? "").trim())
+                        .filter(Boolean)
+                        .join(", ")}`
+                    : "",
+                  subItem.measurements.length
+                    ? `Measurements: ${subItem.measurements
+                        .map((field) => String(field.name ?? "").trim())
+                        .filter(Boolean)
+                        .join(", ")}`
+                    : "",
+                  subItem.rawMaterials.length
+                    ? `Raw materials: ${subItem.rawMaterials
+                        .map((material) => String(material.name ?? "").trim())
+                        .filter(Boolean)
+                        .join(", ")}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" | "),
+              },
+            ),
+        ),
+        goalTypeSingular: "Sub Item",
+        goalTypePlural: "Sub Items",
       }),
     ];
   }
@@ -2126,11 +2219,16 @@ const dealItemsWithPlan = computed<DealItemWithPlan[]>(() =>
     const derivedSections = deriveSections(item);
     const relatedItemMilestones = deriveRelatedItemMilestones(item);
     const [firstSection] = derivedSections;
+    const hasDerivedChildren = derivedSections.some(
+      (section) => section.goals.length > 0,
+    );
 
     const primaryItem: DealItemWithPlan = {
       ...item,
       panelId: item.id,
-      isExpandable: !isProductLike(item.catalogueType),
+      isExpandable:
+        !isProductLike(item.catalogueType) ||
+        (item.catalogueType === "Produced Product" && hasDerivedChildren),
       derivedSections,
       childTypeSingular: firstSection?.goalTypeSingular || "Item",
       childTypePlural: firstSection?.goalTypePlural || "Items",
@@ -2679,6 +2777,9 @@ const isRetainerGoal = (goal: DerivedGoal) =>
 
 const isRecurrentGoal = (goal: DerivedGoal) =>
   goal.typeLabel === "Recurrent Service";
+
+const isBillableChildGoal = (goal: DerivedGoal) =>
+  goal.typeLabel === "Phase" || isRecurrentGoal(goal);
 
 const isCompactGoal = (goal: DerivedGoal) =>
   isRetainerGoal(goal) || isRecurrentGoal(goal);
@@ -4570,6 +4671,21 @@ const openEditTask = (taskId: number | string) => {
                   >
                     {{ item.note }}
                   </div>
+
+                  <div
+                    v-if="getProducedProductCustomizationSummary(item)"
+                    class="item-card-note text-body-2 text-medium-emphasis"
+                  >
+                    Customizations:
+                    {{ getProducedProductCustomizationSummary(item) }}
+                  </div>
+
+                  <div
+                    v-if="getProducedProductSubItemsSummary(item)"
+                    class="item-card-note text-body-2 text-medium-emphasis"
+                  >
+                    Sub items: {{ getProducedProductSubItemsSummary(item) }}
+                  </div>
                 </div>
 
                 <div
@@ -4902,7 +5018,7 @@ const openEditTask = (taskId: number | string) => {
                                     </template>
                                     <VListItemTitle>Edit</VListItemTitle>
                                   </VListItem>
-                                  <template v-if="!isRetainerGoal(goal)">
+                                  <template v-if="isBillableChildGoal(goal)">
                                     <VDivider />
                                     <VListItem
                                       :disabled="

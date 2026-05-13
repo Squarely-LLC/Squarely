@@ -208,6 +208,7 @@ const totalPrice = computed(() => getLineTotal(props.data));
             rows="2"
             placeholder="Item description"
             persistent-placeholder
+            :class="{ 'product-description-field': canEditPrice }"
           />
         </VCol>
 
@@ -274,3 +275,12 @@ const totalPrice = computed(() => getLineTotal(props.data));
     </div>
   </VCard>
 </template>
+
+<style scoped>
+@media (min-width: 960px) {
+  .product-description-field {
+    inline-size: calc(133.333% + 1.5rem);
+    max-inline-size: none;
+  }
+}
+</style>
