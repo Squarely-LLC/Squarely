@@ -269,6 +269,7 @@ const billingPeriodCustomStartDate = ref(defaultBillingCustomDateValue());
 const billingPeriodCustomEndDate = ref(defaultBillingCustomDateValue());
 const billingPeriodCustomLabel = ref("");
 const selectedRetainerBillingPeriodKey = ref<string | null>(null);
+const selectedRecurrentBillingPeriodKeys = ref<string[]>([]);
 
 const billingPeriodKindOptions = [
   { title: "Month", value: "monthly" },
@@ -365,6 +366,14 @@ const syncBillingPeriodDraft = (
 
 const billingPeriodPreview = computed<DealBillingPeriod | null>(() => {
   if (isRetainerBillingPeriodSelection.value) {
+    if (isMultiRecurrentBillingSelection.value) {
+      return (
+        availableRetainerBillingPeriods.value.find((period) =>
+          selectedRecurrentBillingPeriodKeys.value.includes(period.key),
+        ) || null
+      );
+    }
+
     return (
       availableRetainerBillingPeriods.value.find(
         (period) => period.key === selectedRetainerBillingPeriodKey.value,
@@ -413,6 +422,25 @@ const commitBillingPeriod = () => {
   syncBillingPeriodDraft(billingPeriod.value);
 
   return billingPeriod.value;
+};
+
+const commitBillingPeriods = () => {
+  if (!isMultiRecurrentBillingSelection.value) {
+    const nextPeriod = commitBillingPeriod();
+
+    return nextPeriod ? [nextPeriod] : [];
+  }
+
+  const selectedPeriods = availableRetainerBillingPeriods.value.filter(
+    (period) => selectedRecurrentBillingPeriodKeys.value.includes(period.key),
+  );
+
+  if (!selectedPeriods.length) return [] as DealBillingPeriod[];
+
+  billingPeriod.value = selectedPeriods[0];
+  syncBillingPeriodDraft(billingPeriod.value);
+
+  return selectedPeriods;
 };
 
 const formatIsoDateValue = (date: Date) => {
@@ -1761,6 +1789,26 @@ const calculateAmount = (
   return subtotal - discount;
 };
 
+const calculateSubtotal = (price?: number | null, quantity?: number | null) => {
+  if (price === null || price === undefined) return null;
+
+  const normalizedQuantity =
+    quantity === null || quantity === undefined ? 1 : Number(quantity);
+
+  return Number(price) * normalizedQuantity;
+};
+
+const calculateDiscountAmount = (
+  price?: number | null,
+  quantity?: number | null,
+  discountPercent = 0,
+) => {
+  const subtotal = calculateSubtotal(price, quantity);
+  if (subtotal === null) return null;
+
+  return subtotal * (Number(discountPercent || 0) / 100);
+};
+
 const getItemEffectiveQuantity = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
@@ -2772,6 +2820,43 @@ const availableRetainerBillingPeriods = computed(() =>
   ),
 );
 
+const isRecurrentBillingPeriodSelection = computed(
+  () =>
+    isRetainerBillingPeriodSelection.value &&
+    isRecurrentCatalogueType(selectedDocumentParentItem.value?.catalogueType),
+);
+
+const isMultiRecurrentBillingSelection = computed(
+  () =>
+    isRecurrentBillingPeriodSelection.value &&
+    !externalDocumentSelectionKind.value,
+);
+
+const selectedRecurrentBillingPeriods = computed(() =>
+  availableRetainerBillingPeriods.value.filter((period) =>
+    selectedRecurrentBillingPeriodKeys.value.includes(period.key),
+  ),
+);
+
+const billingPeriodPreviewLabel = computed(() => {
+  if (isMultiRecurrentBillingSelection.value) {
+    return selectedRecurrentBillingPeriods.value.length
+      ? selectedRecurrentBillingPeriods.value
+          .map((period) => period.label)
+          .join(", ")
+      : "--";
+  }
+
+  return billingPeriodPreview.value?.label || "--";
+});
+
+const isBillingPeriodConfirmationDisabled = computed(() => {
+  if (isMultiRecurrentBillingSelection.value)
+    return !selectedRecurrentBillingPeriods.value.length;
+
+  return isRetainerBillingPeriodSelection.value && !billingPeriodPreview.value;
+});
+
 const findGoalSelectableItem = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
@@ -3345,6 +3430,8 @@ const resetDocumentWorkflowState = () => {
   selectedBillingMode.value = null;
   selectedDocumentKind.value = null;
   selectedDocumentParentItemId.value = null;
+  selectedRetainerBillingPeriodKey.value = null;
+  selectedRecurrentBillingPeriodKeys.value = [];
   selectedItemIds.value = [];
 };
 
@@ -3504,6 +3591,7 @@ const applyBillingPeriodPricing = (
 const saveAndNavigateDocumentDraft = async (
   kind: DealDocumentKind,
   selectedItems: DealDocumentSelectableItem[],
+  selectedBillingPeriods?: DealBillingPeriod[] | null,
 ) => {
   if (!selectedItems.length) {
     notifications.push("This deal has no billable items yet", "warning", 2500);
@@ -3512,8 +3600,11 @@ const saveAndNavigateDocumentDraft = async (
   }
 
   const draft = buildDealDocumentDraftRecord(kind, {
+    billingPeriods: selectedBillingPeriods?.length
+      ? selectedBillingPeriods
+      : null,
     billingPeriod: selectionNeedsBillingPeriod(selectedItems)
-      ? billingPeriod.value
+      ? (selectedBillingPeriods?.[0] ?? billingPeriod.value)
       : null,
     contact: contact.value,
     deal: props.deal,
@@ -3729,9 +3820,20 @@ const openBillingPeriodDialog = (
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
   if (selectedDocumentParentItemId.value) {
-    selectedRetainerBillingPeriodKey.value =
+    const defaultPeriodKey =
       availableRetainerBillingPeriods.value[0]?.key ?? null;
+
+    selectedRetainerBillingPeriodKey.value = defaultPeriodKey;
+    selectedRecurrentBillingPeriodKeys.value =
+      isRecurrentCatalogueType(
+        selectedDocumentParentItem.value?.catalogueType,
+      ) &&
+      !externalDocumentSelectionKind.value &&
+      defaultPeriodKey
+        ? [defaultPeriodKey]
+        : [];
   } else {
+    selectedRecurrentBillingPeriodKeys.value = [];
     syncBillingPeriodDraft();
   }
   initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
@@ -3741,12 +3843,14 @@ const openBillingPeriodDialog = (
 const confirmBillingPeriod = () => {
   if (!selectedDocumentKind.value) return;
 
-  const nextBillingPeriod = commitBillingPeriod();
-  if (!nextBillingPeriod) {
+  const nextBillingPeriods = commitBillingPeriods();
+  if (!nextBillingPeriods.length) {
     notifications.push("Select a billing period first", "warning", 2500);
 
     return;
   }
+
+  const nextBillingPeriod = nextBillingPeriods[0];
 
   if (!getDealBillingPeriodKey(nextBillingPeriod)) {
     notifications.push("Select a billing period first", "warning", 2500);
@@ -3754,10 +3858,14 @@ const confirmBillingPeriod = () => {
     return;
   }
 
-  const conflictingItems = getPeriodSelectionConflicts(
-    pendingDocumentItems.value,
-    nextBillingPeriod,
+  const conflictingPeriod = nextBillingPeriods.find(
+    (period) =>
+      getPeriodSelectionConflicts(pendingDocumentItems.value, period).length,
   );
+
+  const conflictingItems = conflictingPeriod
+    ? getPeriodSelectionConflicts(pendingDocumentItems.value, conflictingPeriod)
+    : [];
 
   if (conflictingItems.length) {
     const conflictingNames = conflictingItems
@@ -3768,7 +3876,7 @@ const confirmBillingPeriod = () => {
     const conflictSuffix = conflictingItems.length > 2 ? " and more" : "";
 
     notifications.push(
-      `${conflictingNames}${conflictSuffix} already used for ${getDealBillingPeriodLabel(nextBillingPeriod)}.`,
+      `${conflictingNames}${conflictSuffix} already used for ${getDealBillingPeriodLabel(conflictingPeriod)}.`,
       "warning",
       3500,
     );
@@ -3781,10 +3889,11 @@ const confirmBillingPeriod = () => {
   if (pendingDocumentItems.value.length) {
     const kind = selectedDocumentKind.value;
 
-    const items = applyBillingPeriodPricing(
-      [...pendingDocumentItems.value],
-      nextBillingPeriod,
-    );
+    const items = isMultiRecurrentBillingSelection.value
+      ? [...pendingDocumentItems.value]
+      : nextBillingPeriods.flatMap((period) =>
+          applyBillingPeriodPricing([...pendingDocumentItems.value], period),
+        );
 
     pendingDocumentItems.value = [];
 
@@ -3799,7 +3908,7 @@ const confirmBillingPeriod = () => {
       return;
     }
 
-    void saveAndNavigateDocumentDraft(kind, items);
+    void saveAndNavigateDocumentDraft(kind, items, nextBillingPeriods);
 
     return;
   }
@@ -4232,7 +4341,7 @@ const positiveAmountValidator = (value: unknown) => {
 const validateExternalAttachment = () => {
   const file = selectedExternalAttachment.value;
 
-  if (!file) return "";
+  if (!file) return "Attachment is required.";
 
   const fileName = file.name.toLowerCase();
 
@@ -5648,6 +5757,27 @@ const openEditTask = (taskId: number | string) => {
             </VExpansionPanelText>
           </VExpansionPanel>
         </VExpansionPanels>
+
+        <div v-if="dealItemsWithPlan.length" class="items-card-summary">
+          <div class="items-card-summary__rows">
+            <div class="items-card-summary__row">
+              <span>Total:</span>
+              <strong>{{ formatMoney(itemsSubtotal) }}</strong>
+            </div>
+            <div class="items-card-summary__row">
+              <span>Discount:</span>
+              <strong>{{ formatMoney(totalDiscount) }}</strong>
+            </div>
+            <div class="items-card-summary__row">
+              <span>Tax:</span>
+              <strong>{{ formatMoney(totalTax) }}</strong>
+            </div>
+            <div class="items-card-summary__row items-card-summary__row--total">
+              <span>Grand Total:</span>
+              <strong>{{ formatMoney(grandTotal) }}</strong>
+            </div>
+          </div>
+        </div>
       </VCardText>
     </VCard>
 
@@ -6595,8 +6725,28 @@ const openEditTask = (taskId: number | string) => {
         <div class="rounded border pa-4 bg-var-theme-background">
           <template v-if="isRetainerBillingPeriodSelection">
             <VSelect
+              v-if="isMultiRecurrentBillingSelection"
+              v-model="selectedRecurrentBillingPeriodKeys"
+              label="Recurrent Periods"
+              :items="
+                availableRetainerBillingPeriods.map((period) => ({
+                  title: period.label,
+                  value: period.key,
+                }))
+              "
+              :disabled="!availableRetainerBillingPeriods.length"
+              chips
+              multiple
+            />
+
+            <VSelect
+              v-else
               v-model="selectedRetainerBillingPeriodKey"
-              label="Retainer Period"
+              :label="
+                isRecurrentBillingPeriodSelection
+                  ? 'Recurrent Period'
+                  : 'Retainer Period'
+              "
               :items="
                 availableRetainerBillingPeriods.map((period) => ({
                   title: period.label,
@@ -6610,7 +6760,9 @@ const openEditTask = (taskId: number | string) => {
               v-if="!availableRetainerBillingPeriods.length"
               class="text-sm text-warning mt-3"
             >
-              No billable retainer periods remain available.
+              No billable
+              {{ isRecurrentBillingPeriodSelection ? "recurrent" : "retainer" }}
+              periods remain available.
             </div>
           </template>
 
@@ -6688,9 +6840,15 @@ const openEditTask = (taskId: number | string) => {
         </div>
 
         <div class="rounded border pa-3 bg-var-theme-background">
-          <div class="text-xs text-medium-emphasis mb-1">Selected period</div>
+          <div class="text-xs text-medium-emphasis mb-1">
+            {{
+              isMultiRecurrentBillingSelection
+                ? "Selected periods"
+                : "Selected period"
+            }}
+          </div>
           <div class="text-body-1 font-weight-medium">
-            {{ billingPeriodPreview?.label || "--" }}
+            {{ billingPeriodPreviewLabel }}
           </div>
         </div>
 
@@ -6699,6 +6857,15 @@ const openEditTask = (taskId: number | string) => {
           class="d-flex flex-column gap-3 mt-4"
         >
           <div
+            v-if="isMultiRecurrentBillingSelection"
+            class="border rounded-lg pa-4 bg-var-theme-background text-sm text-medium-emphasis"
+          >
+            {{ pendingBillingPeriodItems[0]?.name || "This recurrent item" }}
+            will use its saved recurrent price for each selected period.
+          </div>
+
+          <div
+            v-else
             v-for="item in pendingBillingPeriodItems"
             :key="item.selectionKey"
             class="border rounded-lg pa-4 bg-var-theme-background"
@@ -6727,7 +6894,7 @@ const openEditTask = (taskId: number | string) => {
         <VBtn variant="text" @click="resetDocumentWorkflowState"> Cancel </VBtn>
         <VBtn
           color="primary"
-          :disabled="isRetainerBillingPeriodSelection && !billingPeriodPreview"
+          :disabled="isBillingPeriodConfirmationDisabled"
           @click="confirmBillingPeriod"
         >
           Continue
@@ -7406,6 +7573,52 @@ const openEditTask = (taskId: number | string) => {
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
+.items-card-summary {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: 1rem;
+}
+
+.items-card-summary__rows {
+  display: flex;
+  flex-direction: column;
+  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  gap: 0.35rem;
+  inline-size: min(100%, 16rem);
+  padding-block-start: 0.875rem;
+}
+
+.items-card-summary__row {
+  display: grid;
+  align-items: center;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.items-card-summary__row span {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.items-card-summary__row strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: end;
+}
+
+.items-card-summary__row--total {
+  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  padding-block-start: 0.45rem;
+}
+
+.items-card-summary__row--total span,
+.items-card-summary__row--total strong {
+  font-size: 0.92rem;
+}
+
 .goal-card-actions {
   display: flex;
   align-self: flex-start;
@@ -7893,6 +8106,14 @@ const openEditTask = (taskId: number | string) => {
 
   .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
     margin-block-start: 0.5rem;
+  }
+
+  .items-card-summary {
+    justify-content: stretch;
+  }
+
+  .items-card-summary__rows {
+    inline-size: 100%;
   }
 
   .milestone-actions {

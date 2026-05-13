@@ -120,6 +120,7 @@ export interface DealDocumentContractualPhaseLine {
 
 export interface DealDocumentDraftContext {
   billingPeriod?: DealBillingPeriod | null;
+  billingPeriods?: DealBillingPeriod[] | null;
   contact?: ContactProperties | null;
   deal: DealProperties;
   financial?: FinancialConfig | null;
@@ -1488,6 +1489,7 @@ function buildCollapsedRecurrentPeriodProduct(
 function expandDealItemToPurchasedProducts(
   item: DealDocumentSelectableItem,
   billingPeriod?: DealBillingPeriod | null,
+  billingPeriods?: DealBillingPeriod[] | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   if (
@@ -1516,6 +1518,12 @@ function expandDealItemToPurchasedProducts(
     return buildRetainerProducts(item, record, billingPeriod);
   }
   if (record.type === "Reccurent Service") {
+    if (billingPeriods?.length) {
+      return billingPeriods.flatMap((period) =>
+        buildRecurrentProducts(item, record, period),
+      );
+    }
+
     return buildRecurrentProducts(item, record, billingPeriod);
   }
 
@@ -1526,6 +1534,7 @@ function buildPurchasedProducts(
   items: DealDocumentSelectableItem[],
   deal: DealProperties,
   billingPeriod?: DealBillingPeriod | null,
+  billingPeriods?: DealBillingPeriod[] | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   const orderedProducts: PurchasedProductLike[] = [];
@@ -1537,6 +1546,7 @@ function buildPurchasedProducts(
         ...expandDealItemToPurchasedProducts(
           item,
           billingPeriod,
+          billingPeriods,
           resolveCatalogueRecord,
         ),
       );
@@ -1654,6 +1664,7 @@ function buildQuotationDraftRecord({
 
 function buildProformaDraftRecord({
   billingPeriod,
+  billingPeriods,
   contact,
   deal,
   financial,
@@ -1666,6 +1677,7 @@ function buildProformaDraftRecord({
     selectedItems,
     deal,
     billingPeriod,
+    billingPeriods,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);
@@ -1709,6 +1721,7 @@ function buildProformaDraftRecord({
 
 function buildInvoiceDraftRecord({
   billingPeriod,
+  billingPeriods,
   contact,
   deal,
   financial,
@@ -1721,6 +1734,7 @@ function buildInvoiceDraftRecord({
     selectedItems,
     deal,
     billingPeriod,
+    billingPeriods,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);

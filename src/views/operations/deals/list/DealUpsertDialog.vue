@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type { DealCustomFieldDefinition } from "@/plugins/fake-api/handlers/config/types";
 import type {
   DealFieldValue,
@@ -11,6 +12,8 @@ import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
+import { useNotificationsStore } from "@/stores/notifications";
+import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -36,12 +39,14 @@ const emit = defineEmits<Emit>();
 
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
+const isAddContactDialogVisible = ref(false);
 
 const configStore = useConfigStore();
 const contactsStore = useContactsStore();
 const dealsStore = useDealsStore();
 const employeesStore = useEmployeesStore();
 const jobsStore = useJobsStore();
+const notificationsStore = useNotificationsStore();
 
 configStore.init();
 contactsStore.init();
@@ -141,6 +146,17 @@ const selectedContact = computed(() => {
   return contactsStore.byId(contactId) ?? null;
 });
 
+const onAddContactSubmit = (payload: Partial<ContactProperties>) => {
+  const created = contactsStore.addContact({
+    ...payload,
+    class: "Lead",
+  });
+
+  localDeal.value.relatedTo = created.id;
+  isAddContactDialogVisible.value = false;
+  notificationsStore.push("Lead contact created", "success", 3000);
+};
+
 const buildInitials = (value?: string | null) => {
   const safe = String(value ?? "").trim();
   if (!safe) return "";
@@ -239,6 +255,15 @@ const buildDefaultCustomFieldValues = (
   return nextValues;
 };
 
+const getTodayDateValue = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
 const buildEmptyDeal = (): Partial<DealProperties> => ({
   name: "",
   code: null,
@@ -249,7 +274,7 @@ const buildEmptyDeal = (): Partial<DealProperties> => ({
   linkedJobId: null,
   salesman: null,
   type: typeOptions.value[0] || null,
-  estimatedDeliveryDate: null,
+  estimatedDeliveryDate: getTodayDateValue(),
   stage: stageOptions.value[0] || null,
   important: false,
   location: defaultLocation.value || null,
@@ -450,47 +475,62 @@ const toggleDetails = () => {
         <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
           <VRow class="deal-form-grid">
             <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localDeal.relatedTo"
-                label="Contact Name"
-                placeholder="Select contact"
-                :items="contactOptions"
-                item-title="title"
-                item-value="value"
-                :rules="[requiredValidator]"
-                clearable
-                clear-icon="tabler-x"
-              >
-                <template #item="{ item, props: itemProps }">
-                  <VListItem v-bind="itemProps">
-                    <template #prepend>
-                      <VAvatar
-                        size="28"
-                        :color="item.raw.avatar ? undefined : 'primary'"
-                        :class="
-                          item.raw.avatar
-                            ? null
-                            : 'text-white font-weight-medium'
-                        "
-                      >
-                        <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
-                        <span v-else class="text-caption font-weight-bold">
-                          {{ avatarText(item.raw.title) }}
-                        </span>
-                      </VAvatar>
-                    </template>
-                  </VListItem>
-                </template>
-              </AppSelect>
+              <div class="d-flex gap-2 contact-select-row">
+                <AppSelect
+                  v-model="localDeal.relatedTo"
+                  class="flex-grow-1"
+                  label="Contact Name"
+                  placeholder="Select contact"
+                  :items="contactOptions"
+                  item-title="title"
+                  item-value="value"
+                  :rules="[requiredValidator]"
+                  clearable
+                  clear-icon="tabler-x"
+                >
+                  <template #item="{ item, props: itemProps }">
+                    <VListItem v-bind="itemProps">
+                      <template #prepend>
+                        <VAvatar
+                          size="28"
+                          :color="item.raw.avatar ? undefined : 'primary'"
+                          :class="
+                            item.raw.avatar
+                              ? null
+                              : 'text-white font-weight-medium'
+                          "
+                        >
+                          <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
+                          <span v-else class="text-caption font-weight-bold">
+                            {{ avatarText(item.raw.title) }}
+                          </span>
+                        </VAvatar>
+                      </template>
+                    </VListItem>
+                  </template>
+                </AppSelect>
+
+                <VBtn
+                  icon
+                  variant="tonal"
+                  color="primary"
+                  class="contact-add-btn"
+                  @click="isAddContactDialogVisible = true"
+                >
+                  <VIcon icon="tabler-plus" />
+                  <VTooltip activator="parent" location="top">
+                    Add New Contact
+                  </VTooltip>
+                </VBtn>
+              </div>
             </VCol>
 
             <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localDeal.type"
-                :label="typeLabel"
-                placeholder="Select type"
-                :items="typeOptions"
-                :rules="[requiredValidator]"
+              <AppDateTimePicker
+                v-model="localDeal.estimatedDeliveryDate"
+                label="Date"
+                :config="{ dateFormat: 'Y-m-d' }"
+                clearable
               />
             </VCol>
 
@@ -528,6 +568,16 @@ const toggleDetails = () => {
                   </div>
                 </template>
               </AppSelect>
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="localDeal.type"
+                :label="typeLabel"
+                placeholder="Select type"
+                :items="typeOptions"
+                :rules="[requiredValidator]"
+              />
             </VCol>
 
             <VCol cols="12" md="6">
@@ -585,13 +635,13 @@ const toggleDetails = () => {
               </AppTextField>
             </VCol>
 
-            <VCol cols="12">
+            <VCol cols="12" md="6">
               <AppTextarea
+                auto-grow
+                rows="1"
                 v-model="localDeal.note"
                 label="Note"
                 placeholder="Short note"
-                auto-grow
-                rows="1"
               />
             </VCol>
 
@@ -803,6 +853,11 @@ const toggleDetails = () => {
       </VCardText>
     </VCard>
   </VDialog>
+
+  <AddNewUserDialog
+    v-model:is-dialog-visible="isAddContactDialogVisible"
+    @submit="onAddContactSubmit"
+  />
 </template>
 
 <style scoped>
@@ -842,6 +897,18 @@ const toggleDetails = () => {
 
 .deal-custom-boolean {
   min-block-size: 56px;
+}
+
+.contact-select-row {
+  align-items: flex-end;
+}
+
+.contact-add-btn {
+  padding: 0 !important;
+  border-radius: 10px !important;
+  block-size: 40px !important;
+  inline-size: 40px !important;
+  min-inline-size: 40px !important;
 }
 
 .detail-toggle-line {
