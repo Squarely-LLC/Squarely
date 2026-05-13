@@ -120,6 +120,7 @@ export interface DealDocumentContractualPhaseLine {
 
 export interface DealDocumentDraftContext {
   billingPeriod?: DealBillingPeriod | null;
+  billingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null;
   billingPeriods?: DealBillingPeriod[] | null;
   contact?: ContactProperties | null;
   deal: DealProperties;
@@ -1584,17 +1585,41 @@ function expandDealItemToPurchasedProducts(
   return [buildStandardPurchasedProduct(item, billingPeriod)];
 }
 
+function resolveItemBillingPeriods(
+  item: DealDocumentSelectableItem,
+  billingPeriod?: DealBillingPeriod | null,
+  billingPeriods?: DealBillingPeriod[] | null,
+  billingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
+) {
+  const assignedPeriods = billingPeriodAssignments?.[item.selectionKey] || [];
+
+  if (assignedPeriods.length) return assignedPeriods;
+  if (billingPeriods?.length) return billingPeriods;
+  if (billingPeriod) return [billingPeriod];
+
+  return [] as DealBillingPeriod[];
+}
+
 function buildPurchasedProducts(
   items: DealDocumentSelectableItem[],
   deal: DealProperties,
   billingPeriod?: DealBillingPeriod | null,
   billingPeriods?: DealBillingPeriod[] | null,
+  billingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
   resolveCatalogueRecord?: CatalogueRecordResolver,
 ) {
   const orderedProducts: PurchasedProductLike[] = [];
   const periodLineGroups = new Map<string, DealDocumentSelectableItem[]>();
 
   items.forEach((item) => {
+    const itemBillingPeriods = resolveItemBillingPeriods(
+      item,
+      billingPeriod,
+      billingPeriods,
+      billingPeriodAssignments,
+    );
+    const itemBillingPeriod = itemBillingPeriods[0] ?? billingPeriod;
+
     if (
       item.catalogueType !== "Retainer Service Line" &&
       item.catalogueType !== "Recurrent Service Line"
@@ -1602,8 +1627,8 @@ function buildPurchasedProducts(
       orderedProducts.push(
         ...expandDealItemToPurchasedProducts(
           item,
-          billingPeriod,
-          billingPeriods,
+          itemBillingPeriod,
+          itemBillingPeriods.length > 1 ? itemBillingPeriods : null,
           resolveCatalogueRecord,
         ),
       );
@@ -1611,7 +1636,7 @@ function buildPurchasedProducts(
       return;
     }
 
-    const groupKey = `${item.catalogueType}:${item.id}:${getDealBillingPeriodKey(billingPeriod) || ""}`;
+    const groupKey = `${item.catalogueType}:${item.id}:${getDealBillingPeriodKey(itemBillingPeriod) || ""}`;
     const existingGroup = periodLineGroups.get(groupKey);
 
     if (existingGroup) {
@@ -1627,13 +1652,13 @@ function buildPurchasedProducts(
         ? buildCollapsedRetainerPeriodProduct(
             groupItems,
             deal,
-            billingPeriod,
+            itemBillingPeriod,
             resolveCatalogueRecord,
           )
         : buildCollapsedRecurrentPeriodProduct(
             groupItems,
             deal,
-            billingPeriod,
+            itemBillingPeriod,
             resolveCatalogueRecord,
           );
 
@@ -1731,6 +1756,7 @@ function buildQuotationDraftRecord({
 
 function buildProformaDraftRecord({
   billingPeriod,
+  billingPeriodAssignments,
   billingPeriods,
   contact,
   deal,
@@ -1745,6 +1771,7 @@ function buildProformaDraftRecord({
     deal,
     billingPeriod,
     billingPeriods,
+    billingPeriodAssignments,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);
@@ -1788,6 +1815,7 @@ function buildProformaDraftRecord({
 
 function buildInvoiceDraftRecord({
   billingPeriod,
+  billingPeriodAssignments,
   billingPeriods,
   contact,
   deal,
@@ -1802,6 +1830,7 @@ function buildInvoiceDraftRecord({
     deal,
     billingPeriod,
     billingPeriods,
+    billingPeriodAssignments,
     resolveCatalogueRecord,
   );
   const total = getQuotationGrandTotal(purchasedProducts);

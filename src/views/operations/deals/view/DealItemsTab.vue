@@ -271,6 +271,21 @@ const billingPeriodCustomLabel = ref("");
 const selectedRetainerBillingPeriodKey = ref<string | null>(null);
 const selectedRecurrentBillingPeriodKeys = ref<string[]>([]);
 
+interface PendingBillingPeriodGroup {
+  items: DealDocumentSelectableItem[];
+  mode: Extract<
+    DealDocumentBillingMode,
+    "retainer-period" | "recurrent-period"
+  >;
+  parentItemId: string;
+}
+
+const pendingBillingPeriodGroups = ref<PendingBillingPeriodGroup[]>([]);
+const activeBillingPeriodGroupIndex = ref(0);
+const billingPeriodAssignments = reactive<Record<string, DealBillingPeriod[]>>(
+  {},
+);
+
 const billingPeriodKindOptions = [
   { title: "Month", value: "monthly" },
   { title: "Quarter", value: "quarterly" },
@@ -3444,7 +3459,12 @@ const resetDocumentWorkflowState = () => {
   selectionDialogVisible.value = false;
   externalDocumentSelectionKind.value = null;
   pendingDocumentItems.value = [];
+  pendingBillingPeriodGroups.value = [];
+  activeBillingPeriodGroupIndex.value = 0;
   resetBillingPeriodPrices();
+  Object.keys(billingPeriodAssignments).forEach((key) => {
+    delete billingPeriodAssignments[key];
+  });
   selectedBillingMode.value = null;
   selectedDocumentKind.value = null;
   selectedDocumentParentItemId.value = null;
@@ -3460,40 +3480,64 @@ const selectionNeedsBillingPeriod = (items: DealDocumentSelectableItem[]) =>
     return itemMode === "retainer-period" || itemMode === "recurrent-period";
   });
 
-const resolveRetainerBillingParentItemId = (
+const buildPendingBillingPeriodGroups = (
   items: DealDocumentSelectableItem[],
 ) => {
-  const periodBasedItems = items.filter((item) => {
-    const itemMode = resolveDealDocumentBillingModeForItem(item);
+  const groups = new Map<string, PendingBillingPeriodGroup>();
 
-    return itemMode === "retainer-period" || itemMode === "recurrent-period";
+  items.forEach((item) => {
+    const mode = resolveDealDocumentBillingModeForItem(item);
+    if (mode !== "retainer-period" && mode !== "recurrent-period") return;
+
+    const parentItemId = String(item.id);
+    const key = `${mode}:${parentItemId}`;
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.items.push(item);
+      return;
+    }
+
+    groups.set(key, {
+      items: [item],
+      mode,
+      parentItemId,
+    });
   });
 
-  if (!periodBasedItems.length) return null;
-
-  const periodMode = resolveDealDocumentBillingModeForItem(periodBasedItems[0]);
-
-  if (
-    periodBasedItems.some(
-      (item) => resolveDealDocumentBillingModeForItem(item) !== periodMode,
-    )
-  ) {
-    return null;
-  }
-
-  const parentIds = Array.from(
-    new Set(periodBasedItems.map((item) => String(item.id))),
-  );
-
-  return parentIds.length === 1 ? parentIds[0] : null;
+  return Array.from(groups.values());
 };
 
-const pendingBillingPeriodItems = computed(() =>
-  pendingDocumentItems.value.filter((item) => {
-    const itemMode = resolveDealDocumentBillingModeForItem(item);
+const activeBillingPeriodGroup = computed<PendingBillingPeriodGroup | null>(
+  () =>
+    pendingBillingPeriodGroups.value[activeBillingPeriodGroupIndex.value] ??
+    null,
+);
 
-    return itemMode === "retainer-period" || itemMode === "recurrent-period";
-  }),
+const applyActiveBillingPeriodGroup = () => {
+  const activeGroup = activeBillingPeriodGroup.value;
+  selectedDocumentParentItemId.value = activeGroup?.parentItemId ?? null;
+
+  const defaultPeriodKey =
+    availableRetainerBillingPeriods.value[0]?.key ?? null;
+
+  selectedRetainerBillingPeriodKey.value = defaultPeriodKey;
+  selectedRecurrentBillingPeriodKeys.value =
+    isMultiPeriodBillingSelection.value && defaultPeriodKey
+      ? [defaultPeriodKey]
+      : [];
+
+  initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
+};
+
+const pendingBillingPeriodItems = computed(
+  () =>
+    activeBillingPeriodGroup.value?.items ||
+    pendingDocumentItems.value.filter((item) => {
+      const itemMode = resolveDealDocumentBillingModeForItem(item);
+
+      return itemMode === "retainer-period" || itemMode === "recurrent-period";
+    }),
 );
 
 const getOverrideKeyFromSelectionKey = (selectionKey: string) => {
@@ -3610,6 +3654,7 @@ const saveAndNavigateDocumentDraft = async (
   kind: DealDocumentKind,
   selectedItems: DealDocumentSelectableItem[],
   selectedBillingPeriods?: DealBillingPeriod[] | null,
+  selectedBillingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
 ) => {
   if (!selectedItems.length) {
     notifications.push("This deal has no billable items yet", "warning", 2500);
@@ -3621,6 +3666,7 @@ const saveAndNavigateDocumentDraft = async (
     billingPeriods: selectedBillingPeriods?.length
       ? selectedBillingPeriods
       : null,
+    billingPeriodAssignments: selectedBillingPeriodAssignments || null,
     billingPeriod: selectionNeedsBillingPeriod(selectedItems)
       ? (selectedBillingPeriods?.[0] ?? billingPeriod.value)
       : null,
@@ -3838,19 +3884,25 @@ const openBillingPeriodDialog = (
   selectedDocumentKind.value = kind;
   selectedBillingMode.value = mode;
   if (selectedDocumentParentItemId.value) {
-    const defaultPeriodKey =
-      availableRetainerBillingPeriods.value[0]?.key ?? null;
+    if (
+      !pendingBillingPeriodGroups.value.length &&
+      pendingDocumentItems.value.length
+    ) {
+      pendingBillingPeriodGroups.value = [
+        {
+          items: [...pendingBillingPeriodItems.value],
+          mode,
+          parentItemId: String(selectedDocumentParentItemId.value),
+        },
+      ];
+      activeBillingPeriodGroupIndex.value = 0;
+    }
 
-    selectedRetainerBillingPeriodKey.value = defaultPeriodKey;
-    selectedRecurrentBillingPeriodKeys.value =
-      isMultiPeriodBillingSelection.value && defaultPeriodKey
-        ? [defaultPeriodKey]
-        : [];
+    applyActiveBillingPeriodGroup();
   } else {
     selectedRecurrentBillingPeriodKeys.value = [];
     syncBillingPeriodDraft();
   }
-  initializeBillingPeriodPrices(pendingBillingPeriodItems.value);
   billingPeriodDialogVisible.value = true;
 };
 
@@ -3898,6 +3950,25 @@ const confirmBillingPeriod = () => {
     return;
   }
 
+  pendingBillingPeriodItems.value.forEach((item) => {
+    billingPeriodAssignments[item.selectionKey] = nextBillingPeriods.map(
+      (period) => ({
+        ...period,
+      }),
+    );
+  });
+
+  const hasNextGroup =
+    activeBillingPeriodGroupIndex.value <
+    pendingBillingPeriodGroups.value.length - 1;
+
+  if (hasNextGroup) {
+    activeBillingPeriodGroupIndex.value += 1;
+    applyActiveBillingPeriodGroup();
+
+    return;
+  }
+
   billingPeriodDialogVisible.value = false;
 
   if (pendingDocumentItems.value.length) {
@@ -3922,7 +3993,12 @@ const confirmBillingPeriod = () => {
       return;
     }
 
-    void saveAndNavigateDocumentDraft(kind, items, nextBillingPeriods);
+    void saveAndNavigateDocumentDraft(
+      kind,
+      items,
+      nextBillingPeriods,
+      billingPeriodAssignments,
+    );
 
     return;
   }
@@ -3960,39 +4036,16 @@ const confirmSelectedDocumentItems = async () => {
   const items = [...selectedDocumentItems.value];
 
   if (selectionNeedsBillingPeriod(items)) {
-    const retainerParentItemId = resolveRetainerBillingParentItemId(items);
-
-    if (!retainerParentItemId) {
-      const hasRecurrentItem = items.some(
-        (item) =>
-          resolveDealDocumentBillingModeForItem(item) === "recurrent-period",
-      );
-
-      notifications.push(
-        hasRecurrentItem
-          ? "Choose one recurrent item, then select the period you want to bill."
-          : "Choose items from one retainer, then select the period you want to bill.",
-        "warning",
-        3000,
-      );
-
-      return;
-    }
+    const groups = buildPendingBillingPeriodGroups(items);
+    if (!groups.length) return;
 
     pendingDocumentItems.value = items;
-    selectedDocumentParentItemId.value = retainerParentItemId;
-    selectedRetainerBillingPeriodKey.value = retainerParentItemId
-      ? (availableRetainerBillingPeriods.value[0]?.key ?? null)
-      : null;
-    initializeBillingPeriodPrices(
-      items.filter((item) => {
-        const itemMode = resolveDealDocumentBillingModeForItem(item);
-
-        return (
-          itemMode === "retainer-period" || itemMode === "recurrent-period"
-        );
-      }),
-    );
+    pendingBillingPeriodGroups.value = groups;
+    activeBillingPeriodGroupIndex.value = 0;
+    Object.keys(billingPeriodAssignments).forEach((key) => {
+      delete billingPeriodAssignments[key];
+    });
+    applyActiveBillingPeriodGroup();
     selectionDialogVisible.value = false;
     billingPeriodDialogVisible.value = true;
 
