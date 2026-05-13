@@ -199,7 +199,7 @@ const pricingPlans = [
             block
             :color="plan.current ? 'success' : 'primary'"
             :variant="plan.isPopular ? 'elevated' : 'tonal'"
-            :to="{ name: 'session' }"
+            :to="{ name: 'register' }"
             :active="false"
           >
             {{ plan.yearlyPrice === 0 ? "Your Current Plan" : "Upgrade" }}

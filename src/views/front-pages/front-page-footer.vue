@@ -16,20 +16,21 @@ interface Menu {
 
 const footerBg = useGenerateImageVariant(footerLightBg, footerDarkBg)
 
-const pagesList: Menu[] = [
-  { name: 'Pricing', to: { name: 'front-pages-pricing' } },
-  { name: 'Payment', to: { name: 'front-pages-payment' }, isNew: true },
-  { name: 'Checkout', to: { name: 'front-pages-checkout' } },
-  { name: 'Help Center', to: { name: 'front-pages-help-center' } },
-  { name: 'Login/Register', to: { name: 'pages-authentication-login-v2' } },
+const pagesListRight: Menu[] = [
+  { name: 'Legal', to: { name: 'legal' } },
+  { name: 'Investors Center', to: { name: 'investor-center' } },
+  // { name: 'Contact Us', to: { name: 'pages-authentication-login-v2' } },
+  { name: 'Login', to: { name: 'pages-authentication-login-v2' } },
 ]
 
-const demoList = [
-  { title: 'Vertical Layout', to: 'https://demos.pixinvent.com/vuexy-vuejs-admin-template/demo-1/dashboards/analytics' },
-  { title: 'Horizontal Layout', to: 'https://demos.pixinvent.com/vuexy-vuejs-admin-template/demo-5/dashboards/analytics' },
-  { title: 'Bordered Layout', to: 'https://demos.pixinvent.com/vuexy-vuejs-admin-template/demo-2/dashboards/analytics' },
-  { title: 'Semi Dark Layout', to: 'https://demos.pixinvent.com/vuexy-vuejs-admin-template/demo-3/dashboards/analytics' },
-  { title: 'Dark Layout', to: 'https://demos.pixinvent.com/vuexy-vuejs-admin-template/demo-4/dashboards/analytics' },
+const pagesListLeft: Menu[] = [
+  { name: 'Home', to: { name: 'home' } },
+  { name: 'Payment', to: { name: 'front-pages-payment' }
+  // , isNew: true 
+  },
+  { name: 'Partner', to: { name: '' } },
+  { name: 'Help', to: { name: 'help-center' } },
+  { name: 'Blog', to: { name: 'blog' } },
 ]
 </script>
 
@@ -81,24 +82,33 @@ const demoList = [
             sm="4"
             xs="6"
           >
-            <div class="footer-links">
+              <div class="footer-links">
               <h6 class="footer-title text-h6 mb-6">
-                Demos
+                Pages
               </h6>
               <ul style="list-style: none;">
                 <li
-                  v-for="(item, index) in demoList"
+                  v-for="(item, index) in pagesListLeft"
                   :key="index"
                   class="mb-4"
                 >
-                  <a
-                    :href="item.to"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <RouterLink
                     :class="$vuetify.theme.current.dark ? 'text-body-1' : 'text-white-variant'"
+                    class="me-2"
+                    :to="item.to"
                   >
-                    {{ item.title }}
-                  </a>
+                    {{ item.name }}
+                  </RouterLink>
+                  <template v-if="item.isNew">
+                    <VChip
+                      color="primary"
+                      variant="elevated"
+                      label
+                      size="small"
+                    >
+                      New
+                    </VChip>
+                  </template>
                 </li>
               </ul>
             </div>
@@ -112,11 +122,11 @@ const demoList = [
           >
             <div class="footer-links">
               <h6 class="footer-title text-h6 mb-6">
-                Pages
+                
               </h6>
               <ul style="list-style: none;">
                 <li
-                  v-for="(item, index) in pagesList"
+                  v-for="(item, index) in pagesListRight"
                   :key="index"
                   class="mb-4"
                 >

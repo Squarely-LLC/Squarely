@@ -253,6 +253,7 @@ const isPricingPlanDialogVisible = ref(false)
                   block
                   color="success"
                   class="mb-8"
+                   :to="{ name: 'verify' }"
                 >
                   <template #append>
                     <VIcon

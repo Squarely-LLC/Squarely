@@ -281,8 +281,8 @@ const slide = (dir: string) => {
 
       <VDivider class="w-100 swiper-divider" />
 
-      <VContainer>
-        <!-- 👉 Brand-logo Swiper  -->
+      <!-- 👉 Brand-logo Swiper  -->
+      <!-- <VContainer>
         <div class="swiper-brands-carousel">
           <swiper-container
             slides-per-view="2"
@@ -312,7 +312,7 @@ const slide = (dir: string) => {
             </swiper-slide>
           </swiper-container>
         </div>
-      </VContainer>
+      </VContainer> -->
     </div>
   </div>
 </template>

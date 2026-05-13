@@ -14,20 +14,20 @@ interface DB {
 export const db: DB = {
   popularArticles: [
     {
-      slug: 'getting-started',
-      title: 'Getting Started',
+      slug: 'help-center-details',
+      title: 'Step 1',
       img: '../images/svg/rocket.svg',
       subtitle: 'Whether you\'re new or you\'re a power user, this article will',
     },
     {
       slug: 'first-steps',
-      title: 'First Steps',
+      title: 'Step 2',
       img: '../images/svg/gift.svg',
       subtitle: 'Are you a new customer wondering how to get started?',
     },
     {
       slug: 'external-content',
-      title: 'Add External Content',
+      title: 'Step 3',
       img: '../images/svg/keyboard.svg',
       subtitle: 'Article will show you how to expand functionality of App',
     },
@@ -140,12 +140,10 @@ export const db: DB = {
         `,
     checkoutContent: 'You can go back to your cart at any time by clicking on the shopping cart icon at the top right side of the page.',
     articleList: [
-      'Template Kits',
-      'Elementor Template Kits: PHP Zip Extends',
-      'Envato Elements Template Kits',
-      'Envato Elements Template Kits',
-      'How to use the template in WordPress',
-      'How to use the Template Kit Import',
+      'Terms',
+      'Privacy Policy',
+      'Affiliate Terms',
+      'White Label Terms'
     ],
     checkoutImg,
     productImg,

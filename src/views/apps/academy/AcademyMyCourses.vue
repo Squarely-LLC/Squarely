@@ -190,7 +190,7 @@ const resolveChipColor = (tags: string) => {
                       v-if="course.completedTasks !== course.totalTasks"
                       variant="tonal"
                       class="flex-grow-1"
-                      :to="{ name: 'apps-academy-course-details' }"
+                      :to="{ name: 'help-center-details' }"
                     >
                       <template #append>
                         <VIcon

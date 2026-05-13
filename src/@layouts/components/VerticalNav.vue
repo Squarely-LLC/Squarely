@@ -212,17 +212,16 @@ const hideTitleAndIcon = configStore.isVerticalNavMini(isHovered);
 
   .nav-items {
     block-size: 100%;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden auto;
     overscroll-behavior: contain;
     padding-inline-end: 0.25rem;
+    scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    scrollbar-color: rgb(var(--v-theme-perfect-scrollbar-thumb)) transparent;
   }
 
   .nav-items::-webkit-scrollbar {
-    width: 0.5rem;
+    inline-size: 0.5rem;
   }
 
   .nav-items::-webkit-scrollbar-track {

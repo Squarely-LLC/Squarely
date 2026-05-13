@@ -2,16 +2,42 @@
 import check from '@images/svg/Check.svg'
 import keyboard from '@images/svg/keyboard.svg'
 import user from '@images/svg/user.svg'
-import tracker from '@images/svg/wizard-submit.svg'
+import laptop from '@images/svg/laptop.svg'
+import rocket from '@images/svg/rocket.svg'
+import paperSend from '@images/svg/paper-send.svg'
 
 
 const featuresData = [
-  { title: 'Contacts', desc: 'Log calls, send emails, update lead stages, schedule meetings, set follow-up tasks, capture notes, manage documents, track contact history, and view statements of account with real-time reporting and automation. Squarely helps you manage every contact interaction in one place.', icon: user },
-  { title: 'Deals', desc: 'Create quotes, convert them to orders, issue invoices and receipts, track payments, log deal expenses, attach contracts, set deal collaborators, assign sales reps, monitor deal types and sales locations. All in one place, with Squarely.', icon: keyboard },
-  { title: 'Tracking', desc: 'Track order status and progress in real time, assign team members, leave notes, create or auto-generate tasks, and manage schedules with ease. Squarely helps you stay on top of every order so nothing falls through the cracks.', icon: tracker },
-  { title: 'API Ready', desc: 'Just change the endpoint and see your own data loaded within seconds.', icon: check },
-  { title: 'Excellent Support', desc: 'An easy-to-follow doc with lots of references and code examples.', icon: user },
-  { title: 'Well Documented', desc: 'An easy-to-follow doc with lots of references and code examples.', icon: keyboard },
+  { 
+    title: 'Quality Code', 
+    desc: 'Code structure that all developers will easily understand and fall in love with.', 
+    icon: laptop 
+  },
+  { 
+    title: 'Continuous updates', 
+    desc: 'Free updates for the next 12 months, including new demos and features.', 
+    icon: rocket 
+  },
+  { 
+    title: 'Starter Kit', 
+    desc: 'Start your project quickly without having to remove unnecessary features.', 
+    icon: paperSend
+  },
+  { 
+    title: 'API Ready', 
+    desc: 'Just change the endpoint and see your own data loaded within seconds.', 
+    icon: check
+  },
+  { 
+    title: 'Excellent Support', 
+    desc: 'An easy-to-follow doc with lots of references and code examples.', 
+    icon: user
+  },
+  { 
+    title: 'Well Documented', 
+    desc: 'An easy-to-follow doc with lots of references and code examples.', 
+    icon: keyboard
+  }
 ]
 </script>
 
@@ -28,16 +54,18 @@ const featuresData = [
           Useful Features
         </VChip>
         <div class="d-flex text-h4 mb-1 align-center flex-wrap justify-center">
-          <div class="position-relative me-2">
-            <div class="section-title">
-              ALL THE TOOLS YOU NEED IN ONE PLACE
+          <div class="d-flex">
+            <div class="position-relative me-2">
+              <div class="section-title">
+              Everything you need
+              </div>
             </div>
+            <span>to start your next project</span>
           </div>
           
         </div>
         <p class="text-body-1 mb-0">
-          CRM, Sales, Orders, Projects, Inventory, Production, HR, Payroll, Finance, and more.
-          One login, One system, One subscription, fully configured and ready out of the box. 
+          Not just a set of tools, the package includes ready-to-deploy conceptual application.
         </p>
       </div>
       <VRow>

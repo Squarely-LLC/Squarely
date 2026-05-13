@@ -33,9 +33,9 @@ definePage({
 const refVForm = ref<VForm>();
 
 const form = ref({
-  username: "",
+  name: "",
   email: "",
-  password: "",
+  industry: "",
   privacyPolicies: false,
 });
 
@@ -43,12 +43,13 @@ const isPasswordVisible = ref(false);
 
 const onSubmit = () => {
   refVForm.value?.validate().then(({ valid: isValid }) => {
-    if (isValid) router.replace("/front-pages/payment");
+    if (isValid) window.location.href = 'https://calendar.google.com/calendar/u/0/appointments/schedules/AcZssZ06UxkFs_beMbPJaAdDalA5OHbqXO5m-geJp8SIvl5RYDhQgbQT92HxCcmSDuZ-iR1olRKtH3co';
   });
 };
 </script>
 
 <template>
+  <div class="book-demo-wrapper">
   <RouterLink to="/">
     <div class="auth-logo d-flex align-center gap-x-3">
       <VNodeRenderer :nodes="themeConfig.app.logo" />
@@ -97,14 +98,14 @@ const onSubmit = () => {
         <VCardText>
           <VForm ref="refVForm" @submit.prevent="onSubmit">
             <VRow>
-              <!-- Username -->
+              <!-- Name -->
               <VCol cols="12">
                 <AppTextField
-                  v-model="form.username"
+                  v-model="form.name"
                   :rules="[requiredValidator]"
                   autofocus
-                  label="Username"
-                  placeholder="Johndoe"
+                  label="Name"
+                  placeholder="John Doe"
                 />
               </VCol>
 
@@ -119,19 +120,13 @@ const onSubmit = () => {
                 />
               </VCol>
 
-              <!-- password -->
+              <!-- industry -->
               <VCol cols="12">
                 <AppTextField
-                  v-model="form.password"
+                  v-model="form.industry"
                   :rules="[requiredValidator]"
-                  label="Password"
-                  placeholder="············"
-                  :type="isPasswordVisible ? 'text' : 'password'"
-                  autocomplete="password"
-                  :append-inner-icon="
-                    isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'
-                  "
-                  @click:append-inner="isPasswordVisible = !isPasswordVisible"
+                  label="Industry"
+                  placeholder="e.g., Technology, Finance"
                 />
 
                 <div class="d-flex align-center my-6">
@@ -232,10 +227,16 @@ const onSubmit = () => {
       </VCard>
     </VCol>
   </VRow>
+  </div>
 </template>
 
 <style lang="scss">
 @use "@core/scss/template/pages/page-auth";
+
+.book-demo-wrapper {
+  margin-inline: auto;
+  max-inline-size: 1536px;
+}
 
 .gsi-material-button {
   position: relative;

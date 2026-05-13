@@ -148,7 +148,7 @@ const faqs = [
               <p class="text-body-1 mb-11">
                 You will get full access to all the features for 14 days.
               </p>
-              <VBtn :to="{ name: 'front-pages-payment' }">
+              <VBtn :to="{ name: 'register-free-trial' }">
                 Start 14-day FREE trial
               </VBtn>
             </div>
@@ -301,14 +301,40 @@ const faqs = [
         </VCardText>
       </VContainer>
 
+       <!-- 👉 Enterprise Banner -->
+
+      <div class="page-pricing-free-trial-banner-bg">
+        <VContainer>
+          <div
+            class="d-flex align-center flex-md-row flex-column position-relative"
+          >
+            <div class="text-center text-md-start pb-5 px-10 px-sm-0 pt-8">
+              <h4 class="text-h4 text-primary mb-2">
+                Enterprise
+              </h4>
+              <p class="text-body-1 mb-11">
+                You will get full access to all the features for 14 days.
+              </p>
+              <VBtn :to="{ name: 'front-pages-payment' }">
+                Start Enterprise
+              </VBtn>
+            </div>
+            <div class="free-trial-illustrator">
+              <VImg :src="laptopGirl" :width="238" />
+            </div>
+          </div>
+        </VContainer>
+      </div>
+
       <!-- 👉 FAQ -->
       <div
         style="
-          background-color: rgba(
-            var(--v-theme-on-surface),
-            var(--v-hover-opacity)
-          );
-        "
+background-color:
+  rgba(
+    var(--v-theme-on-surface),
+    var(--v-hover-opacity)
+  );
+"
       >
         <VContainer>
           <VCardText class="py-10 py-sm-16 pricing-section">
@@ -335,12 +361,38 @@ const faqs = [
 
       <div
         style="
-          background-color: rgba(
-            var(--v-theme-on-surface),
-            var(--v-hover-opacity)
-          );
-        "
+  background-color:
+    rgba(
+      var(--v-theme-on-surface),
+      var(--v-hover-opacity)
+    );
+"
       >
+
+       <!-- 👉 Demo Banner -->
+
+      <div class="page-pricing-free-trial-banner-bg">
+        <VContainer>
+          <div
+            class="d-flex align-center flex-md-row flex-column position-relative"
+          >
+            <div class="text-center text-md-start pb-5 px-10 px-sm-0 pt-8">
+              <h4 class="text-h4 text-primary mb-2">
+                Demo one on one
+              </h4>
+              <p class="text-body-1 mb-11">
+                Click button below to book a one on one demo with one of our team.
+              </p>
+              <VBtn :to="{ name: 'book-demo' }">
+                Book Demo
+              </VBtn>
+            </div>
+            <div class="free-trial-illustrator">
+              <VImg :src="laptopGirl" :width="238" />
+            </div>
+          </div>
+        </VContainer>
+      </div>
         <Footer />
       </div>
     </VCard>

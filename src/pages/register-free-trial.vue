@@ -43,7 +43,7 @@ const isPasswordVisible = ref(false);
 
 const onSubmit = () => {
   refVForm.value?.validate().then(({ valid: isValid }) => {
-    if (isValid) router.replace("/front-pages/payment");
+    if (isValid) router.replace("/verify");
   });
 };
 </script>

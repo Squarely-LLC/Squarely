@@ -30,7 +30,7 @@ const onFinish = () => {
 
   setTimeout(() => {
     isOtpInserted.value = false
-    router.push('/')
+    router.push('/home')
   }, 2000)
 }
 </script>
@@ -116,7 +116,8 @@ const onFinish = () => {
 
               <!-- reset password -->
               <VCol cols="12">
-                <VBtn
+                <VBtn 
+                  color="#000"
                   block
                   :loading="isOtpInserted"
                   :disabled="isOtpInserted"
@@ -142,7 +143,7 @@ const onFinish = () => {
 </template>
 
 <style lang="scss">
-@use "@core/scss/template/pages/page-auth.scss";
+@use "@core/scss/template/pages/page-auth";
 
 .v-otp-input {
   .v-otp-input__content {

@@ -303,13 +303,14 @@ const isPageActive = computed(() =>
 
           <!-- landing page sections -->
           <div class="text-base align-center d-none d-md-flex">
-            <RouterLink
+            <!-- <RouterLink
               v-for="(item, index) in [
                 'Home',
-                'Features',
+                'Pricing',
                 'Team',
-                'FAQ',
-                'Contact us',
+                'Help',
+                // 'Contact us', -> move to footer
+                'Blog'
               ]"
               :key="index"
               :to="{
@@ -325,6 +326,12 @@ const isPageActive = computed(() =>
               ]"
             >
               {{ item }}
+            </RouterLink> -->
+             <RouterLink
+              :to="{ path: '/home', hash: '' }"
+              class="font-weight-medium nav-link px-2 px-lg-4 py-2"
+            >
+              Home
             </RouterLink>
 
             <RouterLink
@@ -332,6 +339,26 @@ const isPageActive = computed(() =>
               class="font-weight-medium nav-link px-2 px-lg-4 py-2"
             >
               Pricing
+            </RouterLink>
+
+             <RouterLink
+              :to="{ path: '/home', hash: '#pricing-plan' }"
+              class="font-weight-medium nav-link px-2 px-lg-4 py-2"
+            >
+              Partner
+            </RouterLink>
+
+             <RouterLink
+              :to="{ path: '/help-center', hash: '' }"
+              class="font-weight-medium nav-link px-2 px-lg-4 py-2"
+            >
+              Help
+            </RouterLink>
+             <RouterLink
+              :to="{ path: '/blog', hash: '' }"
+              class="font-weight-medium nav-link px-2 px-lg-4 py-2"
+            >
+              Blog
             </RouterLink>
 
             <!-- Pages Menu -->
@@ -415,19 +442,25 @@ const isPageActive = computed(() =>
               </VMenu>
             </span> -->
 
-            <RouterLink
+            <!-- <RouterLink
               :to="{ name: 'dashboards-analytics' }"
               target="_blank"
               class="font-weight-medium nav-link"
             >
               Admin
-            </RouterLink>
+            </RouterLink> -->
           </div>
         </div>
 
         <VSpacer />
 
         <div class="d-flex gap-x-4">
+          <RouterLink
+            :to="{ path: '/login', hash: '' }"
+            class="font-weight-medium nav-link px-2 px-lg-4 py-2"
+          >
+            Login
+          </RouterLink>
           <NavbarThemeSwitcher />
 
           <VBtn

@@ -84,6 +84,9 @@ const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark);
       </VCard>
     </VCol>
   </VRow>
+
+
+  <BuyNow href="https://calendar.google.com/calendar/appointments/schedules/AcZssZ06UxkFs_beMbPJaAdDalA5OHbqXO5m-geJp8SIvl5RYDhQgbQT92HxCcmSDuZ-iR1olRKtH3co" target=""/>
 </template>
 
 <style lang="scss">

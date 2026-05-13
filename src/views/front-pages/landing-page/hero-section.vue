@@ -41,14 +41,14 @@ const translateMouse = computed(() => {
         <VContainer>
           <div class="hero-text-box text-center px-6">
             <h1 class="hero-title mb-4">
-             THE ONLY SOFTWARE YOU NEED
+             One dashboard to manage all your business
             </h1>
             <h6 class="mb-6 text-h6">
-              TO START, RUN AND GROW YOUR BUSINESS
+              Production-ready & easy to use Admin Template for Reliability and Customizability.
             </h6>
             <div class="position-relative">
               <h6 class="position-absolute hero-btn-item d-md-flex d-none text-h6 text-medium-emphasis">
-                Start Growing
+                Join Community
                 <VImg
                   :src="joinArrow"
                   class="flip-in-rtl"
@@ -62,7 +62,7 @@ const translateMouse = computed(() => {
                 :to="{ name: 'front-pages-pricing', hash: `#pricing-plan` }"
                 :active="false"
               >
-                Free Demo
+                Get Early Access
               </VBtn>
             </div>
           </div>

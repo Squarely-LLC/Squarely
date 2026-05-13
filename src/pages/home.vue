@@ -66,11 +66,6 @@ useIntersectionObserver(
       <CustomersReview />
     </div>
 
-    <!-- 👉 Our Team -->
-    <div :style="{ 'background-color': 'rgb(var(--v-theme-surface))' }">
-      <OurTeam ref="refTeam" />
-    </div>
-
     <!-- 👉 Pricing Plans -->
     <div :style="{ 'background-color': 'rgb(var(--v-theme-surface))' }">
       <PricingPlans />
@@ -82,6 +77,12 @@ useIntersectionObserver(
     <!-- 👉 FAQ Section -->
     <div :style="{ 'background-color': 'rgb(var(--v-theme-surface))' }">
       <FaqSection ref="refFaq" />
+    </div>
+
+
+    <!-- 👉 Our Team -->
+    <div :style="{ 'background-color': 'rgb(var(--v-theme-surface))' }">
+      <OurTeam ref="refTeam" />
     </div>
 
     <!-- 👉 Banner  -->

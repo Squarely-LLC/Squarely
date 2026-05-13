@@ -38,12 +38,7 @@ const props = defineProps<Props>()
           <VBtn
             size="small"
             variant="tonal"
-            :to="{
-              name: 'front-pages-help-center-article-title',
-              params: {
-                title: 'how-to-add-product-in-cart',
-              },
-            }"
+            to="/help-center-details"
           >
             Read More
           </VBtn>
