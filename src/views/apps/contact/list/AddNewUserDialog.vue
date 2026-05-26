@@ -43,6 +43,11 @@ const localContact = ref<Partial<ContactProperties>>({
   email: "",
   number: "",
   status: "Cold",
+  accounting: {
+    vatNumber: "",
+    taxId: "",
+  },
+  address: "",
 });
 
 const countrySearch = ref("");
@@ -86,6 +91,12 @@ const categoryOptions = computed(() => {
 
   return sorted;
 });
+
+const isEntityContact = computed(
+  () =>
+    localContact.value.type === "Entity" ||
+    localContact.value.type === "Organization",
+);
 
 // Conditional validators based on contact type and configuration
 const emailRules = computed(() => {
@@ -172,6 +183,17 @@ watch(
     ) {
       localContact.value.category = options[0];
     }
+
+    if (isEntityContact.value) {
+      localContact.value.accounting ||= {};
+      return;
+    }
+
+    localContact.value.accounting = {
+      vatNumber: "",
+      taxId: "",
+    };
+    localContact.value.address = "";
   },
 );
 
@@ -199,6 +221,11 @@ const resetForm = () => {
     email: "",
     number: "",
     status: "Cold",
+    accounting: {
+      vatNumber: "",
+      taxId: "",
+    },
+    address: "",
   };
   selectedCountry.value = LB_DEFAULT; // keep LB default
 };
@@ -229,6 +256,13 @@ const onSubmit = async () => {
   );
   localContact.value.class = "Lead";
   localContact.value.status = "Cold";
+  if (!isEntityContact.value) {
+    localContact.value.accounting = {
+      vatNumber: "",
+      taxId: "",
+    };
+    localContact.value.address = "";
+  }
 
   emit("submit", { ...localContact.value });
   emit("update:isDialogVisible", false);
@@ -297,6 +331,34 @@ const onReset = () => {
                 :items="typeOptions"
               />
             </VCol>
+
+            <template v-if="isEntityContact">
+              <VCol cols="12">
+                <AppTextField
+                  v-model="localContact.accounting.vatNumber"
+                  label="VAT Number"
+                  placeholder="Enter VAT number"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <AppTextField
+                  v-model="localContact.accounting.taxId"
+                  label="TRN Number"
+                  placeholder="Enter TRN number"
+                />
+              </VCol>
+
+              <VCol cols="12">
+                <AppTextarea
+                  v-model="localContact.address"
+                  auto-grow
+                  rows="2"
+                  label="Address"
+                  placeholder="Enter address"
+                />
+              </VCol>
+            </template>
 
             <VCol cols="12">
               <label class="v-label mb-1 text-body-2">Number</label>
