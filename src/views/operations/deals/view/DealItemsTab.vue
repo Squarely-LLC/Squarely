@@ -66,7 +66,7 @@ import {
   buildQuotationSalesperson,
   buildQuotationThanksNote,
 } from "@/utils/quotationConfig";
-import { computed, nextTick, reactive, ref } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
@@ -733,6 +733,10 @@ const retainerEndDateValidator = (
 };
 
 const addItemDraft = reactive({
+  discountPercent: 0,
+  name: "",
+  note: "",
+  price: 0,
   quantity: 1,
   recurrentEndDate: defaultRetainerEndDate(),
   recurrentPeriods: 12,
@@ -740,6 +744,7 @@ const addItemDraft = reactive({
   retainerEndDate: defaultRetainerEndDate(),
   retainerPeriods: 12,
   retainerStartDate: defaultRetainerStartDate(),
+  taxApplicable: true as boolean | null,
 });
 
 const createDraftItem = reactive({
@@ -811,10 +816,6 @@ const resolvePeriodDrivenItemQuantity = (periods?: number | string | null) => {
   return Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
 };
 
-const addItemUsesPeriodQuantity = computed(
-  () => addItemRequiresRecurrentTerm.value || addItemRequiresRetainerTerm.value,
-);
-
 const createDraftItemUsesPeriodQuantity = computed(
   () =>
     createDraftItemRequiresRecurrentTerm.value ||
@@ -858,6 +859,10 @@ const editLineRequiresRecurrentTerm = computed(() => {
 
   return isRecurrentCatalogueType(getItemById(editLine.itemId)?.catalogueType);
 });
+
+const editLineUsesPeriodQuantity = computed(
+  () => editLineRequiresRecurrentTerm.value || editLineRequiresRetainerTerm.value,
+);
 
 const editLineBillablePeriods = computed(() =>
   calculateRetainerBillablePeriods(
@@ -960,6 +965,19 @@ const selectedCatalogueRecord = computed(() =>
     ? cataloguesStore.recordById(selectedCatalogueItemId.value)
     : null,
 );
+
+watch(selectedCatalogueItemId, () => {
+  const item = selectedCatalogueItem.value;
+  const record = selectedCatalogueRecord.value as
+    | { chargeTax?: boolean; taxApplicable?: boolean }
+    | null;
+
+  addItemDraft.name = item?.name ?? "";
+  addItemDraft.price = Number(item?.bestPrice || 0);
+  addItemDraft.discountPercent = 0;
+  addItemDraft.taxApplicable = record?.chargeTax ?? record?.taxApplicable ?? true;
+  addItemDraft.note = item?.description ?? "";
+});
 
 const buildDealRelatedTo = () => ({
   id: props.deal.id,
@@ -1077,6 +1095,7 @@ const addDealItemsFromCatalogueItem = (
   catalogueItem: CatalogueItem,
   quantity: number,
   options?: {
+    name?: string | null;
     note?: string | null;
     discountPercent?: number | null;
     recurrentTerm?: Pick<
@@ -1094,6 +1113,7 @@ const addDealItemsFromCatalogueItem = (
       | "retainerStartDate"
     > | null;
     taxApplicable?: boolean | null;
+    unitPrice?: number | null;
   },
 ) => {
   const baseId = nextItemId();
@@ -1108,7 +1128,7 @@ const addDealItemsFromCatalogueItem = (
     ...(props.deal.items || []),
     {
       id: baseId,
-      name: catalogueItem.name,
+      name: options?.name?.trim() || catalogueItem.name,
       itemTypeLabel: catalogueItem.type,
       category: catalogueItem.category,
       catalogueItemId: catalogueItem.id,
@@ -1121,7 +1141,7 @@ const addDealItemsFromCatalogueItem = (
       quantity,
       ...(options?.recurrentTerm || {}),
       ...(options?.retainerTerm || {}),
-      unitPrice: Number(catalogueItem.bestPrice || 0),
+      unitPrice: Number(options?.unitPrice ?? catalogueItem.bestPrice ?? 0),
       status: "Planned",
       note: options?.note ?? (catalogueItem.description || null),
     },
@@ -1169,6 +1189,11 @@ const itemTypeLabel = (item: DealItem) => {
 
 const openAddItemDialog = () => {
   selectedCatalogueItemId.value = null;
+  addItemDraft.name = "";
+  addItemDraft.price = 0;
+  addItemDraft.discountPercent = 0;
+  addItemDraft.taxApplicable = true;
+  addItemDraft.note = "";
   addItemDraft.quantity = 1;
   addItemDraft.recurrentStartDate = defaultRetainerStartDate();
   addItemDraft.recurrentEndDate = defaultRetainerEndDate();
@@ -1214,8 +1239,13 @@ const saveSelectedCatalogueItem = async () => {
       : Number(addItemDraft.quantity || 1);
 
   addDealItemsFromCatalogueItem(selectedItem, quantity, {
+    discountPercent: Number(addItemDraft.discountPercent || 0),
+    name: addItemDraft.name,
+    note: addItemDraft.note?.trim() || null,
     recurrentTerm,
     retainerTerm,
+    taxApplicable: addItemDraft.taxApplicable,
+    unitPrice: Number(addItemDraft.price || 0),
   });
   notifications.push("Item added to deal", "success", 3000);
   addItemDialogVisible.value = false;
@@ -6344,15 +6374,19 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
   </div>
 
-  <VDialog v-model="addItemDialogVisible" max-width="640">
+  <VDialog v-model="addItemDialogVisible" max-width="880">
     <DialogCloseBtn @click="addItemDialogVisible = false" />
     <VCard>
       <VCardText>
         <h5 class="text-h5 mb-4">Add Item</h5>
 
-        <VForm ref="addItemFormRef" @submit.prevent="saveSelectedCatalogueItem">
-          <VRow>
-            <VCol cols="12" :md="addItemUsesPeriodQuantity ? 12 : 8">
+        <VForm
+          ref="addItemFormRef"
+          class="deal-item-modal-form"
+          @submit.prevent="saveSelectedCatalogueItem"
+        >
+          <VRow class="deal-item-modal-layout">
+            <VCol cols="12">
               <AppAutocomplete
                 v-model="selectedCatalogueItemId"
                 label="Catalogue Item"
@@ -6362,119 +6396,159 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol v-if="!addItemUsesPeriodQuantity" cols="12" md="4">
-              <AppTextField
-                v-model="addItemDraft.quantity"
-                type="number"
-                min="1"
-                label="Quantity"
-                placeholder="1"
-                :rules="[requiredValidator]"
-              />
+            <VCol cols="12" md="8" class="deal-item-modal-main">
+              <VRow>
+                <VCol cols="12">
+                  <AppTextField
+                    v-model="addItemDraft.name"
+                    label="Name"
+                    placeholder="Item name"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-model="addItemDraft.price"
+                    type="number"
+                    min="0"
+                    label="Price"
+                    placeholder="0"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-if="addItemRequiresRecurrentTerm"
+                    v-model="addItemDraft.recurrentPeriods"
+                    type="number"
+                    min="1"
+                    label="Periods"
+                    placeholder="12"
+                    :rules="[requiredValidator, positiveWholeNumberValidator]"
+                  />
+                  <AppTextField
+                    v-else-if="addItemRequiresRetainerTerm"
+                    v-model="addItemDraft.retainerPeriods"
+                    type="number"
+                    min="1"
+                    label="Periods"
+                    placeholder="12"
+                    :rules="[requiredValidator, positiveWholeNumberValidator]"
+                  />
+                  <AppTextField
+                    v-else
+                    v-model="addItemDraft.quantity"
+                    type="number"
+                    min="1"
+                    label="Qty"
+                    placeholder="1"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-model="addItemDraft.discountPercent"
+                    type="number"
+                    min="0"
+                    label="Discount %"
+                    placeholder="0"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <div class="d-flex flex-column gap-2">
+                    <span class="text-sm text-medium-emphasis">Tax?</span>
+                    <VSwitch
+                      v-model="addItemDraft.taxApplicable"
+                      inset
+                      hide-details
+                      color="primary"
+                      label="Applicable"
+                    />
+                  </div>
+                </VCol>
+
+                <template v-if="addItemRequiresRecurrentTerm">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="addItemDraft.recurrentStartDate"
+                      label="Start Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[requiredValidator]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="addItemDraft.recurrentEndDate"
+                      label="End Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[
+                        requiredValidator,
+                        (value: unknown) =>
+                          retainerEndDateValidator(
+                            value,
+                            addItemDraft.recurrentStartDate,
+                          ),
+                      ]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <VAlert variant="tonal" color="primary">
+                      Billable periods:
+                      {{ addItemRecurrentBillablePeriods ?? "--" }}
+                    </VAlert>
+                  </VCol>
+                </template>
+
+                <template v-if="addItemRequiresRetainerTerm">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="addItemDraft.retainerStartDate"
+                      label="Start Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[requiredValidator]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="addItemDraft.retainerEndDate"
+                      label="End Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[
+                        requiredValidator,
+                        (value: unknown) =>
+                          retainerEndDateValidator(
+                            value,
+                            addItemDraft.retainerStartDate,
+                          ),
+                      ]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <VAlert variant="tonal" color="primary">
+                      Billable periods: {{ addItemBillablePeriods ?? "--" }}
+                    </VAlert>
+                  </VCol>
+                </template>
+              </VRow>
             </VCol>
 
-            <template v-if="addItemRequiresRecurrentTerm">
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="addItemDraft.recurrentStartDate"
-                  label="Start Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="addItemDraft.recurrentEndDate"
-                  label="End Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[
-                    requiredValidator,
-                    (value: unknown) =>
-                      retainerEndDateValidator(
-                        value,
-                        addItemDraft.recurrentStartDate,
-                      ),
-                  ]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppTextField
-                  v-model="addItemDraft.recurrentPeriods"
-                  type="number"
-                  min="1"
-                  label="Periods"
-                  placeholder="12"
-                  :rules="[requiredValidator, positiveWholeNumberValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <VAlert variant="tonal" color="primary">
-                  Billable periods:
-                  {{ addItemRecurrentBillablePeriods ?? "--" }}
-                </VAlert>
-              </VCol>
-            </template>
-
-            <template v-if="addItemRequiresRetainerTerm">
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="addItemDraft.retainerStartDate"
-                  label="Start Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="addItemDraft.retainerEndDate"
-                  label="End Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[
-                    requiredValidator,
-                    (value: unknown) =>
-                      retainerEndDateValidator(
-                        value,
-                        addItemDraft.retainerStartDate,
-                      ),
-                  ]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppTextField
-                  v-model="addItemDraft.retainerPeriods"
-                  type="number"
-                  min="1"
-                  label="Periods"
-                  placeholder="12"
-                  :rules="[requiredValidator, positiveWholeNumberValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <VAlert variant="tonal" color="primary">
-                  Billable periods: {{ addItemBillablePeriods ?? "--" }}
-                </VAlert>
-              </VCol>
-            </template>
-
-            <VCol v-if="selectedCatalogueItem" cols="12">
-              <VCard variant="tonal" class="pa-4">
-                <div class="font-weight-medium mb-1">
-                  {{ selectedCatalogueItem.name }}
-                </div>
-                <div class="text-sm text-medium-emphasis mb-1">
-                  {{ selectedCatalogueItem.type }} |
-                  {{ selectedCatalogueItem.category }}
-                </div>
-                <div class="text-sm text-medium-emphasis">
-                  {{ selectedCatalogueItem.description || "No description." }}
-                </div>
-              </VCard>
+            <VCol cols="12" md="4" class="deal-item-modal-note-col">
+              <AppTextarea
+                v-model="addItemDraft.note"
+                class="deal-item-modal-note"
+                label="Note"
+                placeholder="Short note"
+                rows="4"
+                auto-grow
+              />
             </VCol>
 
             <VCol cols="12">
@@ -6490,172 +6564,184 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
   </VDialog>
 
-  <VDialog v-model="editLineDialogVisible" max-width="760">
+  <VDialog v-model="editLineDialogVisible" max-width="880">
     <DialogCloseBtn @click="editLineDialogVisible = false" />
     <VCard>
       <VCardText>
         <h5 class="text-h5 mb-4">Edit {{ editLine.title || "Item" }}</h5>
 
-        <VForm ref="editLineFormRef" @submit.prevent="saveEditedLine">
-          <VRow>
-            <VCol v-if="editLine.canEditInfo" cols="12" md="8">
-              <AppTextField
-                v-model="editLine.name"
-                label="Name"
-                placeholder="Item name"
-                :rules="[requiredValidator]"
-              />
+        <VForm
+          ref="editLineFormRef"
+          class="deal-item-modal-form"
+          @submit.prevent="saveEditedLine"
+        >
+          <VRow class="deal-item-modal-layout">
+            <VCol
+              cols="12"
+              :md="editLine.canEditInfo ? 8 : 12"
+              class="deal-item-modal-main"
+            >
+              <VRow>
+                <VCol v-if="editLine.canEditInfo" cols="12">
+                  <AppTextField
+                    v-model="editLine.name"
+                    label="Name"
+                    placeholder="Item name"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol v-if="editLine.canEditPrice" cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-model="editLine.unitPrice"
+                    type="number"
+                    min="0"
+                    label="Price"
+                    placeholder="0"
+                  />
+                </VCol>
+
+                <VCol
+                  v-if="editLine.canEditQuantity || editLineUsesPeriodQuantity"
+                  cols="12"
+                  sm="6"
+                  md="3"
+                >
+                  <AppTextField
+                    v-if="editLineRequiresRecurrentTerm"
+                    v-model="editLine.recurrentPeriods"
+                    type="number"
+                    min="1"
+                    label="Periods"
+                    placeholder="12"
+                    :rules="[requiredValidator, positiveWholeNumberValidator]"
+                  />
+                  <AppTextField
+                    v-else-if="editLineRequiresRetainerTerm"
+                    v-model="editLine.retainerPeriods"
+                    type="number"
+                    min="1"
+                    label="Periods"
+                    placeholder="12"
+                    :rules="[requiredValidator, positiveWholeNumberValidator]"
+                  />
+                  <AppTextField
+                    v-else
+                    v-model="editLine.quantity"
+                    type="number"
+                    min="0"
+                    label="Qty"
+                    placeholder="1"
+                  />
+                </VCol>
+
+                <VCol v-if="editLine.canEditDiscount" cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-model="editLine.discountPercent"
+                    type="number"
+                    min="0"
+                    label="Discount %"
+                    placeholder="0"
+                  />
+                </VCol>
+
+                <VCol v-if="editLine.canEditTax" cols="12" sm="6" md="3">
+                  <div class="d-flex flex-column gap-2">
+                    <span class="text-sm text-medium-emphasis">Tax?</span>
+                    <VSwitch
+                      v-model="editLine.taxApplicable"
+                      inset
+                      hide-details
+                      color="primary"
+                      label="Applicable"
+                    />
+                  </div>
+                </VCol>
+
+                <template v-if="editLineRequiresRecurrentTerm">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="editLine.recurrentStartDate"
+                      label="Start Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[requiredValidator]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="editLine.recurrentEndDate"
+                      label="End Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[
+                        requiredValidator,
+                        (value: unknown) =>
+                          retainerEndDateValidator(
+                            value,
+                            editLine.recurrentStartDate,
+                          ),
+                      ]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <VAlert variant="tonal" color="primary">
+                      Billable periods:
+                      {{ editLineRecurrentBillablePeriods ?? "--" }}
+                    </VAlert>
+                  </VCol>
+                </template>
+
+                <template v-if="editLineRequiresRetainerTerm">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="editLine.retainerStartDate"
+                      label="Start Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[requiredValidator]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="editLine.retainerEndDate"
+                      label="End Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[
+                        requiredValidator,
+                        (value: unknown) =>
+                          retainerEndDateValidator(
+                            value,
+                            editLine.retainerStartDate,
+                          ),
+                      ]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <VAlert variant="tonal" color="primary">
+                      Billable periods: {{ editLineBillablePeriods ?? "--" }}
+                    </VAlert>
+                  </VCol>
+                </template>
+              </VRow>
             </VCol>
 
-            <VCol v-if="editLine.canEditInfo" cols="12" md="4">
-              <AppTextField
-                v-model="editLine.category"
-                label="Category"
-                placeholder="Category"
-              />
-            </VCol>
-
-            <VCol v-if="editLine.canEditPrice" cols="12" md="3">
-              <AppTextField
-                v-model="editLine.unitPrice"
-                type="number"
-                min="0"
-                label="Price"
-                placeholder="0"
-              />
-            </VCol>
-
-            <VCol v-if="editLine.canEditQuantity" cols="12" md="3">
-              <AppTextField
-                v-model="editLine.quantity"
-                type="number"
-                min="0"
-                label="Quantity"
-                placeholder="1"
-              />
-            </VCol>
-
-            <VCol v-if="editLine.canEditDiscount" cols="12" md="3">
-              <AppTextField
-                v-model="editLine.discountPercent"
-                type="number"
-                min="0"
-                label="Discount %"
-                placeholder="0"
-              />
-            </VCol>
-
-            <VCol v-if="editLine.canEditTax" cols="12" md="3">
-              <div class="d-flex flex-column gap-2">
-                <span class="text-sm text-medium-emphasis">Tax?</span>
-                <VSwitch
-                  v-model="editLine.taxApplicable"
-                  inset
-                  hide-details
-                  color="primary"
-                  label="Applicable"
-                />
-              </div>
-            </VCol>
-
-            <VCol v-if="editLine.canEditInfo" cols="12">
+            <VCol
+              v-if="editLine.canEditInfo"
+              cols="12"
+              md="4"
+              class="deal-item-modal-note-col"
+            >
               <AppTextarea
                 v-model="editLine.note"
+                class="deal-item-modal-note"
                 label="Note"
                 placeholder="Short note"
-                rows="2"
+                rows="4"
                 auto-grow
               />
             </VCol>
-
-            <template v-if="editLineRequiresRecurrentTerm">
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="editLine.recurrentStartDate"
-                  label="Start Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="editLine.recurrentEndDate"
-                  label="End Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[
-                    requiredValidator,
-                    (value: unknown) =>
-                      retainerEndDateValidator(
-                        value,
-                        editLine.recurrentStartDate,
-                      ),
-                  ]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppTextField
-                  v-model="editLine.recurrentPeriods"
-                  type="number"
-                  min="1"
-                  label="Periods"
-                  placeholder="12"
-                  :rules="[requiredValidator, positiveWholeNumberValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <VAlert variant="tonal" color="primary">
-                  Billable periods:
-                  {{ editLineRecurrentBillablePeriods ?? "--" }}
-                </VAlert>
-              </VCol>
-            </template>
-
-            <template v-if="editLineRequiresRetainerTerm">
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="editLine.retainerStartDate"
-                  label="Start Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="editLine.retainerEndDate"
-                  label="End Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[
-                    requiredValidator,
-                    (value: unknown) =>
-                      retainerEndDateValidator(
-                        value,
-                        editLine.retainerStartDate,
-                      ),
-                  ]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppTextField
-                  v-model="editLine.retainerPeriods"
-                  type="number"
-                  min="1"
-                  label="Periods"
-                  placeholder="12"
-                  :rules="[requiredValidator, positiveWholeNumberValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <VAlert variant="tonal" color="primary">
-                  Billable periods: {{ editLineBillablePeriods ?? "--" }}
-                </VAlert>
-              </VCol>
-            </template>
 
             <VCol cols="12">
               <DialogActionBar
@@ -7238,7 +7324,7 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
   </VDialog>
 
-  <VDialog v-model="createDraftItemDialogVisible" max-width="720">
+  <VDialog v-model="createDraftItemDialogVisible" max-width="880">
     <DialogCloseBtn @click="createDraftItemDialogVisible = false" />
     <VCard>
       <VCardText>
@@ -7246,158 +7332,161 @@ const openEditTask = (taskId: number | string) => {
 
         <VForm
           ref="createDraftItemFormRef"
+          class="deal-item-modal-form"
           @submit.prevent="saveCreatedDraftItem"
         >
-          <VRow>
-            <VCol cols="12">
-              <AppTextField
-                v-model="createDraftItem.name"
-                label="Item Name"
-                placeholder="Item name"
-                :rules="[requiredValidator]"
-              />
+          <VRow class="deal-item-modal-layout">
+            <VCol cols="12" md="8" class="deal-item-modal-main">
+              <VRow>
+                <VCol cols="12">
+                  <AppTextField
+                    v-model="createDraftItem.name"
+                    label="Name"
+                    placeholder="Item name"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-model="createDraftItem.price"
+                    type="number"
+                    min="0"
+                    label="Price"
+                    placeholder="0"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-if="createDraftItemRequiresRecurrentTerm"
+                    v-model="createDraftItem.recurrentPeriods"
+                    type="number"
+                    min="1"
+                    label="Periods"
+                    placeholder="12"
+                    :rules="[requiredValidator, positiveWholeNumberValidator]"
+                  />
+                  <AppTextField
+                    v-else-if="createDraftItemRequiresRetainerTerm"
+                    v-model="createDraftItem.retainerPeriods"
+                    type="number"
+                    min="1"
+                    label="Periods"
+                    placeholder="12"
+                    :rules="[requiredValidator, positiveWholeNumberValidator]"
+                  />
+                  <AppTextField
+                    v-else
+                    v-model="createDraftItem.quantity"
+                    type="number"
+                    min="1"
+                    label="Qty"
+                    placeholder="1"
+                    :rules="[requiredValidator]"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <AppTextField
+                    v-model="createDraftItem.discountPercent"
+                    type="number"
+                    min="0"
+                    label="Discount %"
+                    placeholder="0"
+                  />
+                </VCol>
+
+                <VCol cols="12" sm="6" md="3">
+                  <div class="d-flex flex-column gap-2">
+                    <span class="text-sm text-medium-emphasis">Tax?</span>
+                    <VSwitch
+                      v-model="createDraftItem.taxApplicable"
+                      inset
+                      hide-details
+                      color="primary"
+                      label="Applicable"
+                    />
+                  </div>
+                </VCol>
+
+                <template v-if="createDraftItemRequiresRecurrentTerm">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="createDraftItem.recurrentStartDate"
+                      label="Start Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[requiredValidator]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="createDraftItem.recurrentEndDate"
+                      label="End Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[
+                        requiredValidator,
+                        (value: unknown) =>
+                          retainerEndDateValidator(
+                            value,
+                            createDraftItem.recurrentStartDate,
+                          ),
+                      ]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <VAlert variant="tonal" color="primary">
+                      Billable periods:
+                      {{ createDraftItemRecurrentBillablePeriods ?? "--" }}
+                    </VAlert>
+                  </VCol>
+                </template>
+
+                <template v-if="createDraftItemRequiresRetainerTerm">
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="createDraftItem.retainerStartDate"
+                      label="Start Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[requiredValidator]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12" md="6">
+                    <AppDateTimePicker
+                      v-model="createDraftItem.retainerEndDate"
+                      label="End Date"
+                      :config="{ dateFormat: 'Y-m-d' }"
+                      :rules="[
+                        requiredValidator,
+                        (value: unknown) =>
+                          retainerEndDateValidator(
+                            value,
+                            createDraftItem.retainerStartDate,
+                          ),
+                      ]"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <VAlert variant="tonal" color="primary">
+                      Billable periods: {{ createDraftItemBillablePeriods ?? "--" }}
+                    </VAlert>
+                  </VCol>
+                </template>
+              </VRow>
             </VCol>
 
-            <VCol v-if="!createDraftItemUsesPeriodQuantity" cols="12" md="3">
-              <AppTextField
-                v-model="createDraftItem.quantity"
-                type="number"
-                min="1"
-                label="Quantity"
-                placeholder="1"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
-
-            <VCol cols="12" md="3">
-              <AppTextField
-                v-model="createDraftItem.price"
-                type="number"
-                min="0"
-                label="Price"
-                placeholder="0"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
-
-            <VCol cols="12" md="3">
-              <AppTextField
-                v-model="createDraftItem.discountPercent"
-                type="number"
-                min="0"
-                label="Discount %"
-                placeholder="0"
-              />
-            </VCol>
-
-            <VCol cols="12" md="3">
-              <div class="d-flex flex-column gap-2">
-                <span class="text-sm text-medium-emphasis">Tax?</span>
-                <VSwitch
-                  v-model="createDraftItem.taxApplicable"
-                  inset
-                  hide-details
-                  color="primary"
-                  label="Applicable"
-                />
-              </div>
-            </VCol>
-
-            <template v-if="createDraftItemRequiresRecurrentTerm">
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="createDraftItem.recurrentStartDate"
-                  label="Start Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="createDraftItem.recurrentEndDate"
-                  label="End Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[
-                    requiredValidator,
-                    (value: unknown) =>
-                      retainerEndDateValidator(
-                        value,
-                        createDraftItem.recurrentStartDate,
-                      ),
-                  ]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppTextField
-                  v-model="createDraftItem.recurrentPeriods"
-                  type="number"
-                  min="1"
-                  label="Periods"
-                  placeholder="12"
-                  :rules="[requiredValidator, positiveWholeNumberValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <VAlert variant="tonal" color="primary">
-                  Billable periods:
-                  {{ createDraftItemRecurrentBillablePeriods ?? "--" }}
-                </VAlert>
-              </VCol>
-            </template>
-
-            <template v-if="createDraftItemRequiresRetainerTerm">
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="createDraftItem.retainerStartDate"
-                  label="Start Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[requiredValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppDateTimePicker
-                  v-model="createDraftItem.retainerEndDate"
-                  label="End Date"
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  :rules="[
-                    requiredValidator,
-                    (value: unknown) =>
-                      retainerEndDateValidator(
-                        value,
-                        createDraftItem.retainerStartDate,
-                      ),
-                  ]"
-                />
-              </VCol>
-
-              <VCol cols="12" md="4">
-                <AppTextField
-                  v-model="createDraftItem.retainerPeriods"
-                  type="number"
-                  min="1"
-                  label="Periods"
-                  placeholder="12"
-                  :rules="[requiredValidator, positiveWholeNumberValidator]"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <VAlert variant="tonal" color="primary">
-                  Billable periods: {{ createDraftItemBillablePeriods ?? "--" }}
-                </VAlert>
-              </VCol>
-            </template>
-
-            <VCol cols="12">
+            <VCol cols="12" md="4" class="deal-item-modal-note-col">
               <AppTextarea
                 v-model="createDraftItem.note"
+                class="deal-item-modal-note"
                 label="Note"
                 placeholder="Short note"
-                rows="1"
+                rows="4"
                 auto-grow
               />
             </VCol>
@@ -7417,6 +7506,41 @@ const openEditTask = (taskId: number | string) => {
 </template>
 
 <style scoped>
+.deal-item-modal-form {
+  min-block-size: 100%;
+}
+
+.deal-item-modal-layout {
+  align-items: flex-start;
+}
+
+.deal-item-modal-main,
+.deal-item-modal-note-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.deal-item-modal-main > :deep(.v-row) {
+  align-content: flex-start;
+}
+
+.deal-item-modal-note-col :deep(.v-input),
+.deal-item-modal-note-col :deep(.v-input__control),
+.deal-item-modal-note-col :deep(.v-field) {
+  flex: 0 0 auto;
+}
+
+.deal-item-modal-note :deep(textarea) {
+  min-block-size: 8.5rem;
+  resize: vertical;
+}
+
+@media (max-width: 959px) {
+  .deal-item-modal-note :deep(textarea) {
+    min-block-size: 7rem;
+  }
+}
+
 .item-type-card {
   cursor: pointer;
   transition:

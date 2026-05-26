@@ -46,6 +46,12 @@ const metrics = computed<BillingMetric[]>(() => [
   },
 ]);
 
+const shortLabel = (label: string) => {
+  if (label === "To Be Invoiced") return "TBI";
+
+  return label;
+};
+
 const paidPercent = computed(() => {
   if (total.value <= 0) return 0;
 
@@ -168,10 +174,16 @@ const metricPercent = (value: number) => {
         </VCol>
       </VRow>
 
-      <div class="border rounded mt-5 pa-5">
-        <VRow>
-          <VCol v-for="metric in metrics" :key="metric.label" cols="12" sm="4">
-            <div class="d-flex align-center">
+      <div class="billing-metrics border rounded mt-5 pa-5">
+        <VRow class="billing-metrics__row">
+          <VCol
+            v-for="metric in metrics"
+            :key="metric.label"
+            cols="12"
+            sm="4"
+            class="billing-metric-col"
+          >
+            <div class="d-flex align-center billing-metric-title">
               <VAvatar
                 rounded
                 size="26"
@@ -182,9 +194,16 @@ const metricPercent = (value: number) => {
                 <VIcon size="18" :icon="metric.icon" />
               </VAvatar>
 
-              <h6 class="text-base font-weight-regular">
-                {{ metric.label }}
-              </h6>
+              <VTooltip :text="metric.label" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <h6
+                    v-bind="tooltipProps"
+                    class="text-base font-weight-regular billing-metric-label"
+                  >
+                    {{ shortLabel(metric.label) }}
+                  </h6>
+                </template>
+              </VTooltip>
             </div>
 
             <h6 class="text-h4 my-2">
@@ -210,9 +229,39 @@ const metricPercent = (value: number) => {
   line-height: 1;
 }
 
+.billing-metric-title {
+  min-inline-size: 0;
+}
+
+.billing-metric-label {
+  overflow: hidden;
+  font-size: 0.78rem !important;
+  max-inline-size: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1280px) {
   .billing-total {
     font-size: 2rem !important;
+  }
+
+  .billing-metrics {
+    padding: 0.9rem !important;
+  }
+
+  .billing-metric-col {
+    flex: 0 0 33.3333%;
+    max-inline-size: 33.3333%;
+    padding-inline: 0.45rem;
+  }
+
+  .billing-metric-label {
+    font-size: 0.72rem !important;
+  }
+
+  .billing-metric-col .text-h4 {
+    font-size: 1.15rem !important;
   }
 }
 </style>
