@@ -37,12 +37,12 @@ const defaultContactType = computed(() => {
 
 const localContact = ref<Partial<ContactProperties>>({
   fullName: "",
-  class: "Contact",
+  class: "Lead",
   type: defaultContactType.value,
   category: "General",
   email: "",
   number: "",
-  status: "Active",
+  status: "Cold",
 });
 
 const countrySearch = ref("");
@@ -63,8 +63,6 @@ const countryCustomFilter = (value: any, query: string, item: any) => {
   );
 };
 
-const classOptions = ["Lead", "Client", "Supplier", "Contact", "Owner"];
-const statusOptions = ["Active", "Dormant", "Potential", "Lost"];
 const typeOptions = ["Entity", "Individual"];
 
 const categoryOptions = computed(() => {
@@ -156,6 +154,8 @@ watch(
         configStore.configurations?.crm?.DefaultContactType,
       );
       localContact.value.type = computedType;
+      localContact.value.class = "Lead";
+      localContact.value.status = "Cold";
     }
   },
   { flush: "post" },
@@ -193,12 +193,12 @@ const resetForm = () => {
   refForm.value?.resetValidation();
   localContact.value = {
     fullName: "",
-    class: "Contact",
+    class: "Lead",
     type: defaultContactType.value,
     category: categoryOptions.value[0] || "General",
     email: "",
     number: "",
-    status: "Active",
+    status: "Cold",
   };
   selectedCountry.value = LB_DEFAULT; // keep LB default
 };
@@ -227,6 +227,8 @@ const onSubmit = async () => {
     String(localContact.value.number ?? ""),
     selectedCountry.value.dial,
   );
+  localContact.value.class = "Lead";
+  localContact.value.status = "Cold";
 
   emit("submit", { ...localContact.value });
   emit("update:isDialogVisible", false);
@@ -243,7 +245,7 @@ const onReset = () => {
 
 <template>
   <VDialog
-    :width="$vuetify.display.smAndDown ? 'auto' : 900"
+    :width="$vuetify.display.smAndDown ? 'auto' : 520"
     :model-value="isDialogVisible"
     @update:model-value="dialogModelValueUpdate"
   >
@@ -258,7 +260,7 @@ const onReset = () => {
 
         <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
           <VRow>
-            <VCol cols="12" md="6">
+            <VCol cols="12">
               <AppTextField
                 v-model="localContact.fullName"
                 :rules="[requiredValidator]"
@@ -267,7 +269,17 @@ const onReset = () => {
               />
             </VCol>
 
-            <VCol cols="12" md="6">
+            <VCol cols="12">
+              <AppSelect
+                v-model="localContact.category"
+                :rules="[requiredValidator]"
+                label="Category"
+                placeholder="Select category"
+                :items="categoryOptions"
+              />
+            </VCol>
+
+            <VCol cols="12">
               <AppTextField
                 v-model="localContact.email"
                 :rules="emailRules"
@@ -276,7 +288,17 @@ const onReset = () => {
               />
             </VCol>
 
-            <VCol cols="12" md="6">
+            <VCol cols="12">
+              <AppSelect
+                v-model="localContact.type"
+                :rules="[requiredValidator]"
+                label="Type"
+                placeholder="Select type"
+                :items="typeOptions"
+              />
+            </VCol>
+
+            <VCol cols="12">
               <label class="v-label mb-1 text-body-2">Number</label>
 
               <!-- tighter inline layout (8px gap) -->
@@ -344,46 +366,6 @@ const onReset = () => {
                   </VCol>
                 </VRow>
               </div>
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.class"
-                :rules="[requiredValidator]"
-                label="Class"
-                placeholder="Select class"
-                :items="classOptions"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.type"
-                :rules="[requiredValidator]"
-                label="Type"
-                placeholder="Select type"
-                :items="typeOptions"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.category"
-                :rules="[requiredValidator]"
-                label="Category"
-                placeholder="Select category"
-                :items="categoryOptions"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localContact.status"
-                :rules="[requiredValidator]"
-                label="Status"
-                placeholder="Select status"
-                :items="statusOptions"
-              />
             </VCol>
 
             <VCol cols="12" class="mt-4">

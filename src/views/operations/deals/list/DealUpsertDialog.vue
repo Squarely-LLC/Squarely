@@ -14,6 +14,7 @@ import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
+import { City, Country } from "country-state-city";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -40,6 +41,12 @@ const emit = defineEmits<Emit>();
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 const isAddContactDialogVisible = ref(false);
+const locationCountrySearch = ref("");
+const locationCitySearch = ref("");
+const selectedLocationCountry = ref("");
+const selectedLocationCity = ref("");
+const locationCityOptions = ref<string[]>([]);
+const userData = useCookie<any>("userData");
 
 const configStore = useConfigStore();
 const contactsStore = useContactsStore();
@@ -75,6 +82,132 @@ const defaultLocation = computed(() => {
 
   return [city, country].filter(Boolean).join(", ");
 });
+
+const locationCountryOptions = (Country.getAllCountries() ?? [])
+  .map((country: any) => ({
+    code: String(country.isoCode ?? ""),
+    label: String(country.name ?? ""),
+  }))
+  .filter((country) => country.code && country.label)
+  .sort((left, right) => left.label.localeCompare(right.label));
+
+const findCountryOption = (countryKey?: string | null) => {
+  const key = String(countryKey ?? "").trim().toLowerCase();
+  if (!key) return null;
+
+  return (
+    locationCountryOptions.find(
+      (country) => country.code.toLowerCase() === key,
+    ) ||
+    locationCountryOptions.find(
+      (country) => country.label.toLowerCase() === key,
+    ) ||
+    null
+  );
+};
+
+const composeLocation = () =>
+  [selectedLocationCity.value, selectedLocationCountry.value]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+
+const updateLocationCitiesForCountry = (countryKey?: string | null) => {
+  const matched = findCountryOption(countryKey);
+  if (!matched) {
+    locationCityOptions.value = [];
+    return;
+  }
+
+  try {
+    const uniqueCities = new Map<string, string>();
+
+    (City.getCitiesOfCountry(matched.code) || [])
+      .map((city: any) => String(city.name ?? "").trim())
+      .filter(Boolean)
+      .forEach((city) => {
+        const key = city.toLowerCase();
+        if (!uniqueCities.has(key)) uniqueCities.set(key, city);
+      });
+
+    locationCityOptions.value = [...uniqueCities.values()].sort((left, right) =>
+      left.localeCompare(right),
+    );
+  } catch {
+    locationCityOptions.value = [];
+  }
+
+  const city = selectedLocationCity.value.trim();
+  if (
+    city &&
+    !locationCityOptions.value.some(
+      (option) => option.toLowerCase() === city.toLowerCase(),
+    )
+  ) {
+    locationCityOptions.value = [city, ...locationCityOptions.value];
+  }
+};
+
+const setLocationFromDeal = (location?: string | null) => {
+  const parts = String(location ?? defaultLocation.value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const possibleCountry = parts.length > 1 ? parts.at(-1) : "";
+  const matchedCountry = findCountryOption(possibleCountry);
+
+  selectedLocationCountry.value = matchedCountry?.label ?? possibleCountry ?? "";
+  selectedLocationCity.value = parts.length > 1 ? parts.slice(0, -1).join(", ") : parts[0] ?? "";
+  locationCountrySearch.value = selectedLocationCountry.value;
+  locationCitySearch.value = selectedLocationCity.value;
+  updateLocationCitiesForCountry(selectedLocationCountry.value);
+  localDeal.value.location = composeLocation() || null;
+};
+
+const onLocationCountryKeydown = (event: KeyboardEvent) => {
+  if (event.key !== "Tab") return;
+
+  const query = locationCountrySearch.value.trim().toLowerCase();
+  if (!query) return;
+
+  const match = locationCountryOptions.find(
+    (country) =>
+      country.label.toLowerCase().startsWith(query) ||
+      country.label.toLowerCase().includes(query),
+  );
+
+  if (!match) return;
+
+  selectedLocationCountry.value = match.label;
+  locationCountrySearch.value = match.label;
+};
+
+const onLocationCityKeydown = (event: KeyboardEvent) => {
+  if (event.key !== "Tab") return;
+
+  const query = locationCitySearch.value.trim().toLowerCase();
+  if (!query) return;
+
+  const match = locationCityOptions.value.find(
+    (city) =>
+      city.toLowerCase().startsWith(query) || city.toLowerCase().includes(query),
+  );
+
+  if (!match) return;
+
+  selectedLocationCity.value = match;
+  locationCitySearch.value = match;
+};
+
+const locationCountryFilter = (_value: unknown, query: string, item: any) => {
+  const safeQuery = String(query ?? "").trim().toLowerCase();
+  if (!safeQuery) return true;
+
+  const label = String(item?.raw?.label ?? "").toLowerCase();
+  const code = String(item?.raw?.code ?? "").toLowerCase();
+
+  return label.includes(safeQuery) || code.includes(safeQuery);
+};
 
 const customFieldDefinitions = computed<DealCustomFieldDefinition[]>(() => {
   const configured = configStore.configurations?.deals?.customFields;
@@ -130,6 +263,34 @@ const allCollaboratorOptions = computed(() =>
     })),
   ].sort((left, right) => left.title.localeCompare(right.title)),
 );
+
+const currentUserDisplayName = computed(() =>
+  String(
+    userData.value?.fullName ||
+      userData.value?.username ||
+      userData.value?.email ||
+      "",
+  )
+    .trim()
+    .toLowerCase(),
+);
+
+const defaultCreatorValue = computed(() => {
+  const displayName = currentUserDisplayName.value;
+  const matchSalesman = salesmanOptions.value.find(
+    (option) => option.title.trim().toLowerCase() === displayName,
+  );
+  if (matchSalesman) return matchSalesman.value;
+
+  const matchCollaborator = allCollaboratorOptions.value.find(
+    (option) => option.title.trim().toLowerCase() === displayName,
+  );
+  if (matchCollaborator) return matchCollaborator.value;
+
+  return (
+    salesmanOptions.value[0]?.value ?? allCollaboratorOptions.value[0]?.value ?? null
+  );
+});
 
 const selectedSalesman = computed({
   get: () => localDeal.value.salesman ?? null,
@@ -264,24 +425,28 @@ const getTodayDateValue = () => {
   return `${year}-${month}-${day}`;
 };
 
-const buildEmptyDeal = (): Partial<DealProperties> => ({
-  name: "",
-  code: null,
-  amount: null,
-  projectCode: null,
-  projectName: null,
-  relatedTo: null,
-  linkedJobId: null,
-  salesman: null,
-  type: typeOptions.value[0] || null,
-  estimatedDeliveryDate: getTodayDateValue(),
-  stage: stageOptions.value[0] || null,
-  important: false,
-  location: defaultLocation.value || null,
-  collaborators: [],
-  note: "",
-  customFieldValues: buildDefaultCustomFieldValues(),
-});
+const buildEmptyDeal = (): Partial<DealProperties> => {
+  const creator = defaultCreatorValue.value;
+
+  return {
+    name: "",
+    code: null,
+    amount: null,
+    projectCode: null,
+    projectName: null,
+    relatedTo: null,
+    linkedJobId: null,
+    salesman: creator,
+    type: typeOptions.value[0] || null,
+    estimatedDeliveryDate: getTodayDateValue(),
+    stage: stageOptions.value[0] || null,
+    important: false,
+    location: defaultLocation.value || null,
+    collaborators: creator ? [creator] : [],
+    note: "",
+    customFieldValues: buildDefaultCustomFieldValues(),
+  };
+};
 
 const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
   if (!deal) return buildEmptyDeal();
@@ -305,7 +470,6 @@ const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
 };
 
 const localDeal = ref<Partial<DealProperties>>(buildEmptyDeal());
-const showDetails = ref(false);
 
 const hasLinkedJob = computed(() => {
   const linkedJobId = Number(localDeal.value.linkedJobId ?? NaN);
@@ -339,7 +503,7 @@ watch(
     if (!visible) return;
 
     localDeal.value = sanitiseDeal(props.deal ?? null);
-    showDetails.value = Boolean(props.deal);
+    setLocationFromDeal(localDeal.value.location);
     lastAutoProjectCode.value =
       localDeal.value.projectCode ===
       (selectedLinkedJob.value?.code?.trim() || buildGeneratedProjectCode())
@@ -364,19 +528,6 @@ const dialogDescription = computed(() =>
 const dialogModelValueUpdate = (value: boolean) => {
   emit("update:isDialogVisible", value);
 };
-
-const setCustomFieldValue = (key: string, value: DealFieldValue) => {
-  localDeal.value = {
-    ...localDeal.value,
-    customFieldValues: {
-      ...(localDeal.value.customFieldValues || {}),
-      [key]: value,
-    },
-  };
-};
-
-const getCustomFieldValue = (key: string) =>
-  localDeal.value.customFieldValues?.[key] ?? null;
 
 const syncProjectCode = () => {
   const autoCode =
@@ -414,9 +565,26 @@ watch(
   },
 );
 
+watch(selectedLocationCountry, (country) => {
+  const matched = findCountryOption(country);
+  const normalizedCountry = matched?.label ?? String(country ?? "").trim();
+
+  if (normalizedCountry !== selectedLocationCountry.value) {
+    selectedLocationCountry.value = normalizedCountry;
+    return;
+  }
+
+  updateLocationCitiesForCountry(normalizedCountry);
+  localDeal.value.location = composeLocation() || null;
+});
+
+watch(selectedLocationCity, () => {
+  localDeal.value.location = composeLocation() || null;
+});
+
 const onCancel = () => {
   localDeal.value = sanitiseDeal(props.deal ?? null);
-  showDetails.value = Boolean(props.deal);
+  setLocationFromDeal(localDeal.value.location);
   emit("update:isDialogVisible", false);
 };
 
@@ -434,14 +602,11 @@ const onSubmit = async () => {
 
   emit("submit", {
     ...localDeal.value,
+    location: composeLocation() || null,
     customFieldValues: buildDefaultCustomFieldValues(
       localDeal.value.customFieldValues,
     ),
   });
-};
-
-const toggleDetails = () => {
-  showDetails.value = !showDetails.value;
 };
 </script>
 
@@ -474,63 +639,90 @@ const toggleDetails = () => {
 
         <VForm ref="refForm" v-model="isFormValid" @submit.prevent="onSubmit">
           <VRow class="deal-form-grid">
-            <VCol cols="12" md="6">
-              <div class="d-flex gap-2 contact-select-row">
-                <AppSelect
-                  v-model="localDeal.relatedTo"
-                  class="flex-grow-1"
-                  label="Contact Name"
-                  placeholder="Select contact"
-                  :items="contactOptions"
-                  item-title="title"
-                  item-value="value"
-                  :rules="[requiredValidator]"
-                  clearable
-                  clear-icon="tabler-x"
-                >
-                  <template #item="{ item, props: itemProps }">
-                    <VListItem v-bind="itemProps">
-                      <template #prepend>
-                        <VAvatar
-                          size="28"
-                          :color="item.raw.avatar ? undefined : 'primary'"
-                          :class="
-                            item.raw.avatar
-                              ? null
-                              : 'text-white font-weight-medium'
-                          "
-                        >
-                          <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
-                          <span v-else class="text-caption font-weight-bold">
-                            {{ avatarText(item.raw.title) }}
-                          </span>
-                        </VAvatar>
-                      </template>
-                    </VListItem>
-                  </template>
-                </AppSelect>
+            <VCol cols="12">
+              <div class="deal-top-field-pair">
+                <div class="contact-select-row">
+                  <AppSelect
+                    v-model="localDeal.relatedTo"
+                    class="contact-select"
+                    label="Contact Name"
+                    placeholder="Select contact"
+                    :items="contactOptions"
+                    item-title="title"
+                    item-value="value"
+                    :rules="[requiredValidator]"
+                    clearable
+                    clear-icon="tabler-x"
+                  >
+                    <template #item="{ item, props: itemProps }">
+                      <VListItem v-bind="itemProps">
+                        <template #prepend>
+                          <VAvatar
+                            size="28"
+                            :color="item.raw.avatar ? undefined : 'primary'"
+                            :class="
+                              item.raw.avatar
+                                ? null
+                                : 'text-white font-weight-medium'
+                            "
+                          >
+                            <VImg
+                              v-if="item.raw.avatar"
+                              :src="item.raw.avatar"
+                            />
+                            <span v-else class="text-caption font-weight-bold">
+                              {{ avatarText(item.raw.title) }}
+                            </span>
+                          </VAvatar>
+                        </template>
+                      </VListItem>
+                    </template>
+                  </AppSelect>
 
-                <VBtn
-                  icon
-                  variant="tonal"
-                  color="primary"
-                  class="contact-add-btn"
-                  @click="isAddContactDialogVisible = true"
-                >
-                  <VIcon icon="tabler-plus" />
-                  <VTooltip activator="parent" location="top">
-                    Add New Contact
-                  </VTooltip>
-                </VBtn>
+                  <VBtn
+                    icon
+                    variant="tonal"
+                    color="primary"
+                    class="contact-add-btn"
+                    @click="isAddContactDialogVisible = true"
+                  >
+                    <VIcon icon="tabler-plus" />
+                    <VTooltip activator="parent" location="top">
+                      Add New Contact
+                    </VTooltip>
+                  </VBtn>
+                </div>
+
+                <AppDateTimePicker
+                  v-model="localDeal.estimatedDeliveryDate"
+                  label="Date"
+                  :config="{
+                    altInput: true,
+                    altFormat: 'd/M/y',
+                    dateFormat: 'Y-m-d',
+                  }"
+                  clearable
+                />
               </div>
             </VCol>
 
             <VCol cols="12" md="6">
-              <AppDateTimePicker
-                v-model="localDeal.estimatedDeliveryDate"
-                label="Date"
-                :config="{ dateFormat: 'Y-m-d' }"
-                clearable
+              <AppSelect
+                v-model="localDeal.type"
+                :label="typeLabel"
+                placeholder="Select type"
+                :items="typeOptions"
+                :rules="[requiredValidator]"
+              />
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="localDeal.stage"
+                label="Stage"
+                placeholder="Select Stage"
+                :items="stageOptions"
+                :rules="[requiredValidator]"
               />
             </VCol>
 
@@ -571,276 +763,128 @@ const toggleDetails = () => {
             </VCol>
 
             <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localDeal.type"
-                :label="typeLabel"
-                placeholder="Select type"
-                :items="typeOptions"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
+              <div class="location-field-pair">
+                <AppAutocomplete
+                  v-model="selectedLocationCountry"
+                  v-model:search="locationCountrySearch"
+                  label="Country"
+                  placeholder="Select country"
+                  :items="locationCountryOptions"
+                  item-title="label"
+                  item-value="label"
+                  clearable
+                  clear-icon="tabler-x"
+                  :custom-filter="locationCountryFilter"
+                  @keydown="onLocationCountryKeydown"
+                />
 
-            <VCol cols="12" md="6">
-              <AppSelect
-                v-model="localDeal.stage"
-                label="Stage"
-                placeholder="Select Stage"
-                :items="stageOptions"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <AppTextField
-                v-model="localDeal.location"
-                label="Location"
-                placeholder="City, Country"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <div
-                class="deal-important-spacer mb-1 text-body-2"
-                aria-hidden="true"
-              >
-                Important
+                <AppAutocomplete
+                  v-model="selectedLocationCity"
+                  v-model:search="locationCitySearch"
+                  label="City"
+                  placeholder="Select city"
+                  :items="locationCityOptions"
+                  clearable
+                  clear-icon="tabler-x"
+                  :disabled="!selectedLocationCountry"
+                  @keydown="onLocationCityKeydown"
+                />
               </div>
-
-              <AppTextField
-                model-value=""
-                placeholder="Important"
-                persistent-placeholder
-                readonly
-                class="deal-important-input"
-                @click="localDeal.important = !localDeal.important"
-              >
-                <template #append-inner>
-                  <VBtn
-                    class="deal-important-trigger"
-                    :color="localDeal.important ? 'warning' : 'secondary'"
-                    variant="text"
-                    icon
-                    @click.stop="localDeal.important = !localDeal.important"
-                  >
-                    <VIcon
-                      :icon="
-                        localDeal.important
-                          ? 'tabler-star-filled'
-                          : 'tabler-star'
-                      "
-                      size="20"
-                    />
-                  </VBtn>
-                </template>
-              </AppTextField>
             </VCol>
 
             <VCol cols="12" md="6">
+              <AppTextField
+                v-model="localDeal.projectCode"
+                label="Project Code"
+                placeholder="Generated from linked job or contact and type"
+              />
+
+              <VAlert
+                v-if="linkedJobProjectCodeWarning"
+                type="warning"
+                variant="tonal"
+                density="comfortable"
+                class="mt-3"
+              >
+                {{ linkedJobProjectCodeWarning }}
+              </VAlert>
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="localDeal.linkedJobId"
+                label="Linked To"
+                placeholder="Select job"
+                :items="linkedJobOptions"
+                item-title="title"
+                item-value="value"
+                clearable
+                clear-icon="tabler-x"
+                :disabled="!localDeal.relatedTo"
+                :messages="
+                  localDeal.relatedTo && !linkedJobOptions.length
+                    ? 'No available jobs for this contact.'
+                    : undefined
+                "
+              />
+            </VCol>
+
+            <VCol cols="12">
               <AppTextarea
-                auto-grow
-                rows="1"
                 v-model="localDeal.note"
+                auto-grow
+                rows="2"
                 label="Note"
                 placeholder="Short note"
               />
             </VCol>
 
-            <VCol cols="12" class="detail-toggle-col">
-              <button
-                type="button"
-                class="detail-toggle-line"
-                :aria-label="
-                  showDetails ? 'Hide extra details' : 'Show more details'
-                "
-                @click="toggleDetails"
+            <VCol cols="12">
+              <AppSelect
+                v-model="localDeal.collaborators"
+                label="Collaborators"
+                placeholder="Select collaborators"
+                :items="allCollaboratorOptions"
+                item-title="title"
+                item-value="value"
+                multiple
+                chips
+                clearable
+                clear-icon="tabler-x"
               >
-                <span class="detail-toggle-line__track" />
-                <span class="detail-toggle-line__icon">
-                  <VIcon
-                    :icon="
-                      showDetails ? 'tabler-chevron-up' : 'tabler-chevron-down'
-                    "
-                    size="16"
-                  />
-                </span>
-              </button>
-            </VCol>
-
-            <template v-if="showDetails">
-              <VCol cols="12" md="6">
-                <AppSelect
-                  v-model="localDeal.linkedJobId"
-                  label="Linked To"
-                  placeholder="Select job"
-                  :items="linkedJobOptions"
-                  item-title="title"
-                  item-value="value"
-                  clearable
-                  clear-icon="tabler-x"
-                  :disabled="!localDeal.relatedTo"
-                  :messages="
-                    localDeal.relatedTo && !linkedJobOptions.length
-                      ? 'No available jobs for this contact.'
-                      : undefined
-                  "
-                />
-              </VCol>
-
-              <VCol cols="12" md="6">
-                <AppTextField
-                  v-model="localDeal.projectCode"
-                  label="Project Code"
-                  placeholder="Generated from linked job or contact and type"
-                />
-
-                <VAlert
-                  v-if="linkedJobProjectCodeWarning"
-                  type="warning"
-                  variant="tonal"
-                  density="comfortable"
-                  class="mt-3"
-                >
-                  {{ linkedJobProjectCodeWarning }}
-                </VAlert>
-              </VCol>
-
-              <VCol cols="12">
-                <AppSelect
-                  v-model="localDeal.collaborators"
-                  label="Collaborators"
-                  placeholder="Select collaborators"
-                  :items="allCollaboratorOptions"
-                  item-title="title"
-                  item-value="value"
-                  multiple
-                  chips
-                  clearable
-                  clear-icon="tabler-x"
-                >
-                  <template #selection="{ item, index }">
-                    <VChip
-                      v-if="index < 3"
-                      class="me-1 mb-1"
-                      size="small"
-                      variant="elevated"
-                    >
-                      <VAvatar
-                        size="20"
-                        start
-                        class="me-2"
-                        :color="item.raw.avatar ? undefined : 'primary'"
-                        :class="
-                          item.raw.avatar
-                            ? null
-                            : 'text-white font-weight-medium'
-                        "
-                      >
-                        <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
-                        <span v-else class="text-xxs font-weight-bold">
-                          {{ avatarText(item.raw.title) }}
-                        </span>
-                      </VAvatar>
-                      <span class="text-truncate">{{ item.raw.title }}</span>
-                    </VChip>
-
-                    <span
-                      v-else-if="index === 3"
-                      class="text-caption text-medium-emphasis"
-                    >
-                      +{{ (localDeal.collaborators?.length || 0) - index }}
-                    </span>
-                  </template>
-                </AppSelect>
-              </VCol>
-
-              <template
-                v-for="field in customFieldDefinitions"
-                :key="field.key"
-              >
-                <VCol cols="12" md="6">
-                  <AppTextField
-                    v-if="field.type === 'text'"
-                    :model-value="String(getCustomFieldValue(field.key) ?? '')"
-                    :label="field.label"
-                    @update:model-value="
-                      setCustomFieldValue(field.key, String($event ?? ''))
-                    "
-                  />
-
-                  <AppTextField
-                    v-else-if="field.type === 'number'"
-                    :model-value="getCustomFieldValue(field.key)"
-                    :label="field.label"
-                    type="number"
-                    @update:model-value="
-                      setCustomFieldValue(
-                        field.key,
-                        $event === '' ? null : Number($event),
-                      )
-                    "
-                  />
-
-                  <AppDateTimePicker
-                    v-else-if="field.type === 'date'"
-                    :model-value="String(getCustomFieldValue(field.key) ?? '')"
-                    :label="field.label"
-                    clearable
-                    @update:model-value="
-                      setCustomFieldValue(
-                        field.key,
-                        $event ? String($event) : null,
-                      )
-                    "
-                  />
-
-                  <AppSelect
-                    v-else-if="field.type === 'select'"
-                    :model-value="getCustomFieldValue(field.key)"
-                    :label="field.label"
-                    :items="field.options || []"
-                    clearable
-                    clear-icon="tabler-x"
-                    @update:model-value="
-                      setCustomFieldValue(
-                        field.key,
-                        $event ? String($event) : null,
-                      )
-                    "
-                  />
-
-                  <div
-                    v-else-if="field.type === 'boolean'"
-                    class="d-flex align-center justify-space-between rounded border pa-3 deal-custom-boolean"
+                <template #selection="{ item, index }">
+                  <VChip
+                    v-if="index < 3"
+                    class="me-1 mb-1"
+                    size="small"
+                    variant="elevated"
                   >
-                    <div class="text-body-1 font-weight-medium">
-                      {{ field.label }}
-                    </div>
-
-                    <VSwitch
-                      :model-value="Boolean(getCustomFieldValue(field.key))"
-                      inset
-                      hide-details
-                      density="compact"
-                      class="ma-0"
-                      @update:model-value="
-                        setCustomFieldValue(field.key, Boolean($event))
+                    <VAvatar
+                      size="20"
+                      start
+                      class="me-2"
+                      :color="item.raw.avatar ? undefined : 'primary'"
+                      :class="
+                        item.raw.avatar ? null : 'text-white font-weight-medium'
                       "
-                    />
-                  </div>
+                    >
+                      <VImg v-if="item.raw.avatar" :src="item.raw.avatar" />
+                      <span v-else class="text-xxs font-weight-bold">
+                        {{ avatarText(item.raw.title) }}
+                      </span>
+                    </VAvatar>
+                    <span class="text-truncate">{{ item.raw.title }}</span>
+                  </VChip>
 
-                  <AppTextarea
-                    v-else
-                    :model-value="String(getCustomFieldValue(field.key) ?? '')"
-                    :label="field.label"
-                    auto-grow
-                    rows="2"
-                    @update:model-value="
-                      setCustomFieldValue(field.key, String($event ?? ''))
-                    "
-                  />
-                </VCol>
-              </template>
-            </template>
+                  <span
+                    v-else-if="index === 3"
+                    class="text-caption text-medium-emphasis"
+                  >
+                    +{{ (localDeal.collaborators?.length || 0) - index }}
+                  </span>
+                </template>
+              </AppSelect>
+            </VCol>
 
             <VCol cols="12" class="mt-4">
               <DialogActionBar
@@ -863,28 +907,6 @@ const toggleDetails = () => {
 </template>
 
 <style scoped>
-.deal-important-spacer {
-  line-height: 19px;
-  visibility: hidden;
-}
-
-.deal-important-trigger {
-  padding: 0 !important;
-  block-size: 24px !important;
-  inline-size: 24px !important;
-  min-inline-size: 24px !important;
-}
-
-.deal-important-input :deep(input) {
-  color: transparent;
-  cursor: pointer;
-  user-select: none;
-}
-
-.deal-important-input {
-  cursor: pointer;
-}
-
 .deal-form-grid {
   row-gap: 0.25rem;
 }
@@ -893,16 +915,22 @@ const toggleDetails = () => {
   padding-block: 0.5rem;
 }
 
-.detail-toggle-col {
-  padding-block-start: 0.25rem;
-}
-
-.deal-custom-boolean {
-  min-block-size: 56px;
+.deal-top-field-pair {
+  display: grid;
+  align-items: start;
+  gap: 1.25rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .contact-select-row {
-  align-items: flex-end;
+  display: grid;
+  align-items: end;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) 40px;
+}
+
+.contact-select {
+  min-inline-size: 0;
 }
 
 .contact-add-btn {
@@ -913,43 +941,20 @@ const toggleDetails = () => {
   min-inline-size: 40px !important;
 }
 
-.detail-toggle-line {
-  display: flex;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: rgb(var(--v-theme-primary));
-  cursor: pointer;
+.location-field-pair {
+  display: grid;
+  align-items: start;
   gap: 0.75rem;
-  inline-size: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.detail-toggle-line__track {
-  flex: 1 1 auto;
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 58%, transparent);
-  block-size: 1px;
-}
+@media (max-width: 599.98px) {
+  .deal-top-field-pair {
+    grid-template-columns: 1fr;
+  }
 
-.detail-toggle-line__icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid
-    color-mix(in srgb, rgb(var(--v-theme-primary)) 70%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 12%, transparent);
-  block-size: 28px;
-  inline-size: 28px;
-}
-
-.detail-toggle-line:hover .detail-toggle-line__track,
-.detail-toggle-line:hover .detail-toggle-line__icon {
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 18%, transparent);
-}
-
-.detail-toggle-line:hover .detail-toggle-line__track {
-  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 82%, transparent);
+  .location-field-pair {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
