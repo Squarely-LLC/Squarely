@@ -50,6 +50,13 @@ const noteText = computed(
   () => props.deal.note?.trim() || "No notes available",
 );
 
+const noteExcerpt = computed(() => {
+  const text = noteText.value;
+  if (text.length <= 160) return text;
+
+  return `${text.slice(0, 160).trimEnd()}...`;
+});
+
 const formatAmount = (value?: number | null) => {
   if (value === null || value === undefined || Number.isNaN(Number(value)))
     return "--";
@@ -59,216 +66,317 @@ const formatAmount = (value?: number | null) => {
 </script>
 
 <template>
-  <VCard>
-    <VCardText class="text-center pt-12">
-      <VAvatar
-        rounded
-        :size="100"
-        :color="deal.important ? 'warning' : 'primary'"
-        variant="tonal"
-      >
-        <span class="text-5xl font-weight-medium">
-          {{ deal.code || "--" }}
-        </span>
-      </VAvatar>
+  <template v-if="hoverMode">
+    <VCard>
+      <VCardText class="pb-4">
+        <div class="d-flex align-center justify-space-between gap-4 mb-4">
+          <div class="min-inline-size-0">
+            <div class="text-caption text-medium-emphasis mb-1">Deal Report</div>
+            <h5 class="text-h5 text-truncate">
+              {{ deal.code || "--" }}
+            </h5>
+          </div>
 
-      <h5 class="text-h5 mt-4">
-        {{ deal.code }}
-      </h5>
+          <div class="d-flex gap-2 flex-wrap justify-end">
+            <VChip label size="small" color="info" variant="tonal">
+              {{ deal.stage || "--" }}
+            </VChip>
+            <VChip label size="small" color="primary" variant="tonal">
+              {{ deal.type || "--" }}
+            </VChip>
+          </div>
+        </div>
 
-      <div class="summary-actions mt-4">
-        <VTooltip text="Task" location="top">
-          <template #activator="{ props: tooltipProps }">
-            <VBtn
-              v-bind="tooltipProps"
-              color="primary"
-              variant="flat"
-              rounded="lg"
-              class="summary-action-btn"
-              aria-label="Add task"
-              @click="emit('open-add-task')"
-            >
-              <VIcon icon="tabler-checkbox" />
-            </VBtn>
-          </template>
-        </VTooltip>
+        <div class="hover-summary-grid">
+          <div class="hover-summary-item">
+            <span class="hover-summary-item__label">Contact</span>
+            <span class="hover-summary-item__value">{{ linkedToName }}</span>
+          </div>
 
-        <VTooltip text="Email" location="top">
-          <template #activator="{ props: tooltipProps }">
-            <VBtn
-              v-bind="tooltipProps"
-              color="primary"
-              variant="flat"
-              rounded="lg"
-              class="summary-action-btn"
-              aria-label="Add email"
-              @click="emit('open-add-email')"
-            >
-              <VIcon icon="tabler-mail" />
-            </VBtn>
-          </template>
-        </VTooltip>
+          <div class="hover-summary-item">
+            <span class="hover-summary-item__label">Project</span>
+            <span class="hover-summary-item__value">{{ projectLabel || "--" }}</span>
+          </div>
 
-        <VTooltip text="Meeting" location="top">
-          <template #activator="{ props: tooltipProps }">
-            <VBtn
-              v-bind="tooltipProps"
-              color="primary"
-              variant="flat"
-              rounded="lg"
-              class="summary-action-btn"
-              aria-label="Add meeting"
-              @click="emit('open-add-meeting')"
-            >
-              <VIcon icon="tabler-calendar-plus" />
-            </VBtn>
-          </template>
-        </VTooltip>
+          <div class="hover-summary-item">
+            <span class="hover-summary-item__label">Date</span>
+            <span class="hover-summary-item__value">{{
+              formatDate(deal.estimatedDeliveryDate)
+            }}</span>
+          </div>
 
-        <VTooltip text="Call" location="top">
-          <template #activator="{ props: tooltipProps }">
-            <VBtn
-              v-bind="tooltipProps"
-              color="primary"
-              variant="flat"
-              rounded="lg"
-              class="summary-action-btn"
-              aria-label="Add call"
-              @click="emit('open-add-call')"
-            >
-              <VIcon icon="tabler-phone-call" />
-            </VBtn>
-          </template>
-        </VTooltip>
-      </div>
-    </VCardText>
+          <div class="hover-summary-item">
+            <span class="hover-summary-item__label">Value</span>
+            <span class="hover-summary-item__value">{{
+              formatAmount(dealValue)
+            }}</span>
+          </div>
 
-    <VCardText>
-      <h5 class="text-h5">Details</h5>
+          <div class="hover-summary-item hover-summary-item--full">
+            <span class="hover-summary-item__label">Collaborators</span>
+            <span class="hover-summary-item__value hover-summary-item__value--wrap">
+              {{ collaboratorNames.length ? collaboratorNames.join(", ") : "--" }}
+            </span>
+          </div>
 
-      <VDivider class="my-4" />
+          <div class="hover-summary-item hover-summary-item--full">
+            <span class="hover-summary-item__label">Notes</span>
+            <span class="hover-summary-item__value hover-summary-item__value--wrap">
+              {{ noteExcerpt }}
+            </span>
+          </div>
+        </div>
+      </VCardText>
+    </VCard>
+  </template>
 
-      <div class="d-flex gap-2 mb-4 flex-wrap">
-        <VChip label size="small" color="info" variant="text">
-          {{ deal.stage || "--" }}
-        </VChip>
-
-        <VChip label size="small" color="primary" variant="text">
-          {{ deal.type || "--" }}
-        </VChip>
-
-        <VChip
-          label
-          size="small"
-          :color="deal.important ? 'warning' : 'secondary'"
-          variant="text"
+  <template v-else>
+    <VCard>
+      <VCardText class="text-center pt-12">
+        <VAvatar
+          rounded
+          :size="100"
+          :color="deal.important ? 'warning' : 'primary'"
+          variant="tonal"
         >
-          {{ deal.important ? "Important" : "Standard" }}
-        </VChip>
-      </div>
+          <span class="text-5xl font-weight-medium">
+            {{ deal.code || "--" }}
+          </span>
+        </VAvatar>
 
-      <VList class="py-0 card-list">
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Linked To:</span>
-            <span class="detail-row__value">{{ linkedToName }}</span>
-          </VListItemTitle>
-        </VListItem>
+        <h5 class="text-h5 mt-4">
+          {{ deal.code }}
+        </h5>
 
-        <VListItem v-if="projectLabel">
-          <VListItemTitle class="detail-row detail-row--stacked">
-            <span class="detail-row__label">Project:</span>
-            <span class="detail-row__value detail-row__value--wrap">{{
-              projectLabel
-            }}</span>
-          </VListItemTitle>
-        </VListItem>
+        <div class="summary-actions mt-4">
+          <VTooltip text="Task" location="top">
+            <template #activator="{ props: tooltipProps }">
+              <VBtn
+                v-bind="tooltipProps"
+                color="primary"
+                variant="flat"
+                rounded="lg"
+                class="summary-action-btn"
+                aria-label="Add task"
+                @click="emit('open-add-task')"
+              >
+                <VIcon icon="tabler-checkbox" />
+              </VBtn>
+            </template>
+          </VTooltip>
 
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Location:</span>
-            <span class="detail-row__value">{{ deal.location || "--" }}</span>
-          </VListItemTitle>
-        </VListItem>
+          <VTooltip text="Email" location="top">
+            <template #activator="{ props: tooltipProps }">
+              <VBtn
+                v-bind="tooltipProps"
+                color="primary"
+                variant="flat"
+                rounded="lg"
+                class="summary-action-btn"
+                aria-label="Add email"
+                @click="emit('open-add-email')"
+              >
+                <VIcon icon="tabler-mail" />
+              </VBtn>
+            </template>
+          </VTooltip>
 
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Items:</span>
-            <span class="detail-row__value">{{ itemCount }}</span>
-          </VListItemTitle>
-        </VListItem>
+          <VTooltip text="Meeting" location="top">
+            <template #activator="{ props: tooltipProps }">
+              <VBtn
+                v-bind="tooltipProps"
+                color="primary"
+                variant="flat"
+                rounded="lg"
+                class="summary-action-btn"
+                aria-label="Add meeting"
+                @click="emit('open-add-meeting')"
+              >
+                <VIcon icon="tabler-calendar-plus" />
+              </VBtn>
+            </template>
+          </VTooltip>
 
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Deal Amount:</span>
-            <span class="detail-row__value">{{
-              formatAmount(dealAmount)
-            }}</span>
-          </VListItemTitle>
-        </VListItem>
+          <VTooltip text="Call" location="top">
+            <template #activator="{ props: tooltipProps }">
+              <VBtn
+                v-bind="tooltipProps"
+                color="primary"
+                variant="flat"
+                rounded="lg"
+                class="summary-action-btn"
+                aria-label="Add call"
+                @click="emit('open-add-call')"
+              >
+                <VIcon icon="tabler-phone-call" />
+              </VBtn>
+            </template>
+          </VTooltip>
+        </div>
+      </VCardText>
 
-        <VListItem>
-          <VListItemTitle class="detail-row">
-            <span class="detail-row__label">Calculated Value:</span>
-            <span class="detail-row__value">{{ formatAmount(dealValue) }}</span>
-          </VListItemTitle>
-        </VListItem>
+      <VCardText>
+        <h5 class="text-h5">Details</h5>
 
-        <VListItem>
-          <VListItemTitle class="detail-row detail-row--stacked">
-            <span class="detail-row__label">Collaborators:</span>
-            <span class="detail-row__value detail-row__value--wrap">
-              {{
-                collaboratorNames.length ? collaboratorNames.join(", ") : "--"
-              }}
-            </span>
-          </VListItemTitle>
-        </VListItem>
+        <VDivider class="my-4" />
 
-        <VListItem>
-          <VListItemTitle class="detail-row detail-row--stacked">
-            <span class="detail-row__label">Notes:</span>
-            <span class="detail-row__value detail-row__value--wrap">
-              {{ noteText }}
-            </span>
-          </VListItemTitle>
-        </VListItem>
-      </VList>
-    </VCardText>
+        <div class="d-flex gap-2 mb-4 flex-wrap">
+          <VChip label size="small" color="info" variant="text">
+            {{ deal.stage || "--" }}
+          </VChip>
 
-    <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-6">
-      <VBtn aria-label="Edit deal" @click="emit('edit')" class="mb-2">
-        Edit
+          <VChip label size="small" color="primary" variant="text">
+            {{ deal.type || "--" }}
+          </VChip>
+
+          <VChip
+            label
+            size="small"
+            :color="deal.important ? 'warning' : 'secondary'"
+            variant="text"
+          >
+            {{ deal.important ? "Important" : "Standard" }}
+          </VChip>
+        </div>
+
+        <VList class="py-0 card-list">
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Linked To:</span>
+              <span class="detail-row__value">{{ linkedToName }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem v-if="projectLabel">
+            <VListItemTitle class="detail-row detail-row--stacked">
+              <span class="detail-row__label">Project:</span>
+              <span class="detail-row__value detail-row__value--wrap">{{
+                projectLabel
+              }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Location:</span>
+              <span class="detail-row__value">{{ deal.location || "--" }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Items:</span>
+              <span class="detail-row__value">{{ itemCount }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Deal Amount:</span>
+              <span class="detail-row__value">{{
+                formatAmount(dealAmount)
+              }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Calculated Value:</span>
+              <span class="detail-row__value">{{ formatAmount(dealValue) }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row detail-row--stacked">
+              <span class="detail-row__label">Collaborators:</span>
+              <span class="detail-row__value detail-row__value--wrap">
+                {{
+                  collaboratorNames.length ? collaboratorNames.join(", ") : "--"
+                }}
+              </span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row detail-row--stacked">
+              <span class="detail-row__label">Notes:</span>
+              <span class="detail-row__value detail-row__value--wrap">
+                {{ noteText }}
+              </span>
+            </VListItemTitle>
+          </VListItem>
+        </VList>
+      </VCardText>
+
+      <VCardText class="d-flex flex-column align-center pb-6">
+        <VBtn aria-label="Edit deal" @click="emit('edit')" class="mb-2">
+          Edit
+        </VBtn>
+      </VCardText>
+    </VCard>
+
+    <VCardText class="d-flex flex-column align-center pb-2">
+      <VAlert
+        v-if="executionNotice"
+        type="info"
+        variant="tonal"
+        density="comfortable"
+        class="mb-3 w-100"
+      >
+        {{ executionNotice }}
+      </VAlert>
+
+      <VBtn
+        aria-label="Execute deal"
+        variant="elevated"
+        :disabled="Boolean(executionNotice)"
+        @click="emit('execute')"
+      >
+        <VIcon left>tabler-play</VIcon>
+        Execute Deal
       </VBtn>
     </VCardText>
-  </VCard>
-
-  <VCardText v-if="!hoverMode" class="d-flex flex-column align-center pb-2">
-    <VAlert
-      v-if="executionNotice"
-      type="info"
-      variant="tonal"
-      density="comfortable"
-      class="mb-3 w-100"
-    >
-      {{ executionNotice }}
-    </VAlert>
-
-    <VBtn
-      aria-label="Execute deal"
-      variant="elevated"
-      :disabled="Boolean(executionNotice)"
-      @click="emit('execute')"
-    >
-      <VIcon left>tabler-play</VIcon>
-      Execute Deal
-    </VBtn>
-  </VCardText>
+  </template>
 </template>
 
 <style scoped>
 .card-list {
   --v-card-list-gap: 0.5rem;
+}
+
+.hover-summary-grid {
+  display: grid;
+  gap: 0.875rem 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hover-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-inline-size: 0;
+}
+
+.hover-summary-item--full {
+  grid-column: 1 / -1;
+}
+
+.hover-summary-item__label {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.hover-summary-item__value {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.hover-summary-item__value--wrap {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .summary-actions {

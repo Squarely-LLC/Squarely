@@ -94,11 +94,10 @@ const typeLabel = computed(
 );
 
 const headers = computed(() => [
-  { title: "Deal", key: "deal", width: "18%" },
-  { title: "Linked to", key: "contact", width: "20%" },
-  { title: "Value", key: "value", width: "11%" },
-  { title: "Stage", key: "stage", width: "13%" },
-  { title: typeLabel.value, key: "type", width: "10%" },
+  { title: "Deal", key: "deal", width: "30%" },
+  { title: "Contact", key: "contact", width: "18%" },
+  { title: "Stage", key: "stage", width: "12%" },
+  { title: "Price", key: "value", width: "10%" },
   {
     title: "Collaborators",
     key: "collaborators",
@@ -248,6 +247,14 @@ const collaboratorNames = (deal: DealProperties) =>
 
 const formatMoney = (value?: number | null) =>
   Number(value || 0).toLocaleString();
+
+const truncateText = (value?: string | null, limit = 80) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.length <= limit) return text;
+
+  return `${text.slice(0, limit).trimEnd()}...`;
+};
 
 const normalizeDateKey = (value?: string | null) => {
   const raw = String(value || "").trim();
@@ -450,6 +457,16 @@ const openDealView = (deal: DealProperties) => {
   router.push({
     name: "operations-deals-view-id",
     params: { id: deal.id },
+  });
+};
+
+const openContactView = (deal: DealProperties) => {
+  const contactId = Number(deal.relatedTo);
+  if (!Number.isFinite(contactId)) return;
+
+  router.push({
+    name: "apps-contact-view-id",
+    params: { id: contactId },
   });
 };
 
@@ -872,20 +889,45 @@ const updateItemsPerPage = (value: number | string) => {
               max-width="420"
             >
               <template #activator="{ props: menuProps }">
-                <button
+                <div
                   v-bind="menuProps"
-                  type="button"
-                  class="deal-cell__content deal-cell__link d-flex flex-column gap-1 text-start"
-                  @click="openDealView(item)"
+                  class="deal-cell__content d-flex flex-column gap-1 text-start"
                 >
-                  <div class="deal-cell__date text-xs text-medium-emphasis">
+                  <button
+                    type="button"
+                    class="deal-cell__inline-link deal-cell__date deal-cell__date-link text-body-1"
+                    @click.stop="openDealView(item)"
+                  >
                     {{ formatDate(item.estimatedDeliveryDate) }}
+                  </button>
+
+                  <div class="d-flex align-center gap-2 flex-wrap min-inline-size-0">
+                    <button
+                      type="button"
+                      class="deal-cell__inline-link deal-cell__title text-base font-weight-medium"
+                      @click.stop="openDealView(item)"
+                    >
+                      {{ item.code || "--" }}
+                    </button>
+
+                    <VChip
+                      label
+                      size="x-small"
+                      color="primary"
+                      variant="tonal"
+                      class="deal-cell__type-chip"
+                    >
+                      {{ item.type || typeLabel }}
+                    </VChip>
                   </div>
 
-                  <div class="deal-cell__title text-base font-weight-medium">
-                    {{ item.code || "--" }}
+                  <div
+                    v-if="truncateText(item.note)"
+                    class="deal-cell__note text-sm text-medium-emphasis"
+                  >
+                    {{ truncateText(item.note) }}
                   </div>
-                </button>
+                </div>
               </template>
 
               <DealSummaryCard
@@ -900,30 +942,42 @@ const updateItemsPerPage = (value: number | string) => {
 
         <template #item.contact="{ item }">
           <div class="linked-cell d-flex align-center gap-2">
-            <VAvatar
-              size="30"
-              :color="
-                getContactEntry(item.relatedTo)?.picture ? undefined : 'primary'
-              "
-              :class="
-                getContactEntry(item.relatedTo)?.picture
-                  ? null
-                  : 'text-white font-weight-medium'
-              "
+            <button
+              type="button"
+              class="linked-cell__avatar-btn"
+              :disabled="!getContactEntry(item.relatedTo)"
+              @click.stop="openContactView(item)"
             >
-              <VImg
-                v-if="getContactEntry(item.relatedTo)?.picture"
-                :src="getContactEntry(item.relatedTo)?.picture || undefined"
-              />
-              <span v-else>{{ avatarText(relatedContactName(item)) }}</span>
-            </VAvatar>
+              <VAvatar
+                size="30"
+                :color="
+                  getContactEntry(item.relatedTo)?.picture ? undefined : 'primary'
+                "
+                :class="
+                  getContactEntry(item.relatedTo)?.picture
+                    ? null
+                    : 'text-white font-weight-medium'
+                "
+              >
+                <VImg
+                  v-if="getContactEntry(item.relatedTo)?.picture"
+                  :src="getContactEntry(item.relatedTo)?.picture || undefined"
+                />
+                <span v-else>{{ avatarText(relatedContactName(item)) }}</span>
+              </VAvatar>
+            </button>
 
             <div
               class="linked-cell__content d-flex flex-column min-inline-size-0"
             >
-              <span class="linked-cell__name text-high-emphasis">{{
-                relatedContactName(item)
-              }}</span>
+              <button
+                type="button"
+                class="linked-cell__inline-link linked-cell__name text-high-emphasis"
+                :disabled="!getContactEntry(item.relatedTo)"
+                @click.stop="openContactView(item)"
+              >
+                {{ relatedContactName(item) }}
+              </button>
               <span
                 v-if="relatedProjectLabel(item)"
                 class="linked-cell__project text-sm text-medium-emphasis"
@@ -944,12 +998,6 @@ const updateItemsPerPage = (value: number | string) => {
           <VChip :color="resolveStageColor(item.stage)" label size="small">
             {{ item.stage || "--" }}
           </VChip>
-        </template>
-
-        <template #item.type="{ item }">
-          <span class="text-high-emphasis text-body-1">{{
-            item.type || "--"
-          }}</span>
         </template>
 
         <template #item.collaborators="{ item }">
@@ -1181,13 +1229,37 @@ const updateItemsPerPage = (value: number | string) => {
   min-inline-size: 0;
 }
 
-.deal-cell__link {
+.deal-cell__inline-link,
+.linked-cell__inline-link,
+.linked-cell__avatar-btn {
   padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  inline-size: 100%;
+}
+
+.deal-cell__inline-link:disabled,
+.linked-cell__inline-link:disabled,
+.linked-cell__avatar-btn:disabled {
+  cursor: default;
+}
+
+.deal-cell__inline-link,
+.linked-cell__inline-link {
+  text-align: start;
+}
+
+.deal-cell__title,
+.deal-cell__date-link,
+.linked-cell__name {
+  transition: color 0.18s ease;
+}
+
+.deal-cell__title:hover,
+.deal-cell__date-link:hover,
+.linked-cell__name:hover {
+  color: rgb(var(--v-theme-primary));
 }
 
 .deal-cell__title,
@@ -1197,6 +1269,29 @@ const updateItemsPerPage = (value: number | string) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.deal-cell__date {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.deal-cell__note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-cell__type-chip {
+  max-inline-size: 100%;
+}
+
+.linked-cell__avatar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
 }
 
 .actions-cell :deep(.v-btn) {
