@@ -2,7 +2,10 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ToDo } from "@/data/schema";
+import type { InvoiceRecord } from "@/plugins/fake-api/handlers/apps/invoice/types";
+import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
   CatalogueJobConfigTask,
   CatalogueRecord,
@@ -30,12 +33,13 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
-import DialogActionBar from "@/components/DialogActionBar.vue";
+import { getBillableRootDealItems } from "@/utils/dealDocumentDraft";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
 import DealUpsertDialog from "@/views/operations/deals/list/DealUpsertDialog.vue";
+import DealBillingSummaryCard from "@/views/operations/deals/view/DealBillingSummaryCard.vue";
 import DealCommunicationTab from "@/views/operations/deals/view/DealCommunicationTab.vue";
 import DealDocumentsTab from "@/views/operations/deals/view/DealDocumentsTab.vue";
 import DealItemsTab from "@/views/operations/deals/view/DealItemsTab.vue";
@@ -408,7 +412,16 @@ const resolveDealSalesTasks = (
   currentDeal: DealProperties,
 ): DealSalesTaskTemplate[] => {
   const storedSalesTasks = Array.isArray(currentDeal.salesTasks)
-    ? currentDeal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
+    ? currentDeal.salesTasks.map((task) =>
+        cloneDealSalesTaskTemplate({
+          ...task,
+          relatedTo: {
+            id: currentDeal.id,
+            name: currentDeal.code || `Deal #${currentDeal.id}`,
+            type: "deal",
+          },
+        }),
+      )
     : [];
   let nextId = nextDealSalesTaskId(storedSalesTasks);
   const importedFallbackTasks = (currentDeal.items || [])
@@ -1072,6 +1085,109 @@ const employeeOptions = computed(() =>
   })),
 );
 
+type DealBillingDocument = InvoiceRecord | ProformaRecord;
+
+const getDealDocumentTotal = (record: DealBillingDocument) => {
+  const total = Number(record.quotation?.total ?? 0);
+
+  return Number.isFinite(total) ? Math.max(total, 0) : 0;
+};
+
+const getDealDocumentBalance = (record: DealBillingDocument) => {
+  const balance = Number(record.quotation?.balance ?? NaN);
+  if (Number.isFinite(balance)) return Math.max(balance, 0);
+
+  const total = getDealDocumentTotal(record);
+  const paid = (record.payments || []).reduce((sum, payment) => {
+    const amount = Number(payment.amount ?? 0);
+
+    return sum + (Number.isFinite(amount) ? Math.max(amount, 0) : 0);
+  }, 0);
+
+  return Math.max(total - paid, 0);
+};
+
+const getDealDocumentPaid = (record: DealBillingDocument) => {
+  const total = getDealDocumentTotal(record);
+  const balance = getDealDocumentBalance(record);
+
+  if (String(record.quotation?.quotationStatus || "") === "Paid") return total;
+
+  return Math.min(Math.max(total - balance, 0), total);
+};
+
+const isCurrentDealBillingDocument = (record: DealBillingDocument) => {
+  if (!deal.value) return false;
+  if (String(record.quotation?.dealId ?? "") !== String(deal.value.id))
+    return false;
+
+  const linkedType = record.quotation?.linkedRecordType;
+
+  return (
+    linkedType === "deal" || linkedType === null || linkedType === undefined
+  );
+};
+
+const dealBillingDocuments = computed<DealBillingDocument[]>(() => [
+  ...proformasStore.items.filter(isCurrentDealBillingDocument),
+  ...invoicesStore.items.filter(isCurrentDealBillingDocument),
+]);
+
+const dealBillingPaid = computed(() =>
+  dealBillingDocuments.value.reduce(
+    (sum, record) => sum + getDealDocumentPaid(record),
+    0,
+  ),
+);
+
+const dealBillingUnpaid = computed(() =>
+  dealBillingDocuments.value.reduce(
+    (sum, record) => sum + getDealDocumentBalance(record),
+    0,
+  ),
+);
+
+const lineAmount = (
+  item: Pick<DealItem, "quantity" | "unitPrice" | "discountPercent">,
+) => {
+  const quantity = Number(item.quantity ?? 1);
+  const unitPrice = Number(item.unitPrice ?? 0);
+  const discountPercent = Number(item.discountPercent ?? 0);
+  const subtotal =
+    (Number.isFinite(quantity) ? quantity : 0) *
+    (Number.isFinite(unitPrice) ? unitPrice : 0);
+
+  return Math.max(
+    subtotal -
+      subtotal *
+        ((Number.isFinite(discountPercent) ? discountPercent : 0) / 100),
+    0,
+  );
+};
+
+const documentedDealSelectionKeys = computed(() => {
+  const keys = new Set<string>();
+
+  dealBillingDocuments.value.forEach((record) => {
+    (record.purchasedProducts || []).forEach((product) => {
+      const selectionKey = String(product.dealSelectionKey || "").trim();
+      if (selectionKey) keys.add(selectionKey);
+    });
+  });
+
+  return keys;
+});
+
+const dealBillingToBeInvoiced = computed(() => {
+  if (!deal.value) return 0;
+
+  return getBillableRootDealItems(deal.value.items || [], (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  )
+    .filter((item) => !documentedDealSelectionKeys.value.has(item.selectionKey))
+    .reduce((sum, item) => sum + lineAmount(item), 0);
+});
+
 const dealCollaboratorOptions = computed(() =>
   [
     ...employeesStore.all.map((employee) => ({
@@ -1171,18 +1287,6 @@ const dealRelatedRef = computed(() =>
     : null,
 );
 
-const preferredTaskRelatedRef = computed(() => {
-  if (linkedJob.value) {
-    return {
-      id: linkedJob.value.id,
-      name: linkedJob.value.name,
-      type: "job",
-    } as const;
-  }
-
-  return dealRelatedRef.value;
-});
-
 const taskRelationCandidates = computed(() => {
   const candidates: Array<{ id: number | string; type: string }> = [];
 
@@ -1190,13 +1294,6 @@ const taskRelationCandidates = computed(() => {
     candidates.push({
       id: dealRelatedRef.value.id,
       type: dealRelatedRef.value.type,
-    });
-  }
-
-  if (preferredTaskRelatedRef.value?.type === "job") {
-    candidates.push({
-      id: preferredTaskRelatedRef.value.id,
-      type: preferredTaskRelatedRef.value.type,
     });
   }
 
@@ -1562,7 +1659,7 @@ const handleAddTaskFromCommunication = () => {
   addTodoInitial.value = {
     title: `Task: ${currentDeal.code || `Deal #${currentDeal.id}`}`,
     collaborators: dealEmployeeCollaborators.value,
-    relatedTo: preferredTaskRelatedRef.value,
+    relatedTo: dealRelatedRef.value,
     dueAt: new Date().toISOString(),
     notes: `Task regarding ${currentDeal.code || `deal #${currentDeal.id}`}`,
     important: false,
@@ -1642,8 +1739,7 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
       payload.initial.collaborators.length
         ? payload.initial.collaborators
         : dealEmployeeCollaborators.value,
-    relatedTo:
-      preferredTaskRelatedRef.value ?? payload?.initial?.relatedTo ?? null,
+    relatedTo: dealRelatedRef.value,
     status: payload?.initial?.status ?? "pending",
     important: Boolean(payload?.initial?.important),
   };
@@ -1700,9 +1796,7 @@ const mapSalesTaskTemplateToEditableTodo = (
     notes: task.notes || "",
     important: Boolean(task.important),
     attachment: task.attachment ? { ...task.attachment } : null,
-    relatedTo:
-      preferredTaskRelatedRef.value ??
-      (task.relatedTo ? { ...task.relatedTo } : null),
+    relatedTo: dealRelatedRef.value,
     steps: Array.isArray(task.steps)
       ? task.steps.map((step) => ({ ...step }))
       : [],
@@ -1729,9 +1823,7 @@ const openEditTask = (todoId: number | string) => {
       collaborators: Array.isArray(todo.collaborators)
         ? todo.collaborators.map((collaborator) => ({ ...collaborator }))
         : [],
-      relatedTo:
-        preferredTaskRelatedRef.value ??
-        (todo.relatedTo ? { ...todo.relatedTo } : null),
+      relatedTo: dealRelatedRef.value,
       steps: Array.isArray(todo.steps)
         ? todo.steps.map((step) => ({ ...step }))
         : [],
@@ -1790,8 +1882,7 @@ const handleDocumentTodoRequest = (payload: {
       payload.initial.collaborators.length
         ? payload.initial.collaborators
         : dealEmployeeCollaborators.value,
-    relatedTo:
-      preferredTaskRelatedRef.value ?? payload?.initial?.relatedTo ?? null,
+    relatedTo: dealRelatedRef.value,
   };
   isAddTodoDrawerVisible.value = true;
   nextTick(() => {
@@ -1807,7 +1898,11 @@ const onTodoCreated = (payload: any) => {
     try {
       todosStore.init();
     } catch {}
-    todosStore.addTodo && todosStore.addTodo(payload);
+    todosStore.addTodo &&
+      todosStore.addTodo({
+        ...payload,
+        relatedTo: dealRelatedRef.value,
+      });
     notifications.push("Task created", "success", 3500);
   } catch (e) {
     console.error("onTodoCreated failed:", e);
@@ -1852,11 +1947,7 @@ const onTodoEdited = (payload: any) => {
                   ? payload.status
                   : "pending",
               attachment: payload.attachment ?? null,
-              relatedTo:
-                preferredTaskRelatedRef.value ??
-                payload.relatedTo ??
-                task.relatedTo ??
-                null,
+              relatedTo: dealRelatedRef.value,
             },
       );
 
@@ -1881,7 +1972,7 @@ const onTodoEdited = (payload: any) => {
     notes: payload.notes,
     important: payload.important,
     attachment: payload.attachment,
-    relatedTo: preferredTaskRelatedRef.value ?? payload.relatedTo,
+    relatedTo: dealRelatedRef.value,
   };
 
   if ("completed" in payload) partial.completed = payload.completed;
@@ -2043,7 +2134,6 @@ watch(
           :stage-options="dealStageOptions"
           :execution-notice="dealExecutionNotice"
           @edit="openEditDialog"
-          @execute="openExecutePreviewDialog"
           @open-add-task="handleAddTaskFromCommunication"
           @open-add-email="openEmail"
           @open-add-meeting="handleAddMeetingFromCommunication"
@@ -2051,15 +2141,44 @@ watch(
           @open-add-note="openAddNoteDialog"
           @open-collaborators="openCollaboratorDialog"
         />
+
+        <DealBillingSummaryCard
+          class="mt-4"
+          :paid="dealBillingPaid"
+          :unpaid="dealBillingUnpaid"
+          :to-be-invoiced="dealBillingToBeInvoiced"
+        />
       </VCol>
 
       <VCol cols="12" md="7" lg="8">
-        <VTabs v-model="dealTab" class="v-tabs-pill mb-4">
-          <VTab v-for="tab in tabs" :key="tab.icon">
-            <VIcon :size="18" :icon="tab.icon" class="me-1" />
-            <span>{{ tab.title }}</span>
-          </VTab>
-        </VTabs>
+        <div class="deal-view-toolbar mb-4">
+          <VTabs v-model="dealTab" class="v-tabs-pill">
+            <VTab v-for="tab in tabs" :key="tab.icon">
+              <VIcon :size="18" :icon="tab.icon" class="me-1" />
+              <span>{{ tab.title }}</span>
+            </VTab>
+          </VTabs>
+
+          <VBtn
+            aria-label="Execute deal"
+            variant="tonal"
+            :disabled="Boolean(dealExecutionNotice)"
+            @click="openExecutePreviewDialog"
+          >
+            <VIcon start icon="tabler-play" />
+            Execute Deal
+          </VBtn>
+        </div>
+
+        <VAlert
+          v-if="dealExecutionNotice"
+          type="info"
+          variant="tonal"
+          density="comfortable"
+          class="mb-4"
+        >
+          {{ dealExecutionNotice }}
+        </VAlert>
 
         <VWindow
           v-model="dealTab"
@@ -2428,3 +2547,19 @@ watch(
     />
   </div>
 </template>
+
+<style scoped>
+.deal-view-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+@media (max-width: 960px) {
+  .deal-view-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+</style>

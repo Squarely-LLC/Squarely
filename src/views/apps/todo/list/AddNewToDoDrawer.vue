@@ -551,13 +551,6 @@ async function onSubmit() {
                 </AppSelect>
               </VCol>
 
-              <VCol v-else cols="12">
-                <div class="task-related-hint">
-                  <VIcon icon="tabler-briefcase" size="16" />
-                  <span>Will be linked to the related job automatically.</span>
-                </div>
-              </VCol>
-
               <VDivider />
 
               <VCol cols="12">

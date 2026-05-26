@@ -446,27 +446,6 @@ const stageProgressPercent = computed(() => {
       </VCardText>
     </VCard>
 
-    <VCardText class="d-flex flex-column align-center pb-2">
-      <VAlert
-        v-if="executionNotice"
-        type="info"
-        variant="tonal"
-        density="comfortable"
-        class="mb-3 w-100"
-      >
-        {{ executionNotice }}
-      </VAlert>
-
-      <VBtn
-        aria-label="Execute deal"
-        variant="elevated"
-        :disabled="Boolean(executionNotice)"
-        @click="emit('execute')"
-      >
-        <VIcon left>tabler-play</VIcon>
-        Execute Deal
-      </VBtn>
-    </VCardText>
   </template>
 </template>
 
