@@ -1272,6 +1272,7 @@ function onContactEditSubmit(payload: ContactProperties) {
     @send="onEmailSend"
   />
   <VDialog v-model="confirmDeleteDialogVisible" persistent max-width="400">
+    <DialogCloseBtn @click="confirmDeleteDialogVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardText> Are you sure you want to remove this connection? </VCardText>
       <VCardActions>
@@ -1294,6 +1295,7 @@ function onContactEditSubmit(payload: ContactProperties) {
 
   <!-- Contact delete dialog -->
   <VDialog v-model="confirmDeleteContactVisible" max-width="540">
+    <DialogCloseBtn @click="confirmDeleteContactVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete contact</VCardTitle>
       <VCardText>
@@ -1352,6 +1354,7 @@ function onContactEditSubmit(payload: ContactProperties) {
   </VDialog>
 
   <VDialog v-model="editRelationDialogVisible" max-width="480">
+    <DialogCloseBtn @click="editRelationDialogVisible = false" />
     <VCard>
       <VCardTitle>Edit Connection</VCardTitle>
       <VCardText>

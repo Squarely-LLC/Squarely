@@ -4838,6 +4838,7 @@ watch(
       v-model="isImageUrlDialogOpen"
       max-width="560"
     >
+      <DialogCloseBtn @click="isImageUrlDialogOpen = false" />
       <VCard>
         <VCardItem title="Add Image From URL" />
 
@@ -4874,6 +4875,7 @@ watch(
       v-model="isRelatedItemDialogOpen"
       max-width="760"
     >
+      <DialogCloseBtn @click="isRelatedItemDialogOpen = false" />
       <VCard>
         <VCardItem :title="relatedDialogTitle" />
 
@@ -4969,6 +4971,7 @@ watch(
       v-model="milestoneDialog.visible"
       max-width="560"
     >
+      <DialogCloseBtn @click="milestoneDialog.visible = false" />
       <VCard>
         <VCardText>
           <h5 class="text-h5 mb-4">Edit Milestone</h5>
@@ -5055,6 +5058,7 @@ watch(
       v-model="goalDialog.visible"
       max-width="560"
     >
+      <DialogCloseBtn @click="goalDialog.visible = false" />
       <VCard>
         <VCardText>
           <h5 class="text-h5 mb-4">

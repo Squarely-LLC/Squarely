@@ -111,5 +111,8 @@
         "borderStyle": "solid"
       }
     ]
+  },
+  "chat.tools.terminal.autoApprove": {
+    "pnpm": true
   }
 }

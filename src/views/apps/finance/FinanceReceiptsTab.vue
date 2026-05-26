@@ -515,6 +515,7 @@ watch(totalReceipts, (value) => {
     />
 
     <VDialog v-model="isDeleteReceiptDialogOpen" max-width="440" persistent>
+      <DialogCloseBtn @click="isDeleteReceiptDialogOpen = false" />
       <VCard>
         <VCardText class="pt-6">
           {{ deleteDialogMessage }}

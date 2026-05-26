@@ -34,7 +34,7 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="d-flex flex-wrap justify-space-between align-center gap-4 w-100">
+  <div class="d-flex flex-wrap justify-center align-center gap-4 w-100">
     <VBtn
       :type="saveType"
       :color="saveColor"

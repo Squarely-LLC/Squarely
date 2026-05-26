@@ -496,6 +496,7 @@ const deleteCategory = async (id: string) => {
   </VRow>
 
   <VDialog v-model="isMoveDialogVisible" max-width="480">
+    <DialogCloseBtn @click="isMoveDialogVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Move Category</VCardTitle>
       <VCardText class="d-flex flex-column gap-4">

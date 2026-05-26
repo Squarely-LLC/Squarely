@@ -1290,6 +1290,7 @@ watch(totalQuotations, (value) => {
   </section>
 
   <VDialog v-model="isExternalQuotationDialogOpen" max-width="760">
+    <DialogCloseBtn @click="isExternalQuotationDialogOpen = false" />
     <VCard class="pa-sm-6 pa-4">
       <VCardTitle class="text-h5 px-0 pt-0 pb-2">
         Import Proforma From Another System
@@ -1435,6 +1436,7 @@ watch(totalQuotations, (value) => {
   />
 
   <VDialog v-model="isDeleteQuotationDialogOpen" max-width="440" persistent>
+    <DialogCloseBtn @click="isDeleteQuotationDialogOpen = false" />
     <VCard>
       <VCardText class="pt-6">
         {{ deleteDialogMessage }}

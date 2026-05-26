@@ -294,6 +294,7 @@ const cancelEditDecision = () => {
       if (!val) cancelDeletion();
     }"
   >
+    <DialogCloseBtn @click="cancelDeletion" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Remove {{ label }}</VCardTitle>
       <VCardText>
@@ -322,6 +323,7 @@ const cancelEditDecision = () => {
       if (!val) cancelEditDecision();
     }"
   >
+    <DialogCloseBtn @click="cancelEditDecision" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Unsaved changes</VCardTitle>
       <VCardText>

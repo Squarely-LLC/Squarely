@@ -1569,6 +1569,7 @@ const onTerminationSubmit = (terminationData: any) => {
 
   <!-- Confirm Delete Position Dialog -->
   <VDialog v-model="confirmDeletePositionVisible" persistent max-width="540">
+    <DialogCloseBtn @click="confirmDeletePositionVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete position</VCardTitle>
       <VCardText> Are you sure you want to delete this position? </VCardText>
@@ -1583,6 +1584,7 @@ const onTerminationSubmit = (terminationData: any) => {
 
   <!-- Confirm Delete Salary Dialog -->
   <VDialog v-model="confirmDeleteSalaryVisible" persistent max-width="540">
+    <DialogCloseBtn @click="confirmDeleteSalaryVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete salary</VCardTitle>
       <VCardText>
@@ -1599,6 +1601,7 @@ const onTerminationSubmit = (terminationData: any) => {
 
   <!-- Confirm Delete Payment Method Dialog -->
   <VDialog v-model="confirmDeletePaymentVisible" persistent max-width="540">
+    <DialogCloseBtn @click="confirmDeletePaymentVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete payment method</VCardTitle>
       <VCardText>

@@ -1329,6 +1329,7 @@ function onRowClick(e: MouseEvent, payload: any) {
     />
 
     <VDialog v-model="isAssignDialogOpen" max-width="560">
+      <DialogCloseBtn @click="isAssignDialogOpen = false" />
       <VCard>
         <VCardItem title="Assign To" />
         <VDivider />

@@ -93,18 +93,33 @@
   // dialog custom close btn
   .v-dialog-close-btn {
     position: absolute;
-    z-index: 1;
+    z-index: 2;
     color: rgba(var(--v-theme-on-surface), var(--v-disabled-opacity)) !important;
-    inset-block-start: 0.5rem;
-    inset-inline-end: 0.5rem;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    transform: translate(0.5rem, -0.5rem);
+
+    @include layoutMixins.rtl {
+      transform: translate(-0.5rem, -0.5rem);
+    }
 
     .v-btn__overlay {
       display: none;
     }
   }
 
+  .v-card-actions {
+    justify-content: center;
+    gap: 1rem;
+
+    > .v-spacer {
+      display: none;
+    }
+  }
+
   .v-card {
     @extend %style-scroll-bar;
+    position: relative;
   }
 }
 

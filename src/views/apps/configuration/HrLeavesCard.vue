@@ -641,6 +641,7 @@ const saveDropdowns = async () => {
   </VCard>
 
   <VDialog v-model="isDeleteDialogVisible" max-width="480">
+    <DialogCloseBtn @click="isDeleteDialogVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Remove leave</VCardTitle>
       <VCardText>
@@ -663,6 +664,7 @@ const saveDropdowns = async () => {
   </VDialog>
 
   <VDialog v-model="isEditConfirmDialogVisible" max-width="480">
+    <DialogCloseBtn @click="isEditConfirmDialogVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Unsaved changes</VCardTitle>
       <VCardText>

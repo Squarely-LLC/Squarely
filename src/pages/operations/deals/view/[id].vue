@@ -1990,6 +1990,7 @@ watch(
     />
 
     <VDialog v-model="isExecutePreviewDialogVisible" max-width="840">
+      <DialogCloseBtn @click="isExecutePreviewDialogVisible = false" />
       <VCard>
         <VCardItem>
           <VCardTitle>Confirm Deal Execution</VCardTitle>

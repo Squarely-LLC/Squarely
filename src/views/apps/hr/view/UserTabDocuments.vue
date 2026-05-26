@@ -971,6 +971,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
       @send="onEmailSend"
     />
     <VDialog v-model="isConfirmDeleteVisible" max-width="480">
+      <DialogCloseBtn @click="isConfirmDeleteVisible = false" />
       <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Delete document</VCardTitle>
         <VCardText>

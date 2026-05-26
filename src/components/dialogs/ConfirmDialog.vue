@@ -44,6 +44,7 @@ const onCancel = () => {
     :model-value="props.isDialogVisible"
     @update:model-value="updateModelValue"
   >
+    <DialogCloseBtn @click="updateModelValue(false)" />
     <VCard class="text-center px-10 py-6 pa-sm-8 pa-4">
       <VCardText>
         <VBtn
@@ -73,6 +74,7 @@ const onCancel = () => {
 
   <!-- Unsubscribed -->
   <VDialog v-model="unsubscribed" max-width="500">
+    <DialogCloseBtn @click="unsubscribed = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardText class="text-center px-10 py-6">
         <VBtn
@@ -98,6 +100,7 @@ const onCancel = () => {
 
   <!-- Cancelled -->
   <VDialog v-model="cancelled" max-width="500">
+    <DialogCloseBtn @click="cancelled = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardText class="text-center px-10 py-6">
         <VBtn

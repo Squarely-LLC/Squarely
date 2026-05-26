@@ -1118,6 +1118,7 @@ const updateItemsPerPage = (value: number | string) => {
     />
 
     <VDialog v-model="isConfirmDeleteVisible" max-width="540">
+      <DialogCloseBtn @click="isConfirmDeleteVisible = false" />
       <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Delete Deal</VCardTitle>
         <VCardText>
@@ -1138,6 +1139,7 @@ const updateItemsPerPage = (value: number | string) => {
     </VDialog>
 
     <VDialog v-model="isStageDialogVisible" max-width="480">
+      <DialogCloseBtn @click="isStageDialogVisible = false" />
       <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Change Stage</VCardTitle>
         <VCardText>

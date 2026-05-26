@@ -539,6 +539,7 @@ watch(totalExpenses, (value) => {
     />
 
     <VDialog v-model="isDeleteExpenseDialogOpen" max-width="440" persistent>
+      <DialogCloseBtn @click="isDeleteExpenseDialogOpen = false" />
       <VCard>
         <VCardText class="pt-6">
           {{ deleteDialogMessage }}
@@ -558,6 +559,7 @@ watch(totalExpenses, (value) => {
     </VDialog>
 
     <VDialog v-model="isVoucherDialogOpen" max-width="620">
+      <DialogCloseBtn @click="isVoucherDialogOpen = false" />
       <VCard>
         <VCardTitle>
           Payment Vouchers - {{ voucherDialogBillNumber || "-" }}

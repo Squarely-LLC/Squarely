@@ -6063,6 +6063,7 @@ const openEditTask = (taskId: number | string) => {
 
     <VCard>
       <VDialog v-model="previewDialogVisible" max-width="1280">
+        <DialogCloseBtn @click="previewDialogVisible = false" />
         <VCard class="items-preview-dialog">
           <VCardItem>
             <template #title>
@@ -6113,6 +6114,7 @@ const openEditTask = (taskId: number | string) => {
         </VCard>
       </VDialog>
       <VDialog v-model="externalDocumentDialogVisible" max-width="680">
+        <DialogCloseBtn @click="externalDocumentDialogVisible = false" />
         <VCard>
           <VCardItem>
             <VCardTitle>{{ externalDocumentDialogTitle }}</VCardTitle>
@@ -6343,6 +6345,7 @@ const openEditTask = (taskId: number | string) => {
   </div>
 
   <VDialog v-model="addItemDialogVisible" max-width="640">
+    <DialogCloseBtn @click="addItemDialogVisible = false" />
     <VCard>
       <VCardText>
         <h5 class="text-h5 mb-4">Add Item</h5>
@@ -6488,6 +6491,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="editLineDialogVisible" max-width="760">
+    <DialogCloseBtn @click="editLineDialogVisible = false" />
     <VCard>
       <VCardText>
         <h5 class="text-h5 mb-4">Edit {{ editLine.title || "Item" }}</h5>
@@ -6667,6 +6671,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="phaseDialogVisible" max-width="760">
+    <DialogCloseBtn @click="phaseDialogVisible = false" />
     <VCard>
       <VCardText>
         <h5 class="text-h5 mb-4">
@@ -6759,6 +6764,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="billingModeDialogVisible" max-width="560">
+    <DialogCloseBtn @click="billingModeDialogVisible = false" />
     <VCard>
       <VCardItem>
         <VCardTitle>Choose Billing Basis</VCardTitle>
@@ -6804,6 +6810,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="billingPeriodDialogVisible" max-width="640">
+    <DialogCloseBtn @click="billingPeriodDialogVisible = false" />
     <VCard>
       <VCardItem>
         <VCardTitle>Select Billing Period</VCardTitle>
@@ -7013,6 +7020,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="selectionDialogVisible" max-width="760">
+    <DialogCloseBtn @click="selectionDialogVisible = false" />
     <VCard>
       <VCardItem>
         <VCardTitle>{{ selectionDialogTitle }}</VCardTitle>
@@ -7166,6 +7174,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="createItemTypeDialogVisible" max-width="920">
+    <DialogCloseBtn @click="createItemTypeDialogVisible = false" />
     <VCard class="pa-sm-6 pa-4">
       <VCardTitle class="text-h4 pb-2"> Choose Item Type </VCardTitle>
       <VCardText class="text-body-1 text-medium-emphasis pb-6">
@@ -7230,6 +7239,7 @@ const openEditTask = (taskId: number | string) => {
   </VDialog>
 
   <VDialog v-model="createDraftItemDialogVisible" max-width="720">
+    <DialogCloseBtn @click="createDraftItemDialogVisible = false" />
     <VCard>
       <VCardText>
         <h5 class="text-h5 mb-4">Add {{ selectedCreateItemType || "Item" }}</h5>

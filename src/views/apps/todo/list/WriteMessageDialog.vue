@@ -68,6 +68,7 @@ const initials = (n?: string) =>
 
 <template>
   <VDialog v-model="open" max-width="520">
+    <DialogCloseBtn @click="open = false" />
     <VCard>
       <!-- Header -->
       <div class="d-flex align-center justify-space-between px-5 py-4">

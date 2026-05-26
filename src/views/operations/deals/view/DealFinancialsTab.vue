@@ -828,6 +828,7 @@ const formatDate = (value?: string | null) => {
   </VRow>
 
   <VDialog v-model="billingModeDialogVisible" max-width="560">
+    <DialogCloseBtn @click="billingModeDialogVisible = false" />
     <VCard>
       <VCardItem>
         <VCardTitle>Choose Billing Basis</VCardTitle>
@@ -873,6 +874,7 @@ const formatDate = (value?: string | null) => {
   </VDialog>
 
   <VDialog v-model="billingPeriodDialogVisible" max-width="640">
+    <DialogCloseBtn @click="billingPeriodDialogVisible = false" />
     <VCard>
       <VCardItem>
         <VCardTitle>Select Billing Period</VCardTitle>
@@ -1003,6 +1005,7 @@ const formatDate = (value?: string | null) => {
   </VDialog>
 
   <VDialog v-model="selectionDialogVisible" max-width="760">
+    <DialogCloseBtn @click="selectionDialogVisible = false" />
     <VCard>
       <VCardItem>
         <VCardTitle>{{ selectionDialogTitle }}</VCardTitle>

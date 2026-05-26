@@ -683,6 +683,7 @@ onBeforeUnmount(() => {
       </VDataTableServer>
 
       <VDialog v-model="isDeleteConfirmVisible" max-width="540">
+        <DialogCloseBtn @click="isDeleteConfirmVisible = false" />
         <VCard class="pa-sm-8 pa-4">
           <VCardTitle>Delete catalogue item</VCardTitle>
           <VCardText>
@@ -707,6 +708,7 @@ onBeforeUnmount(() => {
       </VDialog>
 
       <VDialog v-model="isAddItemTypeDialogVisible" max-width="920">
+        <DialogCloseBtn @click="isAddItemTypeDialogVisible = false" />
         <VCard class="pa-sm-6 pa-4">
           <VCardTitle class="text-h4 pb-2"> Choose Item Type </VCardTitle>
           <VCardText class="text-body-1 text-medium-emphasis pb-6">

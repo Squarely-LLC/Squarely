@@ -660,6 +660,7 @@ onBeforeUnmount(() => {
   </VRow>
 
   <VDialog v-model="isLeaveDialogVisible" max-width="440" persistent>
+    <DialogCloseBtn @click="isLeaveDialogVisible = false" />
     <VCard>
       <VCardText class="pt-6">
         You have unsaved changes in this invoice. Leave this page without

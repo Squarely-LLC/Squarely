@@ -240,6 +240,7 @@ watch(totalNotes, (value) => {
     </VCard>
 
     <VDialog v-model="isDeleteDialogOpen" max-width="440" persistent>
+      <DialogCloseBtn @click="isDeleteDialogOpen = false" />
       <VCard>
         <VCardText class="pt-6">
           Are you sure you want to delete this debit note?

@@ -832,6 +832,7 @@ onBeforeUnmount(() => {
     />
 
     <VDialog v-model="isDeleteDialogOpen" max-width="420" persistent>
+      <DialogCloseBtn @click="isDeleteDialogOpen = false" />
       <VCard>
         <VCardText class="pt-6">
           Are you sure you want to delete receipt {{ receipt.receiptNumber }}?

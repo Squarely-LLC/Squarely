@@ -672,6 +672,7 @@ const statementNetLabel = computed(() => {
   </VRow>
 
   <VDialog v-model="isVoucherDialogOpen" max-width="520">
+    <DialogCloseBtn @click="isVoucherDialogOpen = false" />
     <VCard>
       <VCardTitle>Payment Voucher</VCardTitle>
       <VCardText v-if="selectedVoucher">

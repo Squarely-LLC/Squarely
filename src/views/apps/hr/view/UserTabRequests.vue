@@ -1396,6 +1396,7 @@ defineExpose({
 
     <!-- Confirm Delete Request Dialog -->
     <VDialog v-model="confirmDeleteVisible" persistent max-width="540">
+      <DialogCloseBtn @click="confirmDeleteVisible = false" />
       <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Delete Request</VCardTitle>
         <VCardText>

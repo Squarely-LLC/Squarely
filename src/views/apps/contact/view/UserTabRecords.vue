@@ -372,6 +372,7 @@ defineExpose({ handleSaveRecord });
     </VCard>
   </section>
   <VDialog v-model="isConfirmDeleteVisible" max-width="480">
+    <DialogCloseBtn @click="isConfirmDeleteVisible = false" />
     <VCard class="pa-sm-8 pa-4">
       <VCardTitle>Delete record</VCardTitle>
       <VCardText>
