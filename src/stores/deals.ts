@@ -7,6 +7,7 @@ import type {
   DealFieldValue,
   DealFinancialEntry,
   DealItem,
+  DealNote,
   DealProperties,
   DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
@@ -14,7 +15,7 @@ import { useConfigStore } from "@/stores/config";
 import { useTodos } from "@/stores/todos";
 
 const STORAGE_KEY = "app.deals.v3";
-const DEFAULT_DEAL_PREFIX = "DL-";
+const DEFAULT_DEAL_PREFIX = "DL";
 
 function cloneDeal(deal: DealProperties): DealProperties {
   const raw = toRaw(deal) as DealProperties;
@@ -28,6 +29,9 @@ function cloneDeal(deal: DealProperties): DealProperties {
         ? [...raw.collaborators]
         : [],
       customFieldValues: { ...(raw.customFieldValues || {}) },
+      notes: Array.isArray(raw.notes)
+        ? raw.notes.map((note) => ({ ...note }))
+        : [],
       items: Array.isArray(raw.items)
         ? raw.items.map((item) => ({ ...item }))
         : [],
@@ -107,7 +111,7 @@ function nextDealCode(items: DealProperties[]) {
       return Number.isFinite(numeric) ? Math.max(maxValue, numeric) : maxValue;
     }, 0) + 1;
 
-  return `${dealPrefix}${nextSequence}`;
+  return formatDealCode(dealPrefix, nextSequence);
 }
 
 function getDealPrefix() {
@@ -131,7 +135,11 @@ function applyPrefixToDealCode(
   const sequence = extractDealSequence(trimmed);
   if (sequence === null) return trimmed;
 
-  return `${prefix}${sequence}`;
+  return formatDealCode(prefix, sequence);
+}
+
+function formatDealCode(prefix: string, sequence: number) {
+  return `${prefix}${String(sequence).padStart(2, "0")}`;
 }
 
 function normalizeCustomFieldValues(
@@ -339,6 +347,7 @@ function sanitizeDeals(deals: DealProperties[]) {
     salesTasks: normalizeSalesTasks(deal.salesTasks),
     documents: normalizeDocuments(deal.documents),
     financials: normalizeFinancials(deal.financials),
+    notes: normalizeNotes(deal.notes),
   }));
 }
 
@@ -356,6 +365,21 @@ function normalizeFinancials(
   if (!Array.isArray(financials)) return [];
 
   return financials.map((entry) => ({ ...entry }));
+}
+
+function normalizeNotes(notes: DealNote[] | undefined | null): DealNote[] {
+  if (!Array.isArray(notes)) return [];
+
+  return notes
+    .map((note, index) => ({
+      id:
+        String(note.id ?? "").trim() ||
+        `note-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
+      body: String(note.body ?? "").trim(),
+      createdAt: note.createdAt || new Date().toISOString(),
+      authorName: note.authorName ? String(note.authorName).trim() : null,
+    }))
+    .filter((note) => note.body);
 }
 
 function normaliseDeal(
@@ -388,6 +412,7 @@ function normaliseDeal(
     collaborators: normalizeCollaborators(payload.collaborators),
     note: payload.note?.trim() || null,
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
+    notes: normalizeNotes(payload.notes),
     items: normalizeItems(payload.items),
     salesTasks: normalizeSalesTasks(payload.salesTasks),
     documents: normalizeDocuments(payload.documents),
@@ -449,6 +474,10 @@ function mergeDeal(
       patch.customFieldValues === undefined
         ? { ...(original.customFieldValues || {}) }
         : normalizeCustomFieldValues(patch.customFieldValues),
+    notes:
+      patch.notes === undefined
+        ? normalizeNotes(original.notes)
+        : normalizeNotes(patch.notes),
     items:
       patch.items === undefined
         ? normalizeItems(original.items)

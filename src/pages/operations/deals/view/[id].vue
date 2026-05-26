@@ -20,6 +20,7 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useCataloguesStore } from "@/stores/catalogues";
+import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
@@ -29,6 +30,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -37,12 +39,14 @@ import DealUpsertDialog from "@/views/operations/deals/list/DealUpsertDialog.vue
 import DealCommunicationTab from "@/views/operations/deals/view/DealCommunicationTab.vue";
 import DealDocumentsTab from "@/views/operations/deals/view/DealDocumentsTab.vue";
 import DealItemsTab from "@/views/operations/deals/view/DealItemsTab.vue";
+import DealNotesTab from "@/views/operations/deals/view/DealNotesTab.vue";
 import DealSummaryCard from "@/views/operations/deals/view/DealSummaryCard.vue";
 
 const route = useRoute("operations-deals-view-id");
 const router = useRouter();
 
 const cataloguesStore = useCataloguesStore();
+const configStore = useConfigStore();
 const dealsStore = useDealsStore();
 const contactsStore = useContactsStore();
 const employeesStore = useEmployeesStore();
@@ -54,6 +58,7 @@ const invoicesStore = useInvoicesStore();
 const todosStore = useTodos();
 
 cataloguesStore.init();
+configStore.init();
 dealsStore.init();
 contactsStore.init();
 employeesStore.init();
@@ -89,12 +94,18 @@ const isExecutePreviewDialogVisible = ref(false);
 const isExecutingDeal = ref(false);
 const executePreviewError = ref<string | null>(null);
 const executePreview = ref<DealExecutionPreview | null>(null);
+const isAddNoteDialogVisible = ref(false);
+const noteDraft = ref("");
+const isCollaboratorDialogVisible = ref(false);
+const collaboratorDialogValue = ref<Array<number | string>>([]);
+const userData = useCookie<any>("userData");
 
-const tabKeys = ["items", "activity", "documents"] as const;
+const tabKeys = ["items", "activity", "documents", "notes"] as const;
 const tabs = [
   { icon: "tabler-package", title: "Items" },
   { icon: "tabler-message", title: "Activity" },
   { icon: "tabler-folder", title: "Documents" },
+  { icon: "tabler-notes", title: "Notes" },
 ] as const;
 
 type ExecutionPreviewTaskKind = "sales" | "milestone" | "goal";
@@ -203,6 +214,13 @@ const formatPreviewDate = (value?: string | null) => {
     return value;
   }
 };
+
+const avatarText = (name?: string | null) =>
+  String(name || "")
+    .match(/\b\w/g)
+    ?.slice(0, 2)
+    .join("")
+    .toUpperCase() || "?";
 
 const resolveScheduledDate = (
   raw: string | null | undefined,
@@ -956,6 +974,26 @@ const linkedToName = computed(() => {
   return contactsStore.byId(Number(relatedId))?.fullName || "--";
 });
 
+const linkedContact = computed(() => {
+  const relatedId = deal.value?.relatedTo;
+  if (relatedId === null || relatedId === undefined) return null;
+
+  const contact = contactsStore.byId(Number(relatedId));
+  if (!contact) return null;
+
+  return {
+    name: contact.fullName,
+    avatarUrl: contact.picture || null,
+    type: contact.type,
+  };
+});
+
+const dealStageOptions = computed(() =>
+  (configStore.configurations?.deals?.dealStages || []).map((stage) =>
+    String(stage),
+  ),
+);
+
 const resolveDealCollaborator = (value: number | string) => {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -1032,6 +1070,23 @@ const employeeOptions = computed(() =>
     name: employee.fullName,
     avatarUrl: employee.picture || null,
   })),
+);
+
+const dealCollaboratorOptions = computed(() =>
+  [
+    ...employeesStore.all.map((employee) => ({
+      title: employee.fullName,
+      value: employee.id,
+      avatarUrl: employee.picture || null,
+      type: "employee",
+    })),
+    ...contactsStore.all.map((contact) => ({
+      title: contact.fullName,
+      value: `contact:${contact.id}`,
+      avatarUrl: contact.picture || null,
+      type: "contact",
+    })),
+  ].sort((left, right) => left.title.localeCompare(right.title)),
 );
 
 const dealLinkedEntities = computed(() => {
@@ -1155,6 +1210,80 @@ const goalTriggerOptions = computed(
 const openEditDialog = () => {
   dialogError.value = null;
   isDealEditDialogVisible.value = true;
+};
+
+const openAddNoteDialog = () => {
+  noteDraft.value = "";
+  isAddNoteDialogVisible.value = true;
+};
+
+const closeAddNoteDialog = () => {
+  noteDraft.value = "";
+  isAddNoteDialogVisible.value = false;
+};
+
+const saveDealNote = () => {
+  if (!deal.value) return;
+
+  const body = noteDraft.value.trim();
+  if (!body) return;
+
+  const user = userData.value || {};
+  const authorName =
+    [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
+    String(user.fullName || user.name || user.username || "").trim() ||
+    null;
+  const createdAt = new Date().toISOString();
+  const updated = dealsStore.updateDeal(deal.value.id, {
+    notes: [
+      ...(deal.value.notes || []),
+      {
+        id: `note-${createdAt}-${Math.random().toString(36).slice(2)}`,
+        body,
+        createdAt,
+        authorName,
+      },
+    ],
+  });
+
+  if (!updated) {
+    notifications.push("Unable to save note", "error", 3000);
+    return;
+  }
+
+  deal.value = cloneDeal(updated);
+  closeAddNoteDialog();
+  dealTab.value = tabKeys.indexOf("notes");
+  notifications.push("Note added", "success", 2500);
+};
+
+const openCollaboratorDialog = () => {
+  if (!deal.value) return;
+
+  collaboratorDialogValue.value = [...(deal.value.collaborators || [])];
+  isCollaboratorDialogVisible.value = true;
+};
+
+const closeCollaboratorDialog = () => {
+  collaboratorDialogValue.value = [];
+  isCollaboratorDialogVisible.value = false;
+};
+
+const saveDealCollaborators = () => {
+  if (!deal.value) return;
+
+  const updated = dealsStore.updateDeal(deal.value.id, {
+    collaborators: [...collaboratorDialogValue.value],
+  });
+
+  if (!updated) {
+    notifications.push("Unable to update collaborators", "error", 3000);
+    return;
+  }
+
+  deal.value = cloneDeal(updated);
+  closeCollaboratorDialog();
+  notifications.push("Collaborators updated", "success", 2500);
 };
 
 const openExecutePreviewDialog = () => {
@@ -1909,6 +2038,9 @@ watch(
           :deal="deal"
           :linked-to-name="linkedToName"
           :collaborator-names="collaboratorNames"
+          :collaborators="dealEmployeeCollaborators"
+          :linked-contact="linkedContact"
+          :stage-options="dealStageOptions"
           :execution-notice="dealExecutionNotice"
           @edit="openEditDialog"
           @execute="openExecutePreviewDialog"
@@ -1916,6 +2048,8 @@ watch(
           @open-add-email="openEmail"
           @open-add-meeting="handleAddMeetingFromCommunication"
           @open-add-call="handleAddCallFromCommunication"
+          @open-add-note="openAddNoteDialog"
+          @open-collaborators="openCollaboratorDialog"
         />
       </VCol>
 
@@ -1950,6 +2084,10 @@ watch(
               :deal-id="deal.id"
               @open-add-todo="handleDocumentTodoRequest"
             />
+          </VWindowItem>
+
+          <VWindowItem>
+            <DealNotesTab :deal="deal" />
           </VWindowItem>
         </VWindow>
       </VCol>
@@ -2164,6 +2302,95 @@ watch(
           >
             Confirm Execution
           </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isAddNoteDialogVisible" max-width="520">
+      <DialogCloseBtn @click="closeAddNoteDialog" />
+      <VCard class="pa-sm-6 pa-4">
+        <VCardItem>
+          <VCardTitle>Add Note</VCardTitle>
+          <VCardSubtitle>
+            {{ deal?.code || `Deal #${deal?.id}` }}
+          </VCardSubtitle>
+        </VCardItem>
+
+        <VCardText>
+          <AppTextarea
+            v-model="noteDraft"
+            auto-grow
+            rows="5"
+            label="Note"
+            placeholder="Write a note"
+          />
+        </VCardText>
+
+        <VCardActions>
+          <DialogActionBar
+            :save-disabled="!noteDraft.trim()"
+            @save="saveDealNote"
+            @cancel="closeAddNoteDialog"
+          />
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isCollaboratorDialogVisible" max-width="560">
+      <DialogCloseBtn @click="closeCollaboratorDialog" />
+      <VCard class="pa-sm-6 pa-4">
+        <VCardItem>
+          <VCardTitle>Collaborators</VCardTitle>
+          <VCardSubtitle>
+            Add employees or contacts to this deal.
+          </VCardSubtitle>
+        </VCardItem>
+
+        <VCardText>
+          <AppSelect
+            v-model="collaboratorDialogValue"
+            :items="dealCollaboratorOptions"
+            item-title="title"
+            item-value="value"
+            label="Collaborators"
+            placeholder="Select collaborators"
+            multiple
+            chips
+            clearable
+            clear-icon="tabler-x"
+          >
+            <template #selection="{ item }">
+              <VChip size="small" class="me-1">
+                <VAvatar start size="20" color="primary" variant="tonal">
+                  <VImg v-if="item.raw.avatarUrl" :src="item.raw.avatarUrl" />
+                  <span v-else class="text-xxs font-weight-bold">
+                    {{ avatarText(item.raw.title) }}
+                  </span>
+                </VAvatar>
+                {{ item.raw.title }}
+              </VChip>
+            </template>
+
+            <template #item="{ item, props: itemProps }">
+              <VListItem v-bind="itemProps">
+                <template #prepend>
+                  <VAvatar size="28" color="primary" variant="tonal">
+                    <VImg v-if="item.raw.avatarUrl" :src="item.raw.avatarUrl" />
+                    <span v-else class="text-xs font-weight-bold">
+                      {{ avatarText(item.raw.title) }}
+                    </span>
+                  </VAvatar>
+                </template>
+              </VListItem>
+            </template>
+          </AppSelect>
+        </VCardText>
+
+        <VCardActions>
+          <DialogActionBar
+            @save="saveDealCollaborators"
+            @cancel="closeCollaboratorDialog"
+          />
         </VCardActions>
       </VCard>
     </VDialog>

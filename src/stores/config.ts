@@ -39,13 +39,42 @@ const normalizeConfigurations = (
   cfg: AppConfigurations | null | undefined,
 ): AppConfigurations => {
   const next = (cfg || seedDb.configurations) as AppConfigurations;
-  const dealPrefix = String(next.deals?.dealPrefix ?? "DL-").trim() || "DL-";
+  const rawDealPrefix = String(next.deals?.dealPrefix ?? "DL").trim() || "DL";
+  const dealPrefix = rawDealPrefix === "DL-" ? "DL" : rawDealPrefix;
+  const legacyDealStages = [
+    "Under Review",
+    "Negotiation",
+    "In Progress",
+    "High Priority",
+    "Express Order",
+    "On Hold",
+    "Awaiting Payment",
+    "Canceled",
+    "Completed",
+  ];
+  const defaultDealStages = [
+    "Under Review",
+    "Negotiation",
+    "In Progress",
+    "Awaiting Payment",
+    "On Hold",
+    "Completed",
+  ];
+  const configuredDealStages = next.deals?.dealStages || [];
+  const dealStages =
+    configuredDealStages.length === legacyDealStages.length &&
+    configuredDealStages.every((stage, index) => stage === legacyDealStages[index])
+      ? defaultDealStages
+      : configuredDealStages.length
+        ? configuredDealStages
+        : defaultDealStages;
 
   return {
     ...next,
     deals: {
       ...(next.deals || {}),
       dealPrefix,
+      dealStages,
     },
   };
 };

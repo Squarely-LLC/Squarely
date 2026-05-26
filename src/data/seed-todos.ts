@@ -63,7 +63,8 @@ const endAtFrom = (startISO: string, mins: number) => {
 };
 
 const dealCode = (id: number) =>
-  dealsDb.deals.find((deal) => Number(deal.id) === Number(id))?.code || `DL-${id}`;
+  dealsDb.deals.find((deal) => Number(deal.id) === Number(id))?.code ||
+  `DL${String(id).padStart(2, "0")}`;
 
 const dealRef = (id: number) => ({
   id,
@@ -3242,5 +3243,4 @@ export const SeedMeetings: Meeting[] = [
     endAt: endAtFrom(atMin(9 * 60), 25),
   },
 ];
-
 

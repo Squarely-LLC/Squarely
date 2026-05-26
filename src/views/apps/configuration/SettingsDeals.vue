@@ -16,7 +16,7 @@ const notifications = useNotificationsStore();
 const salesType = ref<string[]>([]);
 const dealStages = ref<string[]>([]);
 const customFields = ref<DealCustomFieldDefinition[]>([]);
-const dealPrefix = ref("DL-");
+const dealPrefix = ref("DL");
 const typeLabel = ref("Type");
 
 const isSavingSalesType = ref(false);
@@ -76,7 +76,7 @@ const sanitizeCustomField = (
 
 const loadData = () => {
   const deals = store.configurations.deals || {};
-  dealPrefix.value = String(deals.dealPrefix ?? "DL-").trim() || "DL-";
+  dealPrefix.value = String(deals.dealPrefix ?? "DL").trim() || "DL";
   typeLabel.value = String(deals.fieldLabels?.type ?? "Type").trim() || "Type";
   salesType.value = cleanEntries(deals.salesType || []);
   dealStages.value = cleanEntries(deals.dealStages || []);
@@ -99,7 +99,7 @@ const loadData = () => {
 onMounted(loadData);
 
 const saveDealPrefix = async () => {
-  const cleaned = String(dealPrefix.value ?? "").trim() || "DL-";
+  const cleaned = String(dealPrefix.value ?? "").trim() || "DL";
 
   isSavingDealPrefix.value = true;
   const res = await store.saveRemote({
@@ -285,7 +285,7 @@ const removeCustomField = (index: number) => {
           <AppTextField
             v-model="dealPrefix"
             label="Deal prefix"
-            placeholder="DL-"
+            placeholder="DL"
             @keyup.enter="saveDealPrefix"
           />
         </VCol>

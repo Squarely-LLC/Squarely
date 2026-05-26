@@ -9,7 +9,7 @@ export const db: DB = {
     {
       id: 1,
       name: "Boutique Fit-out",
-      code: "DL-1",
+      code: "DL01",
       amount: 15850,
       projectCode: "PRJ-24018",
       projectName: "Jumeirah Boutique Launch",
@@ -78,7 +78,7 @@ export const db: DB = {
           type: "Proposal",
           name: "Boutique Fit-out Proposal",
           note: "Initial proposal shared with client",
-          fileUrl: "https://example.com/deals/dl-1-proposal.pdf",
+          fileUrl: "https://example.com/deals/dl01-proposal.pdf",
           createdAt: "2026-04-11T10:15:00Z",
         },
       ],
@@ -107,7 +107,7 @@ export const db: DB = {
     {
       id: 2,
       name: "Showroom Refresh",
-      code: "DL-2",
+      code: "DL02",
       amount: 4280,
       projectCode: "SR-908",
       projectName: "Riyadh North Showroom",
@@ -172,7 +172,7 @@ export const db: DB = {
     {
       id: 3,
       name: "Corporate Event Package",
-      code: "DL-3",
+      code: "DL03",
       amount: 7680,
       projectCode: null,
       projectName: "June Activation Package",

@@ -79,6 +79,13 @@ export interface DealFinancialEntry {
   createdAt: string;
 }
 
+export interface DealNote {
+  id: string;
+  body: string;
+  createdAt: string;
+  authorName?: string | null;
+}
+
 export interface DealSalesTaskTemplate extends CatalogueSalesTask {
   sourceItemId?: number | null;
   sourceTaskId?: number | null;
@@ -102,6 +109,7 @@ export interface DealProperties {
   collaborators: Array<number | string>;
   note?: string | null;
   customFieldValues: Record<string, DealFieldValue>;
+  notes?: DealNote[];
   items: DealItem[];
   salesTasks?: DealSalesTaskTemplate[];
   documents: JobDocument[];
