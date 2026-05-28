@@ -90,6 +90,7 @@ export interface QuotationRecord {
   paymentMethod: string;
   paymentLink: string | null;
   approvalMode: QuotationApprovalMode;
+  approvalRequestedAt?: string | null;
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;

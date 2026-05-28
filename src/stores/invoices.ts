@@ -1,24 +1,24 @@
 import { database } from "@/plugins/fake-api/handlers/apps/invoice/db";
 import type {
-  Client,
-  Invoice,
-  InvoicePaymentEntry,
-  InvoiceRecord,
-  InvoiceStatus,
-  PaymentDetails,
-  PurchasedProduct,
+    Client,
+    Invoice,
+    InvoicePaymentEntry,
+    InvoiceRecord,
+    InvoiceStatus,
+    PaymentDetails,
+    PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import {
-  cloneDealBillingPeriod,
-  inferDealBillingPeriodFromKey,
+    cloneDealBillingPeriod,
+    inferDealBillingPeriodFromKey,
 } from "@/utils/dealDocumentDraft";
 import {
-  buildDocumentNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  getDocumentSequencePrefix,
-  loadActiveAppConfigurations,
+    buildDocumentNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    getDocumentSequencePrefix,
+    loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
@@ -264,6 +264,10 @@ function sanitizeStoredRecord(record: InvoiceRecord): InvoiceRecord {
   cloned.approverEmployeeId =
     cloned.approvalMode === "Request Approval"
       ? (cloned.approverEmployeeId ?? null)
+      : null;
+  cloned.approvalRequestedAt =
+    cloned.approvalMode === "Request Approval"
+      ? cloned.approvalRequestedAt?.trim() || null
       : null;
   cloned.quotation.quotationStatus = normaliseInvoiceStatus(
     cloned.quotation.quotationStatus,
@@ -559,6 +563,10 @@ function normaliseInvoiceRecord(
       payload.approvalMode === "Request Approval"
         ? "Request Approval"
         : "Automatic",
+    approvalRequestedAt:
+      payload.approvalMode === "Request Approval"
+        ? payload.approvalRequestedAt?.trim() || null
+        : null,
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
         ? (payload.approverEmployeeId ?? null)
@@ -645,6 +653,7 @@ function mergeInvoiceRecord(
         : patch.approvalMode === "Request Approval"
           ? "Request Approval"
           : "Automatic",
+    approvalRequestedAt: null,
     approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
@@ -661,6 +670,12 @@ function mergeInvoiceRecord(
       ? patch.approverEmployeeId === undefined
         ? (original.approverEmployeeId ?? null)
         : (patch.approverEmployeeId ?? null)
+      : null;
+  merged.approvalRequestedAt =
+    merged.approvalMode === "Request Approval"
+      ? patch.approvalRequestedAt === undefined
+        ? original.approvalRequestedAt?.trim() || null
+        : patch.approvalRequestedAt?.trim() || null
       : null;
   merged.quotation.quotationStatus = normaliseInvoiceStatus(
     quotationPatch.quotationStatus ?? original.quotation.quotationStatus,

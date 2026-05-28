@@ -87,6 +87,7 @@ export interface ProformaRecord {
   paymentMethod: string;
   paymentLink: string | null;
   approvalMode: ProformaApprovalMode;
+  approvalRequestedAt?: string | null;
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;

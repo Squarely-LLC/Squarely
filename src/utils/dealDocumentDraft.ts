@@ -1,43 +1,43 @@
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type {
-  PurchasedProduct as InvoicePurchasedProduct,
-  InvoiceRecord,
+    PurchasedProduct as InvoicePurchasedProduct,
+    InvoiceRecord,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import type {
-  PurchasedProduct as ProformaPurchasedProduct,
-  ProformaRecord,
+    PurchasedProduct as ProformaPurchasedProduct,
+    ProformaRecord,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
-  Client,
-  PurchasedProduct as QuotationPurchasedProduct,
-  QuotationRecord,
+    Client,
+    PurchasedProduct as QuotationPurchasedProduct,
+    QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import type {
-  CatalogueContractualServiceRecord,
-  CatalogueOnetimeServiceRecord,
-  CatalogueReccurentServiceRecord,
-  CatalogueRecord,
-  CatalogueRetainerServiceRecord,
+    CatalogueContractualServiceRecord,
+    CatalogueOnetimeServiceRecord,
+    CatalogueReccurentServiceRecord,
+    CatalogueRecord,
+    CatalogueRetainerServiceRecord,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
-  FinancialConfig,
-  LegalConfig,
+    FinancialConfig,
+    LegalConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import type {
-  DealBillingPeriod,
-  DealBillingPeriodKind,
-  DealCustomPhase,
-  DealItem,
-  DealProperties,
+    DealBillingPeriod,
+    DealBillingPeriodKind,
+    DealCustomPhase,
+    DealItem,
+    DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import {
-  buildDocumentNote,
-  buildProformaNote,
-  buildQuotationNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  getDocumentSequencePrefix,
+    buildDocumentNote,
+    buildProformaNote,
+    buildQuotationNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 

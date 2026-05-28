@@ -86,6 +86,7 @@ export interface InvoiceRecord {
   paymentMethod: string;
   paymentLink: string | null;
   approvalMode: InvoiceApprovalMode;
+  approvalRequestedAt?: string | null;
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;

@@ -2663,6 +2663,57 @@ const canPayDocument = (kind: DealPreviewKind, record: DealDocumentPanelRecord) 
   !isDocumentPaid(record) &&
   record.balance > 0;
 
+const getApprovalDocument = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  if (kind === "quotation") return quotationsStore.byId(record.id) as any;
+  if (kind === "proforma") return proformasStore.byId(record.id) as any;
+  if (kind === "invoice") return invoicesStore.byId(record.id) as any;
+
+  return null;
+};
+
+const getApprovalAction = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  const document = getApprovalDocument(kind, record);
+  const approvalMode = document?.approvalMode;
+  const approvalRequestedAt = document?.approvalRequestedAt?.trim?.() || null;
+
+  if (approvalMode !== "Request Approval") {
+    return {
+      disabled: true,
+      title: "Approval Automatic",
+    };
+  }
+
+  if (approvalRequestedAt) {
+    return {
+      disabled: true,
+      title: "Approval Requested",
+    };
+  }
+
+  return {
+    disabled: false,
+    title: "Request Approval",
+  };
+};
+
+const requestApproval = (kind: DealPreviewKind, record: DealDocumentPanelRecord) => {
+  if (getApprovalAction(kind, record).disabled) return;
+
+  const patch = { approvalRequestedAt: new Date().toISOString() } as any;
+
+  if (kind === "quotation") quotationsStore.updateQuotation(record.id, patch);
+  else if (kind === "proforma") proformasStore.updateProforma(record.id, patch);
+  else invoicesStore.updateInvoice(record.id, patch);
+
+  notifications.push("Approval requested.", "success", 2500);
+};
+
 const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
   const labels = (record.purchasedProducts || [])
     .map((product) => {
@@ -2677,7 +2728,6 @@ const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
       );
 
       return (
-        selectable?.groupLabel ||
         selectable?.parentName ||
         product.title ||
         null
@@ -2899,6 +2949,7 @@ const duplicateDocumentRecord = (
 ) => {
   const cloned = {
     ...record.record,
+    approvalRequestedAt: null,
     quotation: {
       ...record.record.quotation,
       id: 0,
@@ -6677,7 +6728,7 @@ const openEditTask = (taskId: number | string) => {
                         >
                           <span role="columnheader">Date</span>
                           <span role="columnheader">{{ panel.numberHeader }}</span>
-                          <span role="columnheader">Period / Phase</span>
+                          <span role="columnheader">Phase / Period</span>
                           <span role="columnheader">Amount</span>
                           <span role="columnheader" aria-label="Actions"></span>
                         </div>
@@ -6730,6 +6781,17 @@ const openEditTask = (taskId: number | string) => {
                                       <VIcon icon="tabler-copy" />
                                     </template>
                                     <VListItemTitle>Duplicate</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem
+                                    :disabled="getApprovalAction(panel.key, record).disabled"
+                                    @click="requestApproval(panel.key, record)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-checklist" />
+                                    </template>
+                                    <VListItemTitle>
+                                      {{ getApprovalAction(panel.key, record).title }}
+                                    </VListItemTitle>
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
@@ -9065,9 +9127,7 @@ const openEditTask = (taskId: number | string) => {
   background: rgba(var(--v-theme-primary), 0.04);
 }
 
-.items-overview__preview-table-row strong {
-  text-align: end;
-}
+
 
 .items-overview__doc-link {
   overflow: hidden;

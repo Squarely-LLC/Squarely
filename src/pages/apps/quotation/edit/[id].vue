@@ -4,22 +4,22 @@ import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import {
-  cloneQuotationRecord,
-  getQuotationOutstandingBalance,
-  useQuotationsStore,
+    cloneQuotationRecord,
+    getQuotationOutstandingBalance,
+    useQuotationsStore,
 } from "@/stores/quotations";
 import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
-  buildQuotationPaymentDetails,
-  formatCurrencyAmount,
-  getQuotationCompanyAddressLines,
-  getQuotationCompanyContactLines,
+    buildQuotationPaymentDetails,
+    formatCurrencyAmount,
+    getQuotationCompanyAddressLines,
+    getQuotationCompanyContactLines,
 } from "@/utils/quotationConfig";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
 import {
-  clearQuotationPreviewDraft,
-  loadQuotationPreviewDraft,
-  saveQuotationPreviewDraft,
+    clearQuotationPreviewDraft,
+    loadQuotationPreviewDraft,
+    saveQuotationPreviewDraft,
 } from "@/utils/quotationPreviewDraft";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import { openWhatsAppIntent } from "@/utils/shareToWhatsApp";
@@ -27,8 +27,8 @@ import { shareWithSystem } from "@/utils/shareWithSystem";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import type {
-  PurchasedProduct,
-  QuotationData,
+    PurchasedProduct,
+    QuotationData,
 } from "@/views/apps/quotation/types";
 
 const route = useRoute("apps-quotation-edit-id");

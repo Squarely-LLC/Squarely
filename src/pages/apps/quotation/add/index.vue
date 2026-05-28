@@ -8,32 +8,32 @@ import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import {
-  cloneQuotationRecord,
-  getQuotationOutstandingBalance,
-  useQuotationsStore,
+    cloneQuotationRecord,
+    getQuotationOutstandingBalance,
+    useQuotationsStore,
 } from "@/stores/quotations";
 import {
-  clearDealDocumentDraft,
-  loadDealDocumentDraft,
+    clearDealDocumentDraft,
+    loadDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
 import {
-  buildQuotationNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  formatCurrencyAmount,
-  getDocumentSequencePrefix,
+    buildQuotationNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    formatCurrencyAmount,
+    getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import {
-  clearQuotationPreviewDraft,
-  loadQuotationPreviewDraft,
-  saveQuotationPreviewDraft,
+    clearQuotationPreviewDraft,
+    loadQuotationPreviewDraft,
+    saveQuotationPreviewDraft,
 } from "@/utils/quotationPreviewDraft";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import QuotationEditable from "@/views/apps/quotation/QuotationEditable.vue";
 import type {
-  PurchasedProduct,
-  QuotationData,
+    PurchasedProduct,
+    QuotationData,
 } from "@/views/apps/quotation/types";
 import { onBeforeRouteLeave } from "vue-router";
 

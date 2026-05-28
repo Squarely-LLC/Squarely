@@ -9,32 +9,32 @@ import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import {
-  cloneProformaRecord,
-  getProformaOutstandingBalance,
-  useProformasStore,
+    cloneProformaRecord,
+    getProformaOutstandingBalance,
+    useProformasStore,
 } from "@/stores/proformas";
 import {
-  clearDealDocumentDraft,
-  loadDealDocumentDraft,
+    clearDealDocumentDraft,
+    loadDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
 import {
-  clearProformaPreviewDraft,
-  loadProformaPreviewDraft,
-  saveProformaPreviewDraft,
+    clearProformaPreviewDraft,
+    loadProformaPreviewDraft,
+    saveProformaPreviewDraft,
 } from "@/utils/proformaPreviewDraft";
 import {
-  buildProformaNote,
-  buildQuotationPaymentDetails,
-  buildQuotationSalesperson,
-  buildQuotationThanksNote,
-  formatCurrencyAmount,
-  getDocumentSequencePrefix,
+    buildProformaNote,
+    buildQuotationPaymentDetails,
+    buildQuotationSalesperson,
+    buildQuotationThanksNote,
+    formatCurrencyAmount,
+    getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import ProformaEditable from "@/views/apps/proforma/ProformaEditable.vue";
 import type {
-  ProformaData,
-  PurchasedProduct,
+    ProformaData,
+    PurchasedProduct,
 } from "@/views/apps/proforma/types";
 import { onBeforeRouteLeave } from "vue-router";
 

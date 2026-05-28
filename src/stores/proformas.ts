@@ -270,6 +270,10 @@ function sanitizeStoredRecord(record: ProformaRecord): ProformaRecord {
     cloned.approvalMode === "Request Approval"
       ? (cloned.approverEmployeeId ?? null)
       : null;
+  cloned.approvalRequestedAt =
+    cloned.approvalMode === "Request Approval"
+      ? cloned.approvalRequestedAt?.trim() || null
+      : null;
   cloned.quotation.quotationStatus = normaliseProformaStatus(
     cloned.quotation.quotationStatus,
   );
@@ -570,6 +574,10 @@ function normaliseProformaRecord(
       payload.approvalMode === "Request Approval"
         ? "Request Approval"
         : "Automatic",
+    approvalRequestedAt:
+      payload.approvalMode === "Request Approval"
+        ? payload.approvalRequestedAt?.trim() || null
+        : null,
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
         ? (payload.approverEmployeeId ?? null)
@@ -662,6 +670,7 @@ function mergeProformaRecord(
         : patch.approvalMode === "Request Approval"
           ? "Request Approval"
           : "Automatic",
+    approvalRequestedAt: null,
     approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
@@ -678,6 +687,12 @@ function mergeProformaRecord(
       ? patch.approverEmployeeId === undefined
         ? (original.approverEmployeeId ?? null)
         : (patch.approverEmployeeId ?? null)
+      : null;
+  merged.approvalRequestedAt =
+    merged.approvalMode === "Request Approval"
+      ? patch.approvalRequestedAt === undefined
+        ? original.approvalRequestedAt?.trim() || null
+        : patch.approvalRequestedAt?.trim() || null
       : null;
   merged.quotation.quotationStatus = normaliseProformaStatus(
     quotationPatch.quotationStatus ?? original.quotation.quotationStatus,

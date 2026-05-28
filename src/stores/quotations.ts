@@ -230,6 +230,10 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.approvalMode === "Request Approval"
       ? (cloned.approverEmployeeId ?? null)
       : null;
+  cloned.approvalRequestedAt =
+    cloned.approvalMode === "Request Approval"
+      ? cloned.approvalRequestedAt?.trim() || null
+      : null;
 
   syncQuotationFinancialState(cloned);
 
@@ -443,6 +447,10 @@ function normaliseQuotationRecord(
       payload.approvalMode === "Request Approval"
         ? "Request Approval"
         : "Automatic",
+    approvalRequestedAt:
+      payload.approvalMode === "Request Approval"
+        ? payload.approvalRequestedAt?.trim() || null
+        : null,
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
         ? (payload.approverEmployeeId ?? null)
@@ -526,6 +534,7 @@ function mergeQuotationRecord(
         : patch.approvalMode === "Request Approval"
           ? "Request Approval"
           : "Automatic",
+    approvalRequestedAt: null,
     approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
@@ -542,6 +551,12 @@ function mergeQuotationRecord(
       ? patch.approverEmployeeId === undefined
         ? (original.approverEmployeeId ?? null)
         : (patch.approverEmployeeId ?? null)
+      : null;
+  merged.approvalRequestedAt =
+    merged.approvalMode === "Request Approval"
+      ? patch.approvalRequestedAt === undefined
+        ? original.approvalRequestedAt?.trim() || null
+        : patch.approvalRequestedAt?.trim() || null
       : null;
 
   return cloneQuotationRecord(syncQuotationFinancialState(merged));
