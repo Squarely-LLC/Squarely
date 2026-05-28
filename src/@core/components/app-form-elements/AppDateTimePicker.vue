@@ -64,6 +64,62 @@ const refFlatPicker = ref();
 const { focused } = useFocus(refFlatPicker);
 const isCalendarOpen = ref(false);
 const isInlinePicker = ref(false);
+let calendarPositionFrame = 0;
+
+const getHookList = (hook: unknown) => {
+  if (!hook) return [];
+  return Array.isArray(hook) ? hook : [hook];
+};
+
+const positionCalendar = (instance: any) => {
+  const calendar = instance.calendarContainer as HTMLElement | undefined;
+  const input = instance._input as HTMLElement | undefined;
+
+  if (!calendar || !input || instance.config.static || instance.config.inline)
+    return;
+
+  if (calendar.parentElement !== document.body) {
+    document.body.appendChild(calendar);
+  }
+
+  const inputRect = input.getBoundingClientRect();
+  const calendarRect = calendar.getBoundingClientRect();
+  const calendarWidth = calendarRect.width || 270;
+  const calendarHeight = calendarRect.height || 320;
+  const viewportGap = 8;
+  const hasSpaceBelow =
+    inputRect.bottom + calendarHeight + viewportGap <= window.innerHeight;
+  const top = hasSpaceBelow
+    ? inputRect.bottom + 4
+    : Math.max(viewportGap, inputRect.top - calendarHeight - 4);
+  const left = Math.min(
+    Math.max(viewportGap, inputRect.left),
+    window.innerWidth - calendarWidth - viewportGap,
+  );
+
+  calendar.style.position = "fixed";
+  calendar.style.inset = "auto auto auto auto";
+  calendar.style.top = `${top}px`;
+  calendar.style.left = `${left}px`;
+  calendar.style.right = "auto";
+  calendar.style.bottom = "auto";
+  calendar.style.zIndex = "2600";
+};
+
+const positionCurrentCalendar = () => {
+  if (!isCalendarOpen.value || !refFlatPicker.value?.fp) return;
+
+  positionCalendar(refFlatPicker.value.fp);
+};
+
+const requestCalendarPosition = () => {
+  if (calendarPositionFrame) return;
+
+  calendarPositionFrame = window.requestAnimationFrame(() => {
+    calendarPositionFrame = 0;
+    positionCurrentCalendar();
+  });
+};
 
 // flat picker prop manipulation
 if (compAttrs.config && compAttrs.config.inline) {
@@ -73,6 +129,9 @@ if (compAttrs.config && compAttrs.config.inline) {
 
 // Save original onReady callback to avoid recursion
 const originalOnReady = compAttrs.config?.onReady;
+const originalOnOpen = compAttrs.config?.onOpen;
+const originalOnMonthChange = compAttrs.config?.onMonthChange;
+const originalOnYearChange = compAttrs.config?.onYearChange;
 
 compAttrs.config = {
   ...compAttrs.config,
@@ -81,6 +140,8 @@ compAttrs.config = {
   nextArrow:
     '<i class="tabler-chevron-right v-icon" style="font-size: 20px; height: 20px; width: 20px;"></i>',
   onReady: (selectedDates: any, dateStr: any, instance: any) => {
+    positionCalendar(instance);
+
     // Convert year input from number type to text type to fix clipping in dialogs
     const yearInput = instance.currentYearElement;
     if (yearInput) {
@@ -96,9 +157,27 @@ compAttrs.config = {
     }
 
     // Call user's original onReady if provided
-    if (originalOnReady) {
-      originalOnReady(selectedDates, dateStr, instance);
-    }
+    getHookList(originalOnReady).forEach((hook) =>
+      hook(selectedDates, dateStr, instance)
+    );
+  },
+  onOpen: (selectedDates: any, dateStr: any, instance: any) => {
+    positionCalendar(instance);
+    getHookList(originalOnOpen).forEach((hook) =>
+      hook(selectedDates, dateStr, instance)
+    );
+  },
+  onMonthChange: (selectedDates: any, dateStr: any, instance: any) => {
+    positionCalendar(instance);
+    getHookList(originalOnMonthChange).forEach((hook) =>
+      hook(selectedDates, dateStr, instance)
+    );
+  },
+  onYearChange: (selectedDates: any, dateStr: any, instance: any) => {
+    positionCalendar(instance);
+    getHookList(originalOnYearChange).forEach((hook) =>
+      hook(selectedDates, dateStr, instance)
+    );
   },
 };
 
@@ -146,10 +225,17 @@ const handleFocusIn = (e: FocusEvent) => {
 onMounted(() => {
   updateThemeClassInCalendar();
   document.addEventListener("focusin", handleFocusIn, true);
+  window.addEventListener("scroll", requestCalendarPosition, true);
+  window.addEventListener("resize", requestCalendarPosition);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener("focusin", handleFocusIn, true);
+  window.removeEventListener("scroll", requestCalendarPosition, true);
+  window.removeEventListener("resize", requestCalendarPosition);
+  if (calendarPositionFrame) {
+    window.cancelAnimationFrame(calendarPositionFrame);
+  }
 });
 
 const emitModelValue = (val: string) => {
@@ -232,7 +318,10 @@ const elementId = computed(() => {
                 :readonly="isReadonly.value"
                 class="flat-picker-custom-style h-100 w-100"
                 :disabled="isReadonly.value"
-                @on-open="isCalendarOpen = true"
+                @on-open="
+                  isCalendarOpen = true;
+                  requestCalendarPosition();
+                "
                 @on-close="
                   isCalendarOpen = false;
                   validate();
@@ -262,7 +351,10 @@ const elementId = computed(() => {
       ref="refFlatPicker"
       :model-value="modelValue"
       @update:model-value="emitModelValue"
-      @on-open="isCalendarOpen = true"
+      @on-open="
+        isCalendarOpen = true;
+        requestCalendarPosition();
+      "
       @on-close="isCalendarOpen = false"
     />
   </div>

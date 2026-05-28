@@ -6862,6 +6862,47 @@ const openEditTask = (taskId: number | string) => {
               color="secondary"
               size="small"
               class="items-overview__card-create"
+              aria-label="Attach document"
+            >
+              <VIcon icon="tabler-paperclip" size="17" />
+              <VMenu activator="parent">
+                <VList density="compact">
+                  <VListItem
+                    :disabled="isRetainerPanelDocumentActionDisabled('quotation')"
+                    @click="openPanelExternalDocumentFlow('quotation')"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-paperclip" />
+                    </template>
+                    <VListItemTitle>Attach Quotation</VListItemTitle>
+                  </VListItem>
+                  <VListItem
+                    :disabled="isRetainerPanelDocumentActionDisabled('proforma')"
+                    @click="openPanelExternalDocumentFlow('proforma')"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-paperclip" />
+                    </template>
+                    <VListItemTitle>Attach Proforma</VListItemTitle>
+                  </VListItem>
+                  <VListItem
+                    :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
+                    @click="openPanelExternalDocumentFlow('invoice')"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-paperclip" />
+                    </template>
+                    <VListItemTitle>Attach Invoice</VListItemTitle>
+                  </VListItem>
+                </VList>
+              </VMenu>
+            </VBtn>
+            <VBtn
+              icon
+              variant="tonal"
+              color="secondary"
+              size="small"
+              class="items-overview__card-create"
               aria-label="Create document"
             >
               <VIcon icon="tabler-plus" size="18" />
@@ -7136,7 +7177,7 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
 
     <VCard>
-      <VDialog v-model="externalDocumentDialogVisible" max-width="680">
+      <VDialog v-model="externalDocumentDialogVisible" max-width="560">
         <DialogCloseBtn @click="externalDocumentDialogVisible = false" />
         <VCard>
           <VCardItem>
