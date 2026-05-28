@@ -7165,7 +7165,7 @@ const openEditTask = (taskId: number | string) => {
               @submit.prevent="saveExternalDocument"
             >
               <VRow>
-                <VCol cols="12" md="6">
+                <VCol cols="12">
                   <AppDateTimePicker
                     v-model="externalDocumentForm.date"
                     label="Date"
@@ -7175,7 +7175,7 @@ const openEditTask = (taskId: number | string) => {
                   />
                 </VCol>
 
-                <VCol cols="12" md="6">
+                <VCol cols="12">
                   <AppTextField
                     v-model="externalDocumentForm.quoteNumber"
                     :label="externalDocumentNumberLabel"
@@ -7187,7 +7187,7 @@ const openEditTask = (taskId: number | string) => {
                   />
                 </VCol>
 
-                <VCol cols="12" md="6">
+                <VCol cols="12">
                   <AppTextField
                     v-model="externalDocumentForm.amount"
                     type="number"
@@ -7198,7 +7198,7 @@ const openEditTask = (taskId: number | string) => {
                   />
                 </VCol>
 
-                <VCol cols="12" md="6">
+                <VCol cols="12">
                   <AppSelect
                     v-model="externalDocumentForm.status"
                     label="Status"
@@ -7207,7 +7207,7 @@ const openEditTask = (taskId: number | string) => {
                   />
                 </VCol>
 
-                <VCol v-if="requiresExternalPaidAmount" cols="12" md="6">
+                <VCol v-if="requiresExternalPaidAmount" cols="12">
                   <AppTextField
                     v-model="externalDocumentForm.paidAmount"
                     type="number"
