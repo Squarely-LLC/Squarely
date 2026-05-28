@@ -647,6 +647,7 @@ if (!isEmbeddedActionFrame) {
           :class="{ 'quotation-preview-wrapper--quick': isQuickPreview }"
         >
           <div
+            v-if="!isExternalDocument"
             class="quotation-header-preview d-flex flex-wrap justify-space-between flex-column flex-sm-row print-row bg-var-theme-background gap-6 rounded pa-6 mb-6"
           >
             <div>
@@ -700,37 +701,6 @@ if (!isEmbeddedActionFrame) {
           </div>
 
           <template v-if="isExternalDocument">
-            <VSheet border rounded class="external-document-summary mb-6 pa-4">
-              <div
-                class="d-flex align-center justify-space-between flex-wrap gap-3 mb-4"
-              >
-                <div>
-                  <p class="text-overline mb-1">Imported Attachment</p>
-                  <h6 class="text-h6 mb-0">Preview from another system</h6>
-                </div>
-
-                <VBtn
-                  v-if="hasExternalAttachment"
-                  variant="tonal"
-                  color="secondary"
-                  @click="downloadExternalAttachment"
-                >
-                  Download attachment
-                </VBtn>
-              </div>
-
-              <div class="external-document-grid">
-                <div
-                  v-for="item in externalAttachmentSummary"
-                  :key="item.label"
-                  class="external-document-item"
-                >
-                  <p class="external-document-label">{{ item.label }}</p>
-                  <p class="external-document-value mb-0">{{ item.value }}</p>
-                </div>
-              </div>
-            </VSheet>
-
             <div class="external-document-preview mb-6">
               <img
                 v-if="isImageExternalAttachment && externalAttachmentUrl"
@@ -1070,6 +1040,38 @@ if (!isEmbeddedActionFrame) {
             >
               Add Receipt
             </VBtn>
+          </VCardText>
+        </VCard>
+
+        <VCard v-if="isExternalDocument" class="mt-4">
+          <VCardText>
+            <div class="d-flex flex-column gap-3">
+              <div>
+                <p class="text-overline mb-1">Imported Attachment</p>
+                <h6 class="text-h6 mb-0">Preview from another system</h6>
+              </div>
+
+              <VBtn
+                v-if="hasExternalAttachment"
+                block
+                variant="tonal"
+                color="secondary"
+                @click="downloadExternalAttachment"
+              >
+                Download attachment
+              </VBtn>
+
+              <div class="external-document-grid">
+                <div
+                  v-for="item in externalAttachmentSummary"
+                  :key="item.label"
+                  class="external-document-item"
+                >
+                  <p class="external-document-label">{{ item.label }}</p>
+                  <p class="external-document-value mb-0">{{ item.value }}</p>
+                </div>
+              </div>
+            </div>
           </VCardText>
         </VCard>
       </VCol>

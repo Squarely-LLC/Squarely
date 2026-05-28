@@ -272,6 +272,8 @@ const pendingEmailDocument = ref<{
   kind: DealPreviewKind;
   recordId: number | string;
 } | null>(null);
+const invoiceConversionDialogVisible = ref(false);
+const pendingInvoiceConversionRecord = ref<DealDocumentPanelRecord | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -3281,6 +3283,8 @@ const convertDocumentToInvoice = (
   }
 
   notifications.push("Document converted to invoice.", "success", 2500);
+
+  return created?.quotation.id ?? null;
 };
 
 const selectedPaymentRecord = computed(() => {
@@ -3467,6 +3471,79 @@ const invoiceUsageBySelectionKey = computed(() => {
 
   return usage;
 });
+
+const buildDocumentUsageSignature = (record: {
+  purchasedProducts: Array<{
+    dealSelectionKey?: string | null;
+    billingPeriod?: DealBillingPeriod | null;
+  }>;
+}) =>
+  record.purchasedProducts
+    .map((product) =>
+      buildDealDocumentUsageKey(
+        resolveProductSelectionKey(product),
+        resolveStoredBillingPeriodKey(product),
+      ),
+    )
+    .filter((key): key is string => Boolean(key))
+    .sort();
+
+const findMatchingProformaRecordForInvoiceDraft = (
+  selectedItems: DealDocumentSelectableItem[],
+  selectedBillingPeriods?: DealBillingPeriod[] | null,
+  selectedBillingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
+) => {
+  const draft = buildDealDocumentDraftRecord("invoice", {
+    billingPeriods: selectedBillingPeriods?.length ? selectedBillingPeriods : null,
+    billingPeriodAssignments: selectedBillingPeriodAssignments || null,
+    billingPeriod: selectionNeedsBillingPeriod(selectedItems)
+      ? (selectedBillingPeriods?.[0] ?? billingPeriod.value)
+      : null,
+    contact: contact.value,
+    deal: props.deal,
+    financial: configStore.financial,
+    legal: configStore.legal,
+    nextId: nextIdForDocument("invoice"),
+    resolveCatalogueRecord: (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    selectedItems,
+  });
+
+  const targetSignature = buildDocumentUsageSignature(draft);
+  if (!targetSignature.length) return null;
+
+  return (
+    dealProformaRecords.value.find((record) => {
+      if (isDocumentConverted(record)) return false;
+
+      const recordSignature = buildDocumentUsageSignature(record.record);
+
+      return (
+        recordSignature.length === targetSignature.length &&
+        recordSignature.every((value, index) => value === targetSignature[index])
+      );
+    }) ?? null
+  );
+};
+
+const closeInvoiceConversionDialog = () => {
+  invoiceConversionDialogVisible.value = false;
+  pendingInvoiceConversionRecord.value = null;
+};
+
+const confirmInvoiceConversion = async () => {
+  const matchingProforma = pendingInvoiceConversionRecord.value;
+  if (!matchingProforma) return;
+
+  const createdInvoiceId = convertDocumentToInvoice("proforma", matchingProforma);
+
+  closeInvoiceConversionDialog();
+  resetDocumentWorkflowState();
+
+  if (createdInvoiceId) {
+    await router.push(`/apps/invoice/preview/${createdInvoiceId}`);
+  }
+};
 
 const getDocumentUsage = (
   selectionKey?: string | null,
@@ -4395,6 +4472,20 @@ const saveAndNavigateDocumentDraft = async (
     notifications.push("This deal has no billable items yet", "warning", 2500);
 
     return;
+  }
+
+  if (kind === "invoice") {
+    const matchingProforma = findMatchingProformaRecordForInvoiceDraft(
+      selectedItems,
+      selectedBillingPeriods,
+      selectedBillingPeriodAssignments,
+    );
+
+    if (matchingProforma) {
+      pendingInvoiceConversionRecord.value = matchingProforma;
+      invoiceConversionDialogVisible.value = true;
+      return;
+    }
   }
 
   const draft = buildDealDocumentDraftRecord(kind, {
@@ -7287,6 +7378,41 @@ const openEditTask = (taskId: number | string) => {
                 </VCol>
               </VRow>
             </VForm>
+          </VCardText>
+        </VCard>
+      </VDialog>
+
+      <VDialog v-model="invoiceConversionDialogVisible" max-width="520">
+        <DialogCloseBtn @click="closeInvoiceConversionDialog" />
+        <VCard>
+          <VCardItem>
+            <VCardTitle>Convert Proforma to Invoice</VCardTitle>
+          </VCardItem>
+
+          <VCardText>
+            <p class="text-body-1 mb-2">
+              This period or phase already has a proforma.
+            </p>
+            <p class="text-body-2 text-medium-emphasis mb-0">
+              Convert
+              <strong>{{ pendingInvoiceConversionRecord?.quoteNumber }}</strong>
+              to an invoice instead of creating a new invoice draft.
+            </p>
+          </VCardText>
+
+          <VCardText class="pt-0">
+            <div class="d-flex justify-end flex-wrap gap-3">
+              <VBtn
+                variant="tonal"
+                color="secondary"
+                @click="closeInvoiceConversionDialog"
+              >
+                Cancel
+              </VBtn>
+              <VBtn color="primary" @click="confirmInvoiceConversion">
+                Convert to Invoice
+              </VBtn>
+            </div>
           </VCardText>
         </VCard>
       </VDialog>
