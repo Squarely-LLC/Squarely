@@ -29,14 +29,15 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
-import { useInvoicesStore } from "@/stores/invoices";
+import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import type { InvoicePaymentInput } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
-import { useProformasStore } from "@/stores/proformas";
+import { cloneProformaRecord, useProformasStore } from "@/stores/proformas";
 import type { ProformaPaymentInput } from "@/stores/proformas";
-import { useQuotationsStore } from "@/stores/quotations";
+import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import { useReceiptsStore } from "@/stores/receipts";
 import { useTodos } from "@/stores/todos";
 import {
@@ -70,8 +71,9 @@ import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
+  formatCurrencyAmount,
 } from "@/utils/quotationConfig";
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
@@ -255,6 +257,21 @@ const selectedPaymentDocument = ref<{
 } | null>(null);
 const invoicePaymentDrawerOpen = ref(false);
 const proformaPaymentDrawerOpen = ref(false);
+const previewActionFrame = ref<HTMLIFrameElement | null>(null);
+const previewActionFrameKind = ref<DealPreviewKind | null>(null);
+const previewActionFrameSrc = ref("");
+const isPreviewActionFrameReady = ref(false);
+const pendingPreviewAction = ref<{
+  action: "print" | "download";
+  kind: DealPreviewKind;
+  recordId: number | string;
+} | null>(null);
+const isSendDocumentDialogOpen = ref(false);
+const emailDialogRef = ref<any | null>(null);
+const pendingEmailDocument = ref<{
+  kind: DealPreviewKind;
+  recordId: number | string;
+} | null>(null);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -2874,6 +2891,159 @@ const getPreviewRouteName = (kind: DealPreviewKind) => {
   return "apps-invoice-preview-id";
 };
 
+const getDocumentLabel = (kind: DealPreviewKind) => {
+  if (kind === "quotation") return "Quotation";
+  if (kind === "proforma") return "Proforma";
+
+  return "Invoice";
+};
+
+const getDocumentStoreRecord = (
+  kind: DealPreviewKind,
+  recordId: number | string,
+) => {
+  if (kind === "quotation") return quotationsStore.byId(recordId) as any;
+  if (kind === "proforma") return proformasStore.byId(recordId) as any;
+
+  return invoicesStore.byId(recordId) as any;
+};
+
+const cloneDealPreviewRecord = (
+  kind: DealPreviewKind,
+  record: DealDocumentContainer,
+) => {
+  if (kind === "quotation") return cloneQuotationRecord(record as any);
+  if (kind === "proforma") return cloneProformaRecord(record as any);
+
+  return cloneInvoiceRecord(record as any);
+};
+
+const clonePreviewPayloadSection = <T,>(value: T): T => {
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(value);
+    } catch {
+      // Fall through to JSON cloning for reactive proxies.
+    }
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T;
+};
+
+const getPreviewReadyMessageType = (kind: DealPreviewKind) =>
+  `${kind}-preview-ready`;
+
+const getPreviewActionMessageType = (kind: DealPreviewKind) =>
+  `${kind}-preview-action`;
+
+const ensurePreviewActionFrame = (
+  kind: DealPreviewKind,
+  recordId: number | string,
+) => {
+  if (!previewActionFrame.value) {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.tabIndex = -1;
+    iframe.style.position = "fixed";
+    iframe.style.insetInlineStart = "-2000px";
+    iframe.style.insetBlockStart = "0";
+    iframe.style.inlineSize = "1280px";
+    iframe.style.blockSize = "1800px";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+    previewActionFrame.value = iframe;
+  }
+
+  const routeLocation = router.resolve({
+    name: getPreviewRouteName(kind),
+    params: { id: recordId },
+    query: { embedded: "1" },
+  });
+
+  if (previewActionFrameSrc.value !== routeLocation.href) {
+    isPreviewActionFrameReady.value = false;
+    previewActionFrameKind.value = kind;
+    previewActionFrameSrc.value = routeLocation.href;
+    previewActionFrame.value.src = routeLocation.href;
+  }
+};
+
+const sendPreviewAction = (
+  kind: DealPreviewKind,
+  recordId: number | string,
+  action: "print" | "download",
+) => {
+  const storeRecord = getDocumentStoreRecord(kind, recordId);
+  if (!storeRecord || !previewActionFrame.value?.contentWindow) return;
+
+  previewActionFrame.value.contentWindow.postMessage(
+    {
+      type: getPreviewActionMessageType(kind),
+      payload: {
+        action,
+        quotation: cloneDealPreviewRecord(kind, storeRecord),
+        legal: clonePreviewPayloadSection(configStore.legal),
+        financial: clonePreviewPayloadSection(configStore.financial),
+      },
+    },
+    window.location.origin,
+  );
+};
+
+const flushPendingPreviewAction = () => {
+  const pendingAction = pendingPreviewAction.value;
+  if (!pendingAction || !isPreviewActionFrameReady.value) return;
+
+  sendPreviewAction(
+    pendingAction.kind,
+    pendingAction.recordId,
+    pendingAction.action,
+  );
+
+  const storeRecord = getDocumentStoreRecord(
+    pendingAction.kind,
+    pendingAction.recordId,
+  );
+  const quoteNumber = storeRecord?.quotation?.quoteNumber || "document";
+
+  notifications.push(
+    `${pendingAction.action === "download" ? "Download" : "Print"} started for ${quoteNumber}.`,
+    "success",
+    2500,
+  );
+
+  pendingPreviewAction.value = null;
+};
+
+const handlePreviewActionFrameMessage = (event: MessageEvent) => {
+  if (event.origin !== window.location.origin) return;
+  const kind = previewActionFrameKind.value;
+  if (!kind || event.data?.type !== getPreviewReadyMessageType(kind)) return;
+
+  isPreviewActionFrameReady.value = true;
+  flushPendingPreviewAction();
+};
+
+onMounted(() => {
+  window.addEventListener("message", handlePreviewActionFrameMessage);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("message", handlePreviewActionFrameMessage);
+
+  if (previewActionFrame.value?.parentNode) {
+    previewActionFrame.value.parentNode.removeChild(previewActionFrame.value);
+  }
+
+  previewActionFrame.value = null;
+  previewActionFrameKind.value = null;
+  previewActionFrameSrc.value = "";
+  isPreviewActionFrameReady.value = false;
+  pendingPreviewAction.value = null;
+});
+
 const getEditRouteName = (kind: DealPreviewKind) => {
   if (kind === "quotation") return "apps-quotation-edit-id";
   if (kind === "proforma") return "apps-proforma-edit-id";
@@ -2910,17 +3080,91 @@ const getAddRouteName = (kind: DealPreviewKind) => {
   return "apps-invoice-add";
 };
 
-const openDocumentPreviewWindow = (
+const openDocumentPreviewAction = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
-  action?: "download" | "print" | "email",
+  action: "download" | "print",
 ) => {
-  const route = router.resolve({
-    name: getPreviewRouteName(kind),
-    params: { id: record.id },
-    query: action ? { [action]: "1" } : undefined,
+  ensurePreviewActionFrame(kind, record.id);
+  pendingPreviewAction.value = { kind, recordId: record.id, action };
+
+  if (!isPreviewActionFrameReady.value) return;
+
+  flushPendingPreviewAction();
+};
+
+const emailDocumentRecord = computed(() => {
+  const pending = pendingEmailDocument.value;
+  if (!pending) return null;
+
+  return getDocumentStoreRecord(pending.kind, pending.recordId);
+});
+
+const documentEmailDraft = computed(() => {
+  const pending = pendingEmailDocument.value;
+  const documentRecord = emailDocumentRecord.value;
+  const quotation = documentRecord?.quotation;
+  const label = pending ? getDocumentLabel(pending.kind) : "Document";
+  const companyName = configStore.legal?.companyName?.trim() || "Squarely";
+  const to = quotation?.client?.companyEmail?.trim?.() || "";
+  const clientName = quotation?.client?.name?.trim?.() || "there";
+  const quoteNumber = quotation?.quoteNumber?.trim?.() || "document";
+  const total = formatCurrencyAmount(quotation?.total, configStore.financial);
+  const expiryDate = quotation?.dueDate?.trim?.() || "";
+
+  return {
+    to,
+    subject: `${label} ${quoteNumber} from ${companyName}`,
+    message: `Dear ${clientName},
+
+Please find ${quoteNumber} attached.
+
+${label} amount: ${total}
+${expiryDate ? `Expiry date: ${expiryDate}` : ""}
+
+Thank you,
+${companyName}`.trim(),
+    attachments: [
+      {
+        name: quoteNumber ? `${quoteNumber}.pdf` : `${label} Attached`,
+      },
+    ],
+  };
+});
+
+const openDocumentEmailDialog = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  pendingEmailDocument.value = { kind, recordId: record.id };
+  isSendDocumentDialogOpen.value = true;
+
+  nextTick(() => {
+    emailDialogRef.value?.openWith?.(documentEmailDraft.value);
   });
-  window.open(route.href, "_blank", "noopener,noreferrer");
+};
+
+const closeDocumentEmailDialog = () => {
+  isSendDocumentDialogOpen.value = false;
+  pendingEmailDocument.value = null;
+};
+
+const onDocumentEmailSend = (payload: any) => {
+  const recipients = Array.isArray(payload?.to)
+    ? payload.to.filter(Boolean)
+    : payload?.to
+      ? [String(payload.to)]
+      : [];
+  const subject = String(payload?.subject || "(no subject)");
+  const count = recipients.length;
+
+  notifications.push(
+    `Email sent${count ? ` to ${count} recipient${count > 1 ? "s" : ""}` : ""}: ${subject}`,
+    "success",
+    3500,
+  );
+
+  closeDocumentEmailDialog();
 };
 
 const deleteDocumentRecord = (
@@ -6841,19 +7085,19 @@ const openEditTask = (taskId: number | string) => {
                                     </template>
                                     <VMenu activator="parent" location="end" open-on-hover>
                                       <VList density="compact">
-                                        <VListItem @click="openDocumentPreviewWindow(panel.key, record, 'download')">
+                                        <VListItem @click="openDocumentPreviewAction(panel.key, record, 'download')">
                                           <template #prepend>
                                             <VIcon icon="tabler-download" />
                                           </template>
                                           <VListItemTitle>Download</VListItemTitle>
                                         </VListItem>
-                                        <VListItem @click="openDocumentPreviewWindow(panel.key, record, 'print')">
+                                        <VListItem @click="openDocumentPreviewAction(panel.key, record, 'print')">
                                           <template #prepend>
                                             <VIcon icon="tabler-printer" />
                                           </template>
                                           <VListItemTitle>Print</VListItemTitle>
                                         </VListItem>
-                                        <VListItem @click="openDocumentPreviewWindow(panel.key, record, 'email')">
+                                        <VListItem @click="openDocumentEmailDialog(panel.key, record)">
                                           <template #prepend>
                                             <VIcon icon="tabler-mail" />
                                           </template>
@@ -8320,6 +8564,13 @@ const openEditTask = (taskId: number | string) => {
     :default-payment-method="selectedPaymentRecord?.record.paymentMethod"
     :document-label="selectedPaymentRecord?.quoteNumber"
     @submit="saveInvoicePayment"
+  />
+
+  <EmailDialog
+    ref="emailDialogRef"
+    v-model:is-dialog-visible="isSendDocumentDialogOpen"
+    @close="closeDocumentEmailDialog"
+    @send="onDocumentEmailSend"
   />
 </template>
 
