@@ -2918,6 +2918,13 @@ const openDocumentEdit = (
   });
 };
 
+const getAddRouteName = (kind: DealPreviewKind) => {
+  if (kind === "quotation") return "apps-quotation-add";
+  if (kind === "proforma") return "apps-proforma-add";
+
+  return "apps-invoice-add";
+};
+
 const openDocumentPreviewWindow = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
@@ -2943,33 +2950,50 @@ const deleteDocumentRecord = (
   notifications.push(`${record.quoteNumber} deleted.`, "success", 2500);
 };
 
+const openDocumentRevisionDraft = async (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  await router.push({
+    name: getAddRouteName(kind),
+    query: { revisionOf: String(record.id) },
+  });
+
+  notifications.push(
+    `Revision draft opened for ${record.quoteNumber}.`,
+    "success",
+    2500,
+  );
+};
+
+const openDocumentDuplicateDraft = async (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  await router.push({
+    name: getAddRouteName(kind),
+    query: { duplicateOf: String(record.id) },
+  });
+
+  notifications.push(
+    `Duplicate draft opened for ${record.quoteNumber}.`,
+    "success",
+    2500,
+  );
+};
+
 const duplicateDocumentRecord = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
-  const cloned = {
-    ...record.record,
-    approvalRequestedAt: null,
-    quotation: {
-      ...record.record.quotation,
-      id: 0,
-      quoteNumber: "",
-      issuedDate: new Date().toISOString().slice(0, 10),
-    },
-  };
-
-  if (kind === "quotation") quotationsStore.addQuotation(cloned as never);
-  else if (kind === "proforma") proformasStore.addProforma(cloned as never);
-  else invoicesStore.addInvoice(cloned as never);
-
-  notifications.push(`${record.quoteNumber} duplicated.`, "success", 2500);
+  void openDocumentDuplicateDraft(kind, record);
 };
 
 const reviseDocumentRecord = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
-  duplicateDocumentRecord(kind, record);
+  void openDocumentRevisionDraft(kind, record);
 };
 
 const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {

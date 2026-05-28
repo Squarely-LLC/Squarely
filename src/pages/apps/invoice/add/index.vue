@@ -169,6 +169,7 @@ const buildRevisionDraft = (parentId: number): InvoiceData => {
     .toISOString()
     .slice(0, 10);
   revisionDraft.quotation.quotationStatus = "Not Paid";
+  revisionDraft.quotation.approvalRequestedAt = null;
   revisionDraft.note = `${sourceRecord.note}\n${revisionLabel} draft created from ${baseQuoteNumber}.`;
 
   return revisionDraft;
@@ -194,6 +195,7 @@ const buildDuplicateDraft = (sourceId: number): InvoiceData => {
   duplicateDraft.quotation.isRevision = false;
   duplicateDraft.quotation.revisionLabel = null;
   duplicateDraft.quotation.quotationStatus = "Not Paid";
+  duplicateDraft.quotation.approvalRequestedAt = null;
   duplicateDraft.quotation.balance = 0;
   duplicateDraft.quotation.total = total;
   duplicateDraft.payments = [];
