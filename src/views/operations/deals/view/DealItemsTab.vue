@@ -29,10 +29,15 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
+import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
 import { useInvoicesStore } from "@/stores/invoices";
+import type { InvoicePaymentInput } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
 import { useProformasStore } from "@/stores/proformas";
+import type { ProformaPaymentInput } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
+import { useReceiptsStore } from "@/stores/receipts";
 import { useTodos } from "@/stores/todos";
 import {
   type DealDocumentBillingMode,
@@ -87,6 +92,7 @@ const dealsStore = useDealsStore();
 const quotationsStore = useQuotationsStore();
 const proformasStore = useProformasStore();
 const invoicesStore = useInvoicesStore();
+const receiptsStore = useReceiptsStore();
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
 
@@ -97,6 +103,7 @@ dealsStore.init();
 quotationsStore.init();
 proformasStore.init();
 invoicesStore.init();
+receiptsStore.init();
 todosStore.init();
 
 interface DerivedGoal {
@@ -156,25 +163,42 @@ interface DealDocumentContainer {
     issuedDate: string;
     dueDate: string;
     total: number;
+    balance?: number | null;
     quotationStatus: string;
     dealId: number | null;
+    client?: unknown;
+    avatar?: string;
   };
+  purchasedProducts?: Array<{
+    billingPeriod?: DealBillingPeriod | null;
+    billingPeriodKey?: string | null;
+    dealSelectionKey?: string | null;
+    title?: string | null;
+  }>;
+  convertedInvoiceId?: number | string | null;
+  convertedProformaId?: number | string | null;
+  paymentMethod?: string | null;
+  payments?: Array<unknown>;
 }
 
 interface DealDocumentPanelRecord {
   id: number | string;
+  balance: number;
+  dueDate: string;
   issuedDate: string;
+  periodPhase: string;
   quoteNumber: string;
+  record: DealDocumentContainer;
   status: string;
   total: number;
 }
 
 interface DealDocumentPanel {
-  count: number;
   emptyText: string;
   key: DealPreviewKind;
-  latest: DealDocumentPanelRecord | null;
+  numberHeader: string;
   records: DealDocumentPanelRecord[];
+  summary: string;
   title: string;
 }
 
@@ -233,6 +257,12 @@ const selectedPreviewDocument = ref<{
 
 const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
+const selectedPaymentDocument = ref<{
+  id: number | string;
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">;
+} | null>(null);
+const invoicePaymentDrawerOpen = ref(false);
+const proformaPaymentDrawerOpen = ref(false);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -2599,12 +2629,69 @@ const sortDealDocumentRecords = <T extends DealDocumentContainer>(
 const mapDealDocumentPanelRecord = <T extends DealDocumentContainer>(
   record: T,
 ): DealDocumentPanelRecord => ({
+  balance: Number(record.quotation.balance ?? record.quotation.total ?? 0),
+  dueDate: record.quotation.dueDate,
   id: record.quotation.id,
   issuedDate: record.quotation.issuedDate,
+  periodPhase: resolveDocumentPeriodPhase(record),
   quoteNumber: record.quotation.quoteNumber,
+  record,
   status: record.quotation.quotationStatus,
   total: Number(record.quotation.total || 0),
 });
+
+const normalizeDocumentStatus = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const isDocumentPaid = (record: DealDocumentPanelRecord) =>
+  normalizeDocumentStatus(record.status) === "paid" || record.balance <= 0;
+
+const isDocumentConverted = (record: DealDocumentPanelRecord) => {
+  const status = normalizeDocumentStatus(record.status);
+
+  return (
+    status.includes("converted") ||
+    Boolean(record.record.convertedInvoiceId) ||
+    Boolean(record.record.convertedProformaId)
+  );
+};
+
+const canPayDocument = (kind: DealPreviewKind, record: DealDocumentPanelRecord) =>
+  (kind === "proforma" || kind === "invoice") &&
+  !isDocumentPaid(record) &&
+  record.balance > 0;
+
+const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
+  const labels = (record.purchasedProducts || [])
+    .map((product) => {
+      if (product.billingPeriod) return getDealBillingPeriodLabel(product.billingPeriod);
+
+      const billingKey = resolveStoredBillingPeriodKey(product);
+      if (billingKey) return billingKey;
+
+      const selectionKey = resolveProductSelectionKey(product);
+      const selectable = selectableDocumentItems.value.find(
+        (item) => item.selectionKey === selectionKey,
+      );
+
+      return (
+        selectable?.groupLabel ||
+        selectable?.parentName ||
+        product.title ||
+        null
+      );
+    })
+    .filter((label): label is string => Boolean(label?.trim()));
+
+  const uniqueLabels = Array.from(new Set(labels));
+
+  if (!uniqueLabels.length) return "--";
+  if (uniqueLabels.length <= 2) return uniqueLabels.join(", ");
+
+  return `${uniqueLabels[0]} +${uniqueLabels.length - 1}`;
+};
 
 const dealQuotationRecords = computed(() =>
   sortDealDocumentRecords(quotationsStore.items).map(
@@ -2624,29 +2711,90 @@ const quotationCount = computed(() => dealQuotationRecords.value.length);
 const proformaCount = computed(() => dealProformaRecords.value.length);
 const invoiceCount = computed(() => dealInvoiceRecords.value.length);
 
+const formatCompactDocumentDate = (value?: string | null) => {
+  if (!value) return "--";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = date.toLocaleString("en", { month: "short" });
+  const year = String(date.getFullYear()).slice(-2);
+
+  return `${day}/${month}/${year}`;
+};
+
+const getDaysUntil = (value?: string | null) => {
+  if (!value) return null;
+
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+};
+
+const getQuotationPanelSummary = (records: DealDocumentPanelRecord[]) => {
+  if (!records.length) return "No quotations";
+  if (records.some(isDocumentConverted)) return "Converted";
+
+  const expiryRecord =
+    records
+      .filter((record) => record.dueDate)
+      .sort(
+        (left, right) =>
+          new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime(),
+      )[0] ?? records[0];
+  const days = getDaysUntil(expiryRecord.dueDate);
+  const dayLabel = days === null ? "" : ` (${days} days)`;
+
+  return `Expiry: ${formatCompactDocumentDate(expiryRecord.dueDate)}${dayLabel}`;
+};
+
+const getProformaPanelSummary = (records: DealDocumentPanelRecord[]) => {
+  const paid = records.filter(isDocumentPaid).length;
+  const converted = records.filter(isDocumentConverted).length;
+  const notPaid = records.filter(
+    (record) => !isDocumentPaid(record) && !isDocumentConverted(record),
+  ).length;
+  const active = records.length - converted;
+
+  return `${active} active | ${paid} paid | ${notPaid} not paid | ${converted} converted`;
+};
+
+const getInvoicePanelSummary = (records: DealDocumentPanelRecord[]) => {
+  const paid = records.filter(isDocumentPaid).length;
+  const notPaid = records.length - paid;
+
+  return `${notPaid} not paid | ${paid} paid`;
+};
+
 const dealDocumentPanels = computed<DealDocumentPanel[]>(() => [
   {
-    count: dealQuotationRecords.value.length,
     emptyText: "No quotations created yet.",
     key: "quotation",
-    latest: dealQuotationRecords.value[0] ?? null,
+    numberHeader: "QT #",
     records: dealQuotationRecords.value,
+    summary: getQuotationPanelSummary(dealQuotationRecords.value),
     title: "Quotations",
   },
   {
-    count: dealProformaRecords.value.length,
     emptyText: "No proformas created yet.",
     key: "proforma",
-    latest: dealProformaRecords.value[0] ?? null,
+    numberHeader: "PF #",
     records: dealProformaRecords.value,
+    summary: getProformaPanelSummary(dealProformaRecords.value),
     title: "Proformas",
   },
   {
-    count: dealInvoiceRecords.value.length,
     emptyText: "No invoices created yet.",
     key: "invoice",
-    latest: dealInvoiceRecords.value[0] ?? null,
+    numberHeader: "INV #",
     records: dealInvoiceRecords.value,
+    summary: getInvoicePanelSummary(dealInvoiceRecords.value),
     title: "Invoices",
   },
 ]);
@@ -2684,6 +2832,13 @@ const getPreviewRouteName = (kind: DealPreviewKind) => {
   return "apps-invoice-preview-id";
 };
 
+const getEditRouteName = (kind: DealPreviewKind) => {
+  if (kind === "quotation") return "apps-quotation-edit-id";
+  if (kind === "proforma") return "apps-proforma-edit-id";
+
+  return "apps-invoice-edit-id";
+};
+
 const openQuickDocumentPreview = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
@@ -2701,6 +2856,205 @@ const openQuickDocumentPreview = (
     title: record.quoteNumber || `${kind.toUpperCase()} #${record.id}`,
   };
   previewDialogVisible.value = true;
+};
+
+const openDocumentEdit = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  router.push({
+    name: getEditRouteName(kind),
+    params: { id: record.id },
+  });
+};
+
+const openDocumentPreviewWindow = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+  action?: "download" | "print" | "email",
+) => {
+  const route = router.resolve({
+    name: getPreviewRouteName(kind),
+    params: { id: record.id },
+    query: action ? { [action]: "1" } : undefined,
+  });
+
+  window.open(route.href, "_blank", "noopener,noreferrer");
+};
+
+const deleteDocumentRecord = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  if (kind === "quotation") quotationsStore.removeQuotation(record.id);
+  else if (kind === "proforma") proformasStore.removeProforma(record.id);
+  else invoicesStore.removeInvoice(record.id);
+
+  notifications.push(`${record.quoteNumber} deleted.`, "success", 2500);
+};
+
+const duplicateDocumentRecord = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  const cloned = {
+    ...record.record,
+    quotation: {
+      ...record.record.quotation,
+      id: 0,
+      quoteNumber: "",
+      issuedDate: new Date().toISOString().slice(0, 10),
+    },
+  };
+
+  if (kind === "quotation") quotationsStore.addQuotation(cloned as never);
+  else if (kind === "proforma") proformasStore.addProforma(cloned as never);
+  else invoicesStore.addInvoice(cloned as never);
+
+  notifications.push(`${record.quoteNumber} duplicated.`, "success", 2500);
+};
+
+const reviseDocumentRecord = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  duplicateDocumentRecord(kind, record);
+};
+
+const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
+  const created = proformasStore.addProforma({
+    ...record.record,
+    convertedInvoiceId: null,
+    quotation: {
+      ...record.record.quotation,
+      id: 0,
+      quoteNumber: "",
+      quotationStatus: "Not Paid",
+      balance: record.total,
+    },
+  } as never);
+
+  quotationsStore.updateQuotation(record.id, {
+    ...record.record,
+    convertedProformaId: created?.quotation.id ?? null,
+    quotation: {
+      ...record.record.quotation,
+      quotationStatus: "Converted to Proforma",
+    },
+  } as never);
+
+  notifications.push("Quotation converted to proforma.", "success", 2500);
+};
+
+const convertDocumentToInvoice = (
+  kind: Extract<DealPreviewKind, "quotation" | "proforma">,
+  record: DealDocumentPanelRecord,
+) => {
+  const created = invoicesStore.addInvoice({
+    ...record.record,
+    quotation: {
+      ...record.record.quotation,
+      id: 0,
+      quoteNumber: "",
+      quotationStatus: "Not Paid",
+      balance: record.total,
+    },
+  } as never);
+
+  if (kind === "quotation") {
+    quotationsStore.updateQuotation(record.id, {
+      ...record.record,
+      convertedInvoiceId: created?.quotation.id ?? null,
+      quotation: {
+        ...record.record.quotation,
+        quotationStatus: "Converted to Invoice",
+      },
+    } as never);
+  } else {
+    proformasStore.updateProforma(record.id, {
+      ...record.record,
+      convertedInvoiceId: created?.quotation.id ?? null,
+    } as never);
+  }
+
+  notifications.push("Document converted to invoice.", "success", 2500);
+};
+
+const selectedPaymentRecord = computed(() => {
+  const target = selectedPaymentDocument.value;
+  if (!target) return null;
+
+  const source =
+    target.kind === "proforma" ? dealProformaRecords.value : dealInvoiceRecords.value;
+
+  return source.find((record) => String(record.id) === String(target.id)) ?? null;
+});
+
+const selectedPaymentBalance = computed(() =>
+  Math.max(0, Number(selectedPaymentRecord.value?.balance || 0)),
+);
+
+const openDocumentPayment = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  record: DealDocumentPanelRecord,
+) => {
+  selectedPaymentDocument.value = { id: record.id, kind };
+
+  if (kind === "proforma") proformaPaymentDrawerOpen.value = true;
+  else invoicePaymentDrawerOpen.value = true;
+};
+
+const openDocumentPaymentFromPanel = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  if (kind === "quotation") return;
+
+  openDocumentPayment(kind, record);
+};
+
+const saveProformaPayment = (payment: ProformaPaymentInput) => {
+  const target = selectedPaymentDocument.value;
+  if (!target || target.kind !== "proforma") return;
+
+  const updated = proformasStore.recordPayment(target.id, payment);
+  const latestPayment = updated?.payments?.at(-1);
+
+  if (updated && latestPayment) {
+    receiptsStore.addReceiptFromLinkedPayment({
+      documentType: "proforma",
+      documentId: updated.quotation.id,
+      documentNumber: updated.quotation.quoteNumber,
+      payment: latestPayment,
+      client: updated.quotation.client,
+      avatar: updated.quotation.avatar,
+    });
+  }
+
+  notifications.push("Payment recorded.", "success", 2500);
+  selectedPaymentDocument.value = null;
+};
+
+const saveInvoicePayment = (payment: InvoicePaymentInput) => {
+  const target = selectedPaymentDocument.value;
+  if (!target || target.kind !== "invoice") return;
+
+  const updated = invoicesStore.recordPayment(target.id, payment);
+  const latestPayment = updated?.payments?.at(-1);
+
+  if (updated && latestPayment) {
+    receiptsStore.addReceiptFromLinkedPayment({
+      documentType: "invoice",
+      documentId: updated.quotation.id,
+      documentNumber: updated.quotation.quoteNumber,
+      payment: latestPayment,
+      client: updated.quotation.client,
+      avatar: updated.quotation.avatar,
+    });
+  }
+
+  notifications.push("Payment recorded.", "success", 2500);
+  selectedPaymentDocument.value = null;
 };
 
 const openSelectedPreviewInPage = () => {
@@ -6207,54 +6561,69 @@ const openEditTask = (taskId: number | string) => {
       <VCardItem>
         <template #title> Invoicing Summary </template>
         <template #append>
-          <button
-            type="button"
-            class="items-overview__collapse-toggle"
-            :aria-expanded="!isItemsOverviewCollapsed"
-            @click="toggleItemsOverviewCollapsed"
-          >
-            <VIcon
-              :icon="
-                isItemsOverviewCollapsed
-                  ? 'tabler-chevron-down'
-                  : 'tabler-chevron-up'
-              "
-              size="18"
-            />
-          </button>
+          <div class="items-overview-card__actions">
+            <VBtn
+              icon
+              variant="tonal"
+              color="secondary"
+              size="small"
+              class="items-overview__card-create"
+              aria-label="Create document"
+            >
+              <VIcon icon="tabler-plus" size="18" />
+              <VMenu activator="parent">
+                <VList density="compact">
+                  <VListItem
+                    :disabled="isRetainerPanelDocumentActionDisabled('quotation')"
+                    @click="openPanelDocumentPage('quotation')"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-file-text" />
+                    </template>
+                    <VListItemTitle>Create Quotation</VListItemTitle>
+                  </VListItem>
+                  <VListItem
+                    :disabled="isRetainerPanelDocumentActionDisabled('proforma')"
+                    @click="openPanelDocumentPage('proforma')"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-file-dollar" />
+                    </template>
+                    <VListItemTitle>Create Proforma</VListItemTitle>
+                  </VListItem>
+                  <VListItem
+                    :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
+                    @click="openPanelDocumentPage('invoice')"
+                  >
+                    <template #prepend>
+                      <VIcon icon="tabler-file-invoice" />
+                    </template>
+                    <VListItemTitle>Create Invoice</VListItemTitle>
+                  </VListItem>
+                </VList>
+              </VMenu>
+            </VBtn>
+            <button
+              type="button"
+              class="items-overview__collapse-toggle"
+              :aria-expanded="!isItemsOverviewCollapsed"
+              @click="toggleItemsOverviewCollapsed"
+            >
+              <VIcon
+                :icon="
+                  isItemsOverviewCollapsed
+                    ? 'tabler-chevron-down'
+                    : 'tabler-chevron-up'
+                "
+                size="18"
+              />
+            </button>
+          </div>
         </template>
       </VCardItem>
       <VCardText class="items-overview-card__content">
         <div class="items-overview">
           <div v-if="!isItemsOverviewCollapsed" class="items-overview__body">
-            <div
-              class="items-overview__table"
-              role="group"
-              aria-label="Invoicing summary"
-            >
-              <div class="items-overview__row" role="presentation">
-                <span class="items-overview__cell-label">Paid</span>
-                <strong class="items-overview__cell-value">{{
-                  formatMoney(totalPaid)
-                }}</strong>
-              </div>
-              <div class="items-overview__row" role="presentation">
-                <span class="items-overview__cell-label">Invoiced</span>
-                <strong class="items-overview__cell-value">{{
-                  formatMoney(totalInvoiced)
-                }}</strong>
-              </div>
-              <div
-                class="items-overview__row items-overview__row--accent"
-                role="presentation"
-              >
-                <span class="items-overview__cell-label">Outstanding</span>
-                <strong class="items-overview__cell-value">{{
-                  formatMoney(remainingToInvoice)
-                }}</strong>
-              </div>
-            </div>
-
             <div class="items-overview__previews">
               <template
                 v-for="(panel, index) in dealDocumentPanels"
@@ -6278,57 +6647,13 @@ const openEditTask = (taskId: number | string) => {
                     @click="setActiveDocumentPanel(panel.key)"
                   >
                     <strong class="items-overview__preview-title">
-                      {{
-                        panel.latest?.quoteNumber ||
-                        `No ${panel.title.slice(0, -1).toLowerCase()}`
-                      }}
+                      {{ panel.title }}
+                      <span class="items-overview__preview-meta">
+                        | {{ panel.summary }}
+                      </span>
                     </strong>
 
                     <div class="items-overview__preview-summary-side">
-                      <div class="items-overview__preview-count">
-                        {{ panel.count }}
-                      </div>
-                      <VBtn
-                        icon
-                        variant="text"
-                        size="x-small"
-                        class="items-overview__preview-add"
-                        :aria-label="`Add ${panel.title.slice(0, -1).toLowerCase()}`"
-                        @click.stop
-                      >
-                        <VIcon icon="tabler-plus" size="14" />
-                        <VMenu activator="parent">
-                          <VList density="compact">
-                            <VListItem
-                              :disabled="
-                                isRetainerPanelDocumentActionDisabled(panel.key)
-                              "
-                              @click="openPanelDocumentPage(panel.key)"
-                            >
-                              <template #prepend>
-                                <VIcon icon="tabler-plus" />
-                              </template>
-                              <VListItemTitle>
-                                Create {{ panel.title.slice(0, -1) }}
-                              </VListItemTitle>
-                            </VListItem>
-                            <VDivider />
-                            <VListItem
-                              :disabled="
-                                isRetainerPanelDocumentActionDisabled(panel.key)
-                              "
-                              @click="openPanelExternalDocumentFlow(panel.key)"
-                            >
-                              <template #prepend>
-                                <VIcon icon="tabler-paperclip" />
-                              </template>
-                              <VListItemTitle>
-                                Attach External {{ panel.title.slice(0, -1) }}
-                              </VListItemTitle>
-                            </VListItem>
-                          </VList>
-                        </VMenu>
-                      </VBtn>
                       <VIcon
                         :icon="
                           isDocumentPanelExpanded(panel.key)
@@ -6344,35 +6669,152 @@ const openEditTask = (taskId: number | string) => {
                     v-if="isDocumentPanelExpanded(panel.key)"
                     class="items-overview__preview-body"
                   >
-                    <template v-if="panel.latest">
+                    <template v-if="panel.records.length">
                       <div class="items-overview__preview-table" role="table">
                         <div
                           class="items-overview__preview-table-head"
                           role="row"
                         >
-                          <span role="columnheader">Number</span>
-                          <span role="columnheader">Status</span>
                           <span role="columnheader">Date</span>
-                          <span role="columnheader">Total</span>
+                          <span role="columnheader">{{ panel.numberHeader }}</span>
+                          <span role="columnheader">Period / Phase</span>
+                          <span role="columnheader">Amount</span>
+                          <span role="columnheader" aria-label="Actions"></span>
                         </div>
 
-                        <button
+                        <div
                           v-for="record in panel.records"
                           :key="`${panel.key}-${record.id}`"
-                          type="button"
                           class="items-overview__preview-table-row"
                           role="row"
-                          @click="openQuickDocumentPreview(panel.key, record)"
                         >
-                          <span role="cell">{{ record.quoteNumber }}</span>
-                          <span role="cell">{{ record.status }}</span>
                           <span role="cell">{{
                             formatDocumentDate(record.issuedDate)
                           }}</span>
+                          <button
+                            type="button"
+                            class="items-overview__doc-link"
+                            role="cell"
+                            @click="openQuickDocumentPreview(panel.key, record)"
+                          >
+                            {{ record.quoteNumber }}
+                          </button>
+                          <span role="cell">{{ record.periodPhase }}</span>
                           <strong role="cell">{{
                             formatMoney(record.total)
                           }}</strong>
-                        </button>
+                          <span class="items-overview__actions" role="cell">
+                            <VBtn
+                              icon
+                              variant="text"
+                              size="small"
+                              aria-label="Document actions"
+                            >
+                              <VIcon icon="tabler-dots-vertical" size="18" />
+                              <VMenu activator="parent">
+                                <VList density="compact">
+                                  <VListItem @click="openDocumentEdit(panel.key, record)">
+                                    <template #prepend>
+                                      <VIcon icon="tabler-pencil" />
+                                    </template>
+                                    <VListItemTitle>Edit</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem @click="reviseDocumentRecord(panel.key, record)">
+                                    <template #prepend>
+                                      <VIcon icon="tabler-refresh" />
+                                    </template>
+                                    <VListItemTitle>Revise</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem @click="duplicateDocumentRecord(panel.key, record)">
+                                    <template #prepend>
+                                      <VIcon icon="tabler-copy" />
+                                    </template>
+                                    <VListItemTitle>Duplicate</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem
+                                    v-if="panel.key === 'quotation'"
+                                    :disabled="isDocumentConverted(record)"
+                                    @click="convertQuotationToProforma(record)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-file-dollar" />
+                                    </template>
+                                    <VListItemTitle>Convert to Proforma</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem
+                                    v-if="panel.key === 'quotation'"
+                                    :disabled="isDocumentConverted(record)"
+                                    @click="convertDocumentToInvoice('quotation', record)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-file-invoice" />
+                                    </template>
+                                    <VListItemTitle>Convert to Tax invoice</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem
+                                    v-if="panel.key === 'proforma'"
+                                    :disabled="isDocumentConverted(record)"
+                                    @click="convertDocumentToInvoice('proforma', record)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-file-invoice" />
+                                    </template>
+                                    <VListItemTitle>Convert to Tax invoice</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem
+                                    v-if="canPayDocument(panel.key, record)"
+                                    @click="openDocumentPaymentFromPanel(panel.key, record)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-cash" />
+                                    </template>
+                                    <VListItemTitle>Pay</VListItemTitle>
+                                  </VListItem>
+                                  <VListItem>
+                                    <template #prepend>
+                                      <VIcon icon="tabler-share" />
+                                    </template>
+                                    <VListItemTitle>Share</VListItemTitle>
+                                    <template #append>
+                                      <VIcon icon="tabler-chevron-right" size="16" />
+                                    </template>
+                                    <VMenu activator="parent" location="end" open-on-hover>
+                                      <VList density="compact">
+                                        <VListItem @click="openDocumentPreviewWindow(panel.key, record, 'download')">
+                                          <template #prepend>
+                                            <VIcon icon="tabler-download" />
+                                          </template>
+                                          <VListItemTitle>Download</VListItemTitle>
+                                        </VListItem>
+                                        <VListItem @click="openDocumentPreviewWindow(panel.key, record, 'print')">
+                                          <template #prepend>
+                                            <VIcon icon="tabler-printer" />
+                                          </template>
+                                          <VListItemTitle>Print</VListItemTitle>
+                                        </VListItem>
+                                        <VListItem @click="openDocumentPreviewWindow(panel.key, record, 'email')">
+                                          <template #prepend>
+                                            <VIcon icon="tabler-mail" />
+                                          </template>
+                                          <VListItemTitle>Email</VListItemTitle>
+                                        </VListItem>
+                                      </VList>
+                                    </VMenu>
+                                  </VListItem>
+                                  <VListItem
+                                    class="text-error"
+                                    @click="deleteDocumentRecord(panel.key, record)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon icon="tabler-trash" />
+                                    </template>
+                                    <VListItemTitle>Delete</VListItemTitle>
+                                  </VListItem>
+                                </VList>
+                              </VMenu>
+                            </VBtn>
+                          </span>
+                        </div>
                       </div>
                     </template>
 
@@ -7853,6 +8295,22 @@ const openEditTask = (taskId: number | string) => {
       </VCardText>
     </VCard>
   </VDialog>
+
+  <ProformaAddPaymentDrawer
+    v-model:is-drawer-open="proformaPaymentDrawerOpen"
+    :current-balance="selectedPaymentBalance"
+    :default-payment-method="selectedPaymentRecord?.record.paymentMethod"
+    :document-label="selectedPaymentRecord?.quoteNumber"
+    @submit="saveProformaPayment"
+  />
+
+  <InvoiceAddPaymentDrawer
+    v-model:is-drawer-open="invoicePaymentDrawerOpen"
+    :current-balance="selectedPaymentBalance"
+    :default-payment-method="selectedPaymentRecord?.record.paymentMethod"
+    :document-label="selectedPaymentRecord?.quoteNumber"
+    @submit="saveInvoicePayment"
+  />
 </template>
 
 <style scoped>
@@ -8382,6 +8840,17 @@ const openEditTask = (taskId: number | string) => {
   padding-block-start: 0;
 }
 
+.items-overview-card__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.items-overview__card-create {
+  background: rgba(var(--v-theme-on-surface), 0.07);
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
 .items-overview {
   display: flex;
   flex-direction: column;
@@ -8425,7 +8894,7 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .items-overview__collapse-toggle:hover,
-.items-overview__preview-add:hover {
+.items-overview__card-create:hover {
   background: rgba(var(--v-theme-primary), 0.08);
   color: rgba(var(--v-theme-primary), 0.96);
 }
@@ -8451,69 +8920,6 @@ const openEditTask = (taskId: number | string) => {
   align-items: stretch;
   inline-size: 100%;
   min-inline-size: 0;
-}
-
-.items-overview__table {
-  display: grid;
-  overflow: hidden;
-  align-self: stretch;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 12px;
-  background: rgba(var(--v-theme-surface), 0.16);
-  gap: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.items-overview__row {
-  position: relative;
-  display: grid;
-  background: transparent;
-  min-inline-size: 0;
-  padding-block: 0.45rem;
-  padding-inline: 0.65rem;
-}
-
-.items-overview__row:not(:last-child)::after {
-  position: absolute;
-  background: rgba(var(--v-theme-on-surface), 0.12);
-  block-size: calc(100% - 0.6rem);
-  content: "";
-  inline-size: 1px;
-  inset-block-start: 0.3rem;
-  inset-inline-end: 0;
-}
-
-.items-overview__cell-label {
-  display: block;
-  overflow: hidden;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.items-overview__cell-value {
-  display: block;
-  overflow: hidden;
-  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 0.9rem;
-  font-weight: 700;
-  line-height: 1.25;
-  margin-block-start: 0.14rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.items-overview__row--accent {
-  background: rgba(var(--v-theme-primary), 0.06);
-}
-
-.items-overview__row--accent .items-overview__cell-value {
-  color: rgba(var(--v-theme-primary), 0.96);
 }
 
 .items-overview__preview-panel:hover {
@@ -8554,21 +8960,6 @@ const openEditTask = (taskId: number | string) => {
   gap: 0.45rem;
 }
 
-.items-overview__preview-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  block-size: 1.9rem;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  cursor: pointer;
-  inline-size: 1.9rem;
-  min-inline-size: 1.9rem;
-}
-
 .items-overview__preview-body {
   display: flex;
   flex-direction: column;
@@ -8602,25 +8993,14 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .items-overview__preview-title {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: 0.92rem;
   font-weight: 600;
+  gap: 0.25rem;
   line-height: 1.2;
-}
-
-.items-overview__preview-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgba(var(--v-theme-primary), 0.92);
-  font-size: 0.8rem;
-  font-weight: 700;
-  min-inline-size: 2rem;
-  padding-block: 0.3rem;
-  padding-inline: 0.55rem;
 }
 
 .items-overview__preview-meta {
@@ -8650,7 +9030,12 @@ const openEditTask = (taskId: number | string) => {
   display: grid;
   align-items: center;
   column-gap: 0.75rem;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) auto;
+  grid-template-columns:
+    minmax(6rem, 0.9fr)
+    minmax(7rem, 1fr)
+    minmax(0, 1.4fr)
+    minmax(5rem, 0.8fr)
+    2.25rem;
 }
 
 .items-overview__preview-table-head {
@@ -8669,7 +9054,6 @@ const openEditTask = (taskId: number | string) => {
   background: transparent;
   border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  cursor: pointer;
   font: inherit;
   inline-size: 100%;
   padding-block: 0.72rem;
@@ -8683,6 +9067,25 @@ const openEditTask = (taskId: number | string) => {
 
 .items-overview__preview-table-row strong {
   text-align: end;
+}
+
+.items-overview__doc-link {
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-primary), 0.96);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.items-overview__actions {
+  display: inline-flex;
+  justify-content: flex-end;
 }
 
 .items-overview__preview-empty {
@@ -8707,24 +9110,16 @@ const openEditTask = (taskId: number | string) => {
 }
 
 @media (max-width: 639px) {
-  .items-overview__table {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .items-overview__row {
-    padding-block: 0.55rem;
-  }
-
   .items-overview__preview-table-head,
   .items-overview__preview-table-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 2rem;
   }
 
-  .items-overview__row:not(:last-child)::after {
-    block-size: 1px;
-    inline-size: calc(100% - 1rem);
-    inset-block: auto 0;
-    inset-inline-start: 0.5rem;
+  .items-overview__preview-table-head span:nth-child(3),
+  .items-overview__preview-table-head span:nth-child(4),
+  .items-overview__preview-table-row span:nth-child(3),
+  .items-overview__preview-table-row strong {
+    display: none;
   }
 }
 
