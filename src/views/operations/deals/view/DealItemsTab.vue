@@ -2969,6 +2969,32 @@ const shouldRenderGoalSection = (
   getVisibleSectionGoals(item, section, sectionIndex).length > 0 ||
   Boolean(section.billingPeriod);
 
+const shouldRenderPeriodTimeline = (item: DealItemWithPlan) =>
+  item.derivedSections.length > 1 &&
+  item.derivedSections.every((section) => Boolean(section.billingPeriod));
+
+const isSectionInvoiced = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => String(getSectionInvoiceState(parentItem, section) || "").startsWith("Invoiced");
+
+const getPeriodTimelineProgressPercent = (item: DealItemWithPlan) => {
+  const sections = item.derivedSections;
+  if (sections.length <= 1) return 0;
+
+  const lastInvoicedIndex = sections.reduce(
+    (lastIndex, section, index) =>
+      isSectionInvoiced(item, section) ? index : lastIndex,
+    -1,
+  );
+
+  if (lastInvoicedIndex < 0) return 0;
+
+  return (lastInvoicedIndex / (sections.length - 1)) * 100;
+};
+
+const getPeriodStepLabel = (index: number) => `P${index + 1}`;
+
 const resolveGoalBillingPeriodKey = (
   selectableItem: DealDocumentSelectableItem | null,
   period?: DealBillingPeriod | null,
@@ -3456,6 +3482,14 @@ const phaseDialogEntityLabel = computed(() =>
 const phaseDialogTitle = computed(
   () =>
     `${phaseDraft.customPhaseId ? "Edit" : "Add"} ${phaseDialogEntityLabel.value}`,
+);
+
+const phaseDialogIsRecurrentService = computed(() =>
+  isRecurrentCatalogueType(getItemById(phaseDraft.parentItemId)?.catalogueType),
+);
+
+const phaseDialogIsRetainerService = computed(() =>
+  isRetainerCatalogueType(getItemById(phaseDraft.parentItemId)?.catalogueType),
 );
 
 const isRemovableChildGoal = (goal: DerivedGoal) =>
@@ -4837,15 +4871,27 @@ const savePhase = async () => {
       ? item.customPhases.map((phase) => ({ ...phase }))
       : [];
 
+    const isRetainerChild = isRetainerCatalogueType(item.catalogueType);
+    const isRecurrentChild = isRecurrentCatalogueType(item.catalogueType);
+    const isParentPeriodDrivenChild = isRetainerChild || isRecurrentChild;
+
     const nextPhase: DealCustomPhase = {
       id: phaseDraft.customPhaseId ?? `${Date.now()}`,
       name: phaseDraft.name.trim(),
-      category: phaseDraft.category.trim() || null,
-      quantity: Number(phaseDraft.quantity || 1),
-      price: Number(phaseDraft.price || 0),
-      discountPercent: Number(phaseDraft.discountPercent || 0),
-      taxApplicable: phaseDraft.taxApplicable,
-      note: phaseDraft.note.trim() || null,
+      category: isParentPeriodDrivenChild
+        ? null
+        : phaseDraft.category.trim() || null,
+      quantity: isRecurrentChild
+        ? Number(item.quantity || 1)
+        : Number(phaseDraft.quantity || 1),
+      price: isParentPeriodDrivenChild ? 0 : Number(phaseDraft.price || 0),
+      discountPercent: isParentPeriodDrivenChild
+        ? 0
+        : Number(phaseDraft.discountPercent || 0),
+      taxApplicable: isParentPeriodDrivenChild
+        ? (item.taxApplicable ?? null)
+        : phaseDraft.taxApplicable,
+      note: isRetainerChild ? null : phaseDraft.note.trim() || null,
     };
 
     const customPhases = phaseDraft.customPhaseId
@@ -5470,7 +5516,235 @@ const openEditTask = (taskId: number | string) => {
             <VExpansionPanelText v-if="item.isExpandable">
               <VCard variant="flat" class="pa-3 milestone-panel-body">
                 <div
-                  v-if="
+                  v-if="shouldRenderPeriodTimeline(item)"
+                  class="period-timeline"
+                >
+                  <div
+                    v-if="item.derivedSections[0]?.goals.length"
+                    class="period-timeline__services"
+                  >
+                    <div class="period-timeline__services-title">
+                      Recurring Services
+                    </div>
+                    <div class="period-timeline__services-list">
+                      <VCard
+                        v-for="goal in item.derivedSections[0].goals"
+                        :key="goal.id"
+                        variant="tonal"
+                        class="goal-panel goal-panel--static period-timeline__service-row"
+                      >
+                        <div class="phase-card-shell">
+                          <div class="flex-grow-1 min-w-0">
+                            <div class="item-card-header">
+                              <div class="item-card-title-row">
+                                <VTooltip :text="goal.name" location="top">
+                                  <template #activator="{ props: tooltipProps }">
+                                    <div
+                                      v-bind="tooltipProps"
+                                      class="item-card-title item-card-title--phase truncate-title"
+                                    >
+                                      {{ goal.name }}
+                                    </div>
+                                  </template>
+                                </VTooltip>
+                                <VChip
+                                  color="primary"
+                                  size="x-small"
+                                  variant="plain"
+                                  class="item-type-chip item-type-chip--phase"
+                                >
+                                  {{ goal.typeLabel }}
+                                </VChip>
+                              </div>
+                            </div>
+
+                            <div
+                              v-if="goal.note"
+                              class="item-card-note text-body-2 text-medium-emphasis"
+                            >
+                              {{ goal.note }}
+                            </div>
+                          </div>
+
+                          <div class="goal-card-actions">
+                            <VBtn
+                              icon
+                              variant="text"
+                              size="x-small"
+                              class="phase-edit-btn"
+                            >
+                              <VIcon icon="tabler-dots-vertical" size="16" />
+                              <VMenu activator="parent">
+                                <VList>
+                                  <VListItem @click="openEditGoal(item, goal)">
+                                    <template #prepend>
+                                      <VIcon icon="tabler-pencil" />
+                                    </template>
+                                    <VListItemTitle>Edit</VListItemTitle>
+                                  </VListItem>
+                                  <VDivider v-if="isRemovableChildGoal(goal)" />
+                                  <VListItem
+                                    v-if="isRemovableChildGoal(goal)"
+                                    @click="removeGoal(item, goal)"
+                                  >
+                                    <template #prepend>
+                                      <VIcon
+                                        icon="tabler-trash"
+                                        color="error"
+                                      />
+                                    </template>
+                                    <VListItemTitle>
+                                      Remove {{ goal.typeLabel }}
+                                    </VListItemTitle>
+                                  </VListItem>
+                                </VList>
+                              </VMenu>
+                            </VBtn>
+                          </div>
+                        </div>
+                      </VCard>
+                    </div>
+                  </div>
+
+                  <div class="period-timeline__track">
+                    <div
+                      class="period-timeline__progress"
+                      :style="{
+                        inlineSize: `${getPeriodTimelineProgressPercent(item)}%`,
+                      }"
+                    />
+                  </div>
+
+                  <div
+                    class="period-timeline__steps"
+                    :style="{
+                      '--period-count': item.derivedSections.length,
+                    }"
+                  >
+                    <div
+                      v-for="(section, sectionIndex) in item.derivedSections"
+                      :key="section.id"
+                      class="period-timeline__step"
+                      :class="{
+                        'period-timeline__step--invoiced': isSectionInvoiced(
+                          item,
+                          section,
+                        ),
+                      }"
+                    >
+                      <VMenu location="bottom">
+                        <template #activator="{ props: menuProps }">
+                          <button
+                            v-bind="menuProps"
+                            type="button"
+                            class="period-timeline__button"
+                          >
+                            <VTooltip
+                              :text="`${section.name} · ${getSectionInvoiceState(item, section) || 'Not invoiced'}`"
+                              location="top"
+                            >
+                              <template #activator="{ props: tooltipProps }">
+                                <span v-bind="tooltipProps">
+                                  <span class="period-timeline__dot" />
+                                  <span class="period-timeline__label">
+                                    {{ getPeriodStepLabel(sectionIndex) }}
+                                  </span>
+                                </span>
+                              </template>
+                            </VTooltip>
+                          </button>
+                        </template>
+
+                        <VList>
+                          <VListItem
+                            :disabled="
+                              isSectionDocumentActionDisabled(
+                                'proforma',
+                                item,
+                                section,
+                              )
+                            "
+                            @click="
+                              openSectionDocumentPage('proforma', item, section)
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-file-certificate" />
+                            </template>
+                            <VListItemTitle>Create Proforma</VListItemTitle>
+                          </VListItem>
+                          <VListItem
+                            :disabled="
+                              isSectionDocumentActionDisabled(
+                                'invoice',
+                                item,
+                                section,
+                              )
+                            "
+                            @click="
+                              openSectionDocumentPage('invoice', item, section)
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-file-invoice" />
+                            </template>
+                            <VListItemTitle>Create Invoice</VListItemTitle>
+                          </VListItem>
+                          <VDivider />
+                          <VListItem
+                            :disabled="
+                              isSectionDocumentActionDisabled(
+                                'proforma',
+                                item,
+                                section,
+                              )
+                            "
+                            @click="
+                              openSectionExternalDocumentDialog(
+                                'proforma',
+                                item,
+                                section,
+                              )
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-paperclip" />
+                            </template>
+                            <VListItemTitle>
+                              Attach External Proforma
+                            </VListItemTitle>
+                          </VListItem>
+                          <VListItem
+                            :disabled="
+                              isSectionDocumentActionDisabled(
+                                'invoice',
+                                item,
+                                section,
+                              )
+                            "
+                            @click="
+                              openSectionExternalDocumentDialog(
+                                'invoice',
+                                item,
+                                section,
+                              )
+                            "
+                          >
+                            <template #prepend>
+                              <VIcon icon="tabler-paperclip" />
+                            </template>
+                            <VListItemTitle>
+                              Attach External Invoice
+                            </VListItemTitle>
+                          </VListItem>
+                        </VList>
+                      </VMenu>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-else-if="
                     item.derivedSections.some((section) => section.goals.length)
                   "
                   class="d-flex flex-column gap-2 goal-sections"
@@ -6396,7 +6670,12 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="8" class="deal-item-modal-main">
+            <VCol
+              v-if="selectedCatalogueItem"
+              cols="12"
+              md="8"
+              class="deal-item-modal-main"
+            >
               <VRow>
                 <VCol cols="12">
                   <AppTextField
@@ -6540,7 +6819,12 @@ const openEditTask = (taskId: number | string) => {
               </VRow>
             </VCol>
 
-            <VCol cols="12" md="4" class="deal-item-modal-note-col">
+            <VCol
+              v-if="selectedCatalogueItem"
+              cols="12"
+              md="4"
+              class="deal-item-modal-note-col"
+            >
               <AppTextarea
                 v-model="addItemDraft.note"
                 class="deal-item-modal-note"
@@ -6551,7 +6835,7 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12">
+            <VCol v-if="selectedCatalogueItem" cols="12">
               <DialogActionBar
                 save-type="submit"
                 @save="() => undefined"
@@ -6766,16 +7050,33 @@ const openEditTask = (taskId: number | string) => {
 
         <VForm ref="phaseFormRef" @submit.prevent="savePhase">
           <VRow>
-            <VCol cols="12" md="8">
+            <VCol
+              cols="12"
+              :md="phaseDialogIsRecurrentService ? 12 : 8"
+            >
               <AppTextField
                 v-model="phaseDraft.name"
-                label="Phase Name"
-                placeholder="Phase name"
+                :label="
+                  phaseDialogIsRecurrentService || phaseDialogIsRetainerService
+                    ? 'Name'
+                    : 'Phase Name'
+                "
+                :placeholder="
+                  phaseDialogIsRecurrentService || phaseDialogIsRetainerService
+                    ? 'Service name'
+                    : 'Phase name'
+                "
                 :rules="[requiredValidator]"
               />
             </VCol>
 
-            <VCol cols="12" md="4">
+            <VCol
+              v-if="
+                !phaseDialogIsRecurrentService && !phaseDialogIsRetainerService
+              "
+              cols="12"
+              md="4"
+            >
               <AppTextField
                 v-model="phaseDraft.category"
                 label="Category"
@@ -6783,7 +7084,13 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol
+              v-if="
+                !phaseDialogIsRecurrentService && !phaseDialogIsRetainerService
+              "
+              cols="12"
+              md="3"
+            >
               <AppTextField
                 v-model="phaseDraft.price"
                 type="number"
@@ -6793,7 +7100,11 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol
+              v-if="!phaseDialogIsRecurrentService"
+              cols="12"
+              :md="phaseDialogIsRetainerService ? 4 : 3"
+            >
               <AppTextField
                 v-model="phaseDraft.quantity"
                 type="number"
@@ -6803,7 +7114,13 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol
+              v-if="
+                !phaseDialogIsRecurrentService && !phaseDialogIsRetainerService
+              "
+              cols="12"
+              md="3"
+            >
               <AppTextField
                 v-model="phaseDraft.discountPercent"
                 type="number"
@@ -6813,7 +7130,13 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol cols="12" md="3">
+            <VCol
+              v-if="
+                !phaseDialogIsRecurrentService && !phaseDialogIsRetainerService
+              "
+              cols="12"
+              md="3"
+            >
               <div class="d-flex flex-column gap-2">
                 <span class="text-sm text-medium-emphasis">Tax?</span>
                 <VSwitch
@@ -6826,12 +7149,16 @@ const openEditTask = (taskId: number | string) => {
               </div>
             </VCol>
 
-            <VCol cols="12">
+            <VCol v-if="!phaseDialogIsRetainerService" cols="12">
               <AppTextarea
                 v-model="phaseDraft.note"
-                label="Note"
-                placeholder="Short note"
-                rows="2"
+                :label="phaseDialogIsRecurrentService ? 'Description' : 'Note'"
+                :placeholder="
+                  phaseDialogIsRecurrentService
+                    ? 'Service description'
+                    : 'Short note'
+                "
+                :rows="phaseDialogIsRecurrentService ? 4 : 2"
                 auto-grow
               />
             </VCol>
@@ -7511,7 +7838,7 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .deal-item-modal-layout {
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .deal-item-modal-main,
@@ -7527,11 +7854,12 @@ const openEditTask = (taskId: number | string) => {
 .deal-item-modal-note-col :deep(.v-input),
 .deal-item-modal-note-col :deep(.v-input__control),
 .deal-item-modal-note-col :deep(.v-field) {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  block-size: 100%;
 }
 
 .deal-item-modal-note :deep(textarea) {
-  min-block-size: 8.5rem;
+  min-block-size: 100%;
   resize: vertical;
 }
 
@@ -7657,6 +7985,115 @@ const openEditTask = (taskId: number | string) => {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 10px;
   background: rgba(var(--v-theme-surface), 0.12);
+}
+
+.period-timeline {
+  inline-size: 100%;
+  padding-block: 0.3rem 0.15rem;
+}
+
+.period-timeline__services {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(var(--v-theme-primary), 0.14);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.05);
+  margin-block-end: 0.9rem;
+}
+
+.period-timeline__services-title {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.period-timeline__services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.period-timeline__service-row {
+  inline-size: 100%;
+  padding: 0.65rem 0.75rem;
+}
+
+.period-timeline__track {
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.1);
+  block-size: 4px;
+}
+
+.period-timeline__progress {
+  border-radius: inherit;
+  background: rgb(var(--v-theme-primary));
+  block-size: 100%;
+  transition: inline-size 0.2s ease;
+}
+
+.period-timeline__steps {
+  display: grid;
+  gap: 0.15rem;
+  grid-template-columns: repeat(var(--period-count), minmax(0, 1fr));
+  margin-block-start: 0.55rem;
+}
+
+.period-timeline__step {
+  min-inline-size: 0;
+}
+
+.period-timeline__button {
+  display: flex;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  cursor: pointer;
+  font: inherit;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.period-timeline__button > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.period-timeline__dot {
+  border: 2px solid rgba(var(--v-theme-on-surface), 0.18);
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface));
+  block-size: 0.68rem;
+  inline-size: 0.68rem;
+}
+
+.period-timeline__label {
+  overflow: hidden;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  max-inline-size: 100%;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-timeline__step--invoiced .period-timeline__button {
+  color: rgb(var(--v-theme-primary));
+}
+
+.period-timeline__step--invoiced .period-timeline__dot {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary));
 }
 
 .goal-section-header {

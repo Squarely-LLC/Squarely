@@ -113,6 +113,10 @@
     ]
   },
   "chat.tools.terminal.autoApprove": {
-    "pnpm": true
+    "pnpm": true,
+    "/^Get-CimInstance Win32_Process \\| Where-Object \\{ \\$_\\.CommandLine -match 'pnpm\\\\\\.cjs\" dev\\|vite\\\\\\.js' \\} \\| Select-Object ProcessId,Name,CommandLine \\| Format-List$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
   }
 }
