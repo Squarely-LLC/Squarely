@@ -1,7 +1,12 @@
 <!-- eslint-disable vue/no-mutating-props -->
 <script setup lang="ts">
 import { useCataloguesStore } from "@/stores/catalogues";
-import { getLineTotal } from "@/utils/quotationPricing";
+import { useConfigStore } from "@/stores/config";
+import { formatCurrencyAmount, getVatSummary } from "@/utils/quotationConfig";
+import {
+  getLineDiscountAmount,
+  getLineTotal,
+} from "@/utils/quotationPricing";
 
 interface Emit {
   (e: "removeProduct", value: number): void;
@@ -21,6 +26,7 @@ interface Props {
     hours: number;
     discountType?: "none" | "percent" | "currency";
     discountValue?: number;
+    taxApplicable?: boolean | null;
     description: string;
   };
 }
@@ -40,6 +46,7 @@ const props = withDefaults(defineProps<Props>(), {
     hours: 1,
     discountType: "none",
     discountValue: 0,
+    taxApplicable: true,
     description: "",
   }),
 });
@@ -48,6 +55,9 @@ const emit = defineEmits<Emit>();
 
 const cataloguesStore = useCataloguesStore();
 cataloguesStore.init();
+
+const configStore = useConfigStore();
+configStore.init();
 
 const catalogueOptions = computed<CatalogueOption[]>(() =>
   cataloguesStore.all
@@ -78,6 +88,8 @@ const selectedItem = computed({
       props.data.catalogueItemId = matchedItem.id;
       props.data.title = matchedItem.title;
       props.data.cost = matchedItem.price;
+      props.data.discountType = "none";
+      props.data.discountValue = 0;
       props.data.description = matchedItem.description;
       return;
     }
@@ -169,6 +181,24 @@ const removeProduct = () => {
 };
 
 const totalPrice = computed(() => getLineTotal(props.data));
+const discountAmount = computed(() => getLineDiscountAmount(props.data));
+const formattedDiscountAmount = computed(() =>
+  formatCurrencyAmount(discountAmount.value, configStore.financial),
+);
+const formattedTotalPrice = computed(() =>
+  formatCurrencyAmount(totalPrice.value, configStore.financial),
+);
+const lineTaxApplicable = computed({
+  get: () => props.data.taxApplicable !== false,
+  set: (value: boolean) => {
+    props.data.taxApplicable = Boolean(value);
+  },
+});
+const taxSummaryLabel = computed(() =>
+  lineTaxApplicable.value
+    ? getVatSummary(configStore.financial).value
+    : "Not Applied",
+);
 </script>
 
 <template>
@@ -183,13 +213,13 @@ const totalPrice = computed(() => getLineTotal(props.data));
       <VCol v-if="canEditQuantity" cols="12" md="2">
         <h6 class="text-h6 ps-2">Quantity</h6>
       </VCol>
-      <VCol v-if="canEditDiscount" cols="12" md="2">
-        <h6 class="text-h6">Discount</h6>
+      <VCol cols="12" md="2">
+        <h6 class="text-h6 ps-2">Amount</h6>
       </VCol>
     </VRow>
   </div>
 
-  <VCard flat border class="d-flex flex-sm-row flex-column-reverse">
+  <VCard flat border class="d-flex flex-sm-row flex-column-reverse product-edit-card">
     <div class="pa-6 flex-grow-1">
       <VRow>
         <VCol cols="12" md="6">
@@ -201,15 +231,22 @@ const totalPrice = computed(() => getLineTotal(props.data));
             class="mb-6"
           />
 
-          <AppTextarea
-            id="item-description"
-            v-model="props.data.description"
-            auto-grow
-            rows="2"
-            placeholder="Item description"
-            persistent-placeholder
-            :class="{ 'product-description-field': canEditPrice }"
-          />
+          <div class="product-description-row">
+            <AppTextarea
+              id="item-description"
+              v-model="props.data.description"
+              auto-grow
+              rows="2"
+              placeholder="Item description"
+              persistent-placeholder
+              class="product-description-field"
+            />
+
+            <div class="line-adjustment-summary text-caption text-medium-emphasis">
+              <div>Discount: {{ formattedDiscountAmount }}</div>
+              <div>Tax: {{ taxSummaryLabel }}</div>
+            </div>
+          </div>
         </VCol>
 
         <VCol v-if="canEditPrice" cols="12" md="2" sm="4">
@@ -230,37 +267,13 @@ const totalPrice = computed(() => getLineTotal(props.data));
           />
         </VCol>
 
-        <VCol v-if="canEditDiscount" cols="12" md="2" sm="4">
-          <AppSelect
-            id="item-discount-type"
-            v-model="props.data.discountType"
-            :items="discountOptions"
-            item-title="title"
-            item-value="value"
-            placeholder="No"
-            class="mb-4"
-          />
-
-          <AppTextField
-            v-if="
-              props.data.discountType === 'percent' ||
-              props.data.discountType === 'currency'
-            "
-            id="item-discount-value"
-            v-model="props.data.discountValue"
-            type="number"
-            :placeholder="
-              props.data.discountType === 'percent' ? '%' : 'Amount'
-            "
-            min="0"
-            :max="discountValueMax"
-            class="mb-2"
-          />
-
-          <p class="my-2 text-high-emphasis">
-            <span class="d-inline d-md-none">Line total: </span>
-            ${{ totalPrice }}
-          </p>
+        <VCol cols="12" md="2" sm="4">
+          <div class="line-amount-summary">
+            <p class="mb-1 text-high-emphasis font-weight-medium">
+              <span class="d-inline d-md-none">Line total: </span>
+              {{ formattedTotalPrice }}
+            </p>
+          </div>
         </VCol>
       </VRow>
     </div>
@@ -272,15 +285,94 @@ const totalPrice = computed(() => getLineTotal(props.data));
       <IconBtn size="36" @click="removeProduct">
         <VIcon :size="24" icon="tabler-x" />
       </IconBtn>
+
+      <VMenu
+        v-if="canEditDiscount"
+        location="bottom end"
+        :close-on-content-click="false"
+      >
+        <template #activator="{ props: menuProps }">
+          <IconBtn v-bind="menuProps" size="32" class="mt-auto product-settings-btn">
+            <VIcon :size="20" icon="tabler-settings" />
+          </IconBtn>
+        </template>
+
+        <VCard class="product-settings-menu pa-4" elevation="8">
+          <div class="d-flex gap-3 mb-4">
+            <AppSelect
+              id="item-discount-type"
+              v-model="props.data.discountType"
+              :items="discountOptions"
+              item-title="title"
+              item-value="value"
+              label="Discount Type"
+              density="compact"
+            />
+
+            <AppTextField
+              id="item-discount-value"
+              v-model="props.data.discountValue"
+              type="number"
+              label="Amount"
+              min="0"
+              :max="discountValueMax"
+              density="compact"
+              :disabled="props.data.discountType === 'none'"
+            />
+          </div>
+
+          <VSwitch
+            v-model="lineTaxApplicable"
+            label="Taxable"
+            density="compact"
+            color="primary"
+            hide-details
+          />
+        </VCard>
+      </VMenu>
     </div>
   </VCard>
 </template>
 
 <style scoped>
+.product-edit-card {
+  position: relative;
+}
+
+.item-actions {
+  min-inline-size: 42px;
+  padding-block: 0.25rem;
+}
+
+.product-settings-menu {
+  inline-size: 320px;
+}
+
+.line-amount-summary {
+  min-inline-size: 0;
+}
+
+.product-description-row {
+  display: grid;
+  align-items: start;
+  gap: 1rem;
+  grid-template-columns: minmax(0, calc(133.333% + 1.5rem)) 9rem;
+  inline-size: calc(166.666% + 3rem);
+}
+
+.line-adjustment-summary {
+  padding-block-start: 0.25rem;
+}
+
 @media (min-width: 960px) {
   .product-description-field {
-    inline-size: calc(133.333% + 1.5rem);
     max-inline-size: none;
+  }
+}
+
+@media (max-width: 959.98px) {
+  .product-description-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>

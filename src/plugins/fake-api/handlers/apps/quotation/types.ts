@@ -63,6 +63,7 @@ export interface PurchasedProduct {
   hours: number;
   discountType?: "none" | "percent" | "currency";
   discountValue?: number;
+  taxApplicable?: boolean | null;
   description: string;
 }
 

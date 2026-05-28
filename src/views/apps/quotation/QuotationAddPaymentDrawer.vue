@@ -28,7 +28,13 @@ const documentLabel = computed(
   () => props.documentLabel?.trim() || "Quotation",
 );
 const balanceLabel = computed(() => `${documentLabel.value} Balance`);
-const paymentMethodOptions = ["Bank Transfer", "Cash", "Credit Card"];
+const summaryBalance = computed(() => quotationBalance.value || "0");
+const paymentMethodOptions = [
+  { title: "Cash", value: "Cash", icon: "tabler-cash" },
+  { title: "Bank", value: "Bank Transfer", icon: "tabler-building-bank" },
+  { title: "Card", value: "Credit Card", icon: "tabler-credit-card" },
+  { title: "Cheque", value: "Cheque", icon: "tabler-file-dollar" },
+];
 
 const normalisePaymentMethod = (value?: string | null) => {
   const normalized = value?.trim().toLowerCase() || "";
@@ -36,6 +42,7 @@ const normalisePaymentMethod = (value?: string | null) => {
   if (normalized === "cash") return "Cash";
   if (normalized === "bank" || normalized === "bank transfer")
     return "Bank Transfer";
+  if (normalized === "cheque" || normalized === "check") return "Cheque";
   if (
     normalized === "credit" ||
     normalized === "credit card" ||
@@ -134,12 +141,25 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
           <VForm @submit.prevent="onSubmit">
             <VRow>
               <VCol cols="12">
-                <AppTextField
-                  id="Quotation-balance"
-                  v-model="quotationBalance"
-                  :label="balanceLabel"
-                  readonly
-                  placeholder="$99"
+                <div class="receipt-summary-card">
+                  <div>
+                    <div class="text-caption text-medium-emphasis">
+                      {{ balanceLabel }}
+                    </div>
+                    <div class="text-h6 font-weight-medium">
+                      {{ summaryBalance }}
+                    </div>
+                  </div>
+                </div>
+              </VCol>
+
+              <VCol cols="12">
+                <AppDateTimePicker
+                  id="Quotation-payment-date"
+                  v-model="paymentDate"
+                  label="Payment Date"
+                  placeholder="Select Date"
+                  :error-messages="paymentDateError ? [paymentDateError] : []"
                 />
               </VCol>
 
@@ -157,26 +177,37 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
               </VCol>
 
               <VCol cols="12">
-                <AppDateTimePicker
-                  id="Quotation-payment-date"
-                  v-model="paymentDate"
-                  label="Payment Date"
-                  placeholder="Select Date"
-                  :error-messages="paymentDateError ? [paymentDateError] : []"
-                />
-              </VCol>
-
-              <VCol cols="12">
-                <AppSelect
+                <div class="text-subtitle-2 mb-2">Payment Method</div>
+                <VBtnToggle
                   id="Quotation-payment-method"
                   v-model="paymentMethod"
-                  label="Select Payment Method"
-                  placeholder="Select Payment Method"
-                  :items="paymentMethodOptions"
-                  :error-messages="
-                    paymentMethodError ? [paymentMethodError] : []
-                  "
-                />
+                  class="payment-method-toggle"
+                  mandatory
+                  divided
+                >
+                  <VTooltip
+                    v-for="option in paymentMethodOptions"
+                    :key="option.value"
+                    :text="option.title"
+                    location="top"
+                  >
+                    <template #activator="{ props: tooltipProps }">
+                      <VBtn
+                        v-bind="tooltipProps"
+                        :value="option.value"
+                        :aria-label="option.title"
+                      >
+                        <VIcon :icon="option.icon" />
+                      </VBtn>
+                    </template>
+                  </VTooltip>
+                </VBtnToggle>
+                <div
+                  v-if="paymentMethodError"
+                  class="text-error text-caption mt-1"
+                >
+                  {{ paymentMethodError }}
+                </div>
               </VCol>
 
               <VCol cols="12">
@@ -207,3 +238,25 @@ const handleDrawerModelValueUpdate = (val: boolean) => {
     </PerfectScrollbar>
   </VNavigationDrawer>
 </template>
+
+<style scoped>
+.payment-method-toggle {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  inline-size: 100%;
+}
+
+.payment-method-toggle :deep(.v-btn) {
+  min-inline-size: 0;
+}
+
+.receipt-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+  background: rgba(var(--v-theme-surface), 0.35);
+  padding: 0.9rem 1rem;
+}
+</style>

@@ -96,6 +96,7 @@ const addItem = () => {
     hours: 1,
     discountType: "none",
     discountValue: 0,
+    taxApplicable: true,
     description: "",
   });
 };

@@ -940,7 +940,7 @@ onBeforeUnmount(() => {
             prepend-icon="tabler-currency-dollar"
             @click="isAddPaymentSidebarActive = true"
           >
-            Add Payment
+            Add Receipt
           </VBtn>
         </VCardText>
       </VCard>
