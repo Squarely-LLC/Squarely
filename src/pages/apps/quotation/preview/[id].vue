@@ -17,6 +17,7 @@ import { createQuotationPdfFile } from "@/utils/quotationPdf";
 import { loadQuotationPreviewDraft } from "@/utils/quotationPreviewDraft";
 import {
     getLineTotal,
+    getLineDiscountAmount,
     getQuotationDiscountTotal,
     getQuotationGrandTotal,
     getQuotationSubtotal,
@@ -193,6 +194,9 @@ const companyContactLines = computed(() =>
   getQuotationCompanyContactLines(legalConfiguration.value),
 );
 const vatSummary = computed(() => getVatSummary(financialConfiguration.value));
+const vatRateLabel = computed(() =>
+  financialConfiguration.value?.vat?.enabled ? "VAT" : "VAT",
+);
 const renderedNote = computed(() =>
   normalizeRichText(quotationRecord.value?.note),
 );
@@ -738,45 +742,47 @@ if (!isEmbeddedActionFrame) {
               </VCol>
             </VRow>
 
-            <VTable
-              class="quotation-preview-table border text-high-emphasis overflow-hidden mb-6"
-            >
-              <thead>
-                <tr>
-                  <th scope="col">ITEM</th>
-                  <th scope="col">DESCRIPTION</th>
-                  <th scope="col" class="text-center">QUANTITY</th>
-                  <th scope="col" class="text-center">PRICE</th>
-                  <th scope="col" class="text-center">TOTAL</th>
-                </tr>
-              </thead>
+            <div class="quotation-preview-table text-high-emphasis mb-6" role="table">
+              <div class="quotation-preview-table__row quotation-preview-table__row--head" role="row">
+                <div class="quotation-preview-table__cell text-center" role="columnheader">NO.</div>
+                <div class="quotation-preview-table__cell" role="columnheader">ITEM</div>
+                <div class="quotation-preview-table__cell text-center" role="columnheader">QTY</div>
+                <div class="quotation-preview-table__cell text-center" role="columnheader">UNIT<br />PRICE</div>
+                <div class="quotation-preview-table__cell text-center" role="columnheader">DISC</div>
+                <div class="quotation-preview-table__cell text-center" role="columnheader">TAXABLE<br />AMOUNT</div>
+                <div class="quotation-preview-table__cell text-center" role="columnheader">{{ vatRateLabel }}</div>
+                <div class="quotation-preview-table__cell text-center" role="columnheader">AMOUNT</div>
+              </div>
 
-              <tbody class="text-base">
-                <tr
-                  v-for="(item, index) in purchasedProducts"
-                  :key="`${item.title}-${index}`"
-                >
-                  <td class="quotation-item-cell">{{ item.title }}</td>
-                  <td class="quotation-description-cell">
-                    {{ item.description }}
-                  </td>
-                  <td class="text-center">{{ item.hours }}</td>
-                  <td class="text-center">
-                    {{
-                      formatCurrencyAmount(item.cost, financialConfiguration)
-                    }}
-                  </td>
-                  <td class="text-center">
-                    {{
-                      formatCurrencyAmount(
-                        getLineTotal(item),
-                        financialConfiguration,
-                      )
-                    }}
-                  </td>
-                </tr>
-              </tbody>
-            </VTable>
+              <div
+                v-for="(item, index) in purchasedProducts"
+                :key="`${item.title}-${index}`"
+                class="quotation-preview-table__row"
+                role="row"
+              >
+                <div class="quotation-preview-table__cell text-center" role="cell">{{ index + 1 }}</div>
+                <div class="quotation-preview-table__cell quotation-item-cell" role="cell">{{ item.title }}</div>
+                <div class="quotation-preview-table__cell text-center" role="cell">{{ item.hours }}</div>
+                <div class="quotation-preview-table__cell text-center" role="cell">
+                  {{ formatCurrencyAmount(item.cost, financialConfiguration) }}
+                </div>
+                <div class="quotation-preview-table__cell text-center" role="cell">
+                  {{
+                    formatCurrencyAmount(
+                      getLineDiscountAmount(item),
+                      financialConfiguration,
+                    )
+                  }}
+                </div>
+                <div class="quotation-preview-table__cell text-center" role="cell">
+                  {{ formatCurrencyAmount(getLineTotal(item), financialConfiguration) }}
+                </div>
+                <div class="quotation-preview-table__cell text-center" role="cell">-</div>
+                <div class="quotation-preview-table__cell text-center" role="cell">
+                  {{ formatCurrencyAmount(getLineTotal(item), financialConfiguration) }}
+                </div>
+              </div>
+            </div>
 
             <div class="d-flex justify-end flex-column flex-sm-row print-row">
               <div>
@@ -1092,6 +1098,9 @@ body.document-quick-preview .layout-content-wrapper {
 
 .quotation-preview-table {
   --v-table-header-color: var(--v-theme-surface);
+  display: block;
+  inline-size: calc(100% + 6rem);
+  margin-inline: -2rem -4rem;
 
   table {
     table-layout: fixed;
@@ -1099,20 +1108,46 @@ body.document-quick-preview .layout-content-wrapper {
 
   th:nth-child(1),
   td:nth-child(1) {
-    inline-size: 30%;
+    inline-size: 5%;
   }
 
   th:nth-child(2),
   td:nth-child(2) {
-    inline-size: 34%;
+    inline-size: 24%;
   }
 
   th:nth-child(3),
-  td:nth-child(3),
+  td:nth-child(3) {
+    inline-size: 8%;
+  }
+
   th:nth-child(4),
-  td:nth-child(4),
+  td:nth-child(4) {
+    inline-size: 12%;
+  }
+
   th:nth-child(5),
   td:nth-child(5) {
+    inline-size: 8%;
+  }
+
+  th:nth-child(6),
+  td:nth-child(6) {
+    inline-size: 14%;
+  }
+
+  th:nth-child(7),
+  td:nth-child(7) {
+    inline-size: 5%;
+  }
+
+  th:nth-child(8),
+  td:nth-child(8) {
+    inline-size: 14%;
+  }
+
+  th:nth-child(9),
+  td:nth-child(9) {
     inline-size: 12%;
   }
 
@@ -1126,6 +1161,137 @@ body.document-quick-preview .layout-content-wrapper {
   overflow-wrap: anywhere;
   white-space: normal;
   word-break: break-word;
+}
+
+.quotation-preview-table {
+  border-radius: 0;
+}
+
+.quotation-preview-table :deep(.v-table__wrapper) {
+  inline-size: 100%;
+  overflow: visible;
+}
+
+.quotation-preview-table :deep(table) {
+  border-collapse: collapse;
+  inline-size: 100%;
+  min-inline-size: 100%;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.quotation-preview-table :deep(th),
+.quotation-preview-table :deep(td) {
+  border-inline: 0;
+  border-block-end: 1px solid rgba(var(--v-border-color), 0.24);
+  border-color: rgba(var(--v-border-color), 0.22);
+  font-size: 0.78rem;
+  padding: 0.6rem 0.35rem;
+  vertical-align: middle;
+}
+
+.quotation-preview-table :deep(thead th) {
+  border-block-start: 1px solid rgba(var(--v-border-color), 0.24);
+  background: rgba(var(--v-theme-surface), 0.18);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.15;
+  padding-block: 0.55rem;
+  white-space: nowrap;
+}
+
+.quotation-preview-table :deep(thead th:last-child),
+.quotation-preview-table :deep(tbody td:last-child) {
+  position: relative;
+}
+
+.quotation-preview-table :deep(thead th:last-child::before) {
+  position: absolute;
+  border-block-start: 1px solid rgba(var(--v-border-color), 0.24);
+  content: "";
+  inset-block-start: -1px;
+  inset-inline-end: -6rem;
+  inline-size: 6rem;
+}
+
+.quotation-preview-table :deep(thead th:last-child::after),
+.quotation-preview-table :deep(tbody td:last-child::after) {
+  position: absolute;
+  border-block-end: 1px solid rgba(var(--v-border-color), 0.24);
+  content: "";
+  inset-block-end: -1px;
+  inset-inline-end: -6rem;
+  inline-size: 6rem;
+}
+
+.quotation-preview-table :deep(tfoot td) {
+  background: rgba(var(--v-theme-surface), 0.1);
+}
+
+.quotation-preview-table :deep(tbody tr:last-child td) {
+  border-block-end: 1px solid rgba(var(--v-border-color), 0.24);
+}
+
+.quotation-preview-table :deep(td:not(:nth-child(2))) {
+  white-space: nowrap;
+}
+
+.quotation-preview-table__heading {
+  display: inline-block;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.quotation-preview-table__summary-row td {
+  white-space: nowrap;
+}
+
+.quotation-preview-table :deep(.quotation-preview-table__fill-cell) {
+  padding: 0;
+}
+
+.quotation-preview-table {
+  display: block;
+  inline-size: 100%;
+  margin-inline: 0;
+}
+
+.quotation-preview-table__row {
+  display: grid;
+  align-items: center;
+  border-block-end: 1px solid rgba(var(--v-border-color), 0.24);
+  grid-template-columns: 5% 36% 8% 11% 8% 14% 5% 13%;
+  min-inline-size: 100%;
+}
+
+.quotation-preview-table__row--head {
+  border-block-start: 1px solid rgba(var(--v-border-color), 0.24);
+  background: rgba(var(--v-theme-surface), 0.18);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.quotation-preview-table__cell {
+  padding: 0.6rem 0.35rem;
+  font-size: 0.875rem;
+  min-inline-size: 0;
+}
+
+.quotation-preview-table__row--head .quotation-preview-table__cell {
+  padding-block: 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.quotation-preview-table__cell:not(.quotation-item-cell) {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+.quotation-preview-table__fill-cell {
+  padding: 0;
 }
 
 .terms-preview__content p:last-child {
