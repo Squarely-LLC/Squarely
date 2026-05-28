@@ -2933,10 +2933,16 @@ const openDocumentPreviewWindow = (
   const route = router.resolve({
     name: getPreviewRouteName(kind),
     params: { id: record.id },
-    query: action ? { [action]: "1" } : undefined,
+    query: action ? { quickPreview: "1", [action]: "1" } : { quickPreview: "1" },
   });
 
-  window.open(route.href, "_blank", "noopener,noreferrer");
+  selectedPreviewDocument.value = {
+    href: route.href,
+    id: record.id,
+    kind,
+    title: record.quoteNumber || `${kind.toUpperCase()} #${record.id}`,
+  };
+  previewDialogVisible.value = true;
 };
 
 const deleteDocumentRecord = (
