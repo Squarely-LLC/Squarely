@@ -223,7 +223,6 @@ const createItemTypeDialogVisible = ref(false);
 const createDraftItemDialogVisible = ref(false);
 const editLineDialogVisible = ref(false);
 const phaseDialogVisible = ref(false);
-const previewDialogVisible = ref(false);
 const selectionDialogVisible = ref(false);
 const externalDocumentDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
@@ -247,13 +246,6 @@ const externalDocumentSelectionKind = ref<Extract<
 > | null>(null);
 const selectedItemIds = ref<string[]>([]);
 const selectedDocumentParentItemId = ref<string | null>(null);
-
-const selectedPreviewDocument = ref<{
-  href: string;
-  id: number | string;
-  kind: DealPreviewKind;
-  title: string;
-} | null>(null);
 
 const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
@@ -2896,16 +2888,9 @@ const openQuickDocumentPreview = (
   const route = router.resolve({
     name: getPreviewRouteName(kind),
     params: { id: record.id },
-    query: { quickPreview: "1" },
+    query: undefined,
   });
-
-  selectedPreviewDocument.value = {
-    href: route.href,
-    id: record.id,
-    kind,
-    title: record.quoteNumber || `${kind.toUpperCase()} #${record.id}`,
-  };
-  previewDialogVisible.value = true;
+  window.open(route.href, "_blank", "noopener,noreferrer");
 };
 
 const openDocumentEdit = (
@@ -2933,16 +2918,9 @@ const openDocumentPreviewWindow = (
   const route = router.resolve({
     name: getPreviewRouteName(kind),
     params: { id: record.id },
-    query: action ? { quickPreview: "1", [action]: "1" } : { quickPreview: "1" },
+    query: action ? { [action]: "1" } : undefined,
   });
-
-  selectedPreviewDocument.value = {
-    href: route.href,
-    id: record.id,
-    kind,
-    title: record.quoteNumber || `${kind.toUpperCase()} #${record.id}`,
-  };
-  previewDialogVisible.value = true;
+  window.open(route.href, "_blank", "noopener,noreferrer");
 };
 
 const deleteDocumentRecord = (
@@ -3136,15 +3114,6 @@ const saveInvoicePayment = (payment: InvoicePaymentInput) => {
 
   notifications.push("Payment recorded.", "success", 2500);
   selectedPaymentDocument.value = null;
-};
-
-const openSelectedPreviewInPage = () => {
-  if (!selectedPreviewDocument.value) return;
-
-  router.push({
-    name: getPreviewRouteName(selectedPreviewDocument.value.kind),
-    params: { id: selectedPreviewDocument.value.id },
-  });
 };
 
 const resolveProductSelectionKey = (product: {
@@ -6923,57 +6892,6 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
 
     <VCard>
-      <VDialog v-model="previewDialogVisible" max-width="1280">
-        <DialogCloseBtn @click="previewDialogVisible = false" />
-        <VCard class="items-preview-dialog">
-          <VCardItem>
-            <template #title>
-              <div
-                class="d-flex align-center justify-space-between gap-4 flex-wrap"
-              >
-                <div>
-                  <div class="text-overline text-primary mb-1">
-                    Quick Preview
-                  </div>
-                  <div class="text-h6">
-                    {{ selectedPreviewDocument?.title || "Document Preview" }}
-                  </div>
-                </div>
-
-                <div class="d-flex align-center gap-2 flex-wrap">
-                  <VBtn
-                    variant="tonal"
-                    prepend-icon="tabler-external-link"
-                    :disabled="!selectedPreviewDocument"
-                    @click="openSelectedPreviewInPage"
-                  >
-                    Open Full Page
-                  </VBtn>
-                  <VBtn
-                    icon
-                    variant="text"
-                    @click="previewDialogVisible = false"
-                  >
-                    <VIcon icon="tabler-x" />
-                  </VBtn>
-                </div>
-              </div>
-            </template>
-          </VCardItem>
-
-          <VDivider />
-
-          <VCardText class="items-preview-dialog__body">
-            <iframe
-              v-if="selectedPreviewDocument"
-              :key="selectedPreviewDocument.href"
-              :src="selectedPreviewDocument.href"
-              class="items-preview-dialog__frame"
-              title="Document quick preview"
-            />
-          </VCardText>
-        </VCard>
-      </VDialog>
       <VDialog v-model="externalDocumentDialogVisible" max-width="680">
         <DialogCloseBtn @click="externalDocumentDialogVisible = false" />
         <VCard>
