@@ -659,7 +659,7 @@ export const getDealRetainerServiceLines = (
       name: service.name,
       category: service.category,
       description: service.description,
-      quantity: item.retainerPeriods ?? service.qty ?? item.quantity,
+      quantity: service.qty ?? item.quantity,
     })),
   });
 
@@ -1358,6 +1358,10 @@ function buildRetainerProducts(
   billingPeriod?: DealBillingPeriod | null,
 ) {
   const services = getDealRetainerServiceLines(item, record);
+  const serviceQuantityTotal =
+    services.reduce((sum, service) => sum + Number(service.quantity || 0), 0) ||
+    1;
+  const periodCount = billingPeriod ? 1 : Number(item.retainerPeriods || 1);
   const uniqueServiceNames = Array.from(
     new Set(
       services
@@ -1385,7 +1389,7 @@ function buildRetainerProducts(
         billingPeriod,
       ),
       discountPercent: item.discountPercent ?? 0,
-      hours: 1,
+      hours: serviceQuantityTotal * (periodCount > 0 ? periodCount : 1),
       title: item.name,
     }),
   ];
@@ -1438,7 +1442,8 @@ function buildCollapsedRetainerPeriodProduct(
       billingPeriod,
     ),
     discountPercent: rootItem.discountPercent ?? 0,
-    hours: 1,
+    hours:
+      items.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 1,
     title: rootItem.name,
   });
 }

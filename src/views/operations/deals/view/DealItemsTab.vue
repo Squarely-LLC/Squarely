@@ -1877,13 +1877,36 @@ const getItemEffectiveQuantity = (
 ) => {
   if (!item) return 0;
   if (!item.parentItemId && isRetainerCatalogueType(item.catalogueType)) {
-    return getRetainerTotalPeriods(item);
+    return (
+      getRetainerTotalPeriods(item) * getRetainerServiceQuantityTotal(item)
+    );
   }
   if (!item.parentItemId && isRecurrentCatalogueType(item.catalogueType)) {
     return getRecurrentTotalPeriods(item);
   }
 
   return Number(item.quantity ?? 0);
+};
+
+const getRetainerServiceQuantityTotal = (
+  item?: DealItem | DealItemWithPlan | null,
+) => {
+  if (!item?.catalogueItemId || !isRetainerCatalogueType(item.catalogueType))
+    return 1;
+
+  const record = cataloguesStore.recordById(
+    item.catalogueItemId,
+    item.catalogueType || undefined,
+  );
+
+  if (record?.type !== "Retainer Service") return 1;
+
+  const total = getDealRetainerServiceLines(
+    item as DealItem,
+    record as CatalogueRetainerServiceRecord,
+  ).reduce((sum, service) => sum + Number(service.quantity || 0), 0);
+
+  return total > 0 ? total : 1;
 };
 
 const getItemQuantityLabel = (item?: DealItem | DealItemWithPlan | null) =>

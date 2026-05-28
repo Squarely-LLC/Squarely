@@ -9,6 +9,7 @@ import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/t
 import type {
   CatalogueJobConfigTask,
   CatalogueRecord,
+  CatalogueRetainerServiceRecord,
   CatalogueTaskStartTrigger,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
@@ -33,7 +34,10 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
-import { getBillableRootDealItems } from "@/utils/dealDocumentDraft";
+import {
+  getBillableRootDealItems,
+  getDealRetainerServiceLines,
+} from "@/utils/dealDocumentDraft";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -1147,10 +1151,32 @@ const dealBillingUnpaid = computed(() =>
   ),
 );
 
-const lineAmount = (
-  item: Pick<DealItem, "quantity" | "unitPrice" | "discountPercent">,
-) => {
-  const quantity = Number(item.quantity ?? 1);
+const getDealItemBillingQuantity = (item: DealItem) => {
+  if (!item.parentItemId && item.catalogueType === "Retainer Service") {
+    const record = item.catalogueItemId
+      ? cataloguesStore.recordById(item.catalogueItemId, item.catalogueType)
+      : null;
+
+    if (record?.type === "Retainer Service") {
+      const serviceQuantity =
+        getDealRetainerServiceLines(
+          item,
+          record as CatalogueRetainerServiceRecord,
+        ).reduce((sum, service) => sum + Number(service.quantity || 0), 0) || 1;
+
+      return Number(item.retainerPeriods || 0) * serviceQuantity;
+    }
+  }
+
+  if (!item.parentItemId && item.catalogueType === "Reccurent Service") {
+    return Number(item.recurrentPeriods || 0);
+  }
+
+  return Number(item.quantity ?? 1);
+};
+
+const lineAmount = (item: DealItem) => {
+  const quantity = getDealItemBillingQuantity(item);
   const unitPrice = Number(item.unitPrice ?? 0);
   const discountPercent = Number(item.discountPercent ?? 0);
   const subtotal =
@@ -1165,28 +1191,23 @@ const lineAmount = (
   );
 };
 
-const documentedDealSelectionKeys = computed(() => {
-  const keys = new Set<string>();
-
-  dealBillingDocuments.value.forEach((record) => {
-    (record.purchasedProducts || []).forEach((product) => {
-      const selectionKey = String(product.dealSelectionKey || "").trim();
-      if (selectionKey) keys.add(selectionKey);
-    });
-  });
-
-  return keys;
-});
-
-const dealBillingToBeInvoiced = computed(() => {
+const dealBillingGrossTotal = computed(() => {
   if (!deal.value) return 0;
 
   return getBillableRootDealItems(deal.value.items || [], (id, typeHint) =>
     cataloguesStore.recordById(id, typeHint),
   )
-    .filter((item) => !documentedDealSelectionKeys.value.has(item.selectionKey))
     .reduce((sum, item) => sum + lineAmount(item), 0);
 });
+
+const dealBillingToBeInvoiced = computed(() =>
+  Math.max(
+    dealBillingGrossTotal.value -
+      dealBillingPaid.value -
+      dealBillingUnpaid.value,
+    0,
+  ),
+);
 
 const dealCollaboratorOptions = computed(() =>
   [
