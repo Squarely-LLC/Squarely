@@ -5,7 +5,12 @@ import type {
   PurchasedProduct,
   Quotation,
   QuotationRecord,
+  QuotationStatus,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
+import { database as seedInvoices } from "@/plugins/fake-api/handlers/apps/invoice/db";
+import type { InvoiceRecord } from "@/plugins/fake-api/handlers/apps/invoice/types";
+import { database as seedProformas } from "@/plugins/fake-api/handlers/apps/proforma/db";
+import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import {
   cloneDealBillingPeriod,
   inferDealBillingPeriodFromKey,
@@ -24,9 +29,12 @@ import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 
 const STORAGE_KEY = "app.quotations.v6";
+const PROFORMA_STORAGE_KEY = "app.proformas.v2";
+const INVOICE_STORAGE_KEY = "app.invoices.v3";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
   quotation?: Partial<Quotation>;
 };
+type FollowUpDocumentRecord = ProformaRecord | InvoiceRecord;
 
 function safeClone<T>(value: T, fallback: T): T {
   const raw = toRaw(value) as T;
@@ -97,6 +105,24 @@ function loadFromStorage(): QuotationRecord[] | null {
   } catch (error) {
     console.warn("Failed to load quotations from storage:", error);
     return null;
+  }
+}
+
+function loadFollowUpDocumentsFromStorage<T>(
+  storageKey: string,
+  fallback: T[],
+): T[] {
+  if (typeof window === "undefined") return fallback;
+
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+
+    return Array.isArray(parsed) ? (parsed as T[]) : fallback;
+  } catch (error) {
+    console.warn(`Failed to load follow-up documents from ${storageKey}:`, error);
+    return fallback;
   }
 }
 
@@ -362,6 +388,102 @@ function formatCurrencyAmount(value: number) {
   return `$${Math.max(0, Number(value) || 0).toLocaleString()}`;
 }
 
+function parseDateOnly(value: string | null | undefined) {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (!match) return null;
+
+  const parsed = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+  );
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function addDays(value: Date, days: number) {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+
+  return next;
+}
+
+function isAutoCancelableQuotationStatus(status: string | null | undefined) {
+  return status === "Pending" || status === "Approved";
+}
+
+function documentReferencesQuotation(
+  document: FollowUpDocumentRecord,
+  quotation: Quotation,
+) {
+  const quoteNumber = quotation.quoteNumber.trim().toLowerCase();
+  const note = String(document.note ?? "").toLowerCase();
+
+  return Boolean(
+    quoteNumber && note.includes(`converted from quotation ${quoteNumber}`),
+  );
+}
+
+function isFollowUpDocumentForQuotation(
+  document: FollowUpDocumentRecord,
+  quotation: Quotation,
+) {
+  if (documentReferencesQuotation(document, quotation)) return true;
+
+  const quotationDealId = quotation.dealId;
+  const documentDealId = document.quotation.dealId;
+
+  if (
+    quotationDealId === null ||
+    quotationDealId === undefined ||
+    documentDealId === null ||
+    documentDealId === undefined ||
+    String(quotationDealId) !== String(documentDealId)
+  ) {
+    return false;
+  }
+
+  const quotationIssuedDate = parseDateOnly(quotation.issuedDate);
+  const documentIssuedDate = parseDateOnly(document.quotation.issuedDate);
+
+  if (!quotationIssuedDate || !documentIssuedDate) return true;
+
+  return documentIssuedDate.getTime() >= quotationIssuedDate.getTime();
+}
+
+function shouldAutoCancelQuotation(
+  record: QuotationRecord,
+  followUpDocuments: FollowUpDocumentRecord[],
+  configuredDays: number,
+  today = new Date(),
+) {
+  const status = record.quotation.quotationStatus;
+
+  if (!isAutoCancelableQuotationStatus(status)) return false;
+  if (!Number.isFinite(configuredDays) || configuredDays <= 0) return false;
+  if (
+    followUpDocuments.some((document) =>
+      isFollowUpDocumentForQuotation(document, record.quotation),
+    )
+  ) {
+    return false;
+  }
+
+  const issuedDate = parseDateOnly(record.quotation.issuedDate);
+  if (!issuedDate) return false;
+
+  return (
+    startOfDay(today).getTime() >= addDays(issuedDate, configuredDays).getTime()
+  );
+}
+
 export type QuotationPaymentInput = {
   amount: number;
   date: string;
@@ -607,6 +729,74 @@ export const useQuotationsStore = defineStore("quotations", {
       saveToStorage(cloneQuotationArray(this.items));
     },
 
+    applyAutoCancellation(today = new Date()) {
+      const config = loadActiveAppConfigurations();
+      const configuredDays = Number(config.deals?.quotationLostIn ?? 0);
+
+      if (!Number.isFinite(configuredDays) || configuredDays <= 0) return 0;
+
+      const followUpDocuments: FollowUpDocumentRecord[] = [
+        ...loadFollowUpDocumentsFromStorage<ProformaRecord>(
+          PROFORMA_STORAGE_KEY,
+          seedProformas,
+        ),
+        ...loadFollowUpDocumentsFromStorage<InvoiceRecord>(
+          INVOICE_STORAGE_KEY,
+          seedInvoices,
+        ),
+      ];
+      let canceledCount = 0;
+      const canceledDealIds = new Set<number | string>();
+
+      this.items = this.items.map((record) => {
+        if (
+          !shouldAutoCancelQuotation(
+            record,
+            followUpDocuments,
+            configuredDays,
+            today,
+          )
+        ) {
+          return record;
+        }
+
+        canceledCount += 1;
+        if (
+          record.quotation.dealId !== null &&
+          record.quotation.dealId !== undefined
+        ) {
+          canceledDealIds.add(record.quotation.dealId);
+        }
+
+        return {
+          ...record,
+          quotation: {
+            ...record.quotation,
+            quotationStatus: "Canceled" as QuotationStatus,
+          },
+        };
+      });
+
+      if (canceledCount) {
+        this.persistItems();
+
+        if (canceledDealIds.size) {
+          const dealsStore = useDealsStore();
+          dealsStore.init();
+          canceledDealIds.forEach((dealId) => {
+            dealsStore.triggerLifecycleStageTransition(
+              dealId,
+              "Closed",
+              "Quotation canceled",
+              "quotation-canceled",
+            );
+          });
+        }
+      }
+
+      return canceledCount;
+    },
+
     init(force = false) {
       if (this.initialized && !force) return;
 
@@ -625,14 +815,14 @@ export const useQuotationsStore = defineStore("quotations", {
         this.items = resequenceRevisions(
           stored.map((record) => sanitizeStoredRecord(record)),
         );
-        saveToStorage(this.items);
       } else {
         this.items = resequenceRevisions(
           seedQuotations().map((record) => sanitizeStoredRecord(record)),
         );
-        saveToStorage(this.items);
       }
 
+      this.applyAutoCancellation();
+      saveToStorage(this.items);
       this.initialized = true;
 
       if (typeof window !== "undefined") {

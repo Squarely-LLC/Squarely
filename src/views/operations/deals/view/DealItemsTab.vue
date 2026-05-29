@@ -1865,7 +1865,7 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
     };
   }
 
-  if (item?.parentItemId) {
+  if ((item as DealItem).parentItemId) {
     return {
       label: "Phase",
       value: String(getItemQuantityDisplayValue(item)),
@@ -2632,6 +2632,7 @@ const externalDocumentStatusOptions = computed(() => {
       { title: "Pending", value: "Pending" },
       { title: "Approved", value: "Approved" },
       { title: "Lost", value: "Lost" },
+      { title: "Canceled", value: "Canceled" },
     ] as const;
   }
 
@@ -2732,6 +2733,16 @@ const isDocumentConverted = (record: DealDocumentPanelRecord) => {
     status.includes("converted") ||
     Boolean(record.record.convertedInvoiceId) ||
     Boolean(record.record.convertedProformaId)
+  );
+};
+
+const isDocumentConversionBlocked = (record: DealDocumentPanelRecord) => {
+  const status = normalizeDocumentStatus(record.status);
+
+  return (
+    status === "canceled" ||
+    status === "lost" ||
+    isDocumentConverted(record)
   );
 };
 
@@ -3293,6 +3304,8 @@ const reviseDocumentRecord = (
 };
 
 const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
+  if (isDocumentConversionBlocked(record)) return;
+
   const created = proformasStore.addProforma({
     ...record.record,
     convertedInvoiceId: null,
@@ -3321,6 +3334,8 @@ const convertDocumentToInvoice = (
   kind: Extract<DealPreviewKind, "quotation" | "proforma">,
   record: DealDocumentPanelRecord,
 ) => {
+  if (isDocumentConversionBlocked(record)) return null;
+
   const created = invoicesStore.addInvoice({
     ...record.record,
     quotation: {
@@ -7278,7 +7293,7 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    :disabled="isDocumentConverted(record)"
+                                    :disabled="isDocumentConversionBlocked(record)"
                                     @click="convertQuotationToProforma(record)"
                                   >
                                     <template #prepend>
@@ -7288,7 +7303,7 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    :disabled="isDocumentConverted(record)"
+                                    :disabled="isDocumentConversionBlocked(record)"
                                     @click="convertDocumentToInvoice('quotation', record)"
                                   >
                                     <template #prepend>

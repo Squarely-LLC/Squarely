@@ -575,6 +575,8 @@ const resolveStatusVariantAndIcon = (status: string) => {
   if (status === "Approved")
     return { variant: "success", icon: "tabler-check" };
   if (status === "Lost") return { variant: "error", icon: "tabler-x" };
+  if (status === "Canceled")
+    return { variant: "secondary", icon: "tabler-ban" };
   if (status === "Converted to Invoice")
     return { variant: "primary", icon: "tabler-file-invoice" };
   if (status === "Converted to Proforma")
@@ -589,6 +591,9 @@ const resolveStatusLabel = (status: string) => {
 
   return status;
 };
+
+const isQuotationConversionBlocked = (status?: string | null) =>
+  ["Canceled", "Lost"].includes(String(status ?? ""));
 
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
@@ -758,6 +763,13 @@ const convertQuotationToProforma = (quotationId: number) => {
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
 
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceSuccess(
+      `${quotationRecord.quotation.quoteNumber} cannot be converted because it is ${quotationRecord.quotation.quotationStatus.toLowerCase()}.`,
+    );
+    return;
+  }
+
   if (quotationRecord.quotation.quotationStatus === "Converted to Proforma") {
     pushFinanceSuccess(
       `${quotationRecord.quotation.quoteNumber} is already converted to proforma.`,
@@ -814,6 +826,13 @@ const convertQuotationToProforma = (quotationId: number) => {
 const convertQuotationToInvoice = (quotationId: number) => {
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
+
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceSuccess(
+      `${quotationRecord.quotation.quoteNumber} cannot be converted because it is ${quotationRecord.quotation.quotationStatus.toLowerCase()}.`,
+    );
+    return;
+  }
 
   if (quotationRecord.quotation.quotationStatus === "Converted to Invoice") {
     pushFinanceSuccess(
@@ -1045,14 +1064,18 @@ const computedMoreList = computed(() => {
           title: "Convert to Proforma",
           value: "convert-to-proforma",
           prependIcon: "tabler-file-dollar",
-          disabled: quotationStatus === "Converted to Proforma",
+          disabled:
+            quotationStatus === "Converted to Proforma" ||
+            isQuotationConversionBlocked(quotationStatus),
           onClick: () => convertQuotationToProforma(paramId),
         },
         {
           title: "Convert to Tax invoice",
           value: "convert-to-tax-invoice",
           prependIcon: "tabler-file-invoice",
-          disabled: quotationStatus === "Converted to Invoice",
+          disabled:
+            quotationStatus === "Converted to Invoice" ||
+            isQuotationConversionBlocked(quotationStatus),
           onClick: () => convertQuotationToInvoice(paramId),
         },
       ];
@@ -1172,6 +1195,7 @@ watch(totalQuotations, (value) => {
                 'Pending',
                 'Approved',
                 'Lost',
+                'Canceled',
                 'Converted to Invoice',
                 'Converted to Proforma',
               ]"
@@ -1518,6 +1542,7 @@ watch(totalQuotations, (value) => {
                   'Pending',
                   'Approved',
                   'Lost',
+                  'Canceled',
                   'Converted to Invoice',
                   'Converted to Proforma',
                 ]"

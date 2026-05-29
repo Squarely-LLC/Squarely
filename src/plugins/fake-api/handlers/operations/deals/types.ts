@@ -89,6 +89,7 @@ export interface DealNote {
 export type DealStageLifecycleEvent =
   | "deal-created"
   | "quotation-created"
+  | "quotation-canceled"
   | "proforma-created"
   | "invoice-created"
   | "invoice-payment-updated";

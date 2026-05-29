@@ -4,6 +4,7 @@ export type QuotationStatus =
   | "Pending"
   | "Approved"
   | "Lost"
+  | "Canceled"
   | "Converted to Invoice"
   | "Converted to Proforma";
 

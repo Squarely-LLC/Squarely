@@ -234,6 +234,7 @@ function normalizePendingStageTransition(
   const validEvent =
     event === "deal-created" ||
     event === "quotation-created" ||
+    event === "quotation-canceled" ||
     event === "proforma-created" ||
     event === "invoice-created" ||
     event === "invoice-payment-updated";
