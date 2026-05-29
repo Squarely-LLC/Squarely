@@ -1749,6 +1749,10 @@ const isRecurrentParentDealItem = (
     item && !item.parentItemId && isRecurrentCatalogueType(item.catalogueType),
   );
 
+const isPeriodDrivenParentDealItem = (
+  item?: DealItem | DealItemWithPlan | null,
+) => isRetainerParentDealItem(item) || isRecurrentParentDealItem(item);
+
 const buildRetainerSelectionKeyPrefix = (itemId: number | string) =>
   `item-${itemId}-retainer`;
 
@@ -1851,30 +1855,56 @@ const hasRetainerRemainingPeriods = (
   item?: DealItem | DealItemWithPlan | null,
 ) => getRetainerRemainingPeriods(item) > 0;
 
-const formatRetainerTermSummary = (item: DealItem) => {
-  if (!isRetainerCatalogueType(item.catalogueType)) return null;
+const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
+  if (!item) return { label: "Qty", value: "--" };
 
-  const startDate = formatDocumentDate(item.retainerStartDate);
-  const endDate = formatDocumentDate(item.retainerEndDate);
-  const periods = getRetainerTotalPeriods(item);
-  const consumedPeriods = getRetainerConsumedPeriods(item);
+  if (isRetainerParentDealItem(item) || isRecurrentParentDealItem(item)) {
+    return {
+      label: "Period",
+      value: String(getItemQuantityDisplayValue(item)),
+    };
+  }
 
-  if (!periods || startDate === "--" || endDate === "--") return null;
+  if (item?.parentItemId) {
+    return {
+      label: "Phase",
+      value: String(getItemQuantityDisplayValue(item)),
+    };
+  }
 
-  return `Start Date: ${startDate}, End Date: ${endDate}, Paid Periods: ${consumedPeriods}/${periods}`;
+  return {
+    label: "Qty",
+    value: String(getItemQuantityDisplayValue(item)),
+  };
 };
 
-const formatRecurrentTermSummary = (item: DealItem) => {
-  if (!isRecurrentCatalogueType(item.catalogueType)) return null;
+const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
+  if (!item) return [] as Array<{ label: "Start Date" | "End Date"; value: string }>;
 
-  const startDate = formatDocumentDate(item.recurrentStartDate);
-  const endDate = formatDocumentDate(item.recurrentEndDate);
-  const periods = getRecurrentTotalPeriods(item);
-  const consumedPeriods = getRecurrentConsumedPeriods(item);
+  const rawStartDate = isRetainerCatalogueType(item.catalogueType)
+    ? item.retainerStartDate
+    : isRecurrentCatalogueType(item.catalogueType)
+      ? item.recurrentStartDate
+      : null;
+  const rawEndDate = isRetainerCatalogueType(item.catalogueType)
+    ? item.retainerEndDate
+    : isRecurrentCatalogueType(item.catalogueType)
+      ? item.recurrentEndDate
+      : null;
 
-  if (!periods || startDate === "--" || endDate === "--") return null;
+  const startDate = formatDocumentDate(rawStartDate);
+  const endDate = formatDocumentDate(rawEndDate);
+  const fields: Array<{ label: "Start Date" | "End Date"; value: string }> = [];
 
-  return `Start Date: ${startDate}, End Date: ${endDate}, Paid Periods: ${consumedPeriods}/${periods}`;
+  if (startDate !== "--") {
+    fields.push({ label: "Start Date", value: startDate });
+  }
+
+  if (endDate !== "--") {
+    fields.push({ label: "End Date", value: endDate });
+  }
+
+  return fields;
 };
 
 const calculateAmount = (
@@ -1949,11 +1979,6 @@ const getRetainerServiceQuantityTotal = (
 
   return total > 0 ? total : 1;
 };
-
-const getItemQuantityLabel = (item?: DealItem | DealItemWithPlan | null) =>
-  isRetainerParentDealItem(item) || isRecurrentParentDealItem(item)
-    ? "Total Periods"
-    : "Qty";
 
 const getItemQuantityDisplayValue = (
   item?: DealItem | DealItemWithPlan | null,
@@ -2120,6 +2145,47 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
   if (record.type === "Retainer Service") {
     const retainer = record as CatalogueRetainerServiceRecord;
     const retainerLines = getDealRetainerServiceLines(item, retainer);
+    const retainerPeriods = buildRetainerBillingPeriods(item);
+
+    if (retainerPeriods.length) {
+      return retainerPeriods.map((period, index) =>
+        makeSection(item, {
+          id: `item-${item.id}-${period.key}`,
+          name: period.label || `Period ${index + 1}`,
+          note: null,
+          price: null,
+          billingPeriod: period,
+          goals: retainerLines.map((service) => ({
+            ...makeDerivedGoal(
+              item,
+              `retainer-period-${index + 1}`,
+              "Retainer Service",
+              {
+                quantity: service.quantity,
+                discountPercent: service.discountPercent,
+                discountLabel: null,
+                taxApplicable: service.taxApplicable,
+                showQuantity: false,
+                showPrice: false,
+                showDiscount: false,
+                showTaxApplicable: false,
+              },
+              {
+                id: service.id,
+                name: service.name,
+                category: service.category,
+                description: service.note,
+                note: service.note,
+                price: service.price,
+              },
+            ),
+            overrideKey: service.overrideKey,
+          })),
+          goalTypeSingular: "Retainer Service",
+          goalTypePlural: "Retainer Services",
+        }),
+      );
+    }
 
     return [
       makeSection(item, {
@@ -3698,7 +3764,7 @@ const shouldShowPeriodSectionGoals = (
 ) => {
   if (!section.billingPeriod) return true;
 
-  return !isRecurrentParentDealItem(item) || sectionIndex === 0;
+  return !isPeriodDrivenParentDealItem(item) || sectionIndex === 0;
 };
 
 const getVisibleSectionGoals = (
@@ -3817,14 +3883,14 @@ const getSectionInvoiceState = (
 ) => {
   if (!section.billingPeriod) return null;
 
-  const recurrentSectionBillingKey = isRecurrentParentDealItem(parentItem)
+  const periodDrivenSectionBillingKey = isPeriodDrivenParentDealItem(parentItem)
     ? getDealBillingPeriodKey(section.billingPeriod)
     : "";
 
-  if (recurrentSectionBillingKey) {
+  if (periodDrivenSectionBillingKey) {
     const usage = getDocumentUsage(
       `item-${parentItem.id}`,
-      recurrentSectionBillingKey,
+      periodDrivenSectionBillingKey,
     );
 
     if (!usage.invoiceCount) return "Not invoiced";
@@ -3838,7 +3904,7 @@ const getSectionInvoiceState = (
         const selectionKey = resolveProductSelectionKey(product);
 
         return (
-          billingKey === recurrentSectionBillingKey &&
+          billingKey === periodDrivenSectionBillingKey &&
           selectionKey === `item-${parentItem.id}`
         );
       });
@@ -3894,7 +3960,7 @@ const getSectionSelectableItems = (
     .filter((item): item is DealDocumentSelectableItem =>
       Boolean(
         item &&
-        (!section.billingPeriod || isRecurrentParentDealItem(parentItem)),
+        (!section.billingPeriod || isPeriodDrivenParentDealItem(parentItem)),
       ),
     );
 
@@ -3904,7 +3970,7 @@ const getSectionDocumentTargetItems = (
 ) => {
   const sectionItems = getSectionSelectableItems(parentItem, section);
 
-  if (!section.billingPeriod || !isRecurrentParentDealItem(parentItem)) {
+  if (!section.billingPeriod || !isPeriodDrivenParentDealItem(parentItem)) {
     return sectionItems;
   }
 
@@ -6029,93 +6095,95 @@ const openEditTask = (taskId: number | string) => {
           >
             <VExpansionPanelTitle>
               <div class="item-card-shell" @click.stop="openEditItem(item)">
-                <div class="flex-grow-1 min-w-0">
-                  <div class="item-card-header">
-                    <div class="flex-grow-1 min-w-0">
-                      <div class="item-card-title-row">
-                        <VTooltip :text="item.name" location="top">
-                          <template #activator="{ props: tooltipProps }">
-                            <div
-                              v-bind="tooltipProps"
-                              class="item-card-title truncate-title"
-                            >
-                              {{ item.name }}
-                            </div>
-                          </template>
-                        </VTooltip>
+                <div class="item-card-content flex-grow-1 min-w-0">
+                  <div class="item-card-main">
+                    <div class="item-card-header">
+                      <div class="item-card-header__main">
+                        <div class="item-card-title-row">
+                          <VTooltip :text="item.name" location="top">
+                            <template #activator="{ props: tooltipProps }">
+                              <div
+                                v-bind="tooltipProps"
+                                class="item-card-title truncate-title"
+                              >
+                                {{ item.name }}
+                              </div>
+                            </template>
+                          </VTooltip>
 
-                        <VChip
-                          size="small"
-                          variant="plain"
-                          color="primary"
-                          class="item-type-chip"
+                          <span class="item-card-row-separator" aria-hidden="true">
+                            |
+                          </span>
+                          <span class="item-card-inline-metrics__group">
+                            {{ getItemDisplayMetric(item).label }} :
+                            <strong>{{ getItemDisplayMetric(item).value }}</strong>
+                          </span>
+                          <span class="item-card-row-separator" aria-hidden="true">
+                            |
+                          </span>
+                          <span class="item-card-inline-metrics__group">
+                            UP:
+                            <strong>{{
+                              formatCurrencyAmount(
+                                item.unitPrice,
+                                configStore.financial,
+                              )
+                            }}</strong>
+                          </span>
+                        </div>
+
+                        <div
+                          v-if="getItemDateFields(item).length"
+                          class="item-card-date-row text-body-2 text-medium-emphasis"
                         >
-                          {{ itemTypeLabel(item) }}
-                        </VChip>
+                          <template
+                            v-for="(field, index) in getItemDateFields(item)"
+                            :key="`${field.label}-${index}`"
+                          >
+                            <span class="item-card-date-row__group">
+                              {{ field.label }}:
+                              <strong>{{ field.value }}</strong>
+                            </span>
+                            <span
+                              v-if="index < getItemDateFields(item).length - 1"
+                              class="item-card-row-separator"
+                              aria-hidden="true"
+                            >
+                              |
+                            </span>
+                          </template>
+                        </div>
                       </div>
+                    </div>
 
-                      <div
-                        v-if="
-                          formatRetainerTermSummary(item) ||
-                          formatRecurrentTermSummary(item)
-                        "
-                        class="item-card-note text-body-2 text-medium-emphasis"
-                      >
-                        {{
-                          formatRetainerTermSummary(item) ||
-                          formatRecurrentTermSummary(item)
-                        }}
-                      </div>
+                    <div
+                      v-if="item.note"
+                      class="item-card-note text-body-2 text-medium-emphasis"
+                    >
+                      {{ item.note }}
+                    </div>
+
+                    <div
+                      v-if="getProducedProductCustomizationSummary(item)"
+                      class="item-card-note text-body-2 text-medium-emphasis"
+                    >
+                      Customizations:
+                      {{ getProducedProductCustomizationSummary(item) }}
+                    </div>
+
+                    <div
+                      v-if="getProducedProductSubItemsSummary(item)"
+                      class="item-card-note text-body-2 text-medium-emphasis"
+                    >
+                      Sub items: {{ getProducedProductSubItemsSummary(item) }}
                     </div>
                   </div>
 
-                  <div class="product-metrics">
-                    <div class="product-metric">
-                      <span>Price</span>
-                      <strong>{{ formatMoney(item.unitPrice) }}</strong>
-                    </div>
-                    <div class="product-metric">
-                      <span>{{ getItemQuantityLabel(item) }}</span>
-                      <strong>{{ getItemQuantityDisplayValue(item) }}</strong>
-                    </div>
-                    <div class="product-metric">
-                      <span>Discount</span>
-                      <strong>
-                        {{ formatPercent(item.discountPercent || 0) }}
-                      </strong>
-                    </div>
-                    <div class="product-metric">
-                      <span>Tax</span>
-                      <strong>
-                        {{ formatTaxApplicable(item.taxApplicable ?? null) }}
-                      </strong>
-                    </div>
-                    <div class="product-metric product-metric--amount">
-                      <span>Amount</span>
-                      <strong>{{ formatMoney(itemAmount(item)) }}</strong>
-                    </div>
-                  </div>
-
-                  <div
-                    v-if="item.note"
-                    class="item-card-note text-body-2 text-medium-emphasis"
-                  >
-                    {{ item.note }}
-                  </div>
-
-                  <div
-                    v-if="getProducedProductCustomizationSummary(item)"
-                    class="item-card-note text-body-2 text-medium-emphasis"
-                  >
-                    Customizations:
-                    {{ getProducedProductCustomizationSummary(item) }}
-                  </div>
-
-                  <div
-                    v-if="getProducedProductSubItemsSummary(item)"
-                    class="item-card-note text-body-2 text-medium-emphasis"
-                  >
-                    Sub items: {{ getProducedProductSubItemsSummary(item) }}
+                  <div class="item-card-amount">
+                    <span>Amount</span>
+                    <strong>{{
+                      formatCurrencyAmount(itemAmount(item), configStore.financial)
+                    }}</strong>
                   </div>
                 </div>
 
@@ -6287,13 +6355,16 @@ const openEditTask = (taskId: number | string) => {
                     class="period-timeline__services"
                   >
                     <div class="period-timeline__services-title">
-                      Recurring Services
+                      {{
+                        item.derivedSections[0]?.goalTypePlural ||
+                        "Period Services"
+                      }}
                     </div>
                     <div class="period-timeline__services-list">
                       <VCard
                         v-for="goal in item.derivedSections[0].goals"
                         :key="goal.id"
-                        variant="tonal"
+                        variant="flat"
                         class="goal-panel goal-panel--static period-timeline__service-row"
                       >
                         <div class="phase-card-shell">
@@ -6402,23 +6473,59 @@ const openEditTask = (taskId: number | string) => {
                             type="button"
                             class="period-timeline__button"
                           >
-                            <VTooltip
-                              :text="`${section.name} · ${getSectionInvoiceState(item, section) || 'Not invoiced'}`"
-                              location="top"
-                            >
-                              <template #activator="{ props: tooltipProps }">
-                                <span v-bind="tooltipProps">
-                                  <span class="period-timeline__dot" />
-                                  <span class="period-timeline__label">
-                                    {{ getPeriodStepLabel(sectionIndex) }}
-                                  </span>
-                                </span>
-                              </template>
-                            </VTooltip>
+                            <span>
+                              <span class="period-timeline__dot" />
+                              <span class="period-timeline__label">
+                                {{ getPeriodStepLabel(sectionIndex) }}
+                              </span>
+                            </span>
                           </button>
                         </template>
 
-                        <VList>
+                        <VList class="period-action-menu">
+                          <div class="period-action-menu__info">
+                            <VIcon
+                              icon="tabler-info-circle"
+                              size="16"
+                              class="period-action-menu__info-icon"
+                            />
+                            <div class="period-action-menu__info-copy">
+                              <div class="period-action-menu__info-title">
+                                Period {{ sectionIndex + 1 }}
+                              </div>
+                              <div
+                                v-if="section.billingPeriod"
+                                class="period-action-menu__dates"
+                              >
+                                <span>
+                                  Start Date:
+                                  <strong>{{
+                                    formatDocumentDate(
+                                      section.billingPeriod.startDate,
+                                    )
+                                  }}</strong>
+                                </span>
+                                <span class="period-action-menu__date-separator">
+                                  |
+                                </span>
+                                <span>
+                                  End Date:
+                                  <strong>{{
+                                    formatDocumentDate(
+                                      section.billingPeriod.endDate,
+                                    )
+                                  }}</strong>
+                                </span>
+                              </div>
+                              <div class="period-action-menu__info-status">
+                                {{
+                                  getSectionInvoiceState(item, section) ||
+                                  "Not invoiced"
+                                }}
+                              </div>
+                            </div>
+                          </div>
+                          <VDivider class="my-1" />
                           <VListItem
                             :disabled="
                               isSectionDocumentActionDisabled(
@@ -6675,7 +6782,7 @@ const openEditTask = (taskId: number | string) => {
                           sectionIndex,
                         )"
                         :key="goal.id"
-                        variant="tonal"
+                        variant="flat"
                         class="goal-panel goal-panel--static"
                       >
                         <div class="phase-card-shell">
@@ -8859,7 +8966,7 @@ const openEditTask = (taskId: number | string) => {
 
 .goal-panel--static {
   border-radius: 8px;
-  background: rgba(var(--v-theme-surface), 0.18);
+  background: rgba(var(--v-theme-surface), 0.12) !important;
   padding-block: 0.65rem;
   padding-inline: 0.8rem;
 }
@@ -9006,6 +9113,69 @@ const openEditTask = (taskId: number | string) => {
   background: rgb(var(--v-theme-primary));
 }
 
+.period-action-menu__info {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  max-inline-size: 16rem;
+  padding-block: 0.55rem 0.45rem;
+  padding-inline: 1rem;
+}
+
+.period-action-menu__info-icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+  margin-block-start: 0.1rem;
+}
+
+.period-action-menu__info-copy {
+  min-inline-size: 0;
+}
+
+.period-action-menu__info-title {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-action-menu__dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-block-start: 0.2rem;
+}
+
+.period-action-menu__dates span {
+  white-space: nowrap;
+}
+
+.period-action-menu__dates strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+}
+
+.period-action-menu__date-separator {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 700;
+}
+
+.period-action-menu__info-status {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-block-start: 0.2rem;
+}
+
 .goal-section-header {
   display: flex;
   flex-direction: column;
@@ -9041,6 +9211,17 @@ const openEditTask = (taskId: number | string) => {
   padding-block: 0.125rem;
 }
 
+.item-card-content {
+  display: grid;
+  align-items: center;
+  column-gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.item-card-main {
+  min-inline-size: 0;
+}
+
 .phase-card-shell {
   padding-block: 0.125rem;
 }
@@ -9048,19 +9229,38 @@ const openEditTask = (taskId: number | string) => {
 .item-card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.item-card-header__main {
+  flex: 1 1 auto;
   min-inline-size: 0;
 }
 
 .item-card-title-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: baseline;
   gap: 0.35rem;
+  inline-size: 100%;
   min-inline-size: 0;
+  overflow: hidden;
+}
+
+.item-card-row-separator {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .item-card-title {
+  flex: 0 1 auto;
+  min-inline-size: 0;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.25;
@@ -9103,6 +9303,82 @@ const openEditTask = (taskId: number | string) => {
 
 .item-type-chip--phase {
   margin-inline-start: 0;
+}
+
+.item-card-inline-metrics,
+.item-card-date-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.item-card-inline-metrics {
+  margin-block-start: 0;
+}
+
+.item-card-date-row {
+  margin-block-start: 0.35rem;
+}
+
+.item-card-inline-metrics__group,
+.item-card-date-row__group {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 0.25rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.item-card-inline-metrics__group strong,
+.item-card-date-row__group strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+}
+
+.item-card-amount {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 5.75rem;
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.08);
+  text-align: center;
+}
+
+.item-card-amount span,
+.item-card-amount strong {
+  display: block;
+  white-space: nowrap;
+}
+
+.item-card-amount span {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.item-card-amount strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.9rem;
+  line-height: 1.25;
+  margin-block-start: 0.1rem;
 }
 
 .product-metrics {
@@ -9660,6 +9936,19 @@ const openEditTask = (taskId: number | string) => {
   .item-card-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .item-card-content {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.75rem;
+  }
+
+  .item-card-amount {
+    min-inline-size: 100%;
+  }
+
+  .item-card-row-separator {
+    display: none;
   }
 
   .product-metrics,
