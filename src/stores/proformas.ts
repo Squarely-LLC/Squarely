@@ -23,6 +23,7 @@ import {
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import { useDealsStore } from "@/stores/deals";
 
 const STORAGE_KEY = "app.proformas.v2";
 type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
@@ -802,7 +803,29 @@ export const useProformasStore = defineStore("proformas", {
       this.items = resequenceRevisions(this.items);
       this.persistItems();
       triggerReceiptReconciliation();
-      return this.byId(id);
+      const created = this.byId(id);
+
+      if (created?.quotation.dealId) {
+        const dealsStore = useDealsStore();
+        dealsStore.init();
+        const normalizedNote = String(created.note ?? "").toLowerCase();
+        const lifecycleReason = normalizedNote.includes(
+          "converted from quotation",
+        )
+          ? "Quotation converted to proforma"
+          : created.quotation.source === "external"
+            ? "Proforma attached"
+            : "Proforma created";
+
+        dealsStore.triggerLifecycleStageTransition(
+          created.quotation.dealId,
+          "Active",
+          lifecycleReason,
+          "proforma-created",
+        );
+      }
+
+      return created;
     },
 
     updateProforma(id: number | string, patch: ProformaPayload) {

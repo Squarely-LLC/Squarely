@@ -23,6 +23,7 @@ import {
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import { useDealsStore } from "@/stores/deals";
 
 const STORAGE_KEY = "app.invoices.v3";
 type InvoicePayload = Omit<Partial<InvoiceRecord>, "quotation"> & {
@@ -785,7 +786,31 @@ export const useInvoicesStore = defineStore("invoices", {
       this.items = resequenceRevisions(this.items);
       this.persistItems();
       triggerReceiptReconciliation();
-      return this.byId(id);
+      const created = this.byId(id);
+
+      if (created?.quotation.dealId) {
+        const dealsStore = useDealsStore();
+        dealsStore.init();
+        const normalizedNote = String(created.note ?? "").toLowerCase();
+        const lifecycleReason = normalizedNote.includes(
+          "converted from quotation",
+        )
+          ? "Quotation converted to invoice"
+          : normalizedNote.includes("converted from proforma")
+            ? "Proforma converted to invoice"
+            : created.quotation.source === "external"
+              ? "Invoice attached"
+              : "Invoice created";
+
+        dealsStore.triggerLifecycleStageTransition(
+          created.quotation.dealId,
+          "Active",
+          lifecycleReason,
+          "invoice-created",
+        );
+      }
+
+      return created;
     },
 
     updateInvoice(id: number | string, patch: InvoicePayload) {
@@ -808,7 +833,17 @@ export const useInvoicesStore = defineStore("invoices", {
       if (!current) return null;
 
       const updated = applyInvoicePayment(current, payment);
-      return this.updateInvoice(id, updated);
+      const nextRecord = this.updateInvoice(id, updated);
+
+      if (nextRecord?.quotation.dealId) {
+        const dealsStore = useDealsStore();
+        dealsStore.init();
+        void dealsStore.reevaluateDealClosureFromInvoices(
+          nextRecord.quotation.dealId,
+        );
+      }
+
+      return nextRecord;
     },
 
     removeInvoice(id: number | string) {

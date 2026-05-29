@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppSnackbar from "@/components/AppSnackbar.vue";
+import DealStageTransitionDialog from "@/components/DealStageTransitionDialog.vue";
 import ScrollToTop from "@core/components/ScrollToTop.vue";
 import initCore from "@core/initCore";
 import { initConfigStore, useConfigStore } from "@core/stores/config";
@@ -25,6 +26,7 @@ const configStore = useConfigStore();
     >
       <RouterView />
       <AppSnackbar />
+      <DealStageTransitionDialog />
       <ScrollToTop />
     </VApp>
   </VLocaleProvider>

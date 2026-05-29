@@ -8,14 +8,17 @@ import type {
   DealFinancialEntry,
   DealItem,
   DealNote,
+  DealPendingStageTransition,
   DealProperties,
   DealSalesTaskTemplate,
+  DealStageLifecycleEvent,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useConfigStore } from "@/stores/config";
 import { useTodos } from "@/stores/todos";
 
 const STORAGE_KEY = "app.deals.v5";
 const DEFAULT_DEAL_PREFIX = "DL";
+const DEFAULT_DEAL_STAGES = ["Pre-Sale", "Negotation", "Active", "Closed"];
 
 function cloneDeal(deal: DealProperties): DealProperties {
   const raw = toRaw(deal) as DealProperties;
@@ -158,6 +161,91 @@ function normalizeString(value: unknown): string | null {
 
 function normalizeDateString(value: unknown): string | null {
   return normalizeString(value);
+}
+
+function normalizeStageList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [...DEFAULT_DEAL_STAGES];
+
+  const stages = values
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+
+  return stages.length ? stages : [...DEFAULT_DEAL_STAGES];
+}
+
+function resolveDealStageOptions() {
+  const configStore = useConfigStore();
+  configStore.init();
+
+  return normalizeStageList(configStore.configurations?.deals?.dealStages);
+}
+
+function findConfiguredStage(stageName: string) {
+  const safeStageName = String(stageName ?? "").trim().toLowerCase();
+  if (!safeStageName) return null;
+
+  return (
+    resolveDealStageOptions().find(
+      (stage) => stage.trim().toLowerCase() === safeStageName,
+    ) ?? null
+  );
+}
+
+function resolveCanonicalStage(
+  stageName: "Pre-Sale" | "Negotation" | "Active" | "Closed",
+) {
+  return (
+    findConfiguredStage(stageName) ??
+    (stageName === "Pre-Sale" ? resolveDealStageOptions()[0] ?? stageName : stageName)
+  );
+}
+
+function resolveStageIndex(stage: string | null | undefined) {
+  const safeStage = String(stage ?? "").trim().toLowerCase();
+  if (!safeStage) return -1;
+
+  return resolveDealStageOptions().findIndex(
+    (option) => option.trim().toLowerCase() === safeStage,
+  );
+}
+
+function shouldPromoteLifecycleStage(
+  currentStage: string | null | undefined,
+  targetStage: string,
+) {
+  const targetIndex = resolveStageIndex(targetStage);
+  if (targetIndex === -1) return true;
+
+  const currentIndex = resolveStageIndex(currentStage);
+  if (currentIndex === -1) return true;
+
+  return targetIndex > currentIndex;
+}
+
+function normalizePendingStageTransition(
+  value: DealPendingStageTransition | null | undefined,
+): DealPendingStageTransition | null {
+  if (!value || typeof value !== "object") return null;
+
+  const targetStage = normalizeString(value.targetStage);
+  const reason = normalizeString(value.reason);
+  const requestedAt = normalizeString(value.requestedAt);
+  const event = String(value.event ?? "").trim() as DealStageLifecycleEvent;
+  const validEvent =
+    event === "deal-created" ||
+    event === "quotation-created" ||
+    event === "proforma-created" ||
+    event === "invoice-created" ||
+    event === "invoice-payment-updated";
+
+  if (!targetStage || !reason || !requestedAt || !validEvent) return null;
+
+  return {
+    targetStage,
+    reason,
+    event,
+    requestedAt,
+  };
 }
 
 function normalizeNullableNumber(value: unknown): number | null {
@@ -438,6 +526,10 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
     collaborators: normalizeCollaborators(deal.collaborators),
     note: normalizeString(deal.note),
     customFieldValues: normalizeCustomFieldValues(deal.customFieldValues),
+    stageManuallyManaged: Boolean(deal.stageManuallyManaged),
+    pendingStageTransition: normalizePendingStageTransition(
+      deal.pendingStageTransition,
+    ),
     createdAt,
     updatedAt:
       normalizeString(deal.updatedAt) ||
@@ -542,6 +634,8 @@ function normaliseDeal(
     collaborators: normalizeCollaborators(payload.collaborators),
     note: normalizeString(payload.note),
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
+    stageManuallyManaged: false,
+    pendingStageTransition: null,
     notes: normalizeNotes(payload.notes),
     items: normalizeItems(payload.items),
     salesTasks: normalizeSalesTasks(payload.salesTasks),
@@ -607,6 +701,14 @@ function mergeDeal(
       patch.customFieldValues === undefined
         ? { ...(original.customFieldValues || {}) }
         : normalizeCustomFieldValues(patch.customFieldValues),
+    stageManuallyManaged:
+      patch.stageManuallyManaged === undefined
+        ? Boolean(original.stageManuallyManaged)
+        : Boolean(patch.stageManuallyManaged),
+    pendingStageTransition:
+      patch.pendingStageTransition === undefined
+        ? normalizePendingStageTransition(original.pendingStageTransition)
+        : normalizePendingStageTransition(patch.pendingStageTransition),
     notes:
       patch.notes === undefined
         ? normalizeNotes(original.notes)
@@ -643,6 +745,22 @@ export const useDealsStore = defineStore("deals", {
     all: (state) => state.items,
     byId: (state) => (id: number | string) =>
       state.items.find((deal) => String(deal.id) === String(id)) ?? null,
+    latestPendingStageDeal: (state) => {
+      const pendingDeals = state.items
+        .filter((deal) => deal.pendingStageTransition)
+        .sort((left, right) => {
+          const leftTime = new Date(
+            left.pendingStageTransition?.requestedAt || 0,
+          ).getTime();
+          const rightTime = new Date(
+            right.pendingStageTransition?.requestedAt || 0,
+          ).getTime();
+
+          return rightTime - leftTime;
+        });
+
+      return pendingDeals[0] ?? null;
+    },
   },
   actions: {
     persistItems() {
@@ -690,7 +808,16 @@ export const useDealsStore = defineStore("deals", {
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextDealId(this.items);
-      const normalised = normaliseDeal(payload, id, nextDealCode(this.items));
+      const normalised = normaliseDeal(
+        {
+          ...payload,
+          stage: resolveCanonicalStage("Pre-Sale"),
+          stageManuallyManaged: false,
+          pendingStageTransition: null,
+        },
+        id,
+        nextDealCode(this.items),
+      );
 
       this.items.unshift(normalised);
       this.persistItems();
@@ -710,6 +837,109 @@ export const useDealsStore = defineStore("deals", {
       this.persistItems();
 
       return updated;
+    },
+
+    updateDealStageManually(id: number | string, stage: string | null) {
+      const normalizedStage = normalizeString(stage);
+      if (!normalizedStage) return null;
+
+      return this.updateDeal(id, {
+        stage: normalizedStage,
+        stageManuallyManaged: true,
+        pendingStageTransition: null,
+      });
+    },
+
+    triggerLifecycleStageTransition(
+      id: number | string | null | undefined,
+      targetStageName: "Negotation" | "Active" | "Closed",
+      reason: string,
+      event: DealStageLifecycleEvent,
+    ) {
+      if (id === null || id === undefined || id === "") return null;
+
+      const currentDeal = this.byId(id);
+      if (!currentDeal) return null;
+
+      const targetStage = resolveCanonicalStage(targetStageName);
+      if (!targetStage) return currentDeal;
+
+      if (currentDeal.stageManuallyManaged) {
+        if (currentDeal.stage === targetStage) return currentDeal;
+
+        return this.updateDeal(id, {
+          pendingStageTransition: {
+            targetStage,
+            reason,
+            event,
+            requestedAt: new Date().toISOString(),
+          },
+        });
+      }
+
+      if (!shouldPromoteLifecycleStage(currentDeal.stage, targetStage)) {
+        return currentDeal;
+      }
+
+      return this.updateDeal(id, {
+        stage: targetStage,
+        stageManuallyManaged: false,
+        pendingStageTransition: null,
+      });
+    },
+
+    async reevaluateDealClosureFromInvoices(
+      id: number | string | null | undefined,
+    ) {
+      if (id === null || id === undefined || id === "") return null;
+
+      const currentDeal = this.byId(id);
+      if (!currentDeal) return null;
+
+      const { useInvoicesStore } = await import("@/stores/invoices");
+      const invoicesStore = useInvoicesStore();
+      invoicesStore.init();
+
+      const linkedInvoices = invoicesStore.all.filter(
+        (record) => String(record.quotation.dealId ?? "") === String(id),
+      );
+
+      if (!linkedInvoices.length) return currentDeal;
+
+      const allInvoicesPaid = linkedInvoices.every(
+        (record) => record.quotation.quotationStatus === "Paid",
+      );
+
+      if (!allInvoicesPaid) return currentDeal;
+
+      return this.triggerLifecycleStageTransition(
+        id,
+        "Closed",
+        "All invoices paid",
+        "invoice-payment-updated",
+      );
+    },
+
+    approvePendingStageTransition(id: number | string) {
+      const currentDeal = this.byId(id);
+      const pendingTransition = currentDeal?.pendingStageTransition;
+      if (!currentDeal || !pendingTransition) return null;
+
+      return this.updateDeal(id, {
+        stage: pendingTransition.targetStage,
+        stageManuallyManaged: false,
+        pendingStageTransition: null,
+      });
+    },
+
+    dismissPendingStageTransition(id: number | string) {
+      const currentDeal = this.byId(id);
+      if (!currentDeal?.pendingStageTransition) return null;
+
+      return this.updateDeal(id, {
+        pendingStageTransition: null,
+        stageManuallyManaged: true,
+      });
     },
 
     syncCodePrefix() {

@@ -21,6 +21,7 @@ import {
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import { useDealsStore } from "@/stores/deals";
 
 const STORAGE_KEY = "app.quotations.v6";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
@@ -661,7 +662,22 @@ export const useQuotationsStore = defineStore("quotations", {
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
       this.persistItems();
-      return this.byId(id);
+      const created = this.byId(id);
+
+      if (created?.quotation.dealId) {
+        const dealsStore = useDealsStore();
+        dealsStore.init();
+        dealsStore.triggerLifecycleStageTransition(
+          created.quotation.dealId,
+          "Negotation",
+          created.quotation.source === "external"
+            ? "Quotation attached"
+            : "Quotation created",
+          "quotation-created",
+        );
+      }
+
+      return created;
     },
 
     updateQuotation(id: number | string, patch: QuotationPayload) {

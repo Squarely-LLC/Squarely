@@ -1005,6 +1005,26 @@ const linkedContact = computed(() => {
   };
 });
 
+const salesmanName = computed(() => {
+  const salesman = deal.value?.salesman;
+  const raw = String(salesman ?? "").trim();
+  if (!raw) return "--";
+
+  if (raw.startsWith("contact:")) {
+    const contactId = Number(raw.slice("contact:".length));
+
+    return contactsStore.byId(contactId)?.fullName || `Contact ${contactId}`;
+  }
+
+  const employeeId = Number(salesman);
+  if (Number.isFinite(employeeId)) {
+    const employee = employeesStore.byId(employeeId);
+    if (employee) return employee.fullName;
+  }
+
+  return raw;
+});
+
 const dealStageOptions = computed(() =>
   (configStore.configurations?.deals?.dealStages || []).map((stage) =>
     String(stage),
@@ -1613,7 +1633,17 @@ const saveDeal = (payload: Partial<DealProperties>) => {
   dialogError.value = null;
 
   try {
-    const updated = dealsStore.updateDeal(deal.value.id, payload);
+    const shouldApplyManualStage =
+      payload.stage !== undefined &&
+      String(payload.stage ?? "").trim() !== String(deal.value.stage ?? "").trim();
+    const { stage, ...restPayload } = payload;
+    const basePatch = shouldApplyManualStage ? restPayload : payload;
+    let updated = dealsStore.updateDeal(deal.value.id, basePatch);
+
+    if (updated && shouldApplyManualStage) {
+      updated = dealsStore.updateDealStageManually(deal.value.id, stage ?? null);
+    }
+
     if (!updated) {
       dialogError.value = "Failed to update deal";
       notifications.push("Unable to update deal", "error", 4000);
@@ -2149,6 +2179,7 @@ watch(
         <DealSummaryCard
           :deal="deal"
           :linked-to-name="linkedToName"
+          :salesman-name="salesmanName"
           :collaborator-names="collaboratorNames"
           :collaborators="dealEmployeeCollaborators"
           :linked-contact="linkedContact"

@@ -20,6 +20,7 @@ type SummaryContact = {
 interface Props {
   deal: DealProperties;
   linkedToName: string;
+  salesmanName?: string;
   collaboratorNames: string[];
   collaborators?: SummaryCollaborator[];
   linkedContact?: SummaryContact;
@@ -59,14 +60,10 @@ const projectLabel = computed(
   () => props.deal.projectCode?.trim() || props.deal.projectName?.trim() || "",
 );
 
-const dealAmount = computed(() => props.deal.amount ?? null);
 const dealValue = computed(() => getDealGrandTotal(props.deal));
 
-const itemCount = computed(() => props.deal.items?.length || 0);
-
-const noteText = computed(
-  () => props.deal.note?.trim() || "No notes available",
-);
+const noteText = computed(() => props.deal.note?.trim() || "");
+const hasNotes = computed(() => Boolean(noteText.value));
 
 const noteExcerpt = computed(() => {
   const text = noteText.value;
@@ -311,7 +308,10 @@ const stageProgressPercent = computed(() => {
             />
           </div>
 
-          <div class="stage-timeline__steps">
+          <div
+            class="stage-timeline__steps"
+            :style="{ gridTemplateColumns: `repeat(${timelineStages.length}, minmax(0, 1fr))` }"
+          >
             <div
               v-for="(stage, index) in timelineStages"
               :key="stage"
@@ -335,33 +335,33 @@ const stageProgressPercent = computed(() => {
         <VList class="py-0 card-list">
           <VListItem>
             <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Date:</span>
+              <span class="detail-row__value">{{
+                formatDate(deal.estimatedDeliveryDate)
+              }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Type:</span>
+              <span class="detail-row__value">{{ deal.type || "--" }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
+              <span class="detail-row__label">Salesman:</span>
+              <span class="detail-row__value">{{
+                salesmanName || "--"
+              }}</span>
+            </VListItemTitle>
+          </VListItem>
+
+          <VListItem>
+            <VListItemTitle class="detail-row">
               <span class="detail-row__label">Location:</span>
               <span class="detail-row__value">{{ deal.location || "--" }}</span>
-            </VListItemTitle>
-          </VListItem>
-
-          <VListItem>
-            <VListItemTitle class="detail-row">
-              <span class="detail-row__label">Items:</span>
-              <span class="detail-row__value">{{ itemCount }}</span>
-            </VListItemTitle>
-          </VListItem>
-
-          <VListItem>
-            <VListItemTitle class="detail-row">
-              <span class="detail-row__label">Deal Amount:</span>
-              <span class="detail-row__value">{{
-                formatAmount(dealAmount)
-              }}</span>
-            </VListItemTitle>
-          </VListItem>
-
-          <VListItem>
-            <VListItemTitle class="detail-row">
-              <span class="detail-row__label">Calculated Value:</span>
-              <span class="detail-row__value">{{
-                formatAmount(dealValue)
-              }}</span>
             </VListItemTitle>
           </VListItem>
 
@@ -423,7 +423,7 @@ const stageProgressPercent = computed(() => {
             </VListItemTitle>
           </VListItem>
 
-          <VListItem>
+          <VListItem v-if="hasNotes">
             <VListItemTitle class="detail-row detail-row--stacked">
               <span class="detail-row__label">Notes:</span>
               <span class="detail-row__value detail-row__value--wrap">
@@ -536,8 +536,8 @@ const stageProgressPercent = computed(() => {
 .stage-timeline__steps {
   display: grid;
   gap: 0.2rem;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-block-start: 0.65rem;
+  inline-size: 100%;
 }
 
 .stage-timeline__step {

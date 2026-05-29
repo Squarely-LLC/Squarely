@@ -86,6 +86,20 @@ export interface DealNote {
   authorName?: string | null;
 }
 
+export type DealStageLifecycleEvent =
+  | "deal-created"
+  | "quotation-created"
+  | "proforma-created"
+  | "invoice-created"
+  | "invoice-payment-updated";
+
+export interface DealPendingStageTransition {
+  targetStage: string;
+  reason: string;
+  event: DealStageLifecycleEvent;
+  requestedAt: string;
+}
+
 export interface DealSalesTaskTemplate extends CatalogueSalesTask {
   sourceItemId?: number | null;
   sourceTaskId?: number | null;
@@ -109,6 +123,8 @@ export interface DealProperties {
   collaborators: Array<number | string>;
   note?: string | null;
   customFieldValues: Record<string, DealFieldValue>;
+  stageManuallyManaged?: boolean;
+  pendingStageTransition?: DealPendingStageTransition | null;
   notes?: DealNote[];
   items: DealItem[];
   salesTasks?: DealSalesTaskTemplate[];

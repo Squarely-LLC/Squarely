@@ -52,7 +52,7 @@ const normalizeConfigurations = (
     "Canceled",
     "Completed",
   ];
-  const defaultDealStages = [
+  const previousDefaultDealStages = [
     "Under Review",
     "Negotiation",
     "In Progress",
@@ -60,10 +60,18 @@ const normalizeConfigurations = (
     "On Hold",
     "Completed",
   ];
+  const defaultDealStages = ["Pre-Sale", "Negotation", "Active", "Closed"];
   const configuredDealStages = next.deals?.dealStages || [];
   const dealStages =
-    configuredDealStages.length === legacyDealStages.length &&
-    configuredDealStages.every((stage, index) => stage === legacyDealStages[index])
+    (
+      configuredDealStages.length === legacyDealStages.length &&
+      configuredDealStages.every((stage, index) => stage === legacyDealStages[index])
+    ) || (
+      configuredDealStages.length === previousDefaultDealStages.length &&
+      configuredDealStages.every(
+        (stage, index) => stage === previousDefaultDealStages[index],
+      )
+    )
       ? defaultDealStages
       : configuredDealStages.length
         ? configuredDealStages

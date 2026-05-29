@@ -476,7 +476,21 @@ const saveDeal = (payload: Partial<DealProperties>) => {
 
   try {
     if (selectedDeal.value?.id) {
-      const updated = dealsStore.updateDeal(selectedDeal.value.id, payload);
+      const shouldApplyManualStage =
+        payload.stage !== undefined &&
+        String(payload.stage ?? "").trim() !==
+          String(selectedDeal.value.stage ?? "").trim();
+      const { stage, ...restPayload } = payload;
+      const basePatch = shouldApplyManualStage ? restPayload : payload;
+      let updated = dealsStore.updateDeal(selectedDeal.value.id, basePatch);
+
+      if (updated && shouldApplyManualStage) {
+        updated = dealsStore.updateDealStageManually(
+          selectedDeal.value.id,
+          stage ?? null,
+        );
+      }
+
       if (!updated) {
         dialogError.value = "Failed to update deal";
         notifications.push("Unable to update deal", "error", 4000);
@@ -728,9 +742,10 @@ const saveStageChange = () => {
     return;
   }
 
-  dealsStore.updateDeal(stageDialogDealId.value, {
-    stage: stageDialogValue.value,
-  });
+  dealsStore.updateDealStageManually(
+    stageDialogDealId.value,
+    stageDialogValue.value,
+  );
   notifications.push("Stage updated", "success", 2500);
   isStageDialogVisible.value = false;
   stageDialogDealId.value = null;

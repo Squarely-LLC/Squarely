@@ -518,6 +518,7 @@ watch(
 );
 
 const dialogTitle = computed(() => (props.deal ? "Edit Deal" : "Add New Deal"));
+const isEditingDeal = computed(() => Boolean(props.deal));
 
 const dialogDescription = computed(() =>
   props.deal
@@ -723,7 +724,16 @@ const onSubmit = async () => {
                 placeholder="Select Stage"
                 :items="stageOptions"
                 :rules="[requiredValidator]"
+                :disabled="!isEditingDeal"
               />
+
+              <div
+                v-if="!isEditingDeal"
+                class="text-caption text-medium-emphasis mt-2"
+              >
+                New deals always start in Pre-Sale. You can change the stage
+                after creation.
+              </div>
             </VCol>
 
             <VCol cols="12" md="6">
