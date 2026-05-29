@@ -3473,12 +3473,13 @@ const invoiceUsageBySelectionKey = computed(() => {
 });
 
 const buildDocumentUsageSignature = (record: {
-  purchasedProducts: Array<{
+  purchasedProducts?: Array<{
     dealSelectionKey?: string | null;
     billingPeriod?: DealBillingPeriod | null;
+    billingPeriodKey?: string | null;
   }>;
 }) =>
-  record.purchasedProducts
+  (record.purchasedProducts || [])
     .map((product) =>
       buildDealDocumentUsageKey(
         resolveProductSelectionKey(product),

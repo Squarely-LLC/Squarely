@@ -115,4 +115,5 @@ export interface DealProperties {
   documents: JobDocument[];
   financials: DealFinancialEntry[];
   createdAt: string;
+  updatedAt: string;
 }

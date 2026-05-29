@@ -49,6 +49,10 @@ type DealDocumentRow = JobDocument & {
   linkedRecordKind?: "quotation" | "proforma" | "invoice";
 };
 
+type LinkedFinanceDocumentKind = NonNullable<
+  DealDocumentRow["linkedRecordKind"]
+>;
+
 const AutoOpenGroups = defineComponent({
   name: "AutoOpenGroups",
   props: {
@@ -226,7 +230,7 @@ const buildFinanceDocumentRows = <
     };
   },
 >(
-  kind: DealDocumentRow["linkedRecordKind"],
+  kind: LinkedFinanceDocumentKind,
   records: TRecord[],
 ): DealDocumentRow[] =>
   records

@@ -14,7 +14,7 @@ import type {
 import { useConfigStore } from "@/stores/config";
 import { useTodos } from "@/stores/todos";
 
-const STORAGE_KEY = "app.deals.v3";
+const STORAGE_KEY = "app.deals.v5";
 const DEFAULT_DEAL_PREFIX = "DL";
 
 function cloneDeal(deal: DealProperties): DealProperties {
@@ -150,6 +150,24 @@ function normalizeCustomFieldValues(
   return Object.fromEntries(Object.entries(values));
 }
 
+function normalizeString(value: unknown): string | null {
+  const trimmed = String(value ?? "").trim();
+
+  return trimmed || null;
+}
+
+function normalizeDateString(value: unknown): string | null {
+  return normalizeString(value);
+}
+
+function normalizeNullableNumber(value: unknown): number | null {
+  if (value === "" || value === null || value === undefined) return null;
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function normalizeAmount(value: unknown): number | null {
   if (value === "" || value === null || value === undefined) return null;
 
@@ -214,30 +232,98 @@ function normalizeSalesman(
 function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
   if (!Array.isArray(items)) return [];
 
-  return items.map(({ generatedTaskIds: _generatedTaskIds, ...item }) => ({
-    ...item,
-    customPhases: Array.isArray(item.customPhases)
-      ? item.customPhases.map((phase: DealCustomPhase) => ({ ...phase }))
-      : null,
-    removedPhaseIds: Array.isArray(item.removedPhaseIds)
-      ? item.removedPhaseIds
-          .map((value) => Number(value))
-          .filter(Number.isFinite)
-      : null,
-    subItemOverrides: item.subItemOverrides
-      ? Object.fromEntries(
-          Object.entries(item.subItemOverrides).map(([key, value]) => [
-            key,
-            {
-              ...value,
-              periodUnitPrices: value?.periodUnitPrices
-                ? Object.fromEntries(Object.entries(value.periodUnitPrices))
-                : null,
-            },
-          ]),
-        )
-      : null,
-  }));
+  return items
+    .map(({ generatedTaskIds: _generatedTaskIds, ...item }, index) => ({
+      ...item,
+      id: normalizeNullableNumber(item.id) ?? index + 1,
+      name: normalizeString(item.name) || "Untitled item",
+      category: normalizeString(item.category),
+      catalogueItemId: normalizeString(item.catalogueItemId),
+      catalogueType: normalizeString(item.catalogueType),
+      itemTypeLabel:
+        normalizeString(item.itemTypeLabel) || normalizeString(item.catalogueType),
+      parentItemId: normalizeNullableNumber(item.parentItemId),
+      sourceRelatedItemId: normalizeNullableNumber(item.sourceRelatedItemId),
+      quantity: normalizeAmount(item.quantity) ?? 1,
+      unitPrice: normalizeAmount(item.unitPrice),
+      discountPercent: normalizeAmount(item.discountPercent) ?? 0,
+      taxApplicable:
+        item.taxApplicable === null || item.taxApplicable === undefined
+          ? null
+          : Boolean(item.taxApplicable),
+      recurrentStartDate: normalizeDateString(item.recurrentStartDate),
+      recurrentEndDate: normalizeDateString(item.recurrentEndDate),
+      recurrentPeriods: normalizeNullableNumber(item.recurrentPeriods),
+      recurrentBillablePeriods: normalizeNullableNumber(
+        item.recurrentBillablePeriods,
+      ),
+      retainerStartDate: normalizeDateString(item.retainerStartDate),
+      retainerEndDate: normalizeDateString(item.retainerEndDate),
+      retainerPeriods: normalizeNullableNumber(item.retainerPeriods),
+      retainerBillablePeriods: normalizeNullableNumber(
+        item.retainerBillablePeriods,
+      ),
+      status: normalizeString(item.status),
+      note: normalizeString(item.note),
+      customPhases: Array.isArray(item.customPhases)
+        ? item.customPhases.map((phase: DealCustomPhase) => ({
+            ...phase,
+            id: String(phase.id ?? "").trim(),
+            name: normalizeString(phase.name) || "Untitled phase",
+            category: normalizeString(phase.category),
+            quantity: normalizeAmount(phase.quantity),
+            price: normalizeAmount(phase.price),
+            discountPercent: normalizeAmount(phase.discountPercent),
+            taxApplicable:
+              phase.taxApplicable === null || phase.taxApplicable === undefined
+                ? null
+                : Boolean(phase.taxApplicable),
+            note: normalizeString(phase.note),
+          }))
+        : null,
+      removedPhaseIds: Array.isArray(item.removedPhaseIds)
+        ? item.removedPhaseIds
+            .map((value) => Number(value))
+            .filter(Number.isFinite)
+        : null,
+      excludedRelatedItemIds: Array.isArray(item.excludedRelatedItemIds)
+        ? item.excludedRelatedItemIds
+            .map((value) => Number(value))
+            .filter(Number.isFinite)
+        : null,
+      subItemOverrides: item.subItemOverrides
+        ? Object.fromEntries(
+            Object.entries(item.subItemOverrides).map(([key, value]) => [
+              key,
+              {
+                ...value,
+                name: normalizeString(value?.name),
+                category: normalizeString(value?.category),
+                quantity: normalizeAmount(value?.quantity),
+                unitPrice: normalizeAmount(value?.unitPrice),
+                discountPercent: normalizeAmount(value?.discountPercent),
+                taxApplicable:
+                  value?.taxApplicable === null ||
+                  value?.taxApplicable === undefined
+                    ? null
+                    : Boolean(value.taxApplicable),
+                note: normalizeString(value?.note),
+                periodUnitPrices: value?.periodUnitPrices
+                  ? Object.fromEntries(
+                      Object.entries(value.periodUnitPrices).map(
+                        ([periodKey, periodPrice]) => [
+                          periodKey,
+                          normalizeAmount(periodPrice),
+                        ],
+                      ),
+                    )
+                  : null,
+              },
+            ]),
+          )
+        : null,
+    }))
+    .filter((item) => item.name);
 }
 
 function normalizeSalesTasks(
@@ -322,6 +408,11 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
       ? migratedCode || currentName
       : currentName;
 
+  const createdAt =
+    normalizeString(deal.createdAt) ||
+    normalizeString(seedMatch?.createdAt) ||
+    new Date().toISOString();
+
   return {
     ...deal,
     code: migratedCode,
@@ -330,13 +421,28 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
       normalizeAmount(deal.amount) ??
       normalizeAmount(seedMatch?.amount) ??
       normalizeAmount(quotationAmount),
-    projectCode: deal.projectCode?.trim() || seedMatch?.projectCode || null,
-    projectName: deal.projectName?.trim() || seedMatch?.projectName || null,
-    linkedJobId:
-      deal.linkedJobId === null || deal.linkedJobId === undefined
-        ? null
-        : Number(deal.linkedJobId),
+    projectCode:
+      normalizeString(deal.projectCode) ||
+      normalizeString(seedMatch?.projectCode),
+    projectName:
+      normalizeString(deal.projectName) ||
+      normalizeString(seedMatch?.projectName),
+    relatedTo: normalizeNullableNumber(deal.relatedTo),
+    linkedJobId: normalizeNullableNumber(deal.linkedJobId),
     salesman: normalizeSalesman(deal.salesman, deal.collaborators),
+    type: normalizeString(deal.type),
+    estimatedDeliveryDate: normalizeDateString(deal.estimatedDeliveryDate),
+    stage: normalizeString(deal.stage),
+    important: Boolean(deal.important),
+    location: normalizeString(deal.location),
+    collaborators: normalizeCollaborators(deal.collaborators),
+    note: normalizeString(deal.note),
+    customFieldValues: normalizeCustomFieldValues(deal.customFieldValues),
+    createdAt,
+    updatedAt:
+      normalizeString(deal.updatedAt) ||
+      normalizeString(seedMatch?.updatedAt) ||
+      createdAt,
   };
 }
 
@@ -356,7 +462,20 @@ function normalizeDocuments(
 ) {
   if (!Array.isArray(documents)) return [];
 
-  return documents.map((document) => ({ ...document }));
+  return documents
+    .map((document, index) => ({
+      ...document,
+      id: normalizeNullableNumber(document.id) ?? index + 1,
+      category: normalizeString(document.category) || undefined,
+      type: normalizeString(document.type) || undefined,
+      name: normalizeString(document.name) || "Untitled document",
+      expiry: normalizeDateString(document.expiry),
+      expiryReminder: Boolean(document.expiryReminder),
+      note: normalizeString(document.note) || undefined,
+      fileUrl: normalizeString(document.fileUrl) || undefined,
+      createdAt: normalizeString(document.createdAt) || new Date().toISOString(),
+    }))
+    .filter((document) => document.name);
 }
 
 function normalizeFinancials(
@@ -364,7 +483,21 @@ function normalizeFinancials(
 ): DealFinancialEntry[] {
   if (!Array.isArray(financials)) return [];
 
-  return financials.map((entry) => ({ ...entry }));
+  return financials.map((entry, index) => ({
+    ...entry,
+    id: normalizeNullableNumber(entry.id) ?? index + 1,
+    title: normalizeString(entry.title) || "Untitled entry",
+    type:
+      entry.type === "invoice" ||
+      entry.type === "payment" ||
+      entry.type === "cost"
+        ? entry.type
+        : "quotation",
+    amount: normalizeAmount(entry.amount) ?? 0,
+    status: normalizeString(entry.status),
+    dueDate: normalizeDateString(entry.dueDate),
+    createdAt: normalizeString(entry.createdAt) || new Date().toISOString(),
+  }));
 }
 
 function normalizeNotes(notes: DealNote[] | undefined | null): DealNote[] {
@@ -398,19 +531,16 @@ function normaliseDeal(
     amount: normalizeAmount(payload.amount),
     projectCode: payload.projectCode?.trim() || null,
     projectName: payload.projectName?.trim() || null,
-    relatedTo: payload.relatedTo ?? null,
-    linkedJobId:
-      payload.linkedJobId === null || payload.linkedJobId === undefined
-        ? null
-        : Number(payload.linkedJobId),
+    relatedTo: normalizeNullableNumber(payload.relatedTo),
+    linkedJobId: normalizeNullableNumber(payload.linkedJobId),
     salesman: normalizeSalesman(payload.salesman, payload.collaborators),
-    type: payload.type?.trim() || null,
-    estimatedDeliveryDate: payload.estimatedDeliveryDate || null,
-    stage: payload.stage?.trim() || null,
+    type: normalizeString(payload.type),
+    estimatedDeliveryDate: normalizeDateString(payload.estimatedDeliveryDate),
+    stage: normalizeString(payload.stage),
     important: Boolean(payload.important),
-    location: payload.location?.trim() || null,
+    location: normalizeString(payload.location),
     collaborators: normalizeCollaborators(payload.collaborators),
-    note: payload.note?.trim() || null,
+    note: normalizeString(payload.note),
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
     notes: normalizeNotes(payload.notes),
     items: normalizeItems(payload.items),
@@ -418,6 +548,7 @@ function normaliseDeal(
     documents: normalizeDocuments(payload.documents),
     financials: normalizeFinancials(payload.financials),
     createdAt: payload.createdAt || now,
+    updatedAt: payload.updatedAt || now,
   };
 }
 
@@ -427,6 +558,8 @@ function mergeDeal(
 ): DealProperties {
   const mergedCode =
     patch.code === undefined ? original.code : patch.code?.trim() || null;
+
+  const now = new Date().toISOString();
 
   return cloneDeal({
     ...original,
@@ -494,6 +627,8 @@ function mergeDeal(
       patch.financials === undefined
         ? normalizeFinancials(original.financials)
         : normalizeFinancials(patch.financials),
+    createdAt: normalizeString(original.createdAt) || now,
+    updatedAt: now,
   });
 }
 
@@ -600,7 +735,7 @@ export const useDealsStore = defineStore("deals", {
     },
 
     replaceAll(deals: DealProperties[]) {
-      this.items = cloneDealsArray(deals);
+      this.items = sanitizeDeals(cloneDealsArray(deals));
       this.persistItems();
     },
   },
