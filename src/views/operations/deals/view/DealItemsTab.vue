@@ -3843,7 +3843,7 @@ type PeriodTimelineSectionStatus =
   | "invoiced"
   | "paid"
   | "overdue"
-  | "out-of-order";
+  | "missed";
 
 const getPeriodTimelineStatusColor = (
   status: PeriodTimelineSectionStatus,
@@ -3853,7 +3853,7 @@ const getPeriodTimelineStatusColor = (
       return "rgb(var(--v-theme-success))";
     case "overdue":
       return "rgb(var(--v-theme-error))";
-    case "out-of-order":
+    case "missed":
       return "rgb(var(--v-theme-warning))";
     case "invoiced":
       return "rgb(var(--v-theme-primary))";
@@ -3870,8 +3870,8 @@ const getPeriodTimelineStatusLabel = (
       return "Invoiced - Paid";
     case "overdue":
       return "Invoiced - Overdue";
-    case "out-of-order":
-      return "Invoiced - Out of order";
+    case "missed":
+      return "Missed period";
     case "invoiced":
       return "Invoiced";
     default:
@@ -4079,24 +4079,27 @@ const getResolvedPeriodTimelineSectionStatus = (
 ): PeriodTimelineSectionStatus => {
   const baseStatus = getPeriodTimelineSectionStatus(parentItem, section);
 
-  if (baseStatus !== "invoiced" || !isPeriodDrivenParentDealItem(parentItem))
+  if (baseStatus !== "not-invoiced" || !isPeriodDrivenParentDealItem(parentItem))
     return baseStatus;
 
   const sectionIndex = parentItem.derivedSections.findIndex(
     (candidate) => candidate.id === section.id,
   );
 
-  if (sectionIndex <= 0) return baseStatus;
+  if (sectionIndex < 0 || sectionIndex >= parentItem.derivedSections.length - 1)
+    return baseStatus;
 
-  const earlierSectionIsNotInvoiced = parentItem.derivedSections
-    .slice(0, sectionIndex)
+  const laterSectionHasInvoice = parentItem.derivedSections
+    .slice(sectionIndex + 1)
     .some(
       (candidate) =>
         getPeriodTimelineSectionStatus(parentItem, candidate) ===
-        "not-invoiced",
+        "invoiced" ||
+        getPeriodTimelineSectionStatus(parentItem, candidate) === "paid" ||
+        getPeriodTimelineSectionStatus(parentItem, candidate) === "overdue",
     );
 
-  return earlierSectionIsNotInvoiced ? "out-of-order" : baseStatus;
+  return laterSectionHasInvoice ? "missed" : baseStatus;
 };
 
 const getSectionInvoiceState = (
@@ -9342,11 +9345,11 @@ const openEditTask = (taskId: number | string) => {
   background: rgb(var(--v-theme-error));
 }
 
-.period-timeline__step--out-of-order .period-timeline__button {
+.period-timeline__step--missed .period-timeline__button {
   color: rgb(var(--v-theme-warning));
 }
 
-.period-timeline__step--out-of-order .period-timeline__dot {
+.period-timeline__step--missed .period-timeline__dot {
   border-color: rgb(var(--v-theme-warning));
   background: rgb(var(--v-theme-warning));
 }
