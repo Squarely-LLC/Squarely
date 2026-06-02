@@ -32,15 +32,11 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
-import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
-import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
-import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import type { InvoicePaymentInput } from "@/stores/invoices";
+import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
-import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
-import { cloneProformaRecord, useProformasStore } from "@/stores/proformas";
 import type { ProformaPaymentInput } from "@/stores/proformas";
+import { cloneProformaRecord, useProformasStore } from "@/stores/proformas";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import { useReceiptsStore } from "@/stores/receipts";
 import { useTodos } from "@/stores/todos";
@@ -77,7 +73,19 @@ import {
   buildQuotationThanksNote,
   formatCurrencyAmount,
 } from "@/utils/quotationConfig";
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
+import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
+import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
@@ -278,7 +286,9 @@ const pendingEmailDocument = ref<{
   recordId: number | string;
 } | null>(null);
 const invoiceConversionDialogVisible = ref(false);
-const pendingInvoiceConversionRecord = ref<DealDocumentPanelRecord | null>(null);
+const pendingInvoiceConversionRecord = ref<DealDocumentPanelRecord | null>(
+  null,
+);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -909,7 +919,8 @@ const editLineRequiresRecurrentTerm = computed(() => {
 });
 
 const editLineUsesPeriodQuantity = computed(
-  () => editLineRequiresRecurrentTerm.value || editLineRequiresRetainerTerm.value,
+  () =>
+    editLineRequiresRecurrentTerm.value || editLineRequiresRetainerTerm.value,
 );
 
 const editLineBillablePeriods = computed(() =>
@@ -1021,20 +1032,20 @@ const selectedCatalogueRecord = computed(() =>
 
 watch(selectedCatalogueItemId, () => {
   const item = selectedCatalogueItem.value;
-  const record = selectedCatalogueRecord.value as
-    | { chargeTax?: boolean; taxApplicable?: boolean }
-    | null;
+  const record = selectedCatalogueRecord.value as {
+    chargeTax?: boolean;
+    taxApplicable?: boolean;
+  } | null;
 
   addItemDraft.name = item?.name ?? "";
   addItemDraft.price = Number(item?.bestPrice || 0);
   addItemDraft.discountPercent = 0;
-  addItemDraft.taxApplicable = record?.chargeTax ?? record?.taxApplicable ?? true;
+  addItemDraft.taxApplicable =
+    record?.chargeTax ?? record?.taxApplicable ?? true;
   addItemDraft.note = item?.description ?? "";
-  addProducedCustomization.value =
-    addProducedProductRecord.value &&
-    addProducedProductRecord.value.id === item?.id
-      ? buildProducedCustomizationDraft(addProducedProductRecord.value)
-      : null;
+  addProducedCustomization.value = addProducedProductRecord.value
+    ? buildProducedCustomizationDraft(addProducedProductRecord.value)
+    : null;
 });
 
 const selectedCatalogueItemName = computed({
@@ -1057,7 +1068,8 @@ const selectedCatalogueItemName = computed({
 
     if (
       matchedOption &&
-      String(selectedCatalogueItemId.value ?? "") !== String(matchedOption.value)
+      String(selectedCatalogueItemId.value ?? "") !==
+        String(matchedOption.value)
     ) {
       selectedCatalogueItemId.value = matchedOption.value;
       return;
@@ -1111,7 +1123,9 @@ const cloneProducedCustomization = (
         subItems: customization.subItems.map((subItem) => ({
           ...subItem,
           options: subItem.options.map(cloneProducedCustomizationField),
-          measurements: subItem.measurements.map(cloneProducedCustomizationField),
+          measurements: subItem.measurements.map(
+            cloneProducedCustomizationField,
+          ),
         })),
       }
     : null;
@@ -1128,7 +1142,8 @@ const buildProducedCustomizationFields = (
 ) =>
   fields.map((field) => {
     const current =
-      existing?.find((entry) => Number(entry.fieldId) === Number(field.id)) ?? null;
+      existing?.find((entry) => Number(entry.fieldId) === Number(field.id)) ??
+      null;
 
     return {
       fieldId: Number(field.id),
@@ -1152,25 +1167,27 @@ const buildProducedCustomizationDraft = (
     Array.isArray(record.measurements) ? record.measurements : [],
     existing?.measurements,
   ),
-  subItems: (Array.isArray(record.subItems) ? record.subItems : []).map((subItem) => {
-    const current =
-      existing?.subItems.find(
-        (entry) => Number(entry.subItemId) === Number(subItem.id),
-      ) ?? null;
+  subItems: (Array.isArray(record.subItems) ? record.subItems : []).map(
+    (subItem) => {
+      const current =
+        existing?.subItems.find(
+          (entry) => Number(entry.subItemId) === Number(subItem.id),
+        ) ?? null;
 
-    return {
-      subItemId: Number(subItem.id),
-      name: String(subItem.name ?? "").trim(),
-      options: buildProducedCustomizationFields(
-        Array.isArray(subItem.options) ? subItem.options : [],
-        current?.options,
-      ),
-      measurements: buildProducedCustomizationFields(
-        Array.isArray(subItem.measurements) ? subItem.measurements : [],
-        current?.measurements,
-      ),
-    };
-  }),
+      return {
+        subItemId: Number(subItem.id),
+        name: String(subItem.name ?? "").trim(),
+        options: buildProducedCustomizationFields(
+          Array.isArray(subItem.options) ? subItem.options : [],
+          current?.options,
+        ),
+        measurements: buildProducedCustomizationFields(
+          Array.isArray(subItem.measurements) ? subItem.measurements : [],
+          current?.measurements,
+        ),
+      };
+    },
+  ),
 });
 
 const addProducedProductRecord = computed(() =>
@@ -1186,11 +1203,11 @@ const editProducedProductRecord = computed(() => {
 });
 
 const addItemDialogMaxWidth = computed(() =>
-  addProducedProductRecord.value ? 1180 : 880,
+  addProducedProductRecord.value ? 1020 : 880,
 );
 
 const editItemDialogMaxWidth = computed(() =>
-  editProducedProductRecord.value ? 1180 : 880,
+  editProducedProductRecord.value ? 1020 : 880,
 );
 
 const buildProducedProductReturnQuery = (extra?: Record<string, string>) => ({
@@ -1216,7 +1233,9 @@ const handleProducedProductReturn = async () => {
   if (String(route.query.dealId || "") !== String(props.deal.id)) return;
 
   const flow = String(route.query.producedFlow || "");
-  const returnedCatalogueItemId = String(route.query.catalogueItemId || "").trim();
+  const returnedCatalogueItemId = String(
+    route.query.catalogueItemId || "",
+  ).trim();
 
   if (flow === "create") {
     openAddItemDialog();
@@ -1940,16 +1959,19 @@ const getProducedProductRecord = (
 const getProducedProductCustomizationSummary = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
+  const formatProducedCustomizationValue = (value: unknown) =>
+    Array.isArray(value)
+      ? value.join(", ")
+      : value === null || value === undefined
+        ? ""
+        : String(value).trim();
+
   const valueSummary = [
     ...(item?.producedCustomization?.options || []),
     ...(item?.producedCustomization?.measurements || []),
   ]
     .map((field) => {
-      const value = Array.isArray(field.value)
-        ? field.value.join(", ")
-        : field.value === null || field.value === undefined
-          ? ""
-          : String(field.value).trim();
+      const value = formatProducedCustomizationValue(field.value);
 
       if (!value) return "";
       return `${field.name}: ${value}`;
@@ -1978,6 +2000,34 @@ const getProducedProductCustomizationSummary = (
 const getProducedProductSubItemsSummary = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
+  const formatProducedCustomizationValue = (value: unknown) =>
+    Array.isArray(value)
+      ? value.join(", ")
+      : value === null || value === undefined
+        ? ""
+        : String(value).trim();
+
+  const customizationSummary = (item?.producedCustomization?.subItems || [])
+    .map((subItem) => {
+      const values = [
+        ...(subItem.options || []),
+        ...(subItem.measurements || []),
+      ]
+        .map((field) => {
+          const value = formatProducedCustomizationValue(field.value);
+
+          if (!value) return "";
+          return `${field.name}: ${value}`;
+        })
+        .filter(Boolean);
+
+      if (!values.length) return "";
+      return `${subItem.name}: ${values.join(", ")}`;
+    })
+    .filter(Boolean);
+
+  if (customizationSummary.length) return customizationSummary.join(" | ");
+
   const produced = getProducedProductRecord(item);
   if (!produced) return null;
 
@@ -2146,7 +2196,8 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
 };
 
 const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
-  if (!item) return [] as Array<{ label: "Start Date" | "End Date"; value: string }>;
+  if (!item)
+    return [] as Array<{ label: "Start Date" | "End Date"; value: string }>;
 
   const rawStartDate = isRetainerCatalogueType(item.catalogueType)
     ? item.retainerStartDate
@@ -3007,13 +3058,14 @@ const isDocumentConversionBlocked = (record: DealDocumentPanelRecord) => {
   const status = normalizeDocumentStatus(record.status);
 
   return (
-    status === "canceled" ||
-    status === "lost" ||
-    isDocumentConverted(record)
+    status === "canceled" || status === "lost" || isDocumentConverted(record)
   );
 };
 
-const canPayDocument = (kind: DealPreviewKind, record: DealDocumentPanelRecord) =>
+const canPayDocument = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) =>
   (kind === "proforma" || kind === "invoice") &&
   !isDocumentPaid(record) &&
   record.balance > 0;
@@ -3057,7 +3109,10 @@ const getApprovalAction = (
   };
 };
 
-const requestApproval = (kind: DealPreviewKind, record: DealDocumentPanelRecord) => {
+const requestApproval = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
   if (getApprovalAction(kind, record).disabled) return;
 
   const patch = { approvalRequestedAt: new Date().toISOString() } as any;
@@ -3072,7 +3127,8 @@ const requestApproval = (kind: DealPreviewKind, record: DealDocumentPanelRecord)
 const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
   const labels = (record.purchasedProducts || [])
     .map((product) => {
-      if (product.billingPeriod) return getDealBillingPeriodLabel(product.billingPeriod);
+      if (product.billingPeriod)
+        return getDealBillingPeriodLabel(product.billingPeriod);
 
       const billingKey = resolveStoredBillingPeriodKey(product);
       if (billingKey) return billingKey;
@@ -3082,11 +3138,7 @@ const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
         (item) => item.selectionKey === selectionKey,
       );
 
-      return (
-        selectable?.parentName ||
-        product.title ||
-        null
-      );
+      return selectable?.parentName || product.title || null;
     })
     .filter((label): label is string => Boolean(label?.trim()));
 
@@ -3648,9 +3700,13 @@ const selectedPaymentRecord = computed(() => {
   if (!target) return null;
 
   const source =
-    target.kind === "proforma" ? dealProformaRecords.value : dealInvoiceRecords.value;
+    target.kind === "proforma"
+      ? dealProformaRecords.value
+      : dealInvoiceRecords.value;
 
-  return source.find((record) => String(record.id) === String(target.id)) ?? null;
+  return (
+    source.find((record) => String(record.id) === String(target.id)) ?? null
+  );
 });
 
 const selectedPaymentBalance = computed(() =>
@@ -3851,7 +3907,9 @@ const findMatchingProformaRecordForInvoiceDraft = (
   selectedBillingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
 ) => {
   const draft = buildDealDocumentDraftRecord("invoice", {
-    billingPeriods: selectedBillingPeriods?.length ? selectedBillingPeriods : null,
+    billingPeriods: selectedBillingPeriods?.length
+      ? selectedBillingPeriods
+      : null,
     billingPeriodAssignments: selectedBillingPeriodAssignments || null,
     billingPeriod: selectionNeedsBillingPeriod(selectedItems)
       ? (selectedBillingPeriods?.[0] ?? billingPeriod.value)
@@ -3877,7 +3935,9 @@ const findMatchingProformaRecordForInvoiceDraft = (
 
       return (
         recordSignature.length === targetSignature.length &&
-        recordSignature.every((value, index) => value === targetSignature[index])
+        recordSignature.every(
+          (value, index) => value === targetSignature[index],
+        )
       );
     }) ?? null
   );
@@ -3892,7 +3952,10 @@ const confirmInvoiceConversion = async () => {
   const matchingProforma = pendingInvoiceConversionRecord.value;
   if (!matchingProforma) return;
 
-  const createdInvoiceId = convertDocumentToInvoice("proforma", matchingProforma);
+  const createdInvoiceId = convertDocumentToInvoice(
+    "proforma",
+    matchingProforma,
+  );
 
   closeInvoiceConversionDialog();
   resetDocumentWorkflowState();
@@ -4085,9 +4148,7 @@ type PeriodTimelineSectionStatus =
   | "overdue"
   | "missed";
 
-const getPeriodTimelineStatusColor = (
-  status: PeriodTimelineSectionStatus,
-) => {
+const getPeriodTimelineStatusColor = (status: PeriodTimelineSectionStatus) => {
   switch (status) {
     case "paid":
       return "rgb(var(--v-theme-success))";
@@ -4102,9 +4163,7 @@ const getPeriodTimelineStatusColor = (
   }
 };
 
-const getPeriodTimelineStatusLabel = (
-  status: PeriodTimelineSectionStatus,
-) => {
+const getPeriodTimelineStatusLabel = (status: PeriodTimelineSectionStatus) => {
   switch (status) {
     case "paid":
       return "Invoiced - Paid";
@@ -4170,7 +4229,8 @@ const getPeriodTimelineTrackBackground = (item: DealItemWithPlan) => {
 const getPeriodTimelineSectionStatusClass = (
   parentItem: DealItemWithPlan,
   section: DerivedSection,
-) => `period-timeline__step--${getResolvedPeriodTimelineSectionStatus(parentItem, section)}`;
+) =>
+  `period-timeline__step--${getResolvedPeriodTimelineSectionStatus(parentItem, section)}`;
 
 const getPeriodStepLabel = (index: number) => `P${index + 1}`;
 
@@ -4319,7 +4379,10 @@ const getResolvedPeriodTimelineSectionStatus = (
 ): PeriodTimelineSectionStatus => {
   const baseStatus = getPeriodTimelineSectionStatus(parentItem, section);
 
-  if (baseStatus !== "not-invoiced" || !isPeriodDrivenParentDealItem(parentItem))
+  if (
+    baseStatus !== "not-invoiced" ||
+    !isPeriodDrivenParentDealItem(parentItem)
+  )
     return baseStatus;
 
   const sectionIndex = parentItem.derivedSections.findIndex(
@@ -4333,8 +4396,7 @@ const getResolvedPeriodTimelineSectionStatus = (
     .slice(sectionIndex + 1)
     .some(
       (candidate) =>
-        getPeriodTimelineSectionStatus(parentItem, candidate) ===
-        "invoiced" ||
+        getPeriodTimelineSectionStatus(parentItem, candidate) === "invoiced" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "paid" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "overdue",
     );
@@ -6580,14 +6642,22 @@ const openEditTask = (taskId: number | string) => {
                             </template>
                           </VTooltip>
 
-                          <span class="item-card-row-separator" aria-hidden="true">
+                          <span
+                            class="item-card-row-separator"
+                            aria-hidden="true"
+                          >
                             |
                           </span>
                           <span class="item-card-inline-metrics__group">
                             {{ getItemDisplayMetric(item).label }} :
-                            <strong>{{ getItemDisplayMetric(item).value }}</strong>
+                            <strong>{{
+                              getItemDisplayMetric(item).value
+                            }}</strong>
                           </span>
-                          <span class="item-card-row-separator" aria-hidden="true">
+                          <span
+                            class="item-card-row-separator"
+                            aria-hidden="true"
+                          >
                             |
                           </span>
                           <span class="item-card-inline-metrics__group">
@@ -6651,7 +6721,10 @@ const openEditTask = (taskId: number | string) => {
                   <div class="item-card-amount">
                     <span>Amount</span>
                     <strong>{{
-                      formatCurrencyAmount(itemAmount(item), configStore.financial)
+                      formatCurrencyAmount(
+                        itemAmount(item),
+                        configStore.financial,
+                      )
                     }}</strong>
                   </div>
                 </div>
@@ -6841,7 +6914,9 @@ const openEditTask = (taskId: number | string) => {
                             <div class="item-card-header">
                               <div class="item-card-title-row">
                                 <VTooltip :text="goal.name" location="top">
-                                  <template #activator="{ props: tooltipProps }">
+                                  <template
+                                    #activator="{ props: tooltipProps }"
+                                  >
                                     <div
                                       v-bind="tooltipProps"
                                       class="item-card-title item-card-title--phase truncate-title"
@@ -6926,7 +7001,9 @@ const openEditTask = (taskId: number | string) => {
                       v-for="(section, sectionIndex) in item.derivedSections"
                       :key="section.id"
                       class="period-timeline__step"
-                      :class="getPeriodTimelineSectionStatusClass(item, section)"
+                      :class="
+                        getPeriodTimelineSectionStatusClass(item, section)
+                      "
                     >
                       <VMenu location="bottom">
                         <template #activator="{ props: menuProps }">
@@ -6967,7 +7044,9 @@ const openEditTask = (taskId: number | string) => {
                                     )
                                   }}</strong>
                                 </span>
-                                <span class="period-action-menu__date-separator">
+                                <span
+                                  class="period-action-menu__date-separator"
+                                >
                                   |
                                 </span>
                                 <span>
@@ -7529,7 +7608,9 @@ const openEditTask = (taskId: number | string) => {
               <VMenu activator="parent">
                 <VList density="compact">
                   <VListItem
-                    :disabled="isRetainerPanelDocumentActionDisabled('quotation')"
+                    :disabled="
+                      isRetainerPanelDocumentActionDisabled('quotation')
+                    "
                     @click="openPanelExternalDocumentFlow('quotation')"
                   >
                     <template #prepend>
@@ -7538,7 +7619,9 @@ const openEditTask = (taskId: number | string) => {
                     <VListItemTitle>Attach Quotation</VListItemTitle>
                   </VListItem>
                   <VListItem
-                    :disabled="isRetainerPanelDocumentActionDisabled('proforma')"
+                    :disabled="
+                      isRetainerPanelDocumentActionDisabled('proforma')
+                    "
                     @click="openPanelExternalDocumentFlow('proforma')"
                   >
                     <template #prepend>
@@ -7570,7 +7653,9 @@ const openEditTask = (taskId: number | string) => {
               <VMenu activator="parent">
                 <VList density="compact">
                   <VListItem
-                    :disabled="isRetainerPanelDocumentActionDisabled('quotation')"
+                    :disabled="
+                      isRetainerPanelDocumentActionDisabled('quotation')
+                    "
                     @click="openPanelDocumentPage('quotation')"
                   >
                     <template #prepend>
@@ -7579,7 +7664,9 @@ const openEditTask = (taskId: number | string) => {
                     <VListItemTitle>Create Quotation</VListItemTitle>
                   </VListItem>
                   <VListItem
-                    :disabled="isRetainerPanelDocumentActionDisabled('proforma')"
+                    :disabled="
+                      isRetainerPanelDocumentActionDisabled('proforma')
+                    "
                     @click="openPanelDocumentPage('proforma')"
                   >
                     <template #prepend>
@@ -7672,7 +7759,9 @@ const openEditTask = (taskId: number | string) => {
                           role="row"
                         >
                           <span role="columnheader">Date</span>
-                          <span role="columnheader">{{ panel.numberHeader }}</span>
+                          <span role="columnheader">{{
+                            panel.numberHeader
+                          }}</span>
                           <span role="columnheader">Phase / Period</span>
                           <span role="columnheader">Amount</span>
                           <span role="columnheader" aria-label="Actions"></span>
@@ -7709,68 +7798,109 @@ const openEditTask = (taskId: number | string) => {
                               <VIcon icon="tabler-dots-vertical" size="18" />
                               <VMenu activator="parent">
                                 <VList density="compact">
-                                  <VListItem @click="openDocumentEdit(panel.key, record)">
+                                  <VListItem
+                                    @click="openDocumentEdit(panel.key, record)"
+                                  >
                                     <template #prepend>
                                       <VIcon icon="tabler-pencil" />
                                     </template>
                                     <VListItemTitle>Edit</VListItemTitle>
                                   </VListItem>
-                                  <VListItem @click="reviseDocumentRecord(panel.key, record)">
+                                  <VListItem
+                                    @click="
+                                      reviseDocumentRecord(panel.key, record)
+                                    "
+                                  >
                                     <template #prepend>
                                       <VIcon icon="tabler-refresh" />
                                     </template>
                                     <VListItemTitle>Revise</VListItemTitle>
                                   </VListItem>
-                                  <VListItem @click="duplicateDocumentRecord(panel.key, record)">
+                                  <VListItem
+                                    @click="
+                                      duplicateDocumentRecord(panel.key, record)
+                                    "
+                                  >
                                     <template #prepend>
                                       <VIcon icon="tabler-copy" />
                                     </template>
                                     <VListItemTitle>Duplicate</VListItemTitle>
                                   </VListItem>
                                   <VListItem
-                                    :disabled="getApprovalAction(panel.key, record).disabled"
+                                    :disabled="
+                                      getApprovalAction(panel.key, record)
+                                        .disabled
+                                    "
                                     @click="requestApproval(panel.key, record)"
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-checklist" />
                                     </template>
                                     <VListItemTitle>
-                                      {{ getApprovalAction(panel.key, record).title }}
+                                      {{
+                                        getApprovalAction(panel.key, record)
+                                          .title
+                                      }}
                                     </VListItemTitle>
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    :disabled="isDocumentConversionBlocked(record)"
+                                    :disabled="
+                                      isDocumentConversionBlocked(record)
+                                    "
                                     @click="convertQuotationToProforma(record)"
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-file-dollar" />
                                     </template>
-                                    <VListItemTitle>Convert to Proforma</VListItemTitle>
+                                    <VListItemTitle
+                                      >Convert to Proforma</VListItemTitle
+                                    >
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    :disabled="isDocumentConversionBlocked(record)"
-                                    @click="convertDocumentToInvoice('quotation', record)"
+                                    :disabled="
+                                      isDocumentConversionBlocked(record)
+                                    "
+                                    @click="
+                                      convertDocumentToInvoice(
+                                        'quotation',
+                                        record,
+                                      )
+                                    "
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-file-invoice" />
                                     </template>
-                                    <VListItemTitle>Convert to Tax invoice</VListItemTitle>
+                                    <VListItemTitle
+                                      >Convert to Tax invoice</VListItemTitle
+                                    >
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'proforma'"
                                     :disabled="isDocumentConverted(record)"
-                                    @click="convertDocumentToInvoice('proforma', record)"
+                                    @click="
+                                      convertDocumentToInvoice(
+                                        'proforma',
+                                        record,
+                                      )
+                                    "
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-file-invoice" />
                                     </template>
-                                    <VListItemTitle>Convert to Tax invoice</VListItemTitle>
+                                    <VListItemTitle
+                                      >Convert to Tax invoice</VListItemTitle
+                                    >
                                   </VListItem>
                                   <VListItem
                                     v-if="canPayDocument(panel.key, record)"
-                                    @click="openDocumentPaymentFromPanel(panel.key, record)"
+                                    @click="
+                                      openDocumentPaymentFromPanel(
+                                        panel.key,
+                                        record,
+                                      )
+                                    "
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-cash" />
@@ -7783,23 +7913,55 @@ const openEditTask = (taskId: number | string) => {
                                     </template>
                                     <VListItemTitle>Share</VListItemTitle>
                                     <template #append>
-                                      <VIcon icon="tabler-chevron-right" size="16" />
+                                      <VIcon
+                                        icon="tabler-chevron-right"
+                                        size="16"
+                                      />
                                     </template>
-                                    <VMenu activator="parent" location="end" open-on-hover>
+                                    <VMenu
+                                      activator="parent"
+                                      location="end"
+                                      open-on-hover
+                                    >
                                       <VList density="compact">
-                                        <VListItem @click="openDocumentPreviewAction(panel.key, record, 'download')">
+                                        <VListItem
+                                          @click="
+                                            openDocumentPreviewAction(
+                                              panel.key,
+                                              record,
+                                              'download',
+                                            )
+                                          "
+                                        >
                                           <template #prepend>
                                             <VIcon icon="tabler-download" />
                                           </template>
-                                          <VListItemTitle>Download</VListItemTitle>
+                                          <VListItemTitle
+                                            >Download</VListItemTitle
+                                          >
                                         </VListItem>
-                                        <VListItem @click="openDocumentPreviewAction(panel.key, record, 'print')">
+                                        <VListItem
+                                          @click="
+                                            openDocumentPreviewAction(
+                                              panel.key,
+                                              record,
+                                              'print',
+                                            )
+                                          "
+                                        >
                                           <template #prepend>
                                             <VIcon icon="tabler-printer" />
                                           </template>
                                           <VListItemTitle>Print</VListItemTitle>
                                         </VListItem>
-                                        <VListItem @click="openDocumentEmailDialog(panel.key, record)">
+                                        <VListItem
+                                          @click="
+                                            openDocumentEmailDialog(
+                                              panel.key,
+                                              record,
+                                            )
+                                          "
+                                        >
                                           <template #prepend>
                                             <VIcon icon="tabler-mail" />
                                           </template>
@@ -7810,7 +7972,9 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     class="text-error"
-                                    @click="deleteDocumentRecord(panel.key, record)"
+                                    @click="
+                                      deleteDocumentRecord(panel.key, record)
+                                    "
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-trash" />
@@ -8188,7 +8352,9 @@ const openEditTask = (taskId: number | string) => {
                 <VCol cols="12" sm="6" md="3">
                   <div class="d-flex flex-column gap-2">
                     <span class="text-sm text-medium-emphasis">
-                      {{ addItemDraft.taxApplicable ? "Taxable" : "Non Taxable" }}
+                      {{
+                        addItemDraft.taxApplicable ? "Taxable" : "Non Taxable"
+                      }}
                     </span>
                     <VSwitch
                       v-model="addItemDraft.taxApplicable"
@@ -8282,6 +8448,7 @@ const openEditTask = (taskId: number | string) => {
             <VCol
               v-if="addProducedProductRecord && addProducedCustomization"
               cols="12"
+              class="deal-item-modal-customization-col"
             >
               <DealProducedCustomizationForm
                 v-model="addProducedCustomization"
@@ -8485,6 +8652,7 @@ const openEditTask = (taskId: number | string) => {
             <VCol
               v-if="editProducedProductRecord && editProducedCustomization"
               cols="12"
+              class="deal-item-modal-customization-col"
             >
               <DealProducedCustomizationForm
                 v-model="editProducedCustomization"
@@ -8515,10 +8683,7 @@ const openEditTask = (taskId: number | string) => {
 
         <VForm ref="phaseFormRef" @submit.prevent="savePhase">
           <VRow>
-            <VCol
-              cols="12"
-              :md="phaseDialogIsRecurrentService ? 12 : 8"
-            >
+            <VCol cols="12" :md="phaseDialogIsRecurrentService ? 12 : 8">
               <AppTextField
                 v-model="phaseDraft.name"
                 :label="
@@ -9194,7 +9359,11 @@ const openEditTask = (taskId: number | string) => {
                 <VCol cols="12" sm="6" md="3">
                   <div class="d-flex flex-column gap-2">
                     <span class="text-sm text-medium-emphasis">
-                      {{ createDraftItem.taxApplicable ? "Taxable" : "Non Taxable" }}
+                      {{
+                        createDraftItem.taxApplicable
+                          ? "Taxable"
+                          : "Non Taxable"
+                      }}
                     </span>
                     <VSwitch
                       v-model="createDraftItem.taxApplicable"
@@ -9267,7 +9436,8 @@ const openEditTask = (taskId: number | string) => {
 
                   <VCol cols="12">
                     <VAlert variant="tonal" color="primary">
-                      Billable periods: {{ createDraftItemBillablePeriods ?? "--" }}
+                      Billable periods:
+                      {{ createDraftItemBillablePeriods ?? "--" }}
                     </VAlert>
                   </VCol>
                 </template>
@@ -9335,6 +9505,10 @@ const openEditTask = (taskId: number | string) => {
 .deal-item-modal-note-col {
   display: flex;
   flex-direction: column;
+}
+
+.deal-item-modal-customization-col {
+  margin-block-start: 0.75rem;
 }
 
 .deal-item-modal-main > :deep(.v-row) {
@@ -9484,16 +9658,17 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .goal-section-panel--grouped .goal-panels {
-  padding: 0.6rem 0.7rem;
   border: 1px solid rgba(var(--v-theme-primary), 0.14);
   border-radius: 8px;
   background: rgba(var(--v-theme-primary), 0.05);
+  padding-block: 0.6rem;
+  padding-inline: 0.7rem;
 }
 
 .goal-section-panel--grouped .goal-panel--static {
+  border-radius: 0;
   background: transparent !important;
   box-shadow: none !important;
-  border-radius: 0;
 }
 
 .period-timeline {
@@ -9504,12 +9679,13 @@ const openEditTask = (taskId: number | string) => {
 .period-timeline__services {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.6rem 0.7rem;
   border: 1px solid rgba(var(--v-theme-primary), 0.14);
   border-radius: 8px;
   background: rgba(var(--v-theme-primary), 0.05);
+  gap: 0.45rem;
   margin-block-end: 0.9rem;
+  padding-block: 0.6rem;
+  padding-inline: 0.7rem;
 }
 
 .period-timeline__services-title {
@@ -9528,7 +9704,8 @@ const openEditTask = (taskId: number | string) => {
 
 .period-timeline__service-row {
   inline-size: 100%;
-  padding: 0.65rem 0.75rem;
+  padding-block: 0.65rem;
+  padding-inline: 0.75rem;
 }
 
 .period-timeline__track {
@@ -9559,6 +9736,7 @@ const openEditTask = (taskId: number | string) => {
 
 .period-timeline__button {
   display: flex;
+  padding: 0;
   border: 0;
   background: transparent;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
@@ -9566,7 +9744,6 @@ const openEditTask = (taskId: number | string) => {
   font: inherit;
   inline-size: 100%;
   min-inline-size: 0;
-  padding: 0;
 }
 
 .period-timeline__button > span {
@@ -9666,9 +9843,9 @@ const openEditTask = (taskId: number | string) => {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.35rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.75rem;
+  gap: 0.35rem;
   line-height: 1.35;
   margin-block-start: 0.2rem;
 }
@@ -9761,12 +9938,12 @@ const openEditTask = (taskId: number | string) => {
 
 .item-card-title-row {
   display: flex;
+  overflow: hidden;
   flex-wrap: nowrap;
   align-items: baseline;
   gap: 0.35rem;
   inline-size: 100%;
   min-inline-size: 0;
-  overflow: hidden;
 }
 
 .item-card-row-separator {
@@ -9780,10 +9957,10 @@ const openEditTask = (taskId: number | string) => {
 
 .item-card-title {
   flex: 0 1 auto;
-  min-inline-size: 0;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.25;
+  min-inline-size: 0;
 }
 
 .item-card-title--phase {
@@ -9830,9 +10007,9 @@ const openEditTask = (taskId: number | string) => {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.35rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.875rem;
+  gap: 0.35rem;
   line-height: 1.4;
 }
 
@@ -9849,10 +10026,10 @@ const openEditTask = (taskId: number | string) => {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: baseline;
-  gap: 0.25rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.875rem;
   font-weight: 400;
+  gap: 0.25rem;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -9871,11 +10048,11 @@ const openEditTask = (taskId: number | string) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.08);
   min-inline-size: 5.75rem;
   padding-block: 0.5rem;
   padding-inline: 0.75rem;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.08);
   text-align: center;
 }
 
@@ -10289,8 +10466,6 @@ const openEditTask = (taskId: number | string) => {
 .items-overview__preview-table-row:hover {
   background: rgba(var(--v-theme-primary), 0.04);
 }
-
-
 
 .items-overview__doc-link {
   overflow: hidden;
