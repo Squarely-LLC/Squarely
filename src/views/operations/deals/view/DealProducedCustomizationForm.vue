@@ -202,11 +202,12 @@ const rawMaterials = computed(() => {
               v-else-if="field.type === 'Select Buttons'"
               class="produced-customization-switch-field"
             >
-              <div class="produced-customization-switch-field__label">
-                {{ field.name }}
-              </div>
+              <span class="produced-customization-switch-field__label">{{
+                field.name
+              }}</span>
               <VSwitch
                 :model-value="isSwitchEnabled(field)"
+                class="produced-customization-switch-field__control"
                 inset
                 hide-details
                 color="primary"
@@ -294,11 +295,12 @@ const rawMaterials = computed(() => {
               v-else-if="field.type === 'Select Buttons'"
               class="produced-customization-switch-field"
             >
-              <div class="produced-customization-switch-field__label">
-                {{ field.name }}
-              </div>
+              <span class="produced-customization-switch-field__label">{{
+                field.name
+              }}</span>
               <VSwitch
                 :model-value="isSwitchEnabled(field)"
+                class="produced-customization-switch-field__control"
                 inset
                 hide-details
                 color="primary"
@@ -407,11 +409,12 @@ const rawMaterials = computed(() => {
                       v-else-if="field.type === 'Select Buttons'"
                       class="produced-customization-switch-field"
                     >
-                      <div class="produced-customization-switch-field__label">
-                        {{ field.name }}
-                      </div>
+                      <span class="produced-customization-switch-field__label">{{
+                        field.name
+                      }}</span>
                       <VSwitch
                         :model-value="isSwitchEnabled(field)"
+                        class="produced-customization-switch-field__control"
                         inset
                         hide-details
                         color="primary"
@@ -528,11 +531,12 @@ const rawMaterials = computed(() => {
                       v-else-if="field.type === 'Select Buttons'"
                       class="produced-customization-switch-field"
                     >
-                      <div class="produced-customization-switch-field__label">
-                        {{ field.name }}
-                      </div>
+                      <span class="produced-customization-switch-field__label">{{
+                        field.name
+                      }}</span>
                       <VSwitch
                         :model-value="isSwitchEnabled(field)"
+                        class="produced-customization-switch-field__control"
                         inset
                         hide-details
                         color="primary"
@@ -636,11 +640,34 @@ const rawMaterials = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.16);
+  border-radius: 6px;
+  background: rgba(var(--v-theme-surface), 0.18);
+  block-size: 56px;
+  padding-inline: 0.875rem;
+  overflow: hidden;
 }
 
 .produced-customization-switch-field__label {
+  flex: 0 1 auto;
+  min-inline-size: 0;
   font-size: 0.95rem;
   font-weight: 500;
 }
+
+:deep(.produced-customization-switch-field__control) {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+:deep(.produced-customization-switch-field__control .v-selection-control) {
+  justify-content: flex-end;
+  min-block-size: 56px;
+}
+
+:deep(
+  .produced-customization-switch-field__control .v-selection-control__wrapper
+) {
+  margin-inline-start: 0;
+}
 </style>
->
