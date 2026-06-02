@@ -185,6 +185,43 @@ const pageSubtitle = computed(
   () => typeDescriptions[selectedType.value] || "Create a new catalogue item.",
 );
 const publishButtonLabel = computed(() => "Save");
+const returnDealId = computed(() => {
+  const raw = route.query.dealId;
+  return typeof raw === "string" && raw.trim() ? raw : null;
+});
+const returnDealTab = computed(() => {
+  const raw = route.query.returnTab;
+  return typeof raw === "string" && raw.trim() ? raw : "items";
+});
+const returnDealFlow = computed(() => {
+  const raw = route.query.dealFlow;
+  return typeof raw === "string" && raw.trim() ? raw : null;
+});
+const returnProducedFlow = computed(() => {
+  const raw = route.query.producedFlow;
+  return typeof raw === "string" && raw.trim() ? raw : null;
+});
+
+const navigateAfterCatalogueClose = async (
+  catalogueItemId?: string | null,
+) => {
+  if (returnDealFlow.value === "produced-product" && returnDealId.value) {
+    await router.push({
+      path: `/operations/deals/view/${returnDealId.value}`,
+      query: {
+        tab: returnDealTab.value,
+        dealFlow: returnDealFlow.value,
+        dealId: returnDealId.value,
+        producedFlow: returnProducedFlow.value || "edit",
+        ...(catalogueItemId ? { catalogueItemId } : {}),
+      },
+    });
+
+    return;
+  }
+
+  await router.push("/catalogues/list");
+};
 
 const itemName = ref("");
 const selectedCategory = ref("");
@@ -2669,13 +2706,16 @@ const saveItem = async () => {
     },
   };
 
+  let savedCatalogueItemId: string | null = editingItemId.value;
+
   if (editingItemId.value) {
     cataloguesStore.updateItem(editingItemId.value, payload);
   } else {
-    cataloguesStore.addItem(payload);
+    const created = cataloguesStore.addItem(payload);
+    savedCatalogueItemId = created?.id || null;
   }
 
-  router.push("/catalogues/list");
+  await navigateAfterCatalogueClose(savedCatalogueItemId);
 };
 
 watch(
@@ -2840,7 +2880,7 @@ watch(
         <VBtn
           variant="tonal"
           color="secondary"
-          @click="router.push('/catalogues/list')"
+          @click="navigateAfterCatalogueClose(editingItemId)"
         >
           Discard
         </VBtn>
@@ -5164,7 +5204,7 @@ watch(
         <VBtn
           variant="tonal"
           color="secondary"
-          @click="router.push('/catalogues/list')"
+          @click="navigateAfterCatalogueClose(editingItemId)"
         >
           Discard
         </VBtn>

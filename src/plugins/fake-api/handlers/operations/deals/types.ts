@@ -14,7 +14,10 @@ export interface DealBillingPeriod {
   endDate: string;
 }
 
-import type { CatalogueSalesTask } from "@/plugins/fake-api/handlers/catalogues/types";
+import type {
+  CatalogueProducedProductFieldType,
+  CatalogueSalesTask,
+} from "@/plugins/fake-api/handlers/catalogues/types";
 import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
 
 export interface DealItemOverride {
@@ -26,6 +29,30 @@ export interface DealItemOverride {
   discountPercent?: number | null;
   taxApplicable?: boolean | null;
   note?: string | null;
+}
+
+export type DealProducedCustomizationValue = string | number | string[] | null;
+
+export interface DealProducedCustomizationField {
+  fieldId: number;
+  name: string;
+  type: CatalogueProducedProductFieldType;
+  description?: string | null;
+  values?: string[];
+  value: DealProducedCustomizationValue;
+}
+
+export interface DealProducedCustomizationSubItem {
+  subItemId: number;
+  name: string;
+  options: DealProducedCustomizationField[];
+  measurements: DealProducedCustomizationField[];
+}
+
+export interface DealProducedCustomization {
+  options: DealProducedCustomizationField[];
+  measurements: DealProducedCustomizationField[];
+  subItems: DealProducedCustomizationSubItem[];
 }
 
 export interface DealCustomPhase {
@@ -67,6 +94,7 @@ export interface DealItem {
   unitPrice?: number | null;
   status?: string | null;
   note?: string | null;
+  producedCustomization?: DealProducedCustomization | null;
 }
 
 export interface DealFinancialEntry {

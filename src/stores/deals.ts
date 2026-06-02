@@ -9,6 +9,7 @@ import type {
   DealItem,
   DealNote,
   DealPendingStageTransition,
+  DealProducedCustomization,
   DealProperties,
   DealSalesTaskTemplate,
   DealStageLifecycleEvent,
@@ -321,6 +322,56 @@ function normalizeSalesman(
 function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
   if (!Array.isArray(items)) return [];
 
+  const normalizeProducedCustomization = (
+    customization: DealProducedCustomization | null | undefined,
+  ): DealProducedCustomization | null => {
+    if (!customization) return null;
+
+    const normalizeField = (field: any) => ({
+      fieldId: normalizeNullableNumber(field?.fieldId) ?? 0,
+      name: normalizeString(field?.name) || "Untitled field",
+      type:
+        field?.type === "Number" ||
+        field?.type === "Pictures" ||
+        field?.type === "Select Buttons" ||
+        field?.type === "Note" ||
+        field?.type === "Dropdown"
+          ? field.type
+          : "Text",
+      description: normalizeString(field?.description),
+      values: Array.isArray(field?.values)
+        ? field.values
+            .map((value: unknown) => String(value ?? "").trim())
+            .filter(Boolean)
+        : [],
+      value: Array.isArray(field?.value)
+        ? field.value
+            .map((value: unknown) => String(value ?? "").trim())
+            .filter(Boolean)
+        : field?.type === "Number"
+          ? normalizeAmount(field?.value)
+          : field?.value === null || field?.value === undefined
+            ? null
+            : String(field.value),
+    });
+
+    const normalizeFields = (fields: any) =>
+      Array.isArray(fields) ? fields.map(normalizeField) : [];
+
+    return {
+      options: normalizeFields(customization.options),
+      measurements: normalizeFields(customization.measurements),
+      subItems: Array.isArray(customization.subItems)
+        ? customization.subItems.map((subItem: any) => ({
+            subItemId: normalizeNullableNumber(subItem?.subItemId) ?? 0,
+            name: normalizeString(subItem?.name) || "Untitled sub item",
+            options: normalizeFields(subItem?.options),
+            measurements: normalizeFields(subItem?.measurements),
+          }))
+        : [],
+    };
+  };
+
   return items
     .map(({ generatedTaskIds: _generatedTaskIds, ...item }, index) => ({
       ...item,
@@ -354,6 +405,9 @@ function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
       ),
       status: normalizeString(item.status),
       note: normalizeString(item.note),
+      producedCustomization: normalizeProducedCustomization(
+        item.producedCustomization,
+      ),
       customPhases: Array.isArray(item.customPhases)
         ? item.customPhases.map((phase: DealCustomPhase) => ({
             ...phase,

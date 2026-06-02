@@ -11,6 +11,7 @@ import type {
   CatalogueItem,
   CatalogueItemType,
   CatalogueOnetimeServiceRecord,
+  CatalogueProducedProductFieldType,
   CatalogueProducedProductRecord,
   CatalogueProductRecord,
   CatalogueReccurentServiceRecord,
@@ -22,6 +23,8 @@ import type {
   DealCustomPhase,
   DealItem,
   DealItemOverride,
+  DealProducedCustomization,
+  DealProducedCustomizationField,
   DealProperties,
   DealSalesTaskTemplate,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
@@ -29,6 +32,7 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
+import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
 import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
@@ -86,6 +90,7 @@ const emit = defineEmits<{
   (e: "delete-task", todoId: number | string): void;
 }>();
 
+const route = useRoute();
 const router = useRouter();
 const cataloguesStore = useCataloguesStore();
 const configStore = useConfigStore();
@@ -787,6 +792,7 @@ const addItemDraft = reactive({
   retainerStartDate: defaultRetainerStartDate(),
   taxApplicable: true as boolean | null,
 });
+const addProducedCustomization = ref<DealProducedCustomization | null>(null);
 
 const createDraftItem = reactive({
   name: "",
@@ -888,6 +894,7 @@ const editLine = reactive({
   retainerEndDate: defaultRetainerEndDate(),
   retainerPeriods: 12 as number | null,
 });
+const editProducedCustomization = ref<DealProducedCustomization | null>(null);
 
 const editLineRequiresRetainerTerm = computed(() => {
   if (editLine.mode !== "item") return false;
@@ -1023,6 +1030,11 @@ watch(selectedCatalogueItemId, () => {
   addItemDraft.discountPercent = 0;
   addItemDraft.taxApplicable = record?.chargeTax ?? record?.taxApplicable ?? true;
   addItemDraft.note = item?.description ?? "";
+  addProducedCustomization.value =
+    addProducedProductRecord.value &&
+    addProducedProductRecord.value.id === item?.id
+      ? buildProducedCustomizationDraft(addProducedProductRecord.value)
+      : null;
 });
 
 const selectedCatalogueItemName = computed({
@@ -1054,6 +1066,175 @@ const selectedCatalogueItemName = computed({
     addItemDraft.name = nextName;
   },
 });
+
+const normalizeProducedCustomizationValue = (
+  type: CatalogueProducedProductFieldType,
+  value: unknown,
+) => {
+  if (type === "Pictures") {
+    return Array.isArray(value)
+      ? value.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+      : [];
+  }
+
+  if (type === "Number") {
+    if (value === null || value === undefined || value === "") return null;
+
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.join(", ");
+
+  const normalized = String(value).trim();
+  return normalized || null;
+};
+
+const cloneProducedCustomizationField = (
+  field: DealProducedCustomizationField,
+): DealProducedCustomizationField => ({
+  ...field,
+  values: Array.isArray(field.values) ? [...field.values] : [],
+  value: Array.isArray(field.value) ? [...field.value] : field.value,
+});
+
+const cloneProducedCustomization = (
+  customization: DealProducedCustomization | null | undefined,
+): DealProducedCustomization | null =>
+  customization
+    ? {
+        options: customization.options.map(cloneProducedCustomizationField),
+        measurements: customization.measurements.map(
+          cloneProducedCustomizationField,
+        ),
+        subItems: customization.subItems.map((subItem) => ({
+          ...subItem,
+          options: subItem.options.map(cloneProducedCustomizationField),
+          measurements: subItem.measurements.map(cloneProducedCustomizationField),
+        })),
+      }
+    : null;
+
+const buildProducedCustomizationFields = (
+  fields: Array<{
+    id: number;
+    name: string;
+    type: CatalogueProducedProductFieldType;
+    description: string;
+    values: string[];
+  }>,
+  existing?: DealProducedCustomizationField[] | null,
+) =>
+  fields.map((field) => {
+    const current =
+      existing?.find((entry) => Number(entry.fieldId) === Number(field.id)) ?? null;
+
+    return {
+      fieldId: Number(field.id),
+      name: String(field.name ?? "").trim(),
+      type: field.type,
+      description: String(field.description ?? "").trim(),
+      values: Array.isArray(field.values) ? [...field.values] : [],
+      value: normalizeProducedCustomizationValue(field.type, current?.value),
+    } satisfies DealProducedCustomizationField;
+  });
+
+const buildProducedCustomizationDraft = (
+  record: CatalogueProducedProductRecord,
+  existing?: DealProducedCustomization | null,
+): DealProducedCustomization => ({
+  options: buildProducedCustomizationFields(
+    Array.isArray(record.options) ? record.options : [],
+    existing?.options,
+  ),
+  measurements: buildProducedCustomizationFields(
+    Array.isArray(record.measurements) ? record.measurements : [],
+    existing?.measurements,
+  ),
+  subItems: (Array.isArray(record.subItems) ? record.subItems : []).map((subItem) => {
+    const current =
+      existing?.subItems.find(
+        (entry) => Number(entry.subItemId) === Number(subItem.id),
+      ) ?? null;
+
+    return {
+      subItemId: Number(subItem.id),
+      name: String(subItem.name ?? "").trim(),
+      options: buildProducedCustomizationFields(
+        Array.isArray(subItem.options) ? subItem.options : [],
+        current?.options,
+      ),
+      measurements: buildProducedCustomizationFields(
+        Array.isArray(subItem.measurements) ? subItem.measurements : [],
+        current?.measurements,
+      ),
+    };
+  }),
+});
+
+const addProducedProductRecord = computed(() =>
+  selectedCatalogueRecord.value?.type === "Produced Product"
+    ? (selectedCatalogueRecord.value as CatalogueProducedProductRecord)
+    : null,
+);
+
+const editProducedProductRecord = computed(() => {
+  if (editLine.mode !== "item") return null;
+
+  return getProducedProductRecord(getItemById(editLine.itemId));
+});
+
+const addItemDialogMaxWidth = computed(() =>
+  addProducedProductRecord.value ? 1180 : 880,
+);
+
+const editItemDialogMaxWidth = computed(() =>
+  editProducedProductRecord.value ? 1180 : 880,
+);
+
+const buildProducedProductReturnQuery = (extra?: Record<string, string>) => ({
+  dealFlow: "produced-product",
+  dealId: String(props.deal.id),
+  returnTab: "items",
+  producedFlow: "create",
+  ...(extra || {}),
+});
+
+const openProducedProductCatalogueCreator = async () => {
+  await router.push({
+    path: "/catalogues/add",
+    query: {
+      type: "Produced Product",
+      ...buildProducedProductReturnQuery(),
+    },
+  });
+};
+
+const handleProducedProductReturn = async () => {
+  if (route.query.dealFlow !== "produced-product") return;
+  if (String(route.query.dealId || "") !== String(props.deal.id)) return;
+
+  const flow = String(route.query.producedFlow || "");
+  const returnedCatalogueItemId = String(route.query.catalogueItemId || "").trim();
+
+  if (flow === "create") {
+    openAddItemDialog();
+
+    if (returnedCatalogueItemId) {
+      selectedCatalogueItemId.value = returnedCatalogueItemId;
+    }
+  }
+
+  await nextTick();
+
+  try {
+    await router.replace({
+      path: route.path,
+      query: { tab: "items" },
+    });
+  } catch {}
+};
 
 const buildDealRelatedTo = () => ({
   id: props.deal.id,
@@ -1188,6 +1369,7 @@ const addDealItemsFromCatalogueItem = (
       | "retainerPeriods"
       | "retainerStartDate"
     > | null;
+    producedCustomization?: DealProducedCustomization | null;
     taxApplicable?: boolean | null;
     unitPrice?: number | null;
   },
@@ -1217,6 +1399,9 @@ const addDealItemsFromCatalogueItem = (
       quantity,
       ...(options?.recurrentTerm || {}),
       ...(options?.retainerTerm || {}),
+      producedCustomization: cloneProducedCustomization(
+        options?.producedCustomization,
+      ),
       unitPrice: Number(options?.unitPrice ?? catalogueItem.bestPrice ?? 0),
       status: "Planned",
       note: options?.note ?? (catalogueItem.description || null),
@@ -1264,7 +1449,10 @@ const itemTypeLabel = (item: DealItem) => {
 };
 
 const openAddItemDialog = () => {
-  selectedCatalogueItemId.value = null;
+  if (route.query.dealFlow !== "produced-product") {
+    selectedCatalogueItemId.value = null;
+  }
+  addProducedCustomization.value = null;
   addItemDraft.name = "";
   addItemDraft.price = 0;
   addItemDraft.discountPercent = 0;
@@ -1322,6 +1510,10 @@ const saveSelectedCatalogueItem = async () => {
     retainerTerm,
     taxApplicable: addItemDraft.taxApplicable,
     unitPrice: Number(addItemDraft.price || 0),
+    producedCustomization:
+      selectedItem.type === "Produced Product"
+        ? cloneProducedCustomization(addProducedCustomization.value)
+        : null,
   });
   notifications.push("Item added to deal", "success", 3000);
   addItemDialogVisible.value = false;
@@ -1330,6 +1522,12 @@ const saveSelectedCatalogueItem = async () => {
 const openCreateDraftItemDialog = (type: CatalogueItemType) => {
   const choice = itemTypeChoices.find((item) => item.value === type);
   if (choice?.comingSoon) return;
+
+  if (type === "Produced Product") {
+    createItemTypeDialogVisible.value = false;
+    void openProducedProductCatalogueCreator();
+    return;
+  }
 
   selectedCreateItemType.value = type;
   createDraftItem.name = "";
@@ -1513,6 +1711,7 @@ const openEditItem = (item: DealItemWithPlan) => {
     const parent = getItemById(item.parentItemId);
     const override = parent?.subItemOverrides?.[overrideKey] || {};
 
+    editProducedCustomization.value = null;
     editLine.mode = "sub";
     editLine.itemId = null;
     editLine.parentItemId = Number(item.parentItemId);
@@ -1558,6 +1757,16 @@ const openEditItem = (item: DealItemWithPlan) => {
     item.retainerStartDate ?? defaultRetainerStartDate();
   editLine.retainerEndDate = item.retainerEndDate ?? defaultRetainerEndDate();
   editLine.retainerPeriods = item.retainerPeriods ?? 12;
+  const producedRecord =
+    item.catalogueType === "Produced Product"
+      ? getProducedProductRecord(item)
+      : null;
+  editProducedCustomization.value = producedRecord
+    ? buildProducedCustomizationDraft(
+        producedRecord,
+        item.producedCustomization || null,
+      )
+    : null;
   setEditFieldConstraints({
     quantity:
       !isRecurrentCatalogueType(item.catalogueType) &&
@@ -1580,6 +1789,7 @@ const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
   const sourceItem = getItemById(parentItem.id);
   const override = sourceItem?.subItemOverrides?.[goal.overrideKey] || {};
 
+  editProducedCustomization.value = null;
   editLine.mode = "sub";
   editLine.itemId = null;
   editLine.parentItemId = Number(parentItem.id);
@@ -1656,6 +1866,10 @@ const saveEditedLine = async () => {
             ? item.taxApplicable
             : payload.taxApplicable,
         note: payload.note,
+        producedCustomization:
+          item.catalogueType === "Produced Product"
+            ? cloneProducedCustomization(editProducedCustomization.value)
+            : null,
         ...(recurrentTerm || {
           recurrentBillablePeriods: null,
           recurrentEndDate: null,
@@ -1726,6 +1940,24 @@ const getProducedProductRecord = (
 const getProducedProductCustomizationSummary = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
+  const valueSummary = [
+    ...(item?.producedCustomization?.options || []),
+    ...(item?.producedCustomization?.measurements || []),
+  ]
+    .map((field) => {
+      const value = Array.isArray(field.value)
+        ? field.value.join(", ")
+        : field.value === null || field.value === undefined
+          ? ""
+          : String(field.value).trim();
+
+      if (!value) return "";
+      return `${field.name}: ${value}`;
+    })
+    .filter(Boolean);
+
+  if (valueSummary.length) return valueSummary.join(" | ");
+
   const produced = getProducedProductRecord(item);
   if (!produced) return null;
 
@@ -3142,6 +3374,7 @@ const handlePreviewActionFrameMessage = (event: MessageEvent) => {
 
 onMounted(() => {
   window.addEventListener("message", handlePreviewActionFrameMessage);
+  void handleProducedProductReturn();
 });
 
 onBeforeUnmount(() => {
@@ -3157,6 +3390,13 @@ onBeforeUnmount(() => {
   isPreviewActionFrameReady.value = false;
   pendingPreviewAction.value = null;
 });
+
+watch(
+  () => route.query,
+  () => {
+    void handleProducedProductReturn();
+  },
+);
 
 const getEditRouteName = (kind: DealPreviewKind) => {
   if (kind === "quotation") return "apps-quotation-edit-id";
@@ -7005,7 +7245,7 @@ const openEditTask = (taskId: number | string) => {
                         )"
                         :key="goal.id"
                         variant="flat"
-                        class="goal-panel goal-panel--static"
+                        class="goal-panel goal-panel--static goal-panel--contractual-phase"
                       >
                         <div class="phase-card-shell">
                           <div class="flex-grow-1 min-w-0">
@@ -7864,7 +8104,7 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
   </div>
 
-  <VDialog v-model="addItemDialogVisible" max-width="880">
+  <VDialog v-model="addItemDialogVisible" :max-width="addItemDialogMaxWidth">
     <DialogCloseBtn @click="addItemDialogVisible = false" />
     <VCard>
       <VCardText>
@@ -7887,7 +8127,7 @@ const openEditTask = (taskId: number | string) => {
                     :rules="[
                       requiredValidator,
                       () =>
-                        Boolean(selectedCatalogueItem) ||
+                        Boolean(selectedCatalogueItem?.id) ||
                         'Select catalogue item from list',
                     ]"
                     clearable
@@ -8039,6 +8279,16 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
+            <VCol
+              v-if="addProducedProductRecord && addProducedCustomization"
+              cols="12"
+            >
+              <DealProducedCustomizationForm
+                v-model="addProducedCustomization"
+                :record="addProducedProductRecord"
+              />
+            </VCol>
+
             <VCol cols="12">
               <DialogActionBar
                 save-type="submit"
@@ -8052,7 +8302,7 @@ const openEditTask = (taskId: number | string) => {
     </VCard>
   </VDialog>
 
-  <VDialog v-model="editLineDialogVisible" max-width="880">
+  <VDialog v-model="editLineDialogVisible" :max-width="editItemDialogMaxWidth">
     <DialogCloseBtn @click="editLineDialogVisible = false" />
     <VCard>
       <VCardText>
@@ -8229,6 +8479,16 @@ const openEditTask = (taskId: number | string) => {
                 placeholder="Short note"
                 rows="4"
                 auto-grow
+              />
+            </VCol>
+
+            <VCol
+              v-if="editProducedProductRecord && editProducedCustomization"
+              cols="12"
+            >
+              <DealProducedCustomizationForm
+                v-model="editProducedCustomization"
+                :record="editProducedProductRecord"
               />
             </VCol>
 
@@ -9184,6 +9444,11 @@ const openEditTask = (taskId: number | string) => {
   padding-inline: 0.8rem;
 }
 
+.goal-panel--contractual-phase {
+  border: 1px solid rgba(var(--v-theme-primary), 0.14) !important;
+  background: rgba(var(--v-theme-primary), 0.05) !important;
+}
+
 .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
   margin-block-start: 0.625rem;
 }
@@ -9212,9 +9477,23 @@ const openEditTask = (taskId: number | string) => {
 
 .goal-section-panel--grouped {
   padding: 0.8rem;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border: 1px solid rgba(var(--v-theme-primary), 0.14) !important;
   border-radius: 10px;
-  background: rgba(var(--v-theme-surface), 0.12);
+  background: rgba(var(--v-theme-primary), 0.05) !important;
+  box-shadow: none !important;
+}
+
+.goal-section-panel--grouped .goal-panels {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(var(--v-theme-primary), 0.14);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+
+.goal-section-panel--grouped .goal-panel--static {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0;
 }
 
 .period-timeline {
