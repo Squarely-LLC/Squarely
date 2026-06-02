@@ -3842,7 +3842,8 @@ type PeriodTimelineSectionStatus =
   | "not-invoiced"
   | "invoiced"
   | "paid"
-  | "overdue";
+  | "overdue"
+  | "out-of-order";
 
 const getPeriodTimelineStatusColor = (
   status: PeriodTimelineSectionStatus,
@@ -3852,6 +3853,8 @@ const getPeriodTimelineStatusColor = (
       return "rgb(var(--v-theme-success))";
     case "overdue":
       return "rgb(var(--v-theme-error))";
+    case "out-of-order":
+      return "rgb(var(--v-theme-warning))";
     case "invoiced":
       return "rgb(var(--v-theme-primary))";
     default:
@@ -3867,6 +3870,8 @@ const getPeriodTimelineStatusLabel = (
       return "Invoiced - Paid";
     case "overdue":
       return "Invoiced - Overdue";
+    case "out-of-order":
+      return "Invoiced - Out of order";
     case "invoiced":
       return "Invoiced";
     default:
@@ -3892,7 +3897,7 @@ const isInvoiceStoreRecordOverdue = (record: any) => {
   return dueDate.getTime() < today.getTime();
 };
 
-const resolvePeriodTimelineSectionStatus = (
+const resolvePeriodTimelineInvoiceStatus = (
   hasInvoice: boolean,
   matchingInvoices: any[],
 ): PeriodTimelineSectionStatus => {
@@ -3913,7 +3918,7 @@ const getPeriodTimelineTrackBackground = (item: DealItemWithPlan) => {
     const start = segmentWidth * index;
     const end = segmentWidth * (index + 1);
     const color = getPeriodTimelineStatusColor(
-      getPeriodTimelineSectionStatus(item, section),
+      getResolvedPeriodTimelineSectionStatus(item, section),
     );
 
     return [`${color} ${start}%`, `${color} ${end}%`];
@@ -3925,7 +3930,7 @@ const getPeriodTimelineTrackBackground = (item: DealItemWithPlan) => {
 const getPeriodTimelineSectionStatusClass = (
   parentItem: DealItemWithPlan,
   section: DerivedSection,
-) => `period-timeline__step--${getPeriodTimelineSectionStatus(parentItem, section)}`;
+) => `period-timeline__step--${getResolvedPeriodTimelineSectionStatus(parentItem, section)}`;
 
 const getPeriodStepLabel = (index: number) => `P${index + 1}`;
 
@@ -3988,7 +3993,7 @@ const getGoalInvoiceState = (
   });
 
   return getPeriodTimelineStatusLabel(
-    resolvePeriodTimelineSectionStatus(
+    resolvePeriodTimelineInvoiceStatus(
       matchingInvoices.length > 0,
       matchingInvoices,
     ),
@@ -4034,7 +4039,7 @@ const getPeriodTimelineSectionStatus = (
       });
     });
 
-    return resolvePeriodTimelineSectionStatus(
+    return resolvePeriodTimelineInvoiceStatus(
       usage.invoiceCount > 0,
       matchingInvoices,
     );
@@ -4065,7 +4070,33 @@ const getPeriodTimelineSectionStatus = (
     });
   });
 
-  return resolvePeriodTimelineSectionStatus(hasInvoice, matchingInvoices);
+  return resolvePeriodTimelineInvoiceStatus(hasInvoice, matchingInvoices);
+};
+
+const getResolvedPeriodTimelineSectionStatus = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+): PeriodTimelineSectionStatus => {
+  const baseStatus = getPeriodTimelineSectionStatus(parentItem, section);
+
+  if (baseStatus !== "invoiced" || !isPeriodDrivenParentDealItem(parentItem))
+    return baseStatus;
+
+  const sectionIndex = parentItem.derivedSections.findIndex(
+    (candidate) => candidate.id === section.id,
+  );
+
+  if (sectionIndex <= 0) return baseStatus;
+
+  const earlierSectionIsNotInvoiced = parentItem.derivedSections
+    .slice(0, sectionIndex)
+    .some(
+      (candidate) =>
+        getPeriodTimelineSectionStatus(parentItem, candidate) ===
+        "not-invoiced",
+    );
+
+  return earlierSectionIsNotInvoiced ? "out-of-order" : baseStatus;
 };
 
 const getSectionInvoiceState = (
@@ -4073,7 +4104,7 @@ const getSectionInvoiceState = (
   section: DerivedSection,
 ) => {
   return getPeriodTimelineStatusLabel(
-    getPeriodTimelineSectionStatus(parentItem, section),
+    getResolvedPeriodTimelineSectionStatus(parentItem, section),
   );
 
   if (!section.billingPeriod) return null;
@@ -9309,6 +9340,15 @@ const openEditTask = (taskId: number | string) => {
 .period-timeline__step--overdue .period-timeline__dot {
   border-color: rgb(var(--v-theme-error));
   background: rgb(var(--v-theme-error));
+}
+
+.period-timeline__step--out-of-order .period-timeline__button {
+  color: rgb(var(--v-theme-warning));
+}
+
+.period-timeline__step--out-of-order .period-timeline__dot {
+  border-color: rgb(var(--v-theme-warning));
+  background: rgb(var(--v-theme-warning));
 }
 
 .period-action-menu__info {
