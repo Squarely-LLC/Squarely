@@ -991,8 +991,13 @@ const catalogueOptions = computed(() =>
     .filter((item) => item.name.trim())
     .map((item) => ({
       title: `${item.name} (${item.type})`,
+      rawName: item.name.trim(),
       value: item.id,
     })),
+);
+
+const catalogueItemLabels = computed(() =>
+  catalogueOptions.value.map((item) => item.title),
 );
 
 const selectedCatalogueItem = computed<CatalogueItem | null>(() => {
@@ -1018,6 +1023,36 @@ watch(selectedCatalogueItemId, () => {
   addItemDraft.discountPercent = 0;
   addItemDraft.taxApplicable = record?.chargeTax ?? record?.taxApplicable ?? true;
   addItemDraft.note = item?.description ?? "";
+});
+
+const selectedCatalogueItemName = computed({
+  get: () => addItemDraft.name,
+  set: (value: string | null) => {
+    const nextName = String(value ?? "").trim();
+
+    if (!nextName) {
+      selectedCatalogueItemId.value = null;
+      addItemDraft.name = "";
+      return;
+    }
+
+    const matchedOption =
+      catalogueOptions.value.find(
+        (item) =>
+          item.title.toLowerCase() === nextName.toLowerCase() ||
+          item.rawName.toLowerCase() === nextName.toLowerCase(),
+      ) ?? null;
+
+    if (
+      matchedOption &&
+      String(selectedCatalogueItemId.value ?? "") !== String(matchedOption.value)
+    ) {
+      selectedCatalogueItemId.value = matchedOption.value;
+      return;
+    }
+
+    addItemDraft.name = nextName;
+  },
 });
 
 const buildDealRelatedTo = () => ({
@@ -3803,25 +3838,94 @@ const shouldRenderPeriodTimeline = (item: DealItemWithPlan) =>
   item.derivedSections.length > 1 &&
   item.derivedSections.every((section) => Boolean(section.billingPeriod));
 
-const isSectionInvoiced = (
+type PeriodTimelineSectionStatus =
+  | "not-invoiced"
+  | "invoiced"
+  | "paid"
+  | "overdue";
+
+const getPeriodTimelineStatusColor = (
+  status: PeriodTimelineSectionStatus,
+) => {
+  switch (status) {
+    case "paid":
+      return "rgb(var(--v-theme-success))";
+    case "overdue":
+      return "rgb(var(--v-theme-error))";
+    case "invoiced":
+      return "rgb(var(--v-theme-primary))";
+    default:
+      return "rgba(var(--v-theme-on-surface), 0.18)";
+  }
+};
+
+const getPeriodTimelineStatusLabel = (
+  status: PeriodTimelineSectionStatus,
+) => {
+  switch (status) {
+    case "paid":
+      return "Invoiced - Paid";
+    case "overdue":
+      return "Invoiced - Overdue";
+    case "invoiced":
+      return "Invoiced";
+    default:
+      return "Not invoiced";
+  }
+};
+
+const isInvoiceStoreRecordPaid = (record: any) =>
+  normalizeDocumentStatus(record?.quotation?.quotationStatus) === "paid" ||
+  Number(record?.quotation?.balance ?? record?.quotation?.total ?? 0) <= 0;
+
+const isInvoiceStoreRecordOverdue = (record: any) => {
+  if (isInvoiceStoreRecordPaid(record)) return false;
+
+  const dueDate = parseIsoDateValue(record?.quotation?.dueDate);
+  if (!dueDate) return false;
+
+  dueDate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return dueDate.getTime() < today.getTime();
+};
+
+const resolvePeriodTimelineSectionStatus = (
+  hasInvoice: boolean,
+  matchingInvoices: any[],
+): PeriodTimelineSectionStatus => {
+  if (!hasInvoice) return "not-invoiced";
+  if (!matchingInvoices.length) return "invoiced";
+  if (matchingInvoices.every(isInvoiceStoreRecordPaid)) return "paid";
+  if (matchingInvoices.some(isInvoiceStoreRecordOverdue)) return "overdue";
+
+  return "invoiced";
+};
+
+const getPeriodTimelineTrackBackground = (item: DealItemWithPlan) => {
+  const sections = item.derivedSections;
+  if (!sections.length) return "rgba(var(--v-theme-on-surface), 0.1)";
+
+  const segmentWidth = 100 / sections.length;
+  const stops = sections.flatMap((section, index) => {
+    const start = segmentWidth * index;
+    const end = segmentWidth * (index + 1);
+    const color = getPeriodTimelineStatusColor(
+      getPeriodTimelineSectionStatus(item, section),
+    );
+
+    return [`${color} ${start}%`, `${color} ${end}%`];
+  });
+
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
+};
+
+const getPeriodTimelineSectionStatusClass = (
   parentItem: DealItemWithPlan,
   section: DerivedSection,
-) => String(getSectionInvoiceState(parentItem, section) || "").startsWith("Invoiced");
-
-const getPeriodTimelineProgressPercent = (item: DealItemWithPlan) => {
-  const sections = item.derivedSections;
-  if (sections.length <= 1) return 0;
-
-  const lastInvoicedIndex = sections.reduce(
-    (lastIndex, section, index) =>
-      isSectionInvoiced(item, section) ? index : lastIndex,
-    -1,
-  );
-
-  if (lastInvoicedIndex < 0) return 0;
-
-  return (lastInvoicedIndex / (sections.length - 1)) * 100;
-};
+) => `period-timeline__step--${getPeriodTimelineSectionStatus(parentItem, section)}`;
 
 const getPeriodStepLabel = (index: number) => `P${index + 1}`;
 
@@ -3883,6 +3987,13 @@ const getGoalInvoiceState = (
     });
   });
 
+  return getPeriodTimelineStatusLabel(
+    resolvePeriodTimelineSectionStatus(
+      matchingInvoices.length > 0,
+      matchingInvoices,
+    ),
+  );
+
   if (!matchingInvoices.length) return "Not invoiced";
 
   const isPaid = matchingInvoices.some(
@@ -3892,10 +4003,79 @@ const getGoalInvoiceState = (
   return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
 };
 
+const getPeriodTimelineSectionStatus = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+): PeriodTimelineSectionStatus => {
+  if (!section.billingPeriod) return "not-invoiced";
+
+  const periodDrivenSectionBillingKey = isPeriodDrivenParentDealItem(parentItem)
+    ? getDealBillingPeriodKey(section.billingPeriod)
+    : "";
+
+  if (periodDrivenSectionBillingKey) {
+    const usage = getDocumentUsage(
+      `item-${parentItem.id}`,
+      periodDrivenSectionBillingKey,
+    );
+
+    const matchingInvoices = invoicesStore.items.filter((record) => {
+      if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
+        return false;
+
+      return record.purchasedProducts.some((product) => {
+        const billingKey = resolveStoredBillingPeriodKey(product);
+        const selectionKey = resolveProductSelectionKey(product);
+
+        return (
+          billingKey === periodDrivenSectionBillingKey &&
+          selectionKey === `item-${parentItem.id}`
+        );
+      });
+    });
+
+    return resolvePeriodTimelineSectionStatus(
+      usage.invoiceCount > 0,
+      matchingInvoices,
+    );
+  }
+
+  const usageByGoal = section.goals.map((goal) =>
+    getGoalDocumentUsage(parentItem, goal, section.billingPeriod),
+  );
+
+  const hasInvoice = usageByGoal.some((usage) => usage.invoiceCount > 0);
+  const periodKey = getDealBillingPeriodKey(section.billingPeriod);
+
+  const matchingInvoices = invoicesStore.items.filter((record) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
+      return false;
+
+    return record.purchasedProducts.some((product) => {
+      const billingKey = resolveStoredBillingPeriodKey(product);
+      if (billingKey !== periodKey) return false;
+
+      const selectionKey = resolveProductSelectionKey(product);
+
+      return section.goals.some((goal) => {
+        const selectableItem = findGoalSelectableItem(parentItem, goal);
+
+        return selectableItem?.selectionKey === selectionKey;
+      });
+    });
+  });
+
+  return resolvePeriodTimelineSectionStatus(hasInvoice, matchingInvoices);
+};
+
 const getSectionInvoiceState = (
   parentItem: DealItemWithPlan,
   section: DerivedSection,
 ) => {
+  return getPeriodTimelineStatusLabel(
+    getPeriodTimelineSectionStatus(parentItem, section),
+  );
+
   if (!section.billingPeriod) return null;
 
   const periodDrivenSectionBillingKey = isPeriodDrivenParentDealItem(parentItem)
@@ -6455,14 +6635,12 @@ const openEditTask = (taskId: number | string) => {
                     </div>
                   </div>
 
-                  <div class="period-timeline__track">
-                    <div
-                      class="period-timeline__progress"
-                      :style="{
-                        inlineSize: `${getPeriodTimelineProgressPercent(item)}%`,
-                      }"
-                    />
-                  </div>
+                  <div
+                    class="period-timeline__track"
+                    :style="{
+                      background: getPeriodTimelineTrackBackground(item),
+                    }"
+                  />
 
                   <div
                     class="period-timeline__steps"
@@ -6474,12 +6652,7 @@ const openEditTask = (taskId: number | string) => {
                       v-for="(section, sectionIndex) in item.derivedSections"
                       :key="section.id"
                       class="period-timeline__step"
-                      :class="{
-                        'period-timeline__step--invoiced': isSectionInvoiced(
-                          item,
-                          section,
-                        ),
-                      }"
+                      :class="getPeriodTimelineSectionStatusClass(item, section)"
                     >
                       <VMenu location="bottom">
                         <template #activator="{ props: menuProps }">
@@ -7669,29 +7842,21 @@ const openEditTask = (taskId: number | string) => {
           @submit.prevent="saveSelectedCatalogueItem"
         >
           <VRow class="deal-item-modal-layout">
-            <VCol cols="12">
-              <AppAutocomplete
-                v-model="selectedCatalogueItemId"
-                label="Catalogue Item"
-                placeholder="Select catalogue item"
-                :items="catalogueOptions"
-                :rules="[requiredValidator]"
-              />
-            </VCol>
-
-            <VCol
-              v-if="selectedCatalogueItem"
-              cols="12"
-              md="8"
-              class="deal-item-modal-main"
-            >
+            <VCol cols="12" md="8" class="deal-item-modal-main">
               <VRow>
                 <VCol cols="12">
-                  <AppTextField
-                    v-model="addItemDraft.name"
+                  <AppCombobox
+                    v-model="selectedCatalogueItemName"
                     label="Name"
-                    placeholder="Item name"
-                    :rules="[requiredValidator]"
+                    placeholder="Select catalogue item or edit the name"
+                    :items="catalogueItemLabels"
+                    :rules="[
+                      requiredValidator,
+                      () =>
+                        Boolean(selectedCatalogueItem) ||
+                        'Select catalogue item from list',
+                    ]"
+                    clearable
                   />
                 </VCol>
 
@@ -7748,13 +7913,14 @@ const openEditTask = (taskId: number | string) => {
 
                 <VCol cols="12" sm="6" md="3">
                   <div class="d-flex flex-column gap-2">
-                    <span class="text-sm text-medium-emphasis">Tax?</span>
+                    <span class="text-sm text-medium-emphasis">
+                      {{ addItemDraft.taxApplicable ? "Taxable" : "Non Taxable" }}
+                    </span>
                     <VSwitch
                       v-model="addItemDraft.taxApplicable"
                       inset
                       hide-details
                       color="primary"
-                      label="Applicable"
                     />
                   </div>
                 </VCol>
@@ -7828,12 +7994,7 @@ const openEditTask = (taskId: number | string) => {
               </VRow>
             </VCol>
 
-            <VCol
-              v-if="selectedCatalogueItem"
-              cols="12"
-              md="4"
-              class="deal-item-modal-note-col"
-            >
+            <VCol cols="12" md="4" class="deal-item-modal-note-col">
               <AppTextarea
                 v-model="addItemDraft.note"
                 class="deal-item-modal-note"
@@ -7844,7 +8005,7 @@ const openEditTask = (taskId: number | string) => {
               />
             </VCol>
 
-            <VCol v-if="selectedCatalogueItem" cols="12">
+            <VCol cols="12">
               <DialogActionBar
                 save-type="submit"
                 @save="() => undefined"
@@ -7940,13 +8101,14 @@ const openEditTask = (taskId: number | string) => {
 
                 <VCol v-if="editLine.canEditTax" cols="12" sm="6" md="3">
                   <div class="d-flex flex-column gap-2">
-                    <span class="text-sm text-medium-emphasis">Tax?</span>
+                    <span class="text-sm text-medium-emphasis">
+                      {{ editLine.taxApplicable ? "Taxable" : "Non Taxable" }}
+                    </span>
                     <VSwitch
                       v-model="editLine.taxApplicable"
                       inset
                       hide-details
                       color="primary"
-                      label="Applicable"
                     />
                   </div>
                 </VCol>
@@ -8147,13 +8309,14 @@ const openEditTask = (taskId: number | string) => {
               md="3"
             >
               <div class="d-flex flex-column gap-2">
-                <span class="text-sm text-medium-emphasis">Tax?</span>
+                <span class="text-sm text-medium-emphasis">
+                  {{ phaseDraft.taxApplicable ? "Taxable" : "Non Taxable" }}
+                </span>
                 <VSwitch
                   v-model="phaseDraft.taxApplicable"
                   inset
                   hide-details
                   color="primary"
-                  label="Applicable"
                 />
               </div>
             </VCol>
@@ -8736,13 +8899,14 @@ const openEditTask = (taskId: number | string) => {
 
                 <VCol cols="12" sm="6" md="3">
                   <div class="d-flex flex-column gap-2">
-                    <span class="text-sm text-medium-emphasis">Tax?</span>
+                    <span class="text-sm text-medium-emphasis">
+                      {{ createDraftItem.taxApplicable ? "Taxable" : "Non Taxable" }}
+                    </span>
                     <VSwitch
                       v-model="createDraftItem.taxApplicable"
                       inset
                       hide-details
                       color="primary"
-                      label="Applicable"
                     />
                   </div>
                 </VCol>
@@ -9059,6 +9223,7 @@ const openEditTask = (taskId: number | string) => {
   border-radius: 999px;
   background: rgba(var(--v-theme-on-surface), 0.1);
   block-size: 4px;
+  transition: background 0.2s ease;
 }
 
 .period-timeline__progress {
@@ -9126,6 +9291,24 @@ const openEditTask = (taskId: number | string) => {
 .period-timeline__step--invoiced .period-timeline__dot {
   border-color: rgb(var(--v-theme-primary));
   background: rgb(var(--v-theme-primary));
+}
+
+.period-timeline__step--paid .period-timeline__button {
+  color: rgb(var(--v-theme-success));
+}
+
+.period-timeline__step--paid .period-timeline__dot {
+  border-color: rgb(var(--v-theme-success));
+  background: rgb(var(--v-theme-success));
+}
+
+.period-timeline__step--overdue .period-timeline__button {
+  color: rgb(var(--v-theme-error));
+}
+
+.period-timeline__step--overdue .period-timeline__dot {
+  border-color: rgb(var(--v-theme-error));
+  background: rgb(var(--v-theme-error));
 }
 
 .period-action-menu__info {

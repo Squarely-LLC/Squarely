@@ -43,10 +43,14 @@ function safeClone<T>(value: T, fallback: T): T {
     try {
       return structuredClone(raw);
     } catch (error) {
-      console.warn(
-        "structuredClone failed while cloning quotation data:",
-        error,
-      );
+      if (
+        !(error instanceof DOMException && error.name === "DataCloneError")
+      ) {
+        console.warn(
+          "structuredClone failed while cloning quotation data:",
+          error,
+        );
+      }
     }
   }
 
