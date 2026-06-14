@@ -1746,7 +1746,7 @@ function buildQuotationDraftRecord({
       linkedRecordType: "deal",
       parentQuotationId: null,
       quoteNumber: `${getDocumentSequencePrefix("quotation")}${nextId}`,
-      quotationStatus: "Pending",
+      quotationStatus: "Active",
       revisionLabel: null,
       service: buildServiceLabel(deal),
       source: "squarely",

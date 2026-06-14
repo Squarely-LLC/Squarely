@@ -1,12 +1,12 @@
 import type { DealBillingPeriod } from "@/plugins/fake-api/handlers/operations/deals/types";
 
 export type QuotationStatus =
-  | "Pending"
-  | "Approved"
+  | "Active"
+  | "Sent"
+  | "Approval"
   | "Lost"
   | "Canceled"
-  | "Converted to Invoice"
-  | "Converted to Proforma";
+  | "Converted";
 
 export type LinkedRecordType = "deal" | "contract";
 
@@ -40,6 +40,8 @@ export interface Quotation {
   parentQuotationId: number | null;
   isRevision: boolean;
   revisionLabel: string | null;
+  convertedProformaId?: number | null;
+  convertedInvoiceId?: number | null;
 }
 
 export interface PaymentDetails {

@@ -35,7 +35,6 @@ import { useDealsStore } from "@/stores/deals";
 import type { InvoicePaymentInput } from "@/stores/invoices";
 import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
-import type { ProformaPaymentInput } from "@/stores/proformas";
 import { cloneProformaRecord, useProformasStore } from "@/stores/proformas";
 import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import { useReceiptsStore } from "@/stores/receipts";
@@ -75,7 +74,6 @@ import {
 } from "@/utils/quotationConfig";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
-import ProformaAddPaymentDrawer from "@/views/apps/proforma/ProformaAddPaymentDrawer.vue";
 import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
 import {
   computed,
@@ -266,10 +264,9 @@ const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
 const selectedPaymentDocument = ref<{
   id: number | string;
-  kind: Extract<DealPreviewKind, "proforma" | "invoice">;
+  kind: "invoice";
 } | null>(null);
 const invoicePaymentDrawerOpen = ref(false);
-const proformaPaymentDrawerOpen = ref(false);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const previewActionFrameKind = ref<DealPreviewKind | null>(null);
 const previewActionFrameSrc = ref("");
@@ -386,7 +383,7 @@ const maxExternalAttachmentSizeBytes = 10 * 1024 * 1024;
 const getExternalDocumentDefaultStatus = (
   kind: DealPreviewKind | null,
 ): ExternalDealDocumentStatus | null => {
-  if (kind === "quotation") return "Pending";
+  if (kind === "quotation") return "Active";
   if (kind === "proforma" || kind === "invoice") return "Not Paid";
 
   return null;
@@ -2947,8 +2944,9 @@ const externalDocumentNumberLabel = computed(
 const externalDocumentStatusOptions = computed(() => {
   if (selectedExternalDocumentKind.value === "quotation") {
     return [
-      { title: "Pending", value: "Pending" },
-      { title: "Approved", value: "Approved" },
+      { title: "Active", value: "Active" },
+      { title: "Sent", value: "Sent" },
+      { title: "Approval", value: "Approval" },
       { title: "Lost", value: "Lost" },
       { title: "Canceled", value: "Canceled" },
     ] as const;
@@ -3048,11 +3046,16 @@ const isDocumentConverted = (record: DealDocumentPanelRecord) => {
   const status = normalizeDocumentStatus(record.status);
 
   return (
-    status.includes("converted") ||
+    status === "converted" ||
     Boolean(record.record.convertedInvoiceId) ||
     Boolean(record.record.convertedProformaId)
   );
 };
+
+const isConvertedProforma = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => kind === "proforma" && Boolean(record.record.convertedInvoiceId);
 
 const isDocumentConversionBlocked = (record: DealDocumentPanelRecord) => {
   const status = normalizeDocumentStatus(record.status);
@@ -3066,7 +3069,7 @@ const canPayDocument = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) =>
-  (kind === "proforma" || kind === "invoice") &&
+  kind === "invoice" &&
   !isDocumentPaid(record) &&
   record.balance > 0;
 
@@ -3123,6 +3126,30 @@ const requestApproval = (
 
   notifications.push("Approval requested.", "success", 2500);
 };
+
+const quotationHasPhaseOrPeriod = (record: DealDocumentPanelRecord) =>
+  (record.record.purchasedProducts || []).some((product) => {
+    const billingKey = resolveStoredBillingPeriodKey(product);
+    const selectionKey = String(product.dealSelectionKey ?? "").toLowerCase();
+
+    return (
+      Boolean(product.billingPeriod) ||
+      Boolean(billingKey) ||
+      selectionKey.includes("phase") ||
+      selectionKey.includes("retainer") ||
+      selectionKey.includes("recurrent")
+    );
+  });
+
+const isQuotationConversionApprovalBlocked = (
+  record: DealDocumentPanelRecord,
+) =>
+  quotationHasPhaseOrPeriod(record) &&
+  normalizeDocumentStatus(record.status) !== "approval";
+
+const canConvertQuotationRecord = (record: DealDocumentPanelRecord) =>
+  !isDocumentConversionBlocked(record) &&
+  !isQuotationConversionApprovalBlocked(record);
 
 const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
   const labels = (record.purchasedProducts || [])
@@ -3556,6 +3583,7 @@ const closeDocumentEmailDialog = () => {
 };
 
 const onDocumentEmailSend = (payload: any) => {
+  const pending = pendingEmailDocument.value;
   const recipients = Array.isArray(payload?.to)
     ? payload.to.filter(Boolean)
     : payload?.to
@@ -3570,6 +3598,10 @@ const onDocumentEmailSend = (payload: any) => {
     3500,
   );
 
+  if (pending?.kind === "quotation") {
+    quotationsStore.markQuotationSent(pending.recordId);
+  }
+
   closeDocumentEmailDialog();
 };
 
@@ -3577,6 +3609,8 @@ const deleteDocumentRecord = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (isConvertedProforma(kind, record)) return;
+
   if (kind === "quotation") quotationsStore.removeQuotation(record.id);
   else if (kind === "proforma") proformasStore.removeProforma(record.id);
   else invoicesStore.removeInvoice(record.id);
@@ -3631,7 +3665,17 @@ const reviseDocumentRecord = (
 };
 
 const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
-  if (isDocumentConversionBlocked(record)) return;
+  if (!canConvertQuotationRecord(record)) {
+    notifications.push(
+      isQuotationConversionApprovalBlocked(record)
+        ? "Phase or period quotations must be client approved before conversion."
+        : "Quotation cannot be converted.",
+      "warning",
+      3000,
+    );
+
+    return null;
+  }
 
   const created = proformasStore.addProforma({
     ...record.record,
@@ -3647,18 +3691,19 @@ const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
 
   quotationsStore.updateQuotation(record.id, {
     ...record.record,
-    convertedProformaId: created?.quotation.id ?? null,
     quotation: {
       ...record.record.quotation,
-      quotationStatus: "Converted to Proforma",
+      convertedProformaId: created?.quotation.id ?? null,
+      quotationStatus: "Converted",
     },
   } as never);
 
   notifications.push("Quotation converted to proforma.", "success", 2500);
+
+  return created;
 };
 
-const convertDocumentToInvoice = (
-  kind: Extract<DealPreviewKind, "quotation" | "proforma">,
+const convertProformaRecordToInvoice = (
   record: DealDocumentPanelRecord,
 ) => {
   if (isDocumentConversionBlocked(record)) return null;
@@ -3674,35 +3719,63 @@ const convertDocumentToInvoice = (
     },
   } as never);
 
-  if (kind === "quotation") {
+  proformasStore.updateProforma(record.id, {
+    ...record.record,
+    convertedInvoiceId: created?.quotation.id ?? null,
+  } as never);
+
+  notifications.push("Proforma converted to invoice.", "success", 2500);
+
+  return created?.quotation.id ?? null;
+};
+
+const toDealDocumentPanelRecord = (
+  record: DealDocumentContainer,
+): DealDocumentPanelRecord => ({
+  balance: Number(record.quotation.balance ?? record.quotation.total ?? 0),
+  dueDate: record.quotation.dueDate,
+  id: record.quotation.id,
+  issuedDate: record.quotation.issuedDate,
+  periodPhase: resolveDocumentPeriodPhase(record),
+  quoteNumber: record.quotation.quoteNumber,
+  record,
+  status: record.quotation.quotationStatus,
+  total: Number(record.quotation.total || 0),
+});
+
+const convertDocumentToInvoice = (
+  kind: Extract<DealPreviewKind, "quotation" | "proforma">,
+  record: DealDocumentPanelRecord,
+) => {
+  if (kind === "proforma") return convertProformaRecordToInvoice(record);
+
+  const createdProforma = convertQuotationToProforma(record);
+  if (!createdProforma) return null;
+
+  const createdInvoiceId = convertProformaRecordToInvoice(
+    toDealDocumentPanelRecord(createdProforma),
+  );
+
+  if (createdInvoiceId) {
     quotationsStore.updateQuotation(record.id, {
       ...record.record,
-      convertedInvoiceId: created?.quotation.id ?? null,
       quotation: {
         ...record.record.quotation,
-        quotationStatus: "Converted to Invoice",
+        convertedInvoiceId: Number(createdInvoiceId),
+        convertedProformaId: Number(createdProforma.quotation.id),
+        quotationStatus: "Converted",
       },
-    } as never);
-  } else {
-    proformasStore.updateProforma(record.id, {
-      ...record.record,
-      convertedInvoiceId: created?.quotation.id ?? null,
     } as never);
   }
 
-  notifications.push("Document converted to invoice.", "success", 2500);
-
-  return created?.quotation.id ?? null;
+  return createdInvoiceId;
 };
 
 const selectedPaymentRecord = computed(() => {
   const target = selectedPaymentDocument.value;
   if (!target) return null;
 
-  const source =
-    target.kind === "proforma"
-      ? dealProformaRecords.value
-      : dealInvoiceRecords.value;
+  const source = dealInvoiceRecords.value;
 
   return (
     source.find((record) => String(record.id) === String(target.id)) ?? null
@@ -3717,41 +3790,19 @@ const openDocumentPayment = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   record: DealDocumentPanelRecord,
 ) => {
-  selectedPaymentDocument.value = { id: record.id, kind };
+  if (kind !== "invoice") return;
 
-  if (kind === "proforma") proformaPaymentDrawerOpen.value = true;
-  else invoicePaymentDrawerOpen.value = true;
+  selectedPaymentDocument.value = { id: record.id, kind };
+  invoicePaymentDrawerOpen.value = true;
 };
 
 const openDocumentPaymentFromPanel = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
-  if (kind === "quotation") return;
+  if (kind !== "invoice") return;
 
   openDocumentPayment(kind, record);
-};
-
-const saveProformaPayment = (payment: ProformaPaymentInput) => {
-  const target = selectedPaymentDocument.value;
-  if (!target || target.kind !== "proforma") return;
-
-  const updated = proformasStore.recordPayment(target.id, payment);
-  const latestPayment = updated?.payments?.at(-1);
-
-  if (updated && latestPayment) {
-    receiptsStore.addReceiptFromLinkedPayment({
-      documentType: "proforma",
-      documentId: updated.quotation.id,
-      documentNumber: updated.quotation.quoteNumber,
-      payment: latestPayment,
-      client: updated.quotation.client,
-      avatar: updated.quotation.avatar,
-    });
-  }
-
-  notifications.push("Payment recorded.", "success", 2500);
-  selectedPaymentDocument.value = null;
 };
 
 const saveInvoicePayment = (payment: InvoicePaymentInput) => {
@@ -3952,10 +4003,7 @@ const confirmInvoiceConversion = async () => {
   const matchingProforma = pendingInvoiceConversionRecord.value;
   if (!matchingProforma) return;
 
-  const createdInvoiceId = convertDocumentToInvoice(
-    "proforma",
-    matchingProforma,
-  );
+  const createdInvoiceId = convertProformaRecordToInvoice(matchingProforma);
 
   closeInvoiceConversionDialog();
   resetDocumentWorkflowState();
@@ -5084,6 +5132,36 @@ const saveAndNavigateDocumentDraft = async (
       invoiceConversionDialogVisible.value = true;
       return;
     }
+
+    const proformaDraft = buildDealDocumentDraftRecord("proforma", {
+      billingPeriods: selectedBillingPeriods?.length
+        ? selectedBillingPeriods
+        : null,
+      billingPeriodAssignments: selectedBillingPeriodAssignments || null,
+      billingPeriod: selectionNeedsBillingPeriod(selectedItems)
+        ? (selectedBillingPeriods?.[0] ?? billingPeriod.value)
+        : null,
+      contact: contact.value,
+      deal: props.deal,
+      financial: configStore.financial,
+      legal: configStore.legal,
+      nextId: nextIdForDocument("proforma"),
+      resolveCatalogueRecord: (id, typeHint) =>
+        cataloguesStore.recordById(id, typeHint),
+      selectedItems,
+    });
+    const createdProforma = proformasStore.addProforma(proformaDraft);
+    const createdInvoiceId = createdProforma
+      ? convertProformaRecordToInvoice(toDealDocumentPanelRecord(createdProforma))
+      : null;
+
+    resetDocumentWorkflowState();
+
+    if (createdInvoiceId) {
+      await router.push(`/apps/invoice/preview/${createdInvoiceId}`);
+    }
+
+    return;
   }
 
   const draft = buildDealDocumentDraftRecord(kind, {
@@ -6125,7 +6203,7 @@ const saveExternalDocument = async () => {
       quotation: {
         ...payload.quotation,
         quotationStatus:
-          (documentStatus as QuotationStatus | null) ?? "Pending",
+          (documentStatus as QuotationStatus | null) ?? "Active",
       },
     });
   } else if (kind === "proforma") {
@@ -7799,6 +7877,9 @@ const openEditTask = (taskId: number | string) => {
                               <VMenu activator="parent">
                                 <VList density="compact">
                                   <VListItem
+                                    :disabled="
+                                      isConvertedProforma(panel.key, record)
+                                    "
                                     @click="openDocumentEdit(panel.key, record)"
                                   >
                                     <template #prepend>
@@ -7846,7 +7927,7 @@ const openEditTask = (taskId: number | string) => {
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
                                     :disabled="
-                                      isDocumentConversionBlocked(record)
+                                      !canConvertQuotationRecord(record)
                                     "
                                     @click="convertQuotationToProforma(record)"
                                   >
@@ -7860,7 +7941,7 @@ const openEditTask = (taskId: number | string) => {
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
                                     :disabled="
-                                      isDocumentConversionBlocked(record)
+                                      !canConvertQuotationRecord(record)
                                     "
                                     @click="
                                       convertDocumentToInvoice(
@@ -7972,6 +8053,9 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     class="text-error"
+                                    :disabled="
+                                      isConvertedProforma(panel.key, record)
+                                    "
                                     @click="
                                       deleteDocumentRecord(panel.key, record)
                                     "
@@ -9467,14 +9551,6 @@ const openEditTask = (taskId: number | string) => {
       </VCardText>
     </VCard>
   </VDialog>
-
-  <ProformaAddPaymentDrawer
-    v-model:is-drawer-open="proformaPaymentDrawerOpen"
-    :current-balance="selectedPaymentBalance"
-    :default-payment-method="selectedPaymentRecord?.record.paymentMethod"
-    :document-label="selectedPaymentRecord?.quoteNumber"
-    @submit="saveProformaPayment"
-  />
 
   <InvoiceAddPaymentDrawer
     v-model:is-drawer-open="invoicePaymentDrawerOpen"

@@ -437,6 +437,12 @@ const openQuotationEmailDialog = () => {
   });
 };
 
+const onQuotationEmailSend = () => {
+  if (!quotation.value) return;
+
+  quotationsStore.markQuotationSent(quotation.value.id);
+};
+
 const shareQuotationOnWhatsApp = async () => {
   const currentQuotation = quotation.value;
   if (!currentQuotation) return;
@@ -1025,6 +1031,7 @@ if (!isEmbeddedActionFrame) {
     <EmailDialog
       ref="emailDialogRef"
       v-model:is-dialog-visible="isSendPaymentSidebarVisible"
+      @send="onQuotationEmailSend"
     />
   </section>
 

@@ -12,6 +12,7 @@ type BillingMetric = {
 
 const props = defineProps<{
   paid: number;
+  proformaAmount?: number;
   unpaid: number;
   toBeInvoiced: number;
 }>();
@@ -209,6 +210,17 @@ const metricPercent = (value: number) => {
             <h6 class="text-h4 my-2">
               {{ formatAmount(metric.value) }}
             </h6>
+
+            <VChip
+              v-if="metric.label === 'Paid' && Number(props.proformaAmount || 0) > 0"
+              label
+              size="x-small"
+              color="info"
+              variant="tonal"
+              class="mb-2"
+            >
+              Proforma exists: {{ formatAmount(Number(props.proformaAmount || 0)) }}
+            </VChip>
 
             <VProgressLinear
               :model-value="metricPercent(metric.value)"

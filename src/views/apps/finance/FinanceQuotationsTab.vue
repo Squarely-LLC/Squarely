@@ -273,13 +273,8 @@ const resolveConvertedDocumentSourceQuotationId = (
   const sourceQuotation = quotationsStore.byId(quotationId)?.quotation;
   if (!sourceQuotation) return null;
 
-  const expectedStatus =
-    convertedTo === "invoice"
-      ? "Converted to Invoice"
-      : "Converted to Proforma";
-
   const matchesSourceQuotation =
-    sourceQuotation.quotationStatus === expectedStatus &&
+    sourceQuotation.quotationStatus === "Converted" &&
     sourceQuotation.client.name === record.quotation.client.name &&
     Number(sourceQuotation.total || 0) === Number(record.quotation.total || 0);
 
@@ -493,7 +488,7 @@ const emptyExternalQuotationForm = (): ExternalQuotationForm => ({
   quoteNumber: "",
   amount: null,
   linkedRecord: null,
-  status: "Pending",
+  status: "Active",
   attachment: null,
 });
 
@@ -570,25 +565,21 @@ const attachmentValidator = () => {
 };
 
 const resolveStatusVariantAndIcon = (status: string) => {
-  if (status === "Pending")
+  if (status === "Active")
     return { variant: "warning", icon: "tabler-clock-hour-4" };
-  if (status === "Approved")
+  if (status === "Sent") return { variant: "info", icon: "tabler-send" };
+  if (status === "Approval")
     return { variant: "success", icon: "tabler-check" };
   if (status === "Lost") return { variant: "error", icon: "tabler-x" };
   if (status === "Canceled")
     return { variant: "secondary", icon: "tabler-ban" };
-  if (status === "Converted to Invoice")
+  if (status === "Converted")
     return { variant: "primary", icon: "tabler-file-invoice" };
-  if (status === "Converted to Proforma")
-    return { variant: "info", icon: "tabler-file-dollar" };
 
   return { variant: "secondary", icon: "tabler-x" };
 };
 
 const resolveStatusLabel = (status: string) => {
-  if (status === "Converted to Invoice") return "Invoice";
-  if (status === "Converted to Proforma") return "Proforma";
-
   return status;
 };
 
@@ -697,7 +688,7 @@ const saveExternalQuotation = async () => {
       service: "Imported quotation",
       total: Number(externalQuotationForm.value.amount),
       avatar: "",
-      quotationStatus: externalQuotationForm.value.status ?? "Pending",
+      quotationStatus: externalQuotationForm.value.status ?? "Active",
       balance: 0,
       dealId: selectedLinkedOption.value
         ? Number(selectedLinkedOption.value.value)
@@ -770,7 +761,7 @@ const convertQuotationToProforma = (quotationId: number) => {
     return;
   }
 
-  if (quotationRecord.quotation.quotationStatus === "Converted to Proforma") {
+  if (quotationRecord.quotation.quotationStatus === "Converted") {
     pushFinanceSuccess(
       `${quotationRecord.quotation.quoteNumber} is already converted to proforma.`,
     );
@@ -815,7 +806,10 @@ const convertQuotationToProforma = (quotationId: number) => {
   });
 
   quotationsStore.updateQuotation(quotationId, {
-    quotation: { quotationStatus: "Converted to Proforma" },
+    quotation: {
+      convertedProformaId: created?.quotation.id ?? null,
+      quotationStatus: "Converted",
+    },
   });
 
   pushFinanceSuccess(
@@ -834,7 +828,7 @@ const convertQuotationToInvoice = (quotationId: number) => {
     return;
   }
 
-  if (quotationRecord.quotation.quotationStatus === "Converted to Invoice") {
+  if (quotationRecord.quotation.quotationStatus === "Converted") {
     pushFinanceSuccess(
       `${quotationRecord.quotation.quoteNumber} is already converted to invoice.`,
     );
@@ -879,7 +873,10 @@ const convertQuotationToInvoice = (quotationId: number) => {
   });
 
   quotationsStore.updateQuotation(quotationId, {
-    quotation: { quotationStatus: "Converted to Invoice" },
+    quotation: {
+      convertedInvoiceId: created?.quotation.id ?? null,
+      quotationStatus: "Converted",
+    },
   });
 
   pushFinanceSuccess(
@@ -1008,6 +1005,7 @@ const closeQuotationEmailDialog = () => {
 };
 
 const onQuotationEmailSend = (payload: any) => {
+  const quotationId = pendingEmailQuotationId.value;
   const recipients = Array.isArray(payload?.to)
     ? payload.to.filter(Boolean)
     : payload?.to
@@ -1021,6 +1019,10 @@ const onQuotationEmailSend = (payload: any) => {
     "success",
     3500,
   );
+
+  if (quotationId !== null) {
+    quotationsStore.markQuotationSent(quotationId);
+  }
 
   closeQuotationEmailDialog();
 };
@@ -1065,7 +1067,7 @@ const computedMoreList = computed(() => {
           value: "convert-to-proforma",
           prependIcon: "tabler-file-dollar",
           disabled:
-            quotationStatus === "Converted to Proforma" ||
+            quotationStatus === "Converted" ||
             isQuotationConversionBlocked(quotationStatus),
           onClick: () => convertQuotationToProforma(paramId),
         },
@@ -1074,7 +1076,7 @@ const computedMoreList = computed(() => {
           value: "convert-to-tax-invoice",
           prependIcon: "tabler-file-invoice",
           disabled:
-            quotationStatus === "Converted to Invoice" ||
+            quotationStatus === "Converted" ||
             isQuotationConversionBlocked(quotationStatus),
           onClick: () => convertQuotationToInvoice(paramId),
         },
@@ -1192,12 +1194,12 @@ watch(totalQuotations, (value) => {
               clear-icon="tabler-x"
               single-line
               :items="[
-                'Pending',
-                'Approved',
+                'Active',
+                'Sent',
+                'Approval',
                 'Lost',
                 'Canceled',
-                'Converted to Invoice',
-                'Converted to Proforma',
+                'Converted',
               ]"
             />
           </div>
@@ -1539,12 +1541,12 @@ watch(totalQuotations, (value) => {
                 placeholder="Select status"
                 :rules="[requiredValidator]"
                 :items="[
-                  'Pending',
-                  'Approved',
+                  'Active',
+                  'Sent',
+                  'Approval',
                   'Lost',
                   'Canceled',
-                  'Converted to Invoice',
-                  'Converted to Proforma',
+                  'Converted',
                 ]"
               />
             </div>

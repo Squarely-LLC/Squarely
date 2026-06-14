@@ -211,6 +211,35 @@ function normalisePaymentMethod(
   return "Bank Transfer";
 }
 
+function isLatestRevisionRecord(
+  records: ProformaRecord[],
+  target: ProformaRecord,
+) {
+  const rootId = target.quotation.parentQuotationId ?? target.quotation.id;
+  const family = records.filter(
+    (record) =>
+      record.quotation.id === rootId ||
+      record.quotation.parentQuotationId === rootId,
+  );
+
+  if (family.length <= 1) return true;
+
+  const latest = family.reduce((currentLatest, record) =>
+    Number(record.quotation.id) > Number(currentLatest.quotation.id)
+      ? record
+      : currentLatest,
+  );
+
+  return String(latest.quotation.id) === String(target.quotation.id);
+}
+
+function isLockedProforma(
+  records: ProformaRecord[],
+  target: ProformaRecord,
+) {
+  return Boolean(target.convertedInvoiceId) || !isLatestRevisionRecord(records, target);
+}
+
 function sanitizeStoredRecord(record: ProformaRecord): ProformaRecord {
   const cloned = cloneProformaRecord(record);
   const config = loadActiveAppConfigurations();
@@ -834,8 +863,20 @@ export const useProformasStore = defineStore("proformas", {
       );
 
       if (index === -1) return null;
+      const current = this.items[index];
+      const nextConvertedInvoiceId =
+        patch.convertedInvoiceId === undefined
+          ? current.convertedInvoiceId
+          : patch.convertedInvoiceId;
+      if (
+        isLockedProforma(this.items, current) &&
+        String(nextConvertedInvoiceId ?? "") ===
+          String(current.convertedInvoiceId ?? "")
+      ) {
+        return null;
+      }
 
-      const updated = mergeProformaRecord(this.items[index], patch);
+      const updated = mergeProformaRecord(current, patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
       this.persistItems();
@@ -857,6 +898,7 @@ export const useProformasStore = defineStore("proformas", {
       );
 
       if (!target) return;
+      if (isLockedProforma(this.items, target)) return;
 
       const numericId = Number(target.quotation.id);
       const parentId = target.quotation.parentQuotationId;

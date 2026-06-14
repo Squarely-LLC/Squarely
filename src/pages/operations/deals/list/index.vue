@@ -592,36 +592,8 @@ const toggleImportant = (deal: DealProperties) => {
   );
 };
 
-const duplicateDeal = (deal: DealProperties) => {
-  const duplicated = dealsStore.addDeal({
-    projectCode: deal.projectCode ?? null,
-    projectName: deal.projectName ?? null,
-    relatedTo: deal.relatedTo ?? null,
-    linkedJobId: null,
-    salesman: deal.salesman ?? null,
-    type: deal.type ?? null,
-    estimatedDeliveryDate: deal.estimatedDeliveryDate ?? null,
-    stage: deal.stage ?? null,
-    important: deal.important,
-    location: deal.location ?? null,
-    collaborators: Array.isArray(deal.collaborators)
-      ? [...deal.collaborators]
-      : [],
-    note: deal.note ?? null,
-    customFieldValues: { ...(deal.customFieldValues || {}) },
-  });
-
-  notifications.push(
-    `Duplicated ${deal.code || `deal #${deal.id}`}`,
-    "success",
-    3000,
-  );
-
-  return duplicated;
-};
-
 const handleDealAction = (
-  action: "todo" | "meeting" | "email" | "stage" | "duplicate" | "delete",
+  action: "todo" | "meeting" | "email" | "stage" | "delete",
   deal: DealProperties,
 ) => {
   switch (action) {
@@ -718,9 +690,6 @@ const handleDealAction = (
       stageDialogDealId.value = Number(deal.id);
       stageDialogValue.value = deal.stage ?? null;
       isStageDialogVisible.value = true;
-      break;
-    case "duplicate":
-      duplicateDeal(deal);
       break;
     case "delete":
       confirmDelete(Number(deal.id));
@@ -1104,15 +1073,6 @@ const updateItemsPerPage = (value: number | string) => {
                       <VIcon icon="tabler-arrows-exchange-2" />
                     </template>
                     <VListItemTitle>Change Stage</VListItemTitle>
-                  </VListItem>
-
-                  <VDivider />
-
-                  <VListItem @click="handleDealAction('duplicate', item)">
-                    <template #prepend>
-                      <VIcon icon="tabler-copy" />
-                    </template>
-                    <VListItemTitle>Duplicate</VListItemTitle>
                   </VListItem>
 
                   <VDivider />

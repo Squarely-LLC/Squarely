@@ -211,6 +211,28 @@ function normalisePaymentMethod(
   return "Bank Transfer";
 }
 
+function isLatestRevisionRecord(
+  records: InvoiceRecord[],
+  target: InvoiceRecord,
+) {
+  const rootId = target.quotation.parentQuotationId ?? target.quotation.id;
+  const family = records.filter(
+    (record) =>
+      record.quotation.id === rootId ||
+      record.quotation.parentQuotationId === rootId,
+  );
+
+  if (family.length <= 1) return true;
+
+  const latest = family.reduce((currentLatest, record) =>
+    Number(record.quotation.id) > Number(currentLatest.quotation.id)
+      ? record
+      : currentLatest,
+  );
+
+  return String(latest.quotation.id) === String(target.quotation.id);
+}
+
 function sanitizeStoredRecord(record: InvoiceRecord): InvoiceRecord {
   const cloned = cloneInvoiceRecord(record);
   const config = loadActiveAppConfigurations();
@@ -819,6 +841,7 @@ export const useInvoicesStore = defineStore("invoices", {
       );
 
       if (index === -1) return null;
+      if (!isLatestRevisionRecord(this.items, this.items[index])) return null;
 
       const updated = mergeInvoiceRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
@@ -852,6 +875,7 @@ export const useInvoicesStore = defineStore("invoices", {
       );
 
       if (!target) return;
+      if (!isLatestRevisionRecord(this.items, target)) return;
 
       const numericId = Number(target.quotation.id);
       const parentId = target.quotation.parentQuotationId;

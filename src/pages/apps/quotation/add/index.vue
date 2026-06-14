@@ -89,7 +89,7 @@ const buildBlankQuotation = (): QuotationData => {
       service: "Architectural services",
       total: 0,
       avatar: "",
-      quotationStatus: "Pending",
+      quotationStatus: "Active",
       balance: 0,
       dealId: null,
       linkedRecordType: null,
@@ -169,8 +169,8 @@ const buildRevisionDraft = (parentId: number): QuotationData => {
   )
     .toISOString()
     .slice(0, 10);
-  revisionDraft.quotation.quotationStatus = "Pending";
-  revisionDraft.quotation.approvalRequestedAt = null;
+  revisionDraft.quotation.quotationStatus = "Active";
+  revisionDraft.approvalRequestedAt = null;
   revisionDraft.note = `${sourceRecord.note}\n${revisionLabel} draft created from ${baseQuoteNumber}.`;
 
   return revisionDraft;
@@ -195,8 +195,8 @@ const buildDuplicateDraft = (sourceId: number): QuotationData => {
   duplicateDraft.quotation.parentQuotationId = null;
   duplicateDraft.quotation.isRevision = false;
   duplicateDraft.quotation.revisionLabel = null;
-  duplicateDraft.quotation.quotationStatus = "Pending";
-  duplicateDraft.quotation.approvalRequestedAt = null;
+  duplicateDraft.quotation.quotationStatus = "Active";
+  duplicateDraft.approvalRequestedAt = null;
   duplicateDraft.quotation.balance = 0;
   duplicateDraft.quotation.total = total;
   duplicateDraft.paymentDetails = buildQuotationPaymentDetails(

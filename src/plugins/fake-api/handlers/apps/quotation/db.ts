@@ -78,9 +78,12 @@ const buildRecord = (
     linkedRecordType: null,
     source: "squarely",
     attachmentName: null,
+    attachmentFileKey: null,
     parentQuotationId: null,
     isRevision: false,
     revisionLabel: null,
+    convertedProformaId: null,
+    convertedInvoiceId: null,
     ...overrides,
   },
   paymentDetails: {
@@ -104,42 +107,42 @@ const buildRecord = (
 });
 
 export const database: QuotationRecord[] = [
-  buildRecord(6101, "Pending", getSeedAvatar(2), {
+  buildRecord(6101, "Active", getSeedAvatar(2), {
     total: 4200,
     client: getSeedClient(2),
     service: "Interior fit-out quotation",
     dealId: 201,
     linkedRecordType: "deal",
   }),
-  buildRecord(6102, "Approved", getSeedAvatar(5), {
+  buildRecord(6102, "Approval", getSeedAvatar(5), {
     total: 7600,
     client: getSeedClient(5),
     service: "Retail branch design package",
     dealId: 202,
     linkedRecordType: "deal",
   }),
-  buildRecord(6104, "Converted to Invoice", getSeedAvatar(10), {
+  buildRecord(6104, "Converted", getSeedAvatar(10), {
     total: 9200,
     client: getSeedClient(10),
     service: "Lobby renovation scope",
     dealId: 204,
     linkedRecordType: "deal",
   }),
-  buildRecord(6105, "Converted to Proforma", getSeedAvatar(1), {
+  buildRecord(6105, "Converted", getSeedAvatar(1), {
     total: 5800,
     client: getSeedClient(1),
     service: "Guest suite refurbishment",
     dealId: 205,
     linkedRecordType: "contract",
   }),
-  buildRecord(6109, "Converted to Proforma", getSeedAvatar(3), {
+  buildRecord(6109, "Converted", getSeedAvatar(3), {
     total: 8450,
     client: getSeedClient(3),
     service: "Showroom concept redesign",
     dealId: 209,
     linkedRecordType: "deal",
   }),
-  buildRecord(6111, "Approved", getSeedAvatar(5), {
+  buildRecord(6111, "Approval", getSeedAvatar(5), {
     quoteNumber: "QT-6102-R1",
     total: 7350,
     client: getSeedClient(5),

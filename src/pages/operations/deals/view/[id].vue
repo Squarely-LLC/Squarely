@@ -1153,9 +1153,14 @@ const isCurrentDealBillingDocument = (record: DealBillingDocument) => {
 };
 
 const dealBillingDocuments = computed<DealBillingDocument[]>(() => [
-  ...proformasStore.items.filter(isCurrentDealBillingDocument),
   ...invoicesStore.items.filter(isCurrentDealBillingDocument),
 ]);
+
+const dealProformaBillingAmount = computed(() =>
+  proformasStore.items
+    .filter(isCurrentDealBillingDocument)
+    .reduce((sum, record) => sum + getDealDocumentTotal(record), 0),
+);
 
 const dealBillingPaid = computed(() =>
   dealBillingDocuments.value.reduce(
@@ -2197,6 +2202,7 @@ watch(
         <DealBillingSummaryCard
           class="mt-4"
           :paid="dealBillingPaid"
+          :proforma-amount="dealProformaBillingAmount"
           :unpaid="dealBillingUnpaid"
           :to-be-invoiced="dealBillingToBeInvoiced"
         />

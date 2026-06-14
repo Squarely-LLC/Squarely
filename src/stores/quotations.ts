@@ -206,6 +206,56 @@ function normalisePaymentMethod(
   return "Bank Transfer";
 }
 
+function normaliseQuotationStatus(
+  status: QuotationStatus | string | null | undefined,
+): QuotationStatus {
+  const trimmed = String(status ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (trimmed === "sent") return "Sent";
+  if (trimmed === "approval" || trimmed === "approved") return "Approval";
+  if (trimmed === "lost") return "Lost";
+  if (trimmed === "canceled" || trimmed === "cancelled") return "Canceled";
+  if (
+    trimmed === "converted" ||
+    trimmed === "converted to invoice" ||
+    trimmed === "converted to proforma"
+  ) {
+    return "Converted";
+  }
+
+  return "Active";
+}
+
+function canMarkQuotationSent(status: string | null | undefined) {
+  return !["Approval", "Converted", "Lost", "Canceled"].includes(
+    normaliseQuotationStatus(status),
+  );
+}
+
+function isLatestRevisionRecord(
+  records: QuotationRecord[],
+  target: QuotationRecord,
+) {
+  const rootId = target.quotation.parentQuotationId ?? target.quotation.id;
+  const family = records.filter(
+    (record) =>
+      record.quotation.id === rootId ||
+      record.quotation.parentQuotationId === rootId,
+  );
+
+  if (family.length <= 1) return true;
+
+  const latest = family.reduce((currentLatest, record) =>
+    Number(record.quotation.id) > Number(currentLatest.quotation.id)
+      ? record
+      : currentLatest,
+  );
+
+  return String(latest.quotation.id) === String(target.quotation.id);
+}
+
 function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
   const cloned = cloneQuotationRecord(record);
   const config = loadActiveAppConfigurations();
@@ -265,6 +315,19 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.approvalMode === "Request Approval"
       ? cloned.approvalRequestedAt?.trim() || null
       : null;
+  cloned.quotation.convertedProformaId =
+    cloned.quotation.convertedProformaId === null ||
+    cloned.quotation.convertedProformaId === undefined
+      ? null
+      : Number(cloned.quotation.convertedProformaId);
+  cloned.quotation.convertedInvoiceId =
+    cloned.quotation.convertedInvoiceId === null ||
+    cloned.quotation.convertedInvoiceId === undefined
+      ? null
+      : Number(cloned.quotation.convertedInvoiceId);
+  cloned.quotation.quotationStatus = normaliseQuotationStatus(
+    cloned.quotation.quotationStatus,
+  );
 
   syncQuotationFinancialState(cloned);
 
@@ -420,7 +483,9 @@ function addDays(value: Date, days: number) {
 }
 
 function isAutoCancelableQuotationStatus(status: string | null | undefined) {
-  return status === "Pending" || status === "Approved";
+  return ["Active", "Sent", "Approval"].includes(
+    normaliseQuotationStatus(status),
+  );
 }
 
 function documentReferencesQuotation(
@@ -536,7 +601,7 @@ function normaliseQuotationRecord(
       service: quotation.service?.trim() || "Architectural services",
       total,
       avatar: quotation.avatar || "",
-      quotationStatus: quotation.quotationStatus ?? "Pending",
+      quotationStatus: normaliseQuotationStatus(quotation.quotationStatus),
       balance: Number(quotation.balance) || 0,
       dealId:
         quotation.dealId === null || quotation.dealId === undefined
@@ -553,6 +618,16 @@ function normaliseQuotationRecord(
           : Number(quotation.parentQuotationId),
       isRevision: quotation.isRevision ?? false,
       revisionLabel: normaliseRevisionLabel(quotation.revisionLabel),
+      convertedProformaId:
+        quotation.convertedProformaId === null ||
+        quotation.convertedProformaId === undefined
+          ? null
+          : Number(quotation.convertedProformaId),
+      convertedInvoiceId:
+        quotation.convertedInvoiceId === null ||
+        quotation.convertedInvoiceId === undefined
+          ? null
+          : Number(quotation.convertedInvoiceId),
     },
     paymentDetails: payload.paymentDetails
       ? clonePaymentDetails(payload.paymentDetails)
@@ -631,6 +706,18 @@ function mergeQuotationRecord(
       quotationPatch.revisionLabel === undefined
         ? original.quotation.revisionLabel
         : normaliseRevisionLabel(quotationPatch.revisionLabel),
+    convertedProformaId:
+      quotationPatch.convertedProformaId === undefined
+        ? (original.quotation.convertedProformaId ?? null)
+        : quotationPatch.convertedProformaId === null
+          ? null
+          : Number(quotationPatch.convertedProformaId),
+    convertedInvoiceId:
+      quotationPatch.convertedInvoiceId === undefined
+        ? (original.quotation.convertedInvoiceId ?? null)
+        : quotationPatch.convertedInvoiceId === null
+          ? null
+          : Number(quotationPatch.convertedInvoiceId),
   };
 
   const merged: QuotationRecord = {
@@ -685,6 +772,9 @@ function mergeQuotationRecord(
         ? original.approvalRequestedAt?.trim() || null
         : patch.approvalRequestedAt?.trim() || null
       : null;
+  merged.quotation.quotationStatus = normaliseQuotationStatus(
+    quotationPatch.quotationStatus ?? original.quotation.quotationStatus,
+  );
 
   return cloneQuotationRecord(syncQuotationFinancialState(merged));
 }
@@ -880,6 +970,7 @@ export const useQuotationsStore = defineStore("quotations", {
       );
 
       if (index === -1) return null;
+      if (!isLatestRevisionRecord(this.items, this.items[index])) return null;
 
       const updated = mergeQuotationRecord(this.items[index], patch);
       this.items.splice(index, 1, updated);
@@ -888,12 +979,24 @@ export const useQuotationsStore = defineStore("quotations", {
       return this.byId(id);
     },
 
+    markQuotationSent(id: number | string) {
+      const current = this.byId(id);
+      if (!current || !canMarkQuotationSent(current.quotation.quotationStatus)) {
+        return current;
+      }
+
+      return this.updateQuotation(id, {
+        quotation: { quotationStatus: "Sent" },
+      });
+    },
+
     removeQuotation(id: number | string) {
       const target = this.items.find(
         (record) => String(record.quotation.id) === String(id),
       );
 
       if (!target) return;
+      if (!isLatestRevisionRecord(this.items, target)) return;
 
       const numericId = Number(target.quotation.id);
       const parentId = target.quotation.parentQuotationId;

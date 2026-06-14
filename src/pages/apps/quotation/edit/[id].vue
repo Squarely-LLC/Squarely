@@ -55,7 +55,7 @@ const isExternalQuotation = computed(
 );
 const selectedExternalAttachment = ref<File | null>(null);
 const externalEditError = ref("");
-const externalStatusOptions = ["Pending", "Approved"];
+const externalStatusOptions = ["Active", "Sent", "Approval"];
 const allowedAttachmentExtensions = [
   ".pdf",
   ".doc",
@@ -438,6 +438,12 @@ const openQuotationEmailDialog = () => {
   nextTick(() => {
     emailDialogRef.value?.openWith?.(quotationEmailDraft.value);
   });
+};
+
+const onQuotationEmailSend = () => {
+  if (!quotationData.value) return;
+
+  quotationsStore.markQuotationSent(quotationData.value.quotation.id);
 };
 
 const shareQuotationOnWhatsApp = async () => {
@@ -985,6 +991,7 @@ onBeforeUnmount(() => {
     <EmailDialog
       ref="emailDialogRef"
       v-model:is-dialog-visible="isEmailDialogVisible"
+      @send="onQuotationEmailSend"
     />
   </VRow>
 
