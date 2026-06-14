@@ -1,5 +1,4 @@
 import { database as invoiceDatabase } from "@/plugins/fake-api/handlers/apps/invoice/db";
-import { database as proformaDatabase } from "@/plugins/fake-api/handlers/apps/proforma/db";
 import type { ReceiptRecord } from "@/plugins/fake-api/handlers/apps/receipt/types";
 
 const year = new Date().getFullYear();
@@ -42,44 +41,6 @@ const buildInvoiceReceipt = (
   };
 };
 
-const buildProformaReceipt = (
-  id: number,
-  proformaId: number,
-  amount: number,
-  linkedPaymentId: string | null = null,
-): ReceiptRecord => {
-  const proformaRecord = proformaDatabase.find(
-    (record) => record.quotation.id === proformaId,
-  );
-
-  if (!proformaRecord) {
-    throw new Error(`Missing proforma seed for receipt ${id}`);
-  }
-
-  return {
-    receipt: {
-      id,
-      receiptNumber: `RV-${id}`,
-      issuedDate: `${year}-04-${String((id % 7) + 10).padStart(2, "0")}`,
-      receivedDate: `${year}-04-${String((id % 7) + 10).padStart(2, "0")}`,
-      linkedPaymentId,
-      client: { ...proformaRecord.quotation.client },
-      amount,
-      avatar: proformaRecord.quotation.avatar || "",
-      status: "Recorded",
-      sourceType: "proforma",
-      linkedInvoiceId: null,
-      linkedInvoiceNumber: null,
-      linkedProformaId: proformaRecord.quotation.id,
-      linkedProformaNumber: proformaRecord.quotation.quoteNumber,
-      attachmentName: null,
-      attachmentFileKey: null,
-    },
-    paymentMethod: proformaRecord.paymentMethod || "Cash",
-    note: "Receipt generated from a Squarely proforma.",
-  };
-};
-
 const buildFlaggedReceipt = (): ReceiptRecord => ({
   receipt: {
     id: 9103,
@@ -98,6 +59,7 @@ const buildFlaggedReceipt = (): ReceiptRecord => ({
     avatar: "",
     status: "Flagged",
     sourceType: "manual",
+    linkedPaymentId: null,
     linkedInvoiceId: null,
     linkedInvoiceNumber: null,
     linkedProformaId: null,
@@ -111,7 +73,7 @@ const buildFlaggedReceipt = (): ReceiptRecord => ({
 
 export const database: ReceiptRecord[] = [
   buildInvoiceReceipt(9101, 6301, 2100, "inv-pay-6301-1"),
-  buildProformaReceipt(9102, 6201, 3200, "pf-pay-6201-1"),
+  buildInvoiceReceipt(9102, 6302, 3200, "inv-pay-6302-1"),
   buildInvoiceReceipt(9104, 6401, 900, "inv-pay-6401-1"),
   buildFlaggedReceipt(),
 ];

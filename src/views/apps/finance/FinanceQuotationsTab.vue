@@ -108,6 +108,17 @@ const pushFinanceSuccess = (message: string) => {
   notifications.push(message, "success", 3500);
 };
 
+const pushFinanceWarning = (message: string) => {
+  notifications.push(message, "warning", 3500);
+};
+
+const CONVERTED_LOCK_MESSAGE =
+  "This document is converted and locked. Create a revision instead.";
+const REVISION_LOCK_MESSAGE =
+  "Older revisions cannot be edited or deleted. Use the latest revision.";
+const APPROVAL_REQUIRED_MESSAGE =
+  "Client approval is required before conversion.";
+
 const getQuotationLabel = (quotationId: number) => {
   return (
     quotationsStore.byId(quotationId)?.quotation.quoteNumber ||
@@ -391,6 +402,50 @@ const hasRevisions = (quotation: Quotation) =>
 const getRevisionCount = (quotation: Quotation) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
+const getQuotationFamily = (quotation: Quotation) => {
+  const rootId = quotation.parentQuotationId ?? quotation.id;
+
+  return allQuotationRecords.value
+    .map((record) => record.quotation)
+    .filter(
+      (candidate) =>
+        String(candidate.id) === String(rootId) ||
+        String(candidate.parentQuotationId ?? "") === String(rootId),
+    );
+};
+
+const isOlderQuotationRevision = (quotation: Quotation) => {
+  const family = getQuotationFamily(quotation);
+  if (family.length <= 1) return false;
+
+  const latest = family.reduce((currentLatest, candidate) =>
+    Number(candidate.id) > Number(currentLatest.id)
+      ? candidate
+      : currentLatest,
+  );
+
+  return String(latest.id) !== String(quotation.id);
+};
+
+const getQuotationLockReason = (quotation?: Quotation | null) => {
+  if (!quotation) return "";
+  if (quotation.quotationStatus === "Converted") return CONVERTED_LOCK_MESSAGE;
+  if (isOlderQuotationRevision(quotation)) return REVISION_LOCK_MESSAGE;
+
+  return "";
+};
+
+const openQuotationEditDraft = (quotationId: number) => {
+  const quotation = quotationsStore.byId(quotationId)?.quotation;
+  const lockReason = getQuotationLockReason(quotation);
+  if (lockReason) {
+    pushFinanceWarning(lockReason);
+    return;
+  }
+
+  router.push({ name: "apps-quotation-edit-id", params: { id: quotationId } });
+};
+
 const getQuotationRowKey = (quotation: Quotation) => String(quotation.id);
 
 const isExpanded = (quotation: Quotation) =>
@@ -584,7 +639,7 @@ const resolveStatusLabel = (status: string) => {
 };
 
 const isQuotationConversionBlocked = (status?: string | null) =>
-  ["Canceled", "Lost"].includes(String(status ?? ""));
+  String(status ?? "") !== "Approval";
 
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
@@ -754,17 +809,15 @@ const convertQuotationToProforma = (quotationId: number) => {
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
 
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceSuccess(
-      `${quotationRecord.quotation.quoteNumber} cannot be converted because it is ${quotationRecord.quotation.quotationStatus.toLowerCase()}.`,
-    );
-    return;
-  }
-
   if (quotationRecord.quotation.quotationStatus === "Converted") {
     pushFinanceSuccess(
       `${quotationRecord.quotation.quoteNumber} is already converted to proforma.`,
     );
+    return;
+  }
+
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
     return;
   }
 
@@ -821,17 +874,15 @@ const convertQuotationToInvoice = (quotationId: number) => {
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
 
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceSuccess(
-      `${quotationRecord.quotation.quoteNumber} cannot be converted because it is ${quotationRecord.quotation.quotationStatus.toLowerCase()}.`,
-    );
-    return;
-  }
-
   if (quotationRecord.quotation.quotationStatus === "Converted") {
     pushFinanceSuccess(
       `${quotationRecord.quotation.quoteNumber} is already converted to invoice.`,
     );
+    return;
+  }
+
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
     return;
   }
 
@@ -924,6 +975,12 @@ const closeDeleteQuotationDialog = () => {
 const deleteQuotation = (quotationId: number) => {
   const record = quotationsStore.byId(quotationId);
   if (!record) return;
+
+  const lockReason = getQuotationLockReason(record.quotation);
+  if (lockReason) {
+    pushFinanceWarning(lockReason);
+    return;
+  }
 
   pendingDeleteQuotationId.value = quotationId;
   isDeleteQuotationDialogOpen.value = true;
@@ -1038,50 +1095,36 @@ const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
 
 const computedMoreList = computed(() => {
   return (paramId: number) => [
-    ...(() => {
-      const quotationRecord = quotationsStore.byId(paramId);
-      const quotationStatus =
-        quotationRecord?.quotation.quotationStatus ?? null;
-
-      return [
-        {
-          title: "Edit",
-          value: "edit",
-          prependIcon: "tabler-pencil",
-          to: { name: "apps-quotation-edit-id", params: { id: paramId } },
-        },
-        {
-          title: "Revise",
-          value: "revise",
-          prependIcon: "tabler-refresh",
-          onClick: () => openRevisionDraft(paramId),
-        },
-        {
-          title: "Duplicate",
-          value: "duplicate",
-          prependIcon: "tabler-copy",
-          onClick: () => openDuplicateDraft(paramId),
-        },
-        {
-          title: "Convert to Proforma",
-          value: "convert-to-proforma",
-          prependIcon: "tabler-file-dollar",
-          disabled:
-            quotationStatus === "Converted" ||
-            isQuotationConversionBlocked(quotationStatus),
-          onClick: () => convertQuotationToProforma(paramId),
-        },
-        {
-          title: "Convert to Tax invoice",
-          value: "convert-to-tax-invoice",
-          prependIcon: "tabler-file-invoice",
-          disabled:
-            quotationStatus === "Converted" ||
-            isQuotationConversionBlocked(quotationStatus),
-          onClick: () => convertQuotationToInvoice(paramId),
-        },
-      ];
-    })(),
+    {
+      title: "Edit",
+      value: "edit",
+      prependIcon: "tabler-pencil",
+      onClick: () => openQuotationEditDraft(paramId),
+    },
+    {
+      title: "Revise",
+      value: "revise",
+      prependIcon: "tabler-refresh",
+      onClick: () => openRevisionDraft(paramId),
+    },
+    {
+      title: "Duplicate",
+      value: "duplicate",
+      prependIcon: "tabler-copy",
+      onClick: () => openDuplicateDraft(paramId),
+    },
+    {
+      title: "Convert to Proforma",
+      value: "convert-to-proforma",
+      prependIcon: "tabler-file-dollar",
+      onClick: () => convertQuotationToProforma(paramId),
+    },
+    {
+      title: "Convert to Tax invoice",
+      value: "convert-to-tax-invoice",
+      prependIcon: "tabler-file-invoice",
+      onClick: () => convertQuotationToInvoice(paramId),
+    },
     {
       title: "Share",
       value: "share",

@@ -677,7 +677,7 @@ export const getDealRecurrentServiceLines = (
       name: service.name,
       category: service.category,
       description: service.description,
-      quantity: item.recurrentPeriods ?? item.quantity,
+      quantity: item.quantity ?? 1,
     })),
   });
 
@@ -1328,7 +1328,7 @@ function buildStandardPurchasedProduct(
         )
       : item.note?.trim() || item.category?.trim() || "",
     discountPercent: item.discountPercent ?? 0,
-    hours: item.quantity,
+    hours: isPeriodBasedLine ? 1 : item.quantity,
     lineConstraints: item.lineConstraintsOverride,
     title: item.name,
   });
@@ -1358,10 +1358,6 @@ function buildRetainerProducts(
   billingPeriod?: DealBillingPeriod | null,
 ) {
   const services = getDealRetainerServiceLines(item, record);
-  const serviceQuantityTotal =
-    services.reduce((sum, service) => sum + Number(service.quantity || 0), 0) ||
-    1;
-  const periodCount = billingPeriod ? 1 : Number(item.retainerPeriods || 1);
   const uniqueServiceNames = Array.from(
     new Set(
       services
@@ -1389,7 +1385,7 @@ function buildRetainerProducts(
         billingPeriod,
       ),
       discountPercent: item.discountPercent ?? 0,
-      hours: serviceQuantityTotal * (periodCount > 0 ? periodCount : 1),
+      hours: 1,
       title: item.name,
     }),
   ];
@@ -1442,8 +1438,7 @@ function buildCollapsedRetainerPeriodProduct(
       billingPeriod,
     ),
     discountPercent: rootItem.discountPercent ?? 0,
-    hours:
-      items.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 1,
+    hours: 1,
     title: rootItem.name,
   });
 }

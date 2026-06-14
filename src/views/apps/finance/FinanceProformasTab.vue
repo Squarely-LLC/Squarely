@@ -32,7 +32,7 @@ const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
 const isSendQuotationDialogOpen = ref(false);
-const expanded = ref<number[]>([]);
+const expanded = ref<string[]>([]);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const isPreviewActionFrameReady = ref(false);
 const pendingPreviewAction = ref<{
@@ -282,6 +282,9 @@ const linkedInvoiceMap = computed(() => {
 const getLinkedInvoice = (proformaId: number) =>
   linkedInvoiceMap.value.get(proformaId) ?? null;
 
+const getLinkedInvoiceRouteId = (proformaId: number) =>
+  getLinkedInvoice(proformaId)?.id ?? "";
+
 const filteredQuotations = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
 
@@ -345,10 +348,10 @@ const getRevisionCount = (quotation: Proforma) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
 const isExpanded = (quotation: Proforma) =>
-  expanded.value.includes(quotation.id);
+  expanded.value.includes(String(quotation.id));
 
 const toggleRow = (quotation: Proforma) => {
-  const id = quotation.id;
+  const id = String(quotation.id);
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -793,7 +796,9 @@ const confirmDeleteQuotation = () => {
   }
 
   quotationsStore.removeProforma(quotation.id);
-  expanded.value = expanded.value.filter((value) => value !== quotation.id);
+  expanded.value = expanded.value.filter(
+    (value) => value !== String(quotation.id),
+  );
   pushFinanceSuccess(`${quotation.quoteNumber} deleted successfully.`);
   closeDeleteQuotationDialog();
 };
@@ -1157,7 +1162,7 @@ watch(totalQuotations, (value) => {
                   v-if="getLinkedInvoice(item.id)"
                   :to="{
                     name: 'apps-invoice-preview-id',
-                    params: { id: getLinkedInvoice(item.id)?.id },
+                    params: { id: getLinkedInvoiceRouteId(item.id) },
                   }"
                   class="text-link"
                 >
@@ -1358,11 +1363,9 @@ watch(totalQuotations, (value) => {
                 placeholder="Select status"
                 :rules="[requiredValidator]"
                 :items="[
-                  'Pending',
-                  'Approved',
-                  'Lost',
-                  'Converted to Invoice',
-                  'Converted to Proforma',
+                  'Not Paid',
+                  'Partially Paid',
+                  'Paid',
                 ]"
               />
             </div>

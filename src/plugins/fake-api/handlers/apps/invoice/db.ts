@@ -2,27 +2,32 @@ import type { InvoiceRecord } from "@db/apps/invoice/types";
 import { db as contactsDb } from "../contact/db";
 import type { ContactProperties } from "../contact/types";
 import { database as quotationDatabase } from "../quotation/db";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 
 const year = new Date().getFullYear();
 
-const defaultPurchasedProducts = (): InvoiceRecord["purchasedProducts"] => [
+const defaultPurchasedProducts = (
+  total = 2720,
+): InvoiceRecord["purchasedProducts"] => [
   {
     catalogueItemId: null,
     title: "Concept design",
-    cost: 250,
-    hours: 8,
+    cost: Math.round(total * 0.6),
+    hours: 1,
     discountType: "none",
     discountValue: 0,
     description: "Initial concept preparation and client revisions.",
+    taxApplicable: true,
   },
   {
     catalogueItemId: null,
     title: "Technical coordination",
-    cost: 180,
-    hours: 4,
+    cost: total - Math.round(total * 0.6),
+    hours: 1,
     discountType: "none",
     discountValue: 0,
     description: "Coordination across architecture and MEP comments.",
+    taxApplicable: true,
   },
 ];
 
@@ -65,17 +70,20 @@ const buildStandaloneRecord = (
     client: InvoiceRecord["quotation"]["client"];
   },
   payments: InvoiceRecord["payments"] = [],
-): InvoiceRecord => ({
-  quotation: {
+): InvoiceRecord => {
+  const purchasedProducts = defaultPurchasedProducts(Number(overrides.total || 0));
+  const total = getQuotationGrandTotal(purchasedProducts);
+  const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+  return {
+    quotation: {
     id,
     quoteNumber: `INV-${id}`,
     issuedDate: `${year}-04-0${(id % 7) + 1}`,
     dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
     service: "Architectural design services",
-    total: 0,
     avatar,
     quotationStatus: status,
-    balance: 0,
     dealId: null,
     linkedRecordType: null,
     source: "squarely",
@@ -84,16 +92,19 @@ const buildStandaloneRecord = (
     isRevision: false,
     revisionLabel: null,
     ...overrides,
+    attachmentFileKey: overrides.attachmentFileKey ?? null,
+    total,
+    balance: Math.max(total - paid, 0),
   },
   paymentDetails: {
-    totalDue: `$${Number(overrides.total ?? 0).toLocaleString()}`,
+    totalDue: `$${total.toLocaleString()}`,
     bankName: "Byblos Bank",
     country: "Lebanon",
     iban: "LB12345678901234567890123456",
     swiftCode: "BYBALBBX",
   },
   payments,
-  purchasedProducts: defaultPurchasedProducts(),
+  purchasedProducts,
   note: "Pricing is valid for 14 days from the issue date.",
   showClientNote: true,
   totalFx: null,
@@ -103,7 +114,8 @@ const buildStandaloneRecord = (
   approverEmployeeId: null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
-});
+  };
+};
 const toInvoiceQuoteNumber = (quoteNumber: string) =>
   quoteNumber.replace(/^QT-/, "INV-");
 
@@ -120,8 +132,14 @@ const toInvoiceRecord = (
 ): InvoiceRecord => ({
   quotation: {
     ...quotationRecord.quotation,
-    quoteNumber: toInvoiceQuoteNumber(quotationRecord.quotation.quoteNumber),
+    id:
+      quotationRecord.quotation.convertedInvoiceId ??
+      quotationRecord.quotation.id,
+    quoteNumber: toInvoiceQuoteNumber(
+      `QT-${quotationRecord.quotation.convertedInvoiceId ?? quotationRecord.quotation.id}`,
+    ),
     quotationStatus: "Not Paid",
+    balance: quotationRecord.quotation.total,
     attachmentName: toInvoiceAttachmentName(
       quotationRecord.quotation.attachmentName,
     ),
@@ -147,7 +165,9 @@ const toInvoiceRecord = (
 
 const convertedQuotationRecords: InvoiceRecord[] = quotationDatabase
   .filter(
-    (record) => record.quotation.quotationStatus === "Converted to Invoice",
+    (record) =>
+      record.quotation.quotationStatus === "Converted" &&
+      record.quotation.convertedInvoiceId,
   )
   .map((record) => toInvoiceRecord(record));
 

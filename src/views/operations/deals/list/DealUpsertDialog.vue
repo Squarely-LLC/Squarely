@@ -47,6 +47,8 @@ const selectedLocationCountry = ref("");
 const selectedLocationCity = ref("");
 const locationCityOptions = ref<string[]>([]);
 const userData = useCookie<any>("userData");
+const isProjectCodeConfirmDialogVisible = ref(false);
+const pendingSubmitPayload = ref<Partial<DealProperties> | null>(null);
 
 const configStore = useConfigStore();
 const contactsStore = useContactsStore();
@@ -589,25 +591,40 @@ const onCancel = () => {
   emit("update:isDialogVisible", false);
 };
 
+const buildSubmitPayload = (): Partial<DealProperties> => ({
+  ...localDeal.value,
+  location: composeLocation() || null,
+  customFieldValues: buildDefaultCustomFieldValues(
+    localDeal.value.customFieldValues,
+  ),
+});
+
+const closeProjectCodeConfirmDialog = () => {
+  isProjectCodeConfirmDialogVisible.value = false;
+  pendingSubmitPayload.value = null;
+};
+
+const confirmProjectCodeSubmit = () => {
+  if (!pendingSubmitPayload.value) return;
+
+  emit("submit", pendingSubmitPayload.value);
+  closeProjectCodeConfirmDialog();
+};
+
 const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
 
-  if (linkedJobProjectCodeWarning.value && typeof window !== "undefined") {
-    const confirmed = window.confirm(
-      `${linkedJobProjectCodeWarning.value} Continue saving this change?`,
-    );
+  const payload = buildSubmitPayload();
 
-    if (!confirmed) return;
+  if (linkedJobProjectCodeWarning.value) {
+    pendingSubmitPayload.value = payload;
+    isProjectCodeConfirmDialogVisible.value = true;
+
+    return;
   }
 
-  emit("submit", {
-    ...localDeal.value,
-    location: composeLocation() || null,
-    customFieldValues: buildDefaultCustomFieldValues(
-      localDeal.value.customFieldValues,
-    ),
-  });
+  emit("submit", payload);
 };
 </script>
 
@@ -914,6 +931,32 @@ const onSubmit = async () => {
     v-model:is-dialog-visible="isAddContactDialogVisible"
     @submit="onAddContactSubmit"
   />
+
+  <VDialog v-model="isProjectCodeConfirmDialogVisible" max-width="480" persistent>
+    <DialogCloseBtn @click="closeProjectCodeConfirmDialog" />
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Confirm project code change</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis">
+          {{ linkedJobProjectCodeWarning }} Continue saving this change?
+        </div>
+      </VCardText>
+
+      <VCardActions class="pt-2 px-6 pb-6">
+        <DialogActionBar
+          save-text="Continue"
+          cancel-text="Cancel"
+          @save="confirmProjectCodeSubmit"
+          @cancel="closeProjectCodeConfirmDialog"
+        />
+      </VCardActions>
+    </VCard>
+  </VDialog>
 </template>
 
 <style scoped>

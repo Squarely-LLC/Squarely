@@ -2,27 +2,32 @@ import type { ProformaRecord } from "@db/apps/proforma/types";
 import { db as contactsDb } from "../contact/db";
 import type { ContactProperties } from "../contact/types";
 import { database as quotationDatabase } from "../quotation/db";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 
 const year = new Date().getFullYear();
 
-const defaultPurchasedProducts = (): ProformaRecord["purchasedProducts"] => [
+const defaultPurchasedProducts = (
+  total = 2720,
+): ProformaRecord["purchasedProducts"] => [
   {
     catalogueItemId: null,
     title: "Concept design",
-    cost: 250,
-    hours: 8,
+    cost: Math.round(total * 0.6),
+    hours: 1,
     discountType: "none",
     discountValue: 0,
     description: "Initial concept preparation and client revisions.",
+    taxApplicable: true,
   },
   {
     catalogueItemId: null,
     title: "Technical coordination",
-    cost: 180,
-    hours: 4,
+    cost: total - Math.round(total * 0.6),
+    hours: 1,
     discountType: "none",
     discountValue: 0,
     description: "Coordination across architecture and MEP comments.",
+    taxApplicable: true,
   },
 ];
 
@@ -65,17 +70,20 @@ const buildStandaloneRecord = (
     client: ProformaRecord["quotation"]["client"];
   },
   payments: ProformaRecord["payments"] = [],
-): ProformaRecord => ({
-  quotation: {
+): ProformaRecord => {
+  const purchasedProducts = defaultPurchasedProducts(Number(overrides.total || 0));
+  const total = getQuotationGrandTotal(purchasedProducts);
+  const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+  return {
+    quotation: {
     id,
     quoteNumber: `PF-${id}`,
     issuedDate: `${year}-04-0${(id % 7) + 1}`,
     dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
     service: "Architectural design services",
-    total: 0,
     avatar,
     quotationStatus: status,
-    balance: 0,
     dealId: null,
     linkedRecordType: null,
     source: "squarely",
@@ -84,16 +92,19 @@ const buildStandaloneRecord = (
     isRevision: false,
     revisionLabel: null,
     ...overrides,
+    attachmentFileKey: overrides.attachmentFileKey ?? null,
+    total,
+    balance: Math.max(total - paid, 0),
   },
   paymentDetails: {
-    totalDue: `$${Number(overrides.total ?? 0).toLocaleString()}`,
+    totalDue: `$${total.toLocaleString()}`,
     bankName: "Byblos Bank",
     country: "Lebanon",
     iban: "LB12345678901234567890123456",
     swiftCode: "BYBALBBX",
   },
   payments,
-  purchasedProducts: defaultPurchasedProducts(),
+  purchasedProducts,
   note: "Pricing is valid for 14 days from the issue date.",
   showClientNote: true,
   totalFx: null,
@@ -103,7 +114,8 @@ const buildStandaloneRecord = (
   approverEmployeeId: null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
-});
+  };
+};
 const toProformaQuoteNumber = (quoteNumber: string) =>
   quoteNumber.replace(/^QT-/, "PF-");
 
@@ -120,8 +132,14 @@ const toProformaRecord = (
 ): ProformaRecord => ({
   quotation: {
     ...quotationRecord.quotation,
-    quoteNumber: toProformaQuoteNumber(quotationRecord.quotation.quoteNumber),
+    id:
+      quotationRecord.quotation.convertedProformaId ??
+      quotationRecord.quotation.id,
+    quoteNumber: toProformaQuoteNumber(
+      `QT-${quotationRecord.quotation.convertedProformaId ?? quotationRecord.quotation.id}`,
+    ),
     quotationStatus: "Not Paid",
+    balance: quotationRecord.quotation.total,
     attachmentName: toProformaAttachmentName(
       quotationRecord.quotation.attachmentName,
     ),
@@ -141,13 +159,16 @@ const toProformaRecord = (
   paymentLink: quotationRecord.paymentLink,
   approvalMode: quotationRecord.approvalMode,
   approverEmployeeId: quotationRecord.approverEmployeeId,
+  convertedInvoiceId: quotationRecord.quotation.convertedInvoiceId ?? null,
   salesperson: quotationRecord.salesperson,
   thanksNote: quotationRecord.thanksNote,
 });
 
 const convertedQuotationRecords: ProformaRecord[] = quotationDatabase
   .filter(
-    (record) => record.quotation.quotationStatus === "Converted to Proforma",
+    (record) =>
+      record.quotation.quotationStatus === "Converted" &&
+      record.quotation.convertedProformaId,
   )
   .map((record) => toProformaRecord(record));
 
@@ -158,36 +179,14 @@ const standaloneRecords: ProformaRecord[] = [
     service: "Interior fit-out proforma",
     dealId: 301,
     linkedRecordType: "deal",
-  }, [
-    {
-      id: "pf-pay-6201-1",
-      amount: 3200,
-      date: `${year}-04-15`,
-      method: "Bank Transfer",
-      note: "Client advance receipt.",
-      createdAt: `${year}-04-15T11:00:00Z`,
-      balanceBefore: 4200,
-      balanceAfter: 1000,
-    },
-  ]),
-  buildStandaloneRecord(6202, "Partially Paid", getSeedAvatar(5), {
+  }),
+  buildStandaloneRecord(6202, "Not Paid", getSeedAvatar(5), {
     total: 7600,
     client: getSeedClient(5),
     service: "Retail branch design package",
     dealId: 302,
     linkedRecordType: "deal",
-  }, [
-    {
-      id: "pf-pay-6202-1",
-      amount: 1500,
-      date: `${year}-04-11`,
-      method: "Cash",
-      note: "Initial proforma deposit.",
-      createdAt: `${year}-04-11T09:40:00Z`,
-      balanceBefore: 7600,
-      balanceAfter: 6100,
-    },
-  ]),
+  }),
   buildStandaloneRecord(6203, "Not Paid", "", {
     total: 3100,
     client: getSeedClient(7),
@@ -197,7 +196,7 @@ const standaloneRecords: ProformaRecord[] = [
     source: "external",
     attachmentName: "peakfit-proforma.pdf",
   }),
-  buildStandaloneRecord(6211, "Partially Paid", getSeedAvatar(5), {
+  buildStandaloneRecord(6211, "Not Paid", getSeedAvatar(5), {
     quoteNumber: "PF-6202-R1",
     total: 7350,
     client: getSeedClient(5),

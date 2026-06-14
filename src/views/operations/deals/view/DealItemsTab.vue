@@ -64,7 +64,14 @@ import {
   resolveStoredBillingPeriodKey,
   saveDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
-import {} from "@/utils/dealValue";
+import {
+  getDealDocumentBalance,
+  getDealDocumentPaid,
+  getDealDocumentTotal,
+  getDealItemsDiscountTotal,
+  getDealItemsGrandTotal,
+  getDealItemsSubtotal,
+} from "@/utils/dealBilling";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -179,19 +186,25 @@ interface DealDocumentContainer {
     balance?: number | null;
     quotationStatus: string;
     dealId: number | null;
+    parentQuotationId?: number | string | null;
+    isRevision?: boolean | null;
     client?: unknown;
     avatar?: string;
   };
   purchasedProducts?: Array<{
     billingPeriod?: DealBillingPeriod | null;
     billingPeriodKey?: string | null;
+    cost?: number | null;
     dealSelectionKey?: string | null;
+    discountType?: "none" | "percent" | "currency" | null;
+    discountValue?: number | null;
+    hours?: number | null;
     title?: string | null;
   }>;
   convertedInvoiceId?: number | string | null;
   convertedProformaId?: number | string | null;
   paymentMethod?: string | null;
-  payments?: Array<unknown>;
+  payments?: Array<{ amount?: number | null }>;
 }
 
 interface DealDocumentPanelRecord {
@@ -237,6 +250,7 @@ const createDraftItemDialogVisible = ref(false);
 const editLineDialogVisible = ref(false);
 const phaseDialogVisible = ref(false);
 const selectionDialogVisible = ref(false);
+const alreadyQuotedDialogVisible = ref(false);
 const externalDocumentDialogVisible = ref(false);
 const addItemFormRef = ref<VForm>();
 const phaseFormRef = ref<VForm>();
@@ -259,6 +273,10 @@ const externalDocumentSelectionKind = ref<Extract<
 > | null>(null);
 const selectedItemIds = ref<string[]>([]);
 const selectedDocumentParentItemId = ref<string | null>(null);
+const alreadyQuotedDialogItems = ref<DealDocumentSelectableItem[]>([]);
+const alreadyQuotedDialogResolver = ref<((value: boolean) => void) | null>(
+  null,
+);
 
 const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
@@ -2173,9 +2191,11 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item) return { label: "Qty", value: "--" };
 
   if (isRetainerParentDealItem(item) || isRecurrentParentDealItem(item)) {
+    const periodLabel = getFixedPricePeriodLabel(item);
+
     return {
-      label: "Period",
-      value: String(getItemQuantityDisplayValue(item)),
+      label: "Periods",
+      value: periodLabel ? `${periodLabel} (fixed price)` : "Fixed price",
     };
   }
 
@@ -2262,51 +2282,61 @@ const getItemEffectiveQuantity = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
   if (!item) return 0;
-  if (!item.parentItemId && isRetainerCatalogueType(item.catalogueType)) {
-    return (
-      getRetainerTotalPeriods(item) * getRetainerServiceQuantityTotal(item)
-    );
-  }
-  if (!item.parentItemId && isRecurrentCatalogueType(item.catalogueType)) {
-    return getRecurrentTotalPeriods(item);
+  if (
+    !item.parentItemId &&
+    (isRetainerCatalogueType(item.catalogueType) ||
+      isRecurrentCatalogueType(item.catalogueType))
+  ) {
+    return 1;
   }
 
   return Number(item.quantity ?? 0);
-};
-
-const getRetainerServiceQuantityTotal = (
-  item?: DealItem | DealItemWithPlan | null,
-) => {
-  if (!item?.catalogueItemId || !isRetainerCatalogueType(item.catalogueType))
-    return 1;
-
-  const record = cataloguesStore.recordById(
-    item.catalogueItemId,
-    item.catalogueType || undefined,
-  );
-
-  if (record?.type !== "Retainer Service") return 1;
-
-  const total = getDealRetainerServiceLines(
-    item as DealItem,
-    record as CatalogueRetainerServiceRecord,
-  ).reduce((sum, service) => sum + Number(service.quantity || 0), 0);
-
-  return total > 0 ? total : 1;
 };
 
 const getItemQuantityDisplayValue = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
   if (!item) return "--";
-  if (!item.parentItemId && isRetainerCatalogueType(item.catalogueType)) {
-    return getRetainerTotalPeriods(item);
-  }
-  if (!item.parentItemId && isRecurrentCatalogueType(item.catalogueType)) {
-    return getRecurrentTotalPeriods(item);
+  if (
+    !item.parentItemId &&
+    (isRetainerCatalogueType(item.catalogueType) ||
+      isRecurrentCatalogueType(item.catalogueType))
+  ) {
+    return "Fixed";
   }
 
   return item.quantity ?? "--";
+};
+
+const getFixedPricePeriodLabel = (
+  item?: DealItem | DealItemWithPlan | DealDocumentSelectableItem | null,
+) => {
+  if (!item) return "";
+  if (isRetainerCatalogueType(item.catalogueType)) {
+    const periods = Number((item as DealItem).retainerPeriods ?? 0);
+
+    return periods > 0 ? `${periods} retainer period${periods === 1 ? "" : "s"}` : "";
+  }
+  if (isRecurrentCatalogueType(item.catalogueType)) {
+    const periods = Number((item as DealItem).recurrentPeriods ?? 0);
+
+    return periods > 0 ? `${periods} recurrent period${periods === 1 ? "" : "s"}` : "";
+  }
+
+  return "";
+};
+
+const getSelectableItemPriceSummary = (item: DealDocumentSelectableItem) => {
+  const itemMode = resolveDealDocumentBillingModeForItem(item);
+  const price = formatMoney(item.unitPrice);
+
+  if (itemMode === "retainer-period" || itemMode === "recurrent-period") {
+    const periodLabel = getFixedPricePeriodLabel(item);
+
+    return periodLabel ? `${price} fixed price · ${periodLabel}` : `${price} fixed price`;
+  }
+
+  return `${price} x ${item.quantity ?? 1}`;
 };
 
 const itemAmount = (item: DealItem) =>
@@ -2839,33 +2869,31 @@ const toggleItemExpanded = (panelId: number | string) => {
 };
 
 const itemsSubtotal = computed(() =>
-  (props.deal.items || []).reduce(
-    (sum, item) =>
-      sum + Number(item.unitPrice || 0) * getItemEffectiveQuantity(item),
-    0,
+  getDealItemsSubtotal(
+    getBillableRootDealItems(props.deal.items || [], (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    ),
+    getItemEffectiveQuantity,
   ),
 );
 
 const totalDiscount = computed(() =>
-  (props.deal.items || []).reduce((sum, item) => {
-    const subtotal =
-      Number(item.unitPrice || 0) * getItemEffectiveQuantity(item);
-
-    return sum + subtotal * (Number(item.discountPercent || 0) / 100);
-  }, 0),
+  getDealItemsDiscountTotal(
+    getBillableRootDealItems(props.deal.items || [], (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    ),
+    getItemEffectiveQuantity,
+  ),
 );
 const totalTax = computed(() => 0);
 
-const grandTotal = computed(
-  () => itemsSubtotal.value - totalDiscount.value + totalTax.value,
-);
-
-const financialRows = computed(() => props.deal.financials || []);
-
-const totalQuoted = computed(() =>
-  financialRows.value
-    .filter((entry) => entry.type === "quotation" || entry.type === "invoice")
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+const grandTotal = computed(() =>
+  getDealItemsGrandTotal(
+    getBillableRootDealItems(props.deal.items || [], (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    ),
+    getItemEffectiveQuantity,
+  ) + totalTax.value,
 );
 
 const totalInvoiced = computed(() =>
@@ -2874,17 +2902,16 @@ const totalInvoiced = computed(() =>
       (record) =>
         String(record.quotation.dealId ?? "") === String(props.deal.id),
     )
-    .reduce((sum, record) => sum + Number(record.quotation.total || 0), 0),
+    .reduce((sum, record) => sum + getDealDocumentTotal(record), 0),
 );
 
 const totalPaid = computed(() =>
-  financialRows.value
+  invoicesStore.items
     .filter(
-      (entry) =>
-        entry.type === "payment" &&
-        String(entry.status || "").toLowerCase() === "received",
+      (record) =>
+        String(record.quotation.dealId ?? "") === String(props.deal.id),
     )
-    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+    .reduce((sum, record) => sum + getDealDocumentPaid(record), 0),
 );
 
 const remainingToInvoice = computed(() =>
@@ -3023,7 +3050,7 @@ const sortDealDocumentRecords = <T extends DealDocumentContainer>(
 const mapDealDocumentPanelRecord = <T extends DealDocumentContainer>(
   record: T,
 ): DealDocumentPanelRecord => ({
-  balance: Number(record.quotation.balance ?? record.quotation.total ?? 0),
+  balance: getDealDocumentBalance(record),
   dueDate: record.quotation.dueDate,
   id: record.quotation.id,
   issuedDate: record.quotation.issuedDate,
@@ -3031,7 +3058,7 @@ const mapDealDocumentPanelRecord = <T extends DealDocumentContainer>(
   quoteNumber: record.quotation.quoteNumber,
   record,
   status: record.quotation.quotationStatus,
-  total: Number(record.quotation.total || 0),
+  total: getDealDocumentTotal(record),
 });
 
 const normalizeDocumentStatus = (value?: string | null) =>
@@ -3052,10 +3079,56 @@ const isDocumentConverted = (record: DealDocumentPanelRecord) => {
   );
 };
 
-const isConvertedProforma = (
+const CONVERTED_LOCK_MESSAGE =
+  "This document is converted and locked. Create a revision instead.";
+const REVISION_LOCK_MESSAGE =
+  "Older revisions cannot be edited or deleted. Use the latest revision.";
+const APPROVAL_REQUIRED_MESSAGE =
+  "Client approval is required before conversion.";
+
+const getDocumentRecordsByKind = (kind: DealPreviewKind) => {
+  if (kind === "quotation") return dealQuotationRecords.value;
+  if (kind === "proforma") return dealProformaRecords.value;
+
+  return dealInvoiceRecords.value;
+};
+
+const isOlderDocumentRevision = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
-) => kind === "proforma" && Boolean(record.record.convertedInvoiceId);
+) => {
+  const parentId = record.record.quotation.parentQuotationId ?? record.id;
+  const family = getDocumentRecordsByKind(kind).filter((candidate) => {
+    const candidateParentId =
+      candidate.record.quotation.parentQuotationId ?? candidate.id;
+
+    return String(candidateParentId) === String(parentId);
+  });
+
+  if (family.length <= 1) return false;
+
+  const latest = family.reduce((currentLatest, candidate) =>
+    Number(candidate.id) > Number(currentLatest.id) ? candidate : currentLatest,
+  );
+
+  return String(latest.id) !== String(record.id);
+};
+
+const getDocumentLockReason = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  if (
+    (kind === "quotation" || kind === "proforma") &&
+    isDocumentConverted(record)
+  ) {
+    return CONVERTED_LOCK_MESSAGE;
+  }
+
+  if (isOlderDocumentRevision(kind, record)) return REVISION_LOCK_MESSAGE;
+
+  return "";
+};
 
 const isDocumentConversionBlocked = (record: DealDocumentPanelRecord) => {
   const status = normalizeDocumentStatus(record.status);
@@ -3127,24 +3200,9 @@ const requestApproval = (
   notifications.push("Approval requested.", "success", 2500);
 };
 
-const quotationHasPhaseOrPeriod = (record: DealDocumentPanelRecord) =>
-  (record.record.purchasedProducts || []).some((product) => {
-    const billingKey = resolveStoredBillingPeriodKey(product);
-    const selectionKey = String(product.dealSelectionKey ?? "").toLowerCase();
-
-    return (
-      Boolean(product.billingPeriod) ||
-      Boolean(billingKey) ||
-      selectionKey.includes("phase") ||
-      selectionKey.includes("retainer") ||
-      selectionKey.includes("recurrent")
-    );
-  });
-
 const isQuotationConversionApprovalBlocked = (
   record: DealDocumentPanelRecord,
 ) =>
-  quotationHasPhaseOrPeriod(record) &&
   normalizeDocumentStatus(record.status) !== "approval";
 
 const canConvertQuotationRecord = (record: DealDocumentPanelRecord) =>
@@ -3500,6 +3558,12 @@ const openDocumentEdit = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  const lockReason = getDocumentLockReason(kind, record);
+  if (lockReason) {
+    notifications.push(lockReason, "warning", 3000);
+    return;
+  }
+
   router.push({
     name: getEditRouteName(kind),
     params: { id: record.id },
@@ -3609,7 +3673,11 @@ const deleteDocumentRecord = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
-  if (isConvertedProforma(kind, record)) return;
+  const lockReason = getDocumentLockReason(kind, record);
+  if (lockReason) {
+    notifications.push(lockReason, "warning", 3000);
+    return;
+  }
 
   if (kind === "quotation") quotationsStore.removeQuotation(record.id);
   else if (kind === "proforma") proformasStore.removeProforma(record.id);
@@ -3668,7 +3736,7 @@ const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
   if (!canConvertQuotationRecord(record)) {
     notifications.push(
       isQuotationConversionApprovalBlocked(record)
-        ? "Phase or period quotations must be client approved before conversion."
+        ? APPROVAL_REQUIRED_MESSAGE
         : "Quotation cannot be converted.",
       "warning",
       3000,
@@ -3732,7 +3800,7 @@ const convertProformaRecordToInvoice = (
 const toDealDocumentPanelRecord = (
   record: DealDocumentContainer,
 ): DealDocumentPanelRecord => ({
-  balance: Number(record.quotation.balance ?? record.quotation.total ?? 0),
+  balance: getDealDocumentBalance(record),
   dueDate: record.quotation.dueDate,
   id: record.quotation.id,
   issuedDate: record.quotation.issuedDate,
@@ -3740,7 +3808,7 @@ const toDealDocumentPanelRecord = (
   quoteNumber: record.quotation.quoteNumber,
   record,
   status: record.quotation.quotationStatus,
-  total: Number(record.quotation.total || 0),
+  total: getDealDocumentTotal(record),
 });
 
 const convertDocumentToInvoice = (
@@ -3889,6 +3957,29 @@ const isPeriodBasedSelectableItem = (selectionKey?: string | null) => {
   return itemMode === "retainer-period" || itemMode === "recurrent-period";
 };
 
+const quotationUsageBySelectionKey = computed(() => {
+  const usage = new Map<string, number>();
+
+  quotationsStore.items.forEach((record) => {
+    if (String(record.quotation.dealId ?? "") !== String(props.deal.id)) return;
+
+    record.purchasedProducts.forEach((product) => {
+      const selectionKey = resolveProductSelectionKey(product);
+
+      const usageKey = buildDealDocumentUsageKey(
+        selectionKey,
+        resolveStoredBillingPeriodKey(product),
+      );
+
+      if (!usageKey) return;
+
+      usage.set(usageKey, (usage.get(usageKey) ?? 0) + 1);
+    });
+  });
+
+  return usage;
+});
+
 const proformaUsageBySelectionKey = computed(() => {
   const usage = new Map<string, number>();
 
@@ -4018,12 +4109,22 @@ const getDocumentUsage = (
   billingPeriodKey?: string | null,
 ) => {
   const usageKey = buildDealDocumentUsageKey(selectionKey, billingPeriodKey);
-  if (!usageKey) return { invoiceCount: 0, proformaCount: 0 };
+  if (!usageKey) return { invoiceCount: 0, proformaCount: 0, quotationCount: 0 };
 
   return {
     invoiceCount: invoiceUsageBySelectionKey.value.get(usageKey) ?? 0,
     proformaCount: proformaUsageBySelectionKey.value.get(usageKey) ?? 0,
+    quotationCount: quotationUsageBySelectionKey.value.get(usageKey) ?? 0,
   };
+};
+
+const isSelectionAlreadyQuoted = (selectionKey?: string | null) => {
+  const usage = getDocumentUsage(
+    selectionKey,
+    resolveSelectableItemBillingPeriodKey(selectionKey),
+  );
+
+  return usage.quotationCount > 0;
 };
 
 const isSelectionDocumentActionDisabled = (selectionKey?: string | null) => {
@@ -5530,12 +5631,48 @@ const closeSelectionDialog = () => {
   selectedItemIds.value = [];
 };
 
+const alreadyQuotedDialogVisibleItems = computed(() =>
+  alreadyQuotedDialogItems.value.slice(0, 5),
+);
+
+const alreadyQuotedDialogRemainingCount = computed(() =>
+  Math.max(alreadyQuotedDialogItems.value.length - 5, 0),
+);
+
+const closeAlreadyQuotedDialog = (confirmed: boolean) => {
+  alreadyQuotedDialogVisible.value = false;
+  alreadyQuotedDialogResolver.value?.(confirmed);
+  alreadyQuotedDialogResolver.value = null;
+  alreadyQuotedDialogItems.value = [];
+};
+
+const confirmAlreadyQuotedSelection = async (
+  kind: DealDocumentKind,
+  items: DealDocumentSelectableItem[],
+) => {
+  if (kind !== "quotation") return true;
+
+  const alreadyQuotedItems = items.filter((item) =>
+    isSelectionAlreadyQuoted(item.selectionKey),
+  );
+  if (!alreadyQuotedItems.length) return true;
+
+  alreadyQuotedDialogItems.value = alreadyQuotedItems;
+  alreadyQuotedDialogVisible.value = true;
+
+  return new Promise<boolean>((resolve) => {
+    alreadyQuotedDialogResolver.value = resolve;
+  });
+};
+
 const confirmSelectedDocumentItems = async () => {
   if (!selectedDocumentKind.value || !selectedDocumentItems.value.length)
     return;
 
   const kind = selectedDocumentKind.value;
   const items = [...selectedDocumentItems.value];
+
+  if (!(await confirmAlreadyQuotedSelection(kind, items))) return;
 
   if (selectionNeedsBillingPeriod(items)) {
     const groups = buildPendingBillingPeriodGroups(items);
@@ -5618,6 +5755,8 @@ const openDocumentPage = async (kind: DealDocumentKind) => {
   const selectedItems = quotationItems.value;
 
   if (selectedItems.length) {
+    if (!(await confirmAlreadyQuotedSelection(kind, selectedItems))) return;
+
     await saveAndNavigateDocumentDraft(kind, selectedItems);
 
     return;
@@ -7877,9 +8016,6 @@ const openEditTask = (taskId: number | string) => {
                               <VMenu activator="parent">
                                 <VList density="compact">
                                   <VListItem
-                                    :disabled="
-                                      isConvertedProforma(panel.key, record)
-                                    "
                                     @click="openDocumentEdit(panel.key, record)"
                                   >
                                     <template #prepend>
@@ -7926,9 +8062,6 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    :disabled="
-                                      !canConvertQuotationRecord(record)
-                                    "
                                     @click="convertQuotationToProforma(record)"
                                   >
                                     <template #prepend>
@@ -7940,9 +8073,6 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    :disabled="
-                                      !canConvertQuotationRecord(record)
-                                    "
                                     @click="
                                       convertDocumentToInvoice(
                                         'quotation',
@@ -8053,9 +8183,6 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     class="text-error"
-                                    :disabled="
-                                      isConvertedProforma(panel.key, record)
-                                    "
                                     @click="
                                       deleteDocumentRecord(panel.key, record)
                                     "
@@ -9252,10 +9379,20 @@ const openEditTask = (taskId: number | string) => {
                   >
                     {{ item.expansionSummary }}
                   </VChip>
+
+                  <VChip
+                    v-if="isSelectionAlreadyQuoted(item.selectionKey)"
+                    size="x-small"
+                    label
+                    color="warning"
+                    variant="tonal"
+                  >
+                    Already quoted
+                  </VChip>
                 </div>
 
                 <div class="text-sm text-medium-emphasis mb-1">
-                  {{ formatMoney(item.unitPrice) }} x {{ item.quantity ?? 1 }}
+                  {{ getSelectableItemPriceSummary(item) }}
                 </div>
 
                 <div v-if="item.hint" class="text-sm text-medium-emphasis mb-1">
@@ -9271,6 +9408,17 @@ const openEditTask = (taskId: number | string) => {
                       ? "Already invoiced."
                       : "Already proforma'd."
                   }}
+                </div>
+
+                <div
+                  v-else-if="
+                    selectedDocumentKind === 'quotation' &&
+                    isSelectionAlreadyQuoted(item.selectionKey)
+                  "
+                  class="text-sm text-warning mb-1"
+                >
+                  This item is already quoted. You can continue and create
+                  another quotation.
                 </div>
 
                 <div v-if="item.note" class="text-sm text-medium-emphasis">
@@ -9297,6 +9445,59 @@ const openEditTask = (taskId: number | string) => {
         >
           Continue
         </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="alreadyQuotedDialogVisible" max-width="520" persistent>
+    <DialogCloseBtn @click="closeAlreadyQuotedDialog(false)" />
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Items already quoted</VCardTitle>
+      </VCardItem>
+
+      <VDivider />
+
+      <VCardText>
+        <div class="text-sm text-medium-emphasis mb-4">
+          These selected items already exist on a quotation. You can continue
+          and create another quotation, or cancel and adjust the selection.
+        </div>
+
+        <VList density="compact" class="border rounded">
+          <VListItem
+            v-for="item in alreadyQuotedDialogVisibleItems"
+            :key="item.selectionKey"
+          >
+            <template #prepend>
+              <VIcon icon="tabler-file-text" color="warning" />
+            </template>
+            <VListItemTitle>{{ item.name }}</VListItemTitle>
+            <VListItemSubtitle v-if="item.parentName">
+              Parent: {{ item.parentName }}
+            </VListItemSubtitle>
+          </VListItem>
+
+          <VListItem v-if="alreadyQuotedDialogRemainingCount > 0">
+            <template #prepend>
+              <VIcon icon="tabler-dots" color="secondary" />
+            </template>
+            <VListItemTitle>
+              {{ alreadyQuotedDialogRemainingCount }} more item{{
+                alreadyQuotedDialogRemainingCount === 1 ? "" : "s"
+              }}
+            </VListItemTitle>
+          </VListItem>
+        </VList>
+      </VCardText>
+
+      <VCardActions class="pt-2 px-6 pb-6">
+        <DialogActionBar
+          save-text="Continue"
+          cancel-text="Cancel"
+          @save="closeAlreadyQuotedDialog(true)"
+          @cancel="closeAlreadyQuotedDialog(false)"
+        />
       </VCardActions>
     </VCard>
   </VDialog>

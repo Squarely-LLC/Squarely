@@ -9,7 +9,6 @@ import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/t
 import type {
   CatalogueJobConfigTask,
   CatalogueRecord,
-  CatalogueRetainerServiceRecord,
   CatalogueTaskStartTrigger,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
@@ -36,8 +35,13 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
   getBillableRootDealItems,
-  getDealRetainerServiceLines,
 } from "@/utils/dealDocumentDraft";
+import {
+  getDealDocumentBalance,
+  getDealDocumentPaid,
+  getDealDocumentTotal,
+  getDealItemsGrandTotal,
+} from "@/utils/dealBilling";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -1111,35 +1115,6 @@ const employeeOptions = computed(() =>
 
 type DealBillingDocument = InvoiceRecord | ProformaRecord;
 
-const getDealDocumentTotal = (record: DealBillingDocument) => {
-  const total = Number(record.quotation?.total ?? 0);
-
-  return Number.isFinite(total) ? Math.max(total, 0) : 0;
-};
-
-const getDealDocumentBalance = (record: DealBillingDocument) => {
-  const balance = Number(record.quotation?.balance ?? NaN);
-  if (Number.isFinite(balance)) return Math.max(balance, 0);
-
-  const total = getDealDocumentTotal(record);
-  const paid = (record.payments || []).reduce((sum, payment) => {
-    const amount = Number(payment.amount ?? 0);
-
-    return sum + (Number.isFinite(amount) ? Math.max(amount, 0) : 0);
-  }, 0);
-
-  return Math.max(total - paid, 0);
-};
-
-const getDealDocumentPaid = (record: DealBillingDocument) => {
-  const total = getDealDocumentTotal(record);
-  const balance = getDealDocumentBalance(record);
-
-  if (String(record.quotation?.quotationStatus || "") === "Paid") return total;
-
-  return Math.min(Math.max(total - balance, 0), total);
-};
-
 const isCurrentDealBillingDocument = (record: DealBillingDocument) => {
   if (!deal.value) return false;
   if (String(record.quotation?.dealId ?? "") !== String(deal.value.id))
@@ -1162,6 +1137,10 @@ const dealProformaBillingAmount = computed(() =>
     .reduce((sum, record) => sum + getDealDocumentTotal(record), 0),
 );
 
+const dealProformaBillingCount = computed(
+  () => proformasStore.items.filter(isCurrentDealBillingDocument).length,
+);
+
 const dealBillingPaid = computed(() =>
   dealBillingDocuments.value.reduce(
     (sum, record) => sum + getDealDocumentPaid(record),
@@ -1177,52 +1156,26 @@ const dealBillingUnpaid = computed(() =>
 );
 
 const getDealItemBillingQuantity = (item: DealItem) => {
-  if (!item.parentItemId && item.catalogueType === "Retainer Service") {
-    const record = item.catalogueItemId
-      ? cataloguesStore.recordById(item.catalogueItemId, item.catalogueType)
-      : null;
-
-    if (record?.type === "Retainer Service") {
-      const serviceQuantity =
-        getDealRetainerServiceLines(
-          item,
-          record as CatalogueRetainerServiceRecord,
-        ).reduce((sum, service) => sum + Number(service.quantity || 0), 0) || 1;
-
-      return Number(item.retainerPeriods || 0) * serviceQuantity;
-    }
-  }
-
-  if (!item.parentItemId && item.catalogueType === "Reccurent Service") {
-    return Number(item.recurrentPeriods || 0);
+  if (
+    !item.parentItemId &&
+    (item.catalogueType === "Retainer Service" ||
+      item.catalogueType === "Reccurent Service")
+  ) {
+    return 1;
   }
 
   return Number(item.quantity ?? 1);
 };
 
-const lineAmount = (item: DealItem) => {
-  const quantity = getDealItemBillingQuantity(item);
-  const unitPrice = Number(item.unitPrice ?? 0);
-  const discountPercent = Number(item.discountPercent ?? 0);
-  const subtotal =
-    (Number.isFinite(quantity) ? quantity : 0) *
-    (Number.isFinite(unitPrice) ? unitPrice : 0);
-
-  return Math.max(
-    subtotal -
-      subtotal *
-        ((Number.isFinite(discountPercent) ? discountPercent : 0) / 100),
-    0,
-  );
-};
-
 const dealBillingGrossTotal = computed(() => {
   if (!deal.value) return 0;
 
-  return getBillableRootDealItems(deal.value.items || [], (id, typeHint) =>
-    cataloguesStore.recordById(id, typeHint),
-  )
-    .reduce((sum, item) => sum + lineAmount(item), 0);
+  return getDealItemsGrandTotal(
+    getBillableRootDealItems(deal.value.items || [], (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    ),
+    getDealItemBillingQuantity,
+  );
 });
 
 const dealBillingToBeInvoiced = computed(() =>
@@ -2203,6 +2156,7 @@ watch(
           class="mt-4"
           :paid="dealBillingPaid"
           :proforma-amount="dealProformaBillingAmount"
+          :proforma-count="dealProformaBillingCount"
           :unpaid="dealBillingUnpaid"
           :to-be-invoiced="dealBillingToBeInvoiced"
         />

@@ -2,12 +2,19 @@ import type { PurchasedProduct } from "@/plugins/fake-api/handlers/apps/quotatio
 
 export type LineDiscountType = "none" | "percent" | "currency";
 
-export function getLineBaseTotal(product: Pick<PurchasedProduct, "cost" | "hours">) {
+export type PricedProduct = {
+  cost?: number | null;
+  discountType?: PurchasedProduct["discountType"] | null;
+  discountValue?: number | null;
+  hours?: number | null;
+};
+
+export function getLineBaseTotal(product: PricedProduct) {
   return Number(product.cost || 0) * Number(product.hours || 0);
 }
 
 export function getLineDiscountAmount(
-  product: Pick<PurchasedProduct, "cost" | "hours" | "discountType" | "discountValue">,
+  product: PricedProduct,
 ) {
   const baseTotal = getLineBaseTotal(product);
   const discountValue = Math.max(0, Number(product.discountValue || 0));
@@ -24,30 +31,22 @@ export function getLineDiscountAmount(
 }
 
 export function getLineTotal(
-  product: Pick<PurchasedProduct, "cost" | "hours" | "discountType" | "discountValue">,
+  product: PricedProduct,
 ) {
   const baseTotal = getLineBaseTotal(product);
   return Math.max(0, baseTotal - getLineDiscountAmount(product));
 }
 
 export function getQuotationSubtotal(
-  products: Array<Pick<PurchasedProduct, "cost" | "hours">>,
+  products: PricedProduct[],
 ) {
   return products.reduce((sum, product) => sum + getLineBaseTotal(product), 0);
 }
 
-export function getQuotationDiscountTotal(
-  products: Array<
-    Pick<PurchasedProduct, "cost" | "hours" | "discountType" | "discountValue">
-  >,
-) {
+export function getQuotationDiscountTotal(products: PricedProduct[]) {
   return products.reduce((sum, product) => sum + getLineDiscountAmount(product), 0);
 }
 
-export function getQuotationGrandTotal(
-  products: Array<
-    Pick<PurchasedProduct, "cost" | "hours" | "discountType" | "discountValue">
-  >,
-) {
+export function getQuotationGrandTotal(products: PricedProduct[]) {
   return products.reduce((sum, product) => sum + getLineTotal(product), 0);
 }

@@ -13,6 +13,7 @@ type BillingMetric = {
 const props = defineProps<{
   paid: number;
   proformaAmount?: number;
+  proformaCount?: number;
   unpaid: number;
   toBeInvoiced: number;
 }>();
@@ -57,6 +58,16 @@ const paidPercent = computed(() => {
   if (total.value <= 0) return 0;
 
   return Math.round((Number(props.paid || 0) / total.value) * 100);
+});
+
+const proformaHint = computed(() => {
+  const amount = Number(props.proformaAmount || 0);
+  const count = Number(props.proformaCount || 0);
+  if (amount <= 0 && count <= 0) return "";
+
+  const documentLabel = count === 1 ? "document" : "documents";
+
+  return `Proformas: ${formatAmount(amount)} across ${count} ${documentLabel}.`;
 });
 
 const chartSeries = computed(() => [
@@ -139,7 +150,7 @@ const metricPercent = (value: number) => {
   <VCard>
     <VCardItem class="pb-sm-0">
       <VCardTitle>Billing Summary</VCardTitle>
-      <VCardSubtitle>Invoices & Proformas</VCardSubtitle>
+      <VCardSubtitle>Invoices only</VCardSubtitle>
 
       <template #append> </template>
     </VCardItem>
@@ -162,8 +173,15 @@ const metricPercent = (value: number) => {
           </div>
 
           <span class="text-sm text-medium-emphasis">
-            Billing progress from invoices and proformas
+            Billing progress from invoices only
           </span>
+
+          <div
+            v-if="proformaHint"
+            class="text-xs text-info mt-1"
+          >
+            {{ proformaHint }}
+          </div>
         </VCol>
 
         <VCol cols="12" sm="7" lg="6">
@@ -210,17 +228,6 @@ const metricPercent = (value: number) => {
             <h6 class="text-h4 my-2">
               {{ formatAmount(metric.value) }}
             </h6>
-
-            <VChip
-              v-if="metric.label === 'Paid' && Number(props.proformaAmount || 0) > 0"
-              label
-              size="x-small"
-              color="info"
-              variant="tonal"
-              class="mb-2"
-            >
-              Proforma exists: {{ formatAmount(Number(props.proformaAmount || 0)) }}
-            </VChip>
 
             <VProgressLinear
               :model-value="metricPercent(metric.value)"
