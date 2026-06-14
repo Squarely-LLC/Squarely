@@ -813,7 +813,15 @@ if (!isEmbeddedActionFrame) {
                 role="row"
               >
                 <div class="quotation-preview-table__cell text-center" role="cell">{{ index + 1 }}</div>
-                <div class="quotation-preview-table__cell quotation-item-cell" role="cell">{{ item.title }}</div>
+                <div class="quotation-preview-table__cell quotation-item-cell" role="cell">
+                  <div>{{ item.title }}</div>
+                  <div
+                    v-if="item.description"
+                    class="quotation-item-description text-medium-emphasis"
+                  >
+                    {{ item.description }}
+                  </div>
+                </div>
                 <div class="quotation-preview-table__cell text-center" role="cell">{{ item.hours }}</div>
                 <div class="quotation-preview-table__cell text-center" role="cell">
                   {{ formatCurrencyAmount(item.cost, financialConfiguration) }}
@@ -1230,6 +1238,13 @@ body.document-quick-preview .layout-content-wrapper {
   overflow-wrap: anywhere;
   white-space: normal;
   word-break: break-word;
+}
+
+.quotation-item-description {
+  margin-block-start: 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  white-space: pre-line;
 }
 
 .quotation-preview-table :deep(th),

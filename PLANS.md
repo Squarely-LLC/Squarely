@@ -178,3 +178,58 @@ Update Deals document workflow around quotation status, revisions, proforma-to-i
   - Proforma Pay action gone; invoice Pay still works.
   - Invoice payment creates invoice-linked receipt.
   - Billing Summary totals are invoice-only, with proforma indicator under Paid.
+
+## 2026-06-14 - Deals Module Pricing, Conversion Selection, Descriptions, and Mock Data
+
+### Summary
+
+- Correct retainer/recurrent pricing to `amount x periods`.
+- Make generated QT/PF/INV item descriptions clear and consistent.
+- Add approval-gated phase/period conversion selection across Deals and Finance.
+- Refresh mock data to match current workflow, locks, receipts, and totals.
+
+### Key Changes
+
+- Pricing and totals:
+  - Retainer and recurrent root items use `unitPrice x period count`; root `quantity` stays non-billing metadata.
+  - When converting/creating for one selected billing period, generated line `hours` is `1`; for the full term, `hours` is the period count.
+  - Retainer/recurrent child service quantities remain descriptive only and do not multiply totals.
+  - Standard/product lines keep `unitPrice x quantity`; contractual phases keep phase quantity pricing.
+  - Discounts apply after base amount; VAT remains controlled by existing tax flags/config display, with no numeric VAT rate added.
+
+- Generated item descriptions:
+  - Centralize generated descriptions in `dealDocumentDraft.ts` for quotation, proforma, invoice, preview, and PDF paths.
+  - Retainer/recurrent descriptions include base note/category, start/end dates, total periods, selected billing period when applicable, and included service names.
+  - Contractual phase descriptions include phase name/context, phase note/category, and selected phase identity.
+  - Standard/product descriptions include item note/category and selected item context.
+  - QT/PF/INV preview tables and PDFs render descriptions visibly and preserve multiline formatting where practical.
+
+- Conversion rules and modals:
+  - Quotation conversion remains blocked unless status is `Approval`; show “Client approval is required before conversion.”
+  - If an approved quotation contains phases or periods, show a system `VDialog` listing all convertible phases/periods with amount, discount, VAT status, and description.
+  - User selects which phase/period lines become PF or invoice; Continue is disabled until at least one line is selected.
+  - Apply the same conversion behavior in Deals document actions and Finance quotation actions.
+  - If converting to invoice and a matching proforma exists, convert that proforma; otherwise create the required proforma automatically, then create the invoice and lock the proforma.
+
+- Locks, billing summary, and mock data:
+  - Converted quotations/proformas and older revisions remain non-editable/non-deletable with the existing locked/revision messages.
+  - Billing summary remains invoice-only, with proformas shown only as a hint under total.
+  - Recalculate all Deals/Finance mock QT/PF/INV data using `amount x periods`, updated descriptions, approval statuses, conversion links, locked converted records, and invoice-only receipts.
+  - Ensure seeded receipts apply to invoices, not proformas.
+
+### Test Plan
+
+- Run targeted static/type checks for touched files only; skip full build unless explicitly requested.
+- Verify retainer/recurrent full-term totals equal `amount x periods`, and selected single-period totals equal `amount x 1`.
+- Verify item card, QT, PF, INV, billing summary, preview, and PDF totals match for the same selected items.
+- Verify generated descriptions are readable in QT/PF/INV edit, preview, and PDF surfaces.
+- Verify non-Approval quotations cannot convert in Deals or Finance.
+- Verify approved phase/period quotations open the selection modal and only selected lines convert.
+- Verify converted/older QT/PF records cannot be edited or deleted.
+- Verify mock data reflects all current rules and no proforma has direct receipt payments.
+
+### Assumptions
+
+- Generated business-readable descriptions are required for automatic document lines; manually edited descriptions remain user-controlled.
+- VAT remains the existing `Included` / `Not Applied` behavior because the current config has no numeric VAT rate.
+- The existing `Reccurent Service` spelling in code/data is preserved unless a separate rename is requested.

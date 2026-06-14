@@ -56,6 +56,7 @@ export interface PurchasedProduct {
   catalogueItemId?: string | null;
   billingPeriod?: DealBillingPeriod | null;
   billingPeriodKey?: string | null;
+  dealSelectionKey?: string | null;
   lineConstraints?: {
     quantity?: boolean;
     price?: boolean;

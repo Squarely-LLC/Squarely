@@ -79,6 +79,7 @@ import {
   buildQuotationThanksNote,
   formatCurrencyAmount,
 } from "@/utils/quotationConfig";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
 import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
@@ -196,6 +197,7 @@ interface DealDocumentContainer {
     billingPeriodKey?: string | null;
     cost?: number | null;
     dealSelectionKey?: string | null;
+    description?: string | null;
     discountType?: "none" | "percent" | "currency" | null;
     discountValue?: number | null;
     hours?: number | null;
@@ -304,6 +306,14 @@ const invoiceConversionDialogVisible = ref(false);
 const pendingInvoiceConversionRecord = ref<DealDocumentPanelRecord | null>(
   null,
 );
+const quotationConversionDialogVisible = ref(false);
+const pendingQuotationConversionRecord = ref<DealDocumentPanelRecord | null>(
+  null,
+);
+const pendingQuotationConversionKind = ref<
+  Extract<DealPreviewKind, "proforma" | "invoice"> | null
+>(null);
+const selectedQuotationConversionIndexes = ref<number[]>([]);
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -595,7 +605,7 @@ const formatBillingPeriodOptionLabel = (
     year: "numeric",
   });
 
-  return `Period ${periodNumber} · ${formatter.format(parsedStartDate)} - ${formatter.format(parsedEndDate)}`;
+  return `Period ${periodNumber} - ${formatter.format(parsedStartDate)} - ${formatter.format(parsedEndDate)}`;
 };
 
 const buildRetainerBillingPeriods = (item?: DealItem | null) => {
@@ -2191,11 +2201,11 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item) return { label: "Qty", value: "--" };
 
   if (isRetainerParentDealItem(item) || isRecurrentParentDealItem(item)) {
-    const periodLabel = getFixedPricePeriodLabel(item);
+    const periodLabel = getPeriodPriceLabel(item);
 
     return {
       label: "Periods",
-      value: periodLabel ? `${periodLabel} (fixed price)` : "Fixed price",
+      value: periodLabel || String(getItemEffectiveQuantity(item)),
     };
   }
 
@@ -2282,13 +2292,10 @@ const getItemEffectiveQuantity = (
   item?: DealItem | DealItemWithPlan | null,
 ) => {
   if (!item) return 0;
-  if (
-    !item.parentItemId &&
-    (isRetainerCatalogueType(item.catalogueType) ||
-      isRecurrentCatalogueType(item.catalogueType))
-  ) {
-    return 1;
-  }
+  if (!item.parentItemId && isRetainerCatalogueType(item.catalogueType))
+    return Math.max(Number((item as DealItem).retainerPeriods ?? 1), 1);
+  if (!item.parentItemId && isRecurrentCatalogueType(item.catalogueType))
+    return Math.max(Number((item as DealItem).recurrentPeriods ?? 1), 1);
 
   return Number(item.quantity ?? 0);
 };
@@ -2302,13 +2309,13 @@ const getItemQuantityDisplayValue = (
     (isRetainerCatalogueType(item.catalogueType) ||
       isRecurrentCatalogueType(item.catalogueType))
   ) {
-    return "Fixed";
+    return getItemEffectiveQuantity(item);
   }
 
   return item.quantity ?? "--";
 };
 
-const getFixedPricePeriodLabel = (
+const getPeriodPriceLabel = (
   item?: DealItem | DealItemWithPlan | DealDocumentSelectableItem | null,
 ) => {
   if (!item) return "";
@@ -2331,9 +2338,11 @@ const getSelectableItemPriceSummary = (item: DealDocumentSelectableItem) => {
   const price = formatMoney(item.unitPrice);
 
   if (itemMode === "retainer-period" || itemMode === "recurrent-period") {
-    const periodLabel = getFixedPricePeriodLabel(item);
+    const periodLabel = getPeriodPriceLabel(item);
+    if (!periodLabel) return `${price} x 1 period`;
 
-    return periodLabel ? `${price} fixed price · ${periodLabel}` : `${price} fixed price`;
+    return `${price} x ${periodLabel}`;
+
   }
 
   return `${price} x ${item.quantity ?? 1}`;
@@ -2868,20 +2877,22 @@ const toggleItemExpanded = (panelId: number | string) => {
   expandedItems.value = [...expandedItems.value, panelId];
 };
 
+const billingSummaryItems = computed(() =>
+  getQuotationTopLevelDealItems(props.deal.items || [], (id, typeHint) =>
+    cataloguesStore.recordById(id, typeHint),
+  ),
+);
+
 const itemsSubtotal = computed(() =>
   getDealItemsSubtotal(
-    getBillableRootDealItems(props.deal.items || [], (id, typeHint) =>
-      cataloguesStore.recordById(id, typeHint),
-    ),
+    billingSummaryItems.value,
     getItemEffectiveQuantity,
   ),
 );
 
 const totalDiscount = computed(() =>
   getDealItemsDiscountTotal(
-    getBillableRootDealItems(props.deal.items || [], (id, typeHint) =>
-      cataloguesStore.recordById(id, typeHint),
-    ),
+    billingSummaryItems.value,
     getItemEffectiveQuantity,
   ),
 );
@@ -2889,9 +2900,7 @@ const totalTax = computed(() => 0);
 
 const grandTotal = computed(() =>
   getDealItemsGrandTotal(
-    getBillableRootDealItems(props.deal.items || [], (id, typeHint) =>
-      cataloguesStore.recordById(id, typeHint),
-    ),
+    billingSummaryItems.value,
     getItemEffectiveQuantity,
   ) + totalTax.value,
 );
@@ -3208,6 +3217,44 @@ const isQuotationConversionApprovalBlocked = (
 const canConvertQuotationRecord = (record: DealDocumentPanelRecord) =>
   !isDocumentConversionBlocked(record) &&
   !isQuotationConversionApprovalBlocked(record);
+
+const isPhaseOrPeriodProduct = (
+  product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
+) => {
+  const selectionKey = String(product.dealSelectionKey ?? "").toLowerCase();
+
+  return Boolean(
+    product.billingPeriod ||
+      resolveStoredBillingPeriodKey(product) ||
+      selectionKey.includes("phase") ||
+      selectionKey.includes("retainer") ||
+      selectionKey.includes("recurrent"),
+  );
+};
+
+const quotationConversionProducts = computed(
+  () => pendingQuotationConversionRecord.value?.record.purchasedProducts || [],
+);
+
+const quotationConversionSelectionItems = computed(() =>
+  quotationConversionProducts.value.map((product, index) => ({
+    index,
+    product,
+    title: product.title?.trim() || `Line ${index + 1}`,
+  })),
+);
+
+const selectedQuotationConversionProducts = computed(() => {
+  const selected = new Set(selectedQuotationConversionIndexes.value);
+
+  return quotationConversionProducts.value.filter((_, index) =>
+    selected.has(index),
+  );
+});
+
+const selectedQuotationConversionTotal = computed(() =>
+  getQuotationGrandTotal(selectedQuotationConversionProducts.value as never),
+);
 
 const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
   const labels = (record.purchasedProducts || [])
@@ -3732,7 +3779,10 @@ const reviseDocumentRecord = (
   void openDocumentRevisionDraft(kind, record);
 };
 
-const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
+const convertQuotationToProforma = (
+  record: DealDocumentPanelRecord,
+  selectedProducts = record.record.purchasedProducts || [],
+) => {
   if (!canConvertQuotationRecord(record)) {
     notifications.push(
       isQuotationConversionApprovalBlocked(record)
@@ -3745,15 +3795,18 @@ const convertQuotationToProforma = (record: DealDocumentPanelRecord) => {
     return null;
   }
 
+  const total = getQuotationGrandTotal(selectedProducts as never);
   const created = proformasStore.addProforma({
     ...record.record,
     convertedInvoiceId: null,
+    purchasedProducts: selectedProducts,
     quotation: {
       ...record.record.quotation,
       id: 0,
       quoteNumber: "",
       quotationStatus: "Not Paid",
-      balance: record.total,
+      balance: total,
+      total,
     },
   } as never);
 
@@ -3837,6 +3890,88 @@ const convertDocumentToInvoice = (
   }
 
   return createdInvoiceId;
+};
+
+const performQuotationConversion = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  record: DealDocumentPanelRecord,
+  selectedProducts = record.record.purchasedProducts || [],
+) => {
+  if (!selectedProducts.length) {
+    notifications.push("Select at least one line to convert.", "warning", 2500);
+
+    return null;
+  }
+
+  const createdProforma = convertQuotationToProforma(record, selectedProducts);
+  if (!createdProforma || kind === "proforma") return createdProforma?.quotation.id ?? null;
+
+  const createdInvoiceId = convertProformaRecordToInvoice(
+    toDealDocumentPanelRecord(createdProforma),
+  );
+
+  if (createdInvoiceId) {
+    quotationsStore.updateQuotation(record.id, {
+      ...record.record,
+      quotation: {
+        ...record.record.quotation,
+        convertedInvoiceId: Number(createdInvoiceId),
+        convertedProformaId: Number(createdProforma.quotation.id),
+        quotationStatus: "Converted",
+      },
+    } as never);
+  }
+
+  return createdInvoiceId;
+};
+
+const closeQuotationConversionDialog = () => {
+  quotationConversionDialogVisible.value = false;
+  pendingQuotationConversionRecord.value = null;
+  pendingQuotationConversionKind.value = null;
+  selectedQuotationConversionIndexes.value = [];
+};
+
+const requestQuotationConversion = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  record: DealDocumentPanelRecord,
+) => {
+  if (!canConvertQuotationRecord(record)) {
+    notifications.push(
+      isQuotationConversionApprovalBlocked(record)
+        ? APPROVAL_REQUIRED_MESSAGE
+        : "Quotation cannot be converted.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
+  const products = record.record.purchasedProducts || [];
+  if (products.some(isPhaseOrPeriodProduct)) {
+    pendingQuotationConversionRecord.value = record;
+    pendingQuotationConversionKind.value = kind;
+    selectedQuotationConversionIndexes.value = products.map((_, index) => index);
+    quotationConversionDialogVisible.value = true;
+
+    return;
+  }
+
+  performQuotationConversion(kind, record, products);
+};
+
+const confirmQuotationConversion = () => {
+  const record = pendingQuotationConversionRecord.value;
+  const kind = pendingQuotationConversionKind.value;
+  if (!record || !kind) return;
+
+  performQuotationConversion(
+    kind,
+    record,
+    selectedQuotationConversionProducts.value,
+  );
+  closeQuotationConversionDialog();
 };
 
 const selectedPaymentRecord = computed(() => {
@@ -4454,7 +4589,7 @@ const getGoalInvoiceState = (
     (record) => String(record.quotation.quotationStatus) === "Paid",
   );
 
-  return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
+  return isPaid ? "Invoiced - Paid" : "Invoiced - Unpaid";
 };
 
 const getPeriodTimelineSectionStatus = (
@@ -4594,7 +4729,7 @@ const getSectionInvoiceState = (
       (record) => String(record.quotation.quotationStatus) === "Paid",
     );
 
-    return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
+    return isPaid ? "Invoiced - Paid" : "Invoiced - Unpaid";
   }
 
   const usageByGoal = section.goals.map((goal) =>
@@ -4628,7 +4763,7 @@ const getSectionInvoiceState = (
     (record) => String(record.quotation.quotationStatus) === "Paid",
   );
 
-  return isPaid ? "Invoiced · Paid" : "Invoiced · Unpaid";
+  return isPaid ? "Invoiced - Paid" : "Invoiced - Unpaid";
 };
 
 const getSectionSelectableItems = (
@@ -7562,7 +7697,7 @@ const openEditTask = (taskId: number | string) => {
                                         "
                                         class="text-body-2 text-medium-emphasis"
                                       >
-                                        · Qty {{ goal.quantity }}
+                                        - Qty {{ goal.quantity }}
                                       </span>
                                     </div>
                                   </template>
@@ -8062,7 +8197,12 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
-                                    @click="convertQuotationToProforma(record)"
+                                    @click="
+                                      requestQuotationConversion(
+                                        'proforma',
+                                        record,
+                                      )
+                                    "
                                   >
                                     <template #prepend>
                                       <VIcon icon="tabler-file-dollar" />
@@ -8074,8 +8214,8 @@ const openEditTask = (taskId: number | string) => {
                                   <VListItem
                                     v-if="panel.key === 'quotation'"
                                     @click="
-                                      convertDocumentToInvoice(
-                                        'quotation',
+                                      requestQuotationConversion(
+                                        'invoice',
                                         record,
                                       )
                                     "
@@ -8324,6 +8464,79 @@ const openEditTask = (taskId: number | string) => {
               </VRow>
             </VForm>
           </VCardText>
+        </VCard>
+      </VDialog>
+
+      <VDialog v-model="quotationConversionDialogVisible" max-width="760">
+        <DialogCloseBtn @click="closeQuotationConversionDialog" />
+        <VCard>
+          <VCardItem>
+            <VCardTitle>
+              Select Lines to Convert
+            </VCardTitle>
+            <VCardSubtitle>
+              {{ pendingQuotationConversionRecord?.quoteNumber }}
+            </VCardSubtitle>
+          </VCardItem>
+
+          <VCardText>
+            <VAlert type="info" variant="tonal" class="mb-4">
+              This quotation includes phases or periods. Select the lines to
+              convert after client approval.
+            </VAlert>
+
+            <div class="d-flex flex-column gap-3">
+              <VCard
+                v-for="item in quotationConversionSelectionItems"
+                :key="item.index"
+                variant="tonal"
+                class="pa-3"
+              >
+                <div class="d-flex align-start gap-3">
+                  <VCheckbox
+                    v-model="selectedQuotationConversionIndexes"
+                    :value="item.index"
+                    density="compact"
+                    hide-details
+                  />
+                  <div class="flex-grow-1">
+                    <div class="d-flex justify-space-between gap-3">
+                      <strong>{{ item.title }}</strong>
+                      <span>{{ formatMoney(item.product.cost) }}</span>
+                    </div>
+                    <p
+                      v-if="item.product.description"
+                      class="text-body-2 text-medium-emphasis mb-2 conversion-line-description"
+                    >
+                      {{ item.product.description }}
+                    </p>
+                    <div class="text-caption text-medium-emphasis">
+                      Qty {{ item.product.hours ?? 1 }}
+                      <template v-if="item.product.billingPeriod">
+                        - {{ getDealBillingPeriodLabel(item.product.billingPeriod) }}
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </VCard>
+            </div>
+
+            <div class="text-end font-weight-medium mt-4">
+              Selected total: {{ formatMoney(selectedQuotationConversionTotal) }}
+            </div>
+          </VCardText>
+
+          <DialogActionBar
+            cancel-text="Cancel"
+            :save-text="
+              pendingQuotationConversionKind === 'invoice'
+                ? 'Convert to Invoice'
+                : 'Convert to Proforma'
+            "
+            :save-disabled="!selectedQuotationConversionIndexes.length"
+            @cancel="closeQuotationConversionDialog"
+            @save="confirmQuotationConversion"
+          />
         </VCard>
       </VDialog>
 
@@ -10615,6 +10828,10 @@ const openEditTask = (taskId: number | string) => {
 
 .items-overview__preview-panel--invoice {
   box-shadow: none;
+}
+
+.conversion-line-description {
+  white-space: pre-line;
 }
 
 .items-overview__preview-summary,

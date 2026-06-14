@@ -14,6 +14,7 @@ import {
   buildQuotationThanksNote,
   formatCurrencyAmount,
 } from "@/utils/quotationConfig";
+import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
@@ -33,6 +34,7 @@ const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
 const isSendQuotationDialogOpen = ref(false);
+const quotationConversionDialogVisible = ref(false);
 const expanded = ref<string[]>([]);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const isPreviewActionFrameReady = ref(false);
@@ -43,6 +45,11 @@ const pendingPreviewAction = ref<{
 const router = useRouter();
 const pendingEmailQuotationId = ref<number | null>(null);
 const emailDialogRef = ref<any | null>(null);
+const pendingQuotationConversionId = ref<number | null>(null);
+const pendingQuotationConversionKind = ref<"proforma" | "invoice" | null>(
+  null,
+);
+const selectedQuotationConversionIndexes = ref<number[]>([]);
 
 type LinkedDocumentRef = {
   id: number;
@@ -641,6 +648,50 @@ const resolveStatusLabel = (status: string) => {
 const isQuotationConversionBlocked = (status?: string | null) =>
   String(status ?? "") !== "Approval";
 
+const pendingQuotationConversionRecord = computed(() =>
+  pendingQuotationConversionId.value === null
+    ? null
+    : quotationsStore.byId(pendingQuotationConversionId.value),
+);
+
+const quotationConversionProducts = computed(
+  () => pendingQuotationConversionRecord.value?.purchasedProducts || [],
+);
+
+const isPhaseOrPeriodProduct = (
+  product: QuotationRecord["purchasedProducts"][number],
+) => {
+  const selectionKey = String((product as any).dealSelectionKey ?? "").toLowerCase();
+
+  return Boolean(
+    product.billingPeriod ||
+      (product as any).billingPeriodKey ||
+      selectionKey.includes("phase") ||
+      selectionKey.includes("retainer") ||
+      selectionKey.includes("recurrent"),
+  );
+};
+
+const quotationConversionSelectionItems = computed(() =>
+  quotationConversionProducts.value.map((product, index) => ({
+    index,
+    product,
+    title: product.title?.trim() || `Line ${index + 1}`,
+  })),
+);
+
+const selectedQuotationConversionProducts = computed(() => {
+  const selected = new Set(selectedQuotationConversionIndexes.value);
+
+  return quotationConversionProducts.value.filter((_, index) =>
+    selected.has(index),
+  );
+});
+
+const selectedQuotationConversionTotal = computed(() =>
+  getQuotationGrandTotal(selectedQuotationConversionProducts.value),
+);
+
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
   isExternalQuotationFormValid.value = false;
@@ -805,32 +856,22 @@ const openDuplicateDraft = async (quotationId: number) => {
   );
 };
 
-const convertQuotationToProforma = (quotationId: number) => {
-  const quotationRecord = quotationsStore.byId(quotationId);
-  if (!quotationRecord) return;
+const createProformaFromQuotation = (
+  quotationRecord: QuotationRecord,
+  selectedProducts = quotationRecord.purchasedProducts,
+) => {
+  const total = getQuotationGrandTotal(selectedProducts);
 
-  if (quotationRecord.quotation.quotationStatus === "Converted") {
-    pushFinanceSuccess(
-      `${quotationRecord.quotation.quoteNumber} is already converted to proforma.`,
-    );
-    return;
-  }
-
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
-    return;
-  }
-
-  const created = proformasStore.addProforma({
+  return proformasStore.addProforma({
     quotation: {
       issuedDate: quotationRecord.quotation.issuedDate,
       dueDate: quotationRecord.quotation.dueDate,
       client: quotationRecord.quotation.client,
       service: quotationRecord.quotation.service,
-      total: quotationRecord.quotation.total,
+      total,
       avatar: quotationRecord.quotation.avatar,
       quotationStatus: "Not Paid",
-      balance: quotationRecord.quotation.total,
+      balance: total,
       dealId: quotationRecord.quotation.dealId,
       linkedRecordType: quotationRecord.quotation.linkedRecordType,
       source: quotationRecord.quotation.source,
@@ -841,7 +882,7 @@ const convertQuotationToProforma = (quotationId: number) => {
       revisionLabel: null,
     },
     paymentDetails: quotationRecord.paymentDetails,
-    purchasedProducts: quotationRecord.purchasedProducts,
+    purchasedProducts: selectedProducts,
     note: [
       quotationRecord.note?.trim(),
       `Converted from quotation ${quotationRecord.quotation.quoteNumber}.`,
@@ -857,82 +898,139 @@ const convertQuotationToProforma = (quotationId: number) => {
     salesperson: quotationRecord.salesperson,
     thanksNote: quotationRecord.thanksNote,
   });
+};
+
+const createInvoiceFromProforma = (
+  proformaRecord: ReturnType<typeof proformasStore.addProforma>,
+) => {
+  if (!proformaRecord) return null;
+
+  const created = invoicesStore.addInvoice({
+    ...proformaRecord,
+    quotation: {
+      ...proformaRecord.quotation,
+      id: 0,
+      quoteNumber: "",
+      quotationStatus: "Not Paid",
+      balance: proformaRecord.quotation.total,
+    },
+  });
+
+  proformasStore.updateProforma(proformaRecord.quotation.id, {
+    convertedInvoiceId: created?.quotation.id ?? null,
+  });
+
+  return created;
+};
+
+const performQuotationConversion = (
+  quotationId: number,
+  kind: "proforma" | "invoice",
+  selectedProducts?: QuotationRecord["purchasedProducts"],
+) => {
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (!quotationRecord) return null;
+
+  if (quotationRecord.quotation.quotationStatus === "Converted") {
+    pushFinanceSuccess(
+      `${quotationRecord.quotation.quoteNumber} is already converted.`,
+    );
+    return null;
+  }
+
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
+    return null;
+  }
+
+  const products = selectedProducts?.length
+    ? selectedProducts
+    : quotationRecord.purchasedProducts;
+  if (!products.length) {
+    pushFinanceWarning("Select at least one line to convert.");
+
+    return null;
+  }
+
+  const createdProforma = createProformaFromQuotation(quotationRecord, products);
+  const createdInvoice =
+    kind === "invoice" ? createInvoiceFromProforma(createdProforma) : null;
 
   quotationsStore.updateQuotation(quotationId, {
     quotation: {
-      convertedProformaId: created?.quotation.id ?? null,
+      convertedProformaId: createdProforma?.quotation.id ?? null,
+      convertedInvoiceId: createdInvoice?.quotation.id ?? null,
       quotationStatus: "Converted",
     },
   });
 
   pushFinanceSuccess(
-    `Converted ${quotationRecord.quotation.quoteNumber} to ${created?.quotation.quoteNumber || "a proforma"}.`,
+    kind === "invoice"
+      ? `Converted ${quotationRecord.quotation.quoteNumber} to ${createdInvoice?.quotation.quoteNumber || "an invoice"}.`
+      : `Converted ${quotationRecord.quotation.quoteNumber} to ${createdProforma?.quotation.quoteNumber || "a proforma"}.`,
   );
+
+  return kind === "invoice" ? createdInvoice : createdProforma;
+};
+
+const requestQuotationConversion = (
+  quotationId: number,
+  kind: "proforma" | "invoice",
+) => {
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (!quotationRecord) return;
+
+  if (quotationRecord.quotation.quotationStatus === "Converted") {
+    pushFinanceSuccess(
+      `${quotationRecord.quotation.quoteNumber} is already converted.`,
+    );
+    return;
+  }
+
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
+    return;
+  }
+
+  if (quotationRecord.purchasedProducts.some(isPhaseOrPeriodProduct)) {
+    pendingQuotationConversionId.value = quotationId;
+    pendingQuotationConversionKind.value = kind;
+    selectedQuotationConversionIndexes.value =
+      quotationRecord.purchasedProducts.map((_, index) => index);
+    quotationConversionDialogVisible.value = true;
+
+    return;
+  }
+
+  performQuotationConversion(quotationId, kind);
+};
+
+const convertQuotationToProforma = (quotationId: number) => {
+  requestQuotationConversion(quotationId, "proforma");
 };
 
 const convertQuotationToInvoice = (quotationId: number) => {
-  const quotationRecord = quotationsStore.byId(quotationId);
-  if (!quotationRecord) return;
+  requestQuotationConversion(quotationId, "invoice");
+};
 
-  if (quotationRecord.quotation.quotationStatus === "Converted") {
-    pushFinanceSuccess(
-      `${quotationRecord.quotation.quoteNumber} is already converted to invoice.`,
-    );
-    return;
-  }
+const closeQuotationConversionDialog = () => {
+  quotationConversionDialogVisible.value = false;
+  pendingQuotationConversionId.value = null;
+  pendingQuotationConversionKind.value = null;
+  selectedQuotationConversionIndexes.value = [];
+};
 
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
-    return;
-  }
+const confirmQuotationConversion = () => {
+  const quotationId = pendingQuotationConversionId.value;
+  const kind = pendingQuotationConversionKind.value;
+  if (quotationId === null || !kind) return;
 
-  const created = invoicesStore.addInvoice({
-    quotation: {
-      issuedDate: quotationRecord.quotation.issuedDate,
-      dueDate: quotationRecord.quotation.dueDate,
-      client: quotationRecord.quotation.client,
-      service: quotationRecord.quotation.service,
-      total: quotationRecord.quotation.total,
-      avatar: quotationRecord.quotation.avatar,
-      quotationStatus: "Not Paid",
-      balance: quotationRecord.quotation.total,
-      dealId: quotationRecord.quotation.dealId,
-      linkedRecordType: quotationRecord.quotation.linkedRecordType,
-      source: quotationRecord.quotation.source,
-      attachmentName: quotationRecord.quotation.attachmentName,
-      attachmentFileKey: quotationRecord.quotation.attachmentFileKey,
-      parentQuotationId: null,
-      isRevision: false,
-      revisionLabel: null,
-    },
-    paymentDetails: quotationRecord.paymentDetails,
-    purchasedProducts: quotationRecord.purchasedProducts,
-    note: [
-      quotationRecord.note?.trim(),
-      `Converted from quotation ${quotationRecord.quotation.quoteNumber}.`,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    showClientNote: quotationRecord.showClientNote,
-    totalFx: quotationRecord.totalFx,
-    paymentMethod: quotationRecord.paymentMethod,
-    paymentLink: quotationRecord.paymentLink,
-    approvalMode: quotationRecord.approvalMode,
-    approverEmployeeId: quotationRecord.approverEmployeeId,
-    salesperson: quotationRecord.salesperson,
-    thanksNote: quotationRecord.thanksNote,
-  });
-
-  quotationsStore.updateQuotation(quotationId, {
-    quotation: {
-      convertedInvoiceId: created?.quotation.id ?? null,
-      quotationStatus: "Converted",
-    },
-  });
-
-  pushFinanceSuccess(
-    `Converted ${quotationRecord.quotation.quoteNumber} to ${created?.quotation.quoteNumber || "an invoice"}.`,
+  performQuotationConversion(
+    quotationId,
+    kind,
+    selectedQuotationConversionProducts.value,
   );
+  closeQuotationConversionDialog();
 };
 
 const pendingDeleteQuotationId = ref<number | null>(null);
@@ -1655,6 +1753,77 @@ watch(totalQuotations, (value) => {
     </VCard>
   </VDialog>
 
+  <VDialog v-model="quotationConversionDialogVisible" max-width="760">
+    <DialogCloseBtn @click="closeQuotationConversionDialog" />
+    <VCard>
+      <VCardItem>
+        <VCardTitle>Select Lines to Convert</VCardTitle>
+        <VCardSubtitle>
+          {{ pendingQuotationConversionRecord?.quotation.quoteNumber }}
+        </VCardSubtitle>
+      </VCardItem>
+
+      <VCardText>
+        <VAlert type="info" variant="tonal" class="mb-4">
+          This quotation includes phases or periods. Select the lines to convert
+          after client approval.
+        </VAlert>
+
+        <div class="d-flex flex-column gap-3">
+          <VCard
+            v-for="item in quotationConversionSelectionItems"
+            :key="item.index"
+            variant="tonal"
+            class="pa-3"
+          >
+            <div class="d-flex align-start gap-3">
+              <VCheckbox
+                v-model="selectedQuotationConversionIndexes"
+                :value="item.index"
+                density="compact"
+                hide-details
+              />
+              <div class="flex-grow-1">
+                <div class="d-flex justify-space-between gap-3">
+                  <strong>{{ item.title }}</strong>
+                  <span>
+                    {{ formatCurrencyAmount(item.product.cost, configStore.financial) }}
+                  </span>
+                </div>
+                <p
+                  v-if="item.product.description"
+                  class="text-body-2 text-medium-emphasis mb-2 conversion-line-description"
+                >
+                  {{ item.product.description }}
+                </p>
+                <div class="text-caption text-medium-emphasis">
+                  Qty {{ item.product.hours ?? 1 }}
+                </div>
+              </div>
+            </div>
+          </VCard>
+        </div>
+
+        <div class="text-end font-weight-medium mt-4">
+          Selected total:
+          {{ formatCurrencyAmount(selectedQuotationConversionTotal, configStore.financial) }}
+        </div>
+      </VCardText>
+
+      <DialogActionBar
+        cancel-text="Cancel"
+        :save-text="
+          pendingQuotationConversionKind === 'invoice'
+            ? 'Convert to Invoice'
+            : 'Convert to Proforma'
+        "
+        :save-disabled="!selectedQuotationConversionIndexes.length"
+        @cancel="closeQuotationConversionDialog"
+        @save="confirmQuotationConversion"
+      />
+    </VCard>
+  </VDialog>
+
   <EmailDialog
     ref="emailDialogRef"
     v-model:is-dialog-visible="isSendQuotationDialogOpen"
@@ -1718,6 +1887,10 @@ watch(totalQuotations, (value) => {
 .quotation-expanded-inner {
   padding-block: 12px 16px;
   padding-inline: 4.75rem 16px;
+}
+
+.conversion-line-description {
+  white-space: pre-line;
 }
 
 .quotation-expanded-header {

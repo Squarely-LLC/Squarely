@@ -30,6 +30,45 @@ const defaultPurchasedProducts = (
   },
 ];
 
+const periodPurchasedProducts = (): QuotationRecord["purchasedProducts"] => [
+  {
+    catalogueItemId: "retainer-service-1",
+    dealSelectionKey: "item-1",
+    title: "Workplace Acoustic Consulting Retainer",
+    cost: 1500,
+    hours: 3,
+    discountType: "none",
+    discountValue: 0,
+    description:
+      "Retainer service\nMonthly acoustic consulting retainer for ongoing workplace planning and review.\nStart Date: 1 May 2026\nEnd Date: 31 Jul 2026\nNumber of Periods: 3\nItems included: Monthly Acoustic Review, Monthly Reporting Pack",
+    taxApplicable: false,
+  },
+  {
+    catalogueItemId: "reccurent-service-1",
+    dealSelectionKey: "item-2",
+    title: "Monthly Meeting Pod Cleaning Service",
+    cost: 260,
+    hours: 6,
+    discountType: "none",
+    discountValue: 0,
+    description:
+      "Recurrent service\nRecurring monthly cleaning and upkeep service for enclosed meeting pods.\nStart Date: 1 May 2026\nEnd Date: 31 Oct 2026\nNumber of Periods: 6\nItems included: Monthly Pod Cleaning Visit",
+    taxApplicable: false,
+  },
+  {
+    catalogueItemId: "product-2",
+    dealSelectionKey: "item-3",
+    title: "Indoor Planter Set",
+    cost: 135,
+    hours: 12,
+    discountType: "none",
+    discountValue: 0,
+    description:
+      "Indoor planter set with liners for lobbies, corridors, and breakout spaces.",
+    taxApplicable: true,
+  },
+];
+
 const mapContactToClient = (
   contact: ContactProperties,
 ): QuotationRecord["quotation"]["client"] => ({
@@ -67,9 +106,14 @@ const buildRecord = (
   avatar: string,
   overrides: Partial<QuotationRecord["quotation"]> & {
     client: QuotationRecord["quotation"]["client"];
+    purchasedProducts?: QuotationRecord["purchasedProducts"];
   },
 ): QuotationRecord => {
-  const purchasedProducts = defaultPurchasedProducts(Number(overrides.total || 0));
+  const { purchasedProducts: overridePurchasedProducts, ...quotationOverrides } =
+    overrides;
+  const purchasedProducts =
+    overridePurchasedProducts ||
+    defaultPurchasedProducts(Number(quotationOverrides.total || 0));
   const total = getQuotationGrandTotal(purchasedProducts);
 
   return {
@@ -92,7 +136,7 @@ const buildRecord = (
     revisionLabel: null,
     convertedProformaId: null,
     convertedInvoiceId: null,
-    ...overrides,
+    ...quotationOverrides,
     total,
   },
   paymentDetails: {
@@ -149,13 +193,13 @@ export const database: QuotationRecord[] = [
     convertedInvoiceId: 6305,
   }),
   buildRecord(6109, "Converted", getSeedAvatar(3), {
-    total: 8450,
     client: getSeedClient(3),
     service: "Showroom concept redesign",
-    dealId: 209,
+    dealId: 203,
     linkedRecordType: "deal",
     convertedProformaId: 6209,
     convertedInvoiceId: 6309,
+    purchasedProducts: periodPurchasedProducts(),
   }),
   buildRecord(6111, "Approval", getSeedAvatar(5), {
     quoteNumber: "QT-6102-R1",

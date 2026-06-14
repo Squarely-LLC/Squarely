@@ -122,8 +122,15 @@ const buildContentLines = ({
   pushWrapped("Items");
   for (const item of quotationRecord.purchasedProducts) {
     pushWrapped(
-      `${item.title || "Untitled item"} | ${item.description || "-"} | Qty ${item.hours} | Price ${formatCurrencyAmount(item.cost, financialConfig)} | Total ${formatCurrencyAmount(getLineTotal(item), financialConfig)}`,
+      `${item.title || "Untitled item"} | Qty ${item.hours} | Price ${formatCurrencyAmount(item.cost, financialConfig)} | Total ${formatCurrencyAmount(getLineTotal(item), financialConfig)}`,
     );
+    if (item.description?.trim()) {
+      item.description
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => pushWrapped(`  ${line}`));
+    }
   }
   lines.push("");
 

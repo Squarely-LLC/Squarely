@@ -34,7 +34,7 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import {
-  getBillableRootDealItems,
+  getQuotationTopLevelDealItems,
 } from "@/utils/dealDocumentDraft";
 import {
   getDealDocumentBalance,
@@ -1156,13 +1156,10 @@ const dealBillingUnpaid = computed(() =>
 );
 
 const getDealItemBillingQuantity = (item: DealItem) => {
-  if (
-    !item.parentItemId &&
-    (item.catalogueType === "Retainer Service" ||
-      item.catalogueType === "Reccurent Service")
-  ) {
-    return 1;
-  }
+  if (!item.parentItemId && item.catalogueType === "Retainer Service")
+    return Math.max(Number(item.retainerPeriods ?? 1), 1);
+  if (!item.parentItemId && item.catalogueType === "Reccurent Service")
+    return Math.max(Number(item.recurrentPeriods ?? 1), 1);
 
   return Number(item.quantity ?? 1);
 };
@@ -1171,7 +1168,7 @@ const dealBillingGrossTotal = computed(() => {
   if (!deal.value) return 0;
 
   return getDealItemsGrandTotal(
-    getBillableRootDealItems(deal.value.items || [], (id, typeHint) =>
+    getQuotationTopLevelDealItems(deal.value.items || [], (id, typeHint) =>
       cataloguesStore.recordById(id, typeHint),
     ),
     getDealItemBillingQuantity,
