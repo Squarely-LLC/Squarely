@@ -372,3 +372,45 @@ Update Deals document workflow around quotation status, revisions, proforma-to-i
 - Restored upstream quotation status should be `Approval`.
 - Link cleanup belongs in stores, not just UI handlers.
 - “Whole sequence” means invoice -> proforma -> quotation links unwind when downstream documents are deleted.
+
+## 2026-06-14 - Deals Item Modal and QT/PF/INV Description Cleanup
+
+### Summary
+
+- Clean up Deals item add/edit quantity fields.
+- Simplify generated contractual, retainer, and recurrent document descriptions.
+- Fix QT/PF/INV product edit description width so it stops at the item input column.
+
+### Key Changes
+
+- Deals page item modals:
+  - Hide `Quantity` for contractual phase add/edit rows in the phase modal.
+  - Keep quantity visible for child retainer services only; it remains informational and must not affect retainer pricing.
+  - Keep recurrent child services without quantity, matching current behavior.
+  - Do not change parent retainer/recurrent pricing rules: parent amount remains period-based.
+
+- Generated QT/PF/INV descriptions:
+  - For contractual phase lines, remove category fallback text, `Parent Item: ...`, and `Phase: ...`.
+  - Contractual descriptions keep phase note, item note, or catalogue description.
+  - For retainer/recurrent lines, remove only the generic generated labels `Retainer service` and `Recurrent service`.
+  - Keep retainer/recurrent dates, period count, selected billing period, and included service names.
+
+- QT/PF/INV edit layout:
+  - Keep description textarea inside the item input column.
+  - Keep discount/tax summary visible without widening the description row.
+
+### Test Plan
+
+- Verify contractual phase add/edit has no quantity field.
+- Verify retainer child service add/edit has quantity and saving preserves it.
+- Verify recurrent child service add/edit has no quantity field.
+- Verify generated contractual descriptions do not contain category fallback, `Parent Item:`, or `Phase:`.
+- Verify retainer/recurrent descriptions do not start with `Retainer service` / `Recurrent service`, while included service names still appear.
+- Verify QT/PF/INV product edit description width ends at the item input column.
+- Run targeted type/static checks for touched files only; do not run full build.
+
+### Assumptions
+
+- "Remove retainer and recurrent service titles" means removing only the generic generated label line, not included service names.
+- "Description width ends on item input" means the textarea stays within the item column.
+- Existing `Reccurent Service` spelling stays unchanged.

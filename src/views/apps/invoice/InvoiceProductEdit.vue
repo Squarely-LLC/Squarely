@@ -3,10 +3,7 @@
 import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { formatCurrencyAmount, getVatSummary } from "@/utils/quotationConfig";
-import {
-  getLineDiscountAmount,
-  getLineTotal,
-} from "@/utils/quotationPricing";
+import { getLineDiscountAmount, getLineTotal } from "@/utils/quotationPricing";
 
 interface Emit {
   (e: "removeProduct", value: number): void;
@@ -218,7 +215,11 @@ const taxSummaryLabel = computed(() =>
     </VRow>
   </div>
 
-  <VCard flat border class="d-flex flex-sm-row flex-column-reverse product-edit-card">
+  <VCard
+    flat
+    border
+    class="d-flex flex-sm-row flex-column-reverse product-edit-card"
+  >
     <div class="pa-6 flex-grow-1">
       <VRow>
         <VCol cols="12" md="6">
@@ -241,7 +242,9 @@ const taxSummaryLabel = computed(() =>
               class="product-description-field"
             />
 
-            <div class="line-adjustment-summary text-caption text-medium-emphasis">
+            <div
+              class="line-adjustment-summary text-caption text-medium-emphasis"
+            >
               <div>Discount: {{ formattedDiscountAmount }}</div>
               <div>Tax: {{ taxSummaryLabel }}</div>
             </div>
@@ -291,7 +294,11 @@ const taxSummaryLabel = computed(() =>
         :close-on-content-click="false"
       >
         <template #activator="{ props: menuProps }">
-          <IconBtn v-bind="menuProps" size="32" class="mt-auto product-settings-btn">
+          <IconBtn
+            v-bind="menuProps"
+            size="32"
+            class="mt-auto product-settings-btn"
+          >
             <VIcon :size="20" icon="tabler-settings" />
           </IconBtn>
         </template>
@@ -354,9 +361,9 @@ const taxSummaryLabel = computed(() =>
 .product-description-row {
   display: grid;
   align-items: start;
-  gap: 1rem;
-  grid-template-columns: minmax(0, calc(133.333% + 1.5rem)) 9rem;
-  inline-size: calc(166.666% + 3rem);
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+  inline-size: 100%;
 }
 
 .line-adjustment-summary {

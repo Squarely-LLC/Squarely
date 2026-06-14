@@ -1,43 +1,43 @@
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
 import type {
-    PurchasedProduct as InvoicePurchasedProduct,
-    InvoiceRecord,
+  PurchasedProduct as InvoicePurchasedProduct,
+  InvoiceRecord,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import type {
-    PurchasedProduct as ProformaPurchasedProduct,
-    ProformaRecord,
+  PurchasedProduct as ProformaPurchasedProduct,
+  ProformaRecord,
 } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
-    Client,
-    PurchasedProduct as QuotationPurchasedProduct,
-    QuotationRecord,
+  Client,
+  PurchasedProduct as QuotationPurchasedProduct,
+  QuotationRecord,
 } from "@/plugins/fake-api/handlers/apps/quotation/types";
 import type {
-    CatalogueContractualServiceRecord,
-    CatalogueOnetimeServiceRecord,
-    CatalogueReccurentServiceRecord,
-    CatalogueRecord,
-    CatalogueRetainerServiceRecord,
+  CatalogueContractualServiceRecord,
+  CatalogueOnetimeServiceRecord,
+  CatalogueReccurentServiceRecord,
+  CatalogueRecord,
+  CatalogueRetainerServiceRecord,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 import type {
-    FinancialConfig,
-    LegalConfig,
+  FinancialConfig,
+  LegalConfig,
 } from "@/plugins/fake-api/handlers/config/types";
 import type {
-    DealBillingPeriod,
-    DealBillingPeriodKind,
-    DealCustomPhase,
-    DealItem,
-    DealProperties,
+  DealBillingPeriod,
+  DealBillingPeriodKind,
+  DealCustomPhase,
+  DealItem,
+  DealProperties,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import {
-    buildDocumentNote,
-    buildProformaNote,
-    buildQuotationNote,
-    buildQuotationPaymentDetails,
-    buildQuotationSalesperson,
-    buildQuotationThanksNote,
-    getDocumentSequencePrefix,
+  buildDocumentNote,
+  buildProformaNote,
+  buildQuotationNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 
@@ -1407,7 +1407,9 @@ function buildPurchasedProductDescription(input: {
     input.parentName?.trim() ? `Parent Item: ${input.parentName.trim()}` : "",
     input.phaseName?.trim() ? `Phase: ${input.phaseName.trim()}` : "",
     input.base?.trim() || "",
-    input.item ? buildQuotationPeriodSummary(input.item as DealDocumentSelectableItem) : "",
+    input.item
+      ? buildQuotationPeriodSummary(input.item as DealDocumentSelectableItem)
+      : "",
     buildBillingPeriodSummary(input.billingPeriod),
     input.includedItems?.length
       ? buildIncludedItemsSummary(input.includedItems)
@@ -1460,11 +1462,8 @@ function buildContractualProducts(
       dealSelectionKey: `item-${item.id}-${phase.overrideKey}`,
       cost: phase.price ?? 0,
       description: buildPurchasedProductDescription({
-        base: phase.note ?? item.note ?? record.description ?? item.category ?? "",
+        base: phase.note ?? item.note ?? record.description ?? "",
         item,
-        label: phase.isCustom ? "Custom contractual phase" : "Contractual phase",
-        parentName: item.name,
-        phaseName: phase.name,
       }),
       discountPercent: phase.discountPercent ?? 0,
       hours: phase.quantity,
@@ -1489,11 +1488,12 @@ function buildRetainerProducts(
       dealSelectionKey: item.selectionKey,
       cost: item.unitPrice ?? record.bestPrice ?? 0,
       description: buildPurchasedProductDescription({
-        base: String(item.note || record.description || item.category || "").trim(),
+        base: String(
+          item.note || record.description || item.category || "",
+        ).trim(),
         billingPeriod,
         includedItems: serviceNames,
         item,
-        label: "Retainer service",
       }),
       discountPercent: item.discountPercent ?? 0,
       hours: getRetainerBillingQuantity(item, billingPeriod),
@@ -1541,7 +1541,6 @@ function buildCollapsedRetainerPeriodProduct(
       billingPeriod,
       includedItems: itemNames,
       item: rootItem,
-      label: "Retainer service",
     }),
     discountPercent: rootItem.discountPercent ?? 0,
     hours: getRetainerBillingQuantity(rootItem, billingPeriod),
@@ -1566,11 +1565,12 @@ function buildRecurrentProducts(
       dealSelectionKey: item.selectionKey,
       cost: item.unitPrice ?? record.bestPrice ?? 0,
       description: buildPurchasedProductDescription({
-        base: String(item.note || record.description || item.category || "").trim(),
+        base: String(
+          item.note || record.description || item.category || "",
+        ).trim(),
         billingPeriod,
         includedItems: serviceNames,
         item,
-        label: "Recurrent service",
       }),
       discountPercent: item.discountPercent ?? 0,
       hours: getRecurrentBillingQuantity(item, billingPeriod),
@@ -1605,7 +1605,6 @@ function buildCollapsedRecurrentPeriodProduct(
     .map((item) => String(item.name || "").trim())
     .filter(Boolean);
 
-
   return createPurchasedProduct({
     billingPeriod: billingPeriod ?? null,
     billingPeriodKey: getDealBillingPeriodKey(billingPeriod) || null,
@@ -1619,7 +1618,6 @@ function buildCollapsedRecurrentPeriodProduct(
       billingPeriod,
       includedItems: itemNames,
       item: rootItem,
-      label: "Recurrent service",
     }),
     discountPercent: rootItem.discountPercent ?? 0,
     hours: getRecurrentBillingQuantity(rootItem, billingPeriod),
@@ -1835,7 +1833,11 @@ export function buildDealQuotationConversionProducts(input: {
     const selectionKey = String(product.dealSelectionKey ?? "").trim();
     const isSpecificSelection = /^item-\d+-.+/i.test(selectionKey);
 
-    if (product.billingPeriod || resolveStoredBillingPeriodKey(product) || isSpecificSelection) {
+    if (
+      product.billingPeriod ||
+      resolveStoredBillingPeriodKey(product) ||
+      isSpecificSelection
+    ) {
       expandedProducts.push(product as PurchasedProductLike);
       return;
     }
@@ -1875,8 +1877,7 @@ export function buildDealQuotationConversionProducts(input: {
         mode === "retainer-period"
           ? "Retainer Service Line"
           : "Recurrent Service Line";
-      const periodType =
-        mode === "retainer-period" ? "retainer" : "recurrent";
+      const periodType = mode === "retainer-period" ? "retainer" : "recurrent";
       const serviceLines = parentSelectableItems.filter(
         (item) => item.catalogueType === lineType,
       );
@@ -1905,7 +1906,9 @@ export function buildDealQuotationConversionProducts(input: {
     expandedProducts.push(product as PurchasedProductLike);
   });
 
-  return expandedProducts.length ? expandedProducts : products as PurchasedProductLike[];
+  return expandedProducts.length
+    ? expandedProducts
+    : (products as PurchasedProductLike[]);
 }
 
 const getConversionOptionTypeLabel = (
@@ -1942,7 +1945,8 @@ const resolveConversionOptionKind = (
     ? resolveDealDocumentBillingModeForItem(parentItem)
     : null;
   const selectionKey = String(product.dealSelectionKey ?? "").toLowerCase();
-  const text = `${product.title ?? ""}\n${product.description ?? ""}`.toLowerCase();
+  const text =
+    `${product.title ?? ""}\n${product.description ?? ""}`.toLowerCase();
 
   if (parentMode === "retainer-period" || selectionKey.includes("retainer")) {
     return "retainer-period";
