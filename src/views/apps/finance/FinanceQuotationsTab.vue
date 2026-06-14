@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
+import { useDealsStore } from "@/stores/deals";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
@@ -14,7 +16,15 @@ import {
   buildQuotationThanksNote,
   formatCurrencyAmount,
 } from "@/utils/quotationConfig";
-import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  buildDealQuotationConversionProducts,
+  hasDealDocumentPhaseOrPeriodLines,
+  resolveStoredBillingPeriodKey,
+} from "@/utils/dealDocumentDraft";
+import {
+  getLineDiscountAmount,
+  getQuotationGrandTotal,
+} from "@/utils/quotationPricing";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
@@ -96,6 +106,10 @@ configStore.init();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
+const dealsStore = useDealsStore();
+dealsStore.init();
 const notifications = useNotificationsStore();
 
 const itemsPerPage = ref(10);
@@ -645,8 +659,24 @@ const resolveStatusLabel = (status: string) => {
   return status;
 };
 
+const normalizeQuotationStatus = (status?: string | null) =>
+  String(status ?? "")
+    .trim()
+    .toLowerCase();
+
+const isQuotationClientApprovedStatus = (status?: string | null) => {
+  const normalized = normalizeQuotationStatus(status);
+
+  return normalized === "approval" || normalized === "approved";
+};
+
 const isQuotationConversionBlocked = (status?: string | null) =>
-  String(status ?? "") !== "Approval";
+  !isQuotationClientApprovedStatus(status);
+
+const isQuotationClosedForConversion = (status?: string | null) =>
+  ["converted", "lost", "canceled", "cancelled"].includes(
+    normalizeQuotationStatus(status),
+  );
 
 const pendingQuotationConversionRecord = computed(() =>
   pendingQuotationConversionId.value === null
@@ -654,23 +684,28 @@ const pendingQuotationConversionRecord = computed(() =>
     : quotationsStore.byId(pendingQuotationConversionId.value),
 );
 
-const quotationConversionProducts = computed(
-  () => pendingQuotationConversionRecord.value?.purchasedProducts || [],
+const getQuotationLinkedDeal = (quotationRecord: QuotationRecord | null) =>
+  quotationRecord?.quotation.dealId
+    ? dealsStore.byId(quotationRecord.quotation.dealId)
+    : null;
+
+const getQuotationConversionProductsForRecord = (
+  quotationRecord: QuotationRecord,
+) =>
+  buildDealQuotationConversionProducts({
+    deal: getQuotationLinkedDeal(quotationRecord),
+    products: quotationRecord.purchasedProducts,
+    resolveCatalogueRecord: (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+  });
+
+const quotationConversionProducts = computed(() =>
+  pendingQuotationConversionRecord.value
+    ? getQuotationConversionProductsForRecord(
+        pendingQuotationConversionRecord.value,
+      )
+    : [],
 );
-
-const isPhaseOrPeriodProduct = (
-  product: QuotationRecord["purchasedProducts"][number],
-) => {
-  const selectionKey = String((product as any).dealSelectionKey ?? "").toLowerCase();
-
-  return Boolean(
-    product.billingPeriod ||
-      (product as any).billingPeriodKey ||
-      selectionKey.includes("phase") ||
-      selectionKey.includes("retainer") ||
-      selectionKey.includes("recurrent"),
-  );
-};
 
 const quotationConversionSelectionItems = computed(() =>
   quotationConversionProducts.value.map((product, index) => ({
@@ -691,6 +726,39 @@ const selectedQuotationConversionProducts = computed(() => {
 const selectedQuotationConversionTotal = computed(() =>
   getQuotationGrandTotal(selectedQuotationConversionProducts.value),
 );
+
+const getQuotationLinkedDealItems = (quotationRecord: QuotationRecord | null) =>
+  getQuotationLinkedDeal(quotationRecord)?.items || [];
+
+const hasQuotationPhaseOrPeriodLines = (quotationRecord: QuotationRecord) =>
+  hasDealDocumentPhaseOrPeriodLines(
+    getQuotationConversionProductsForRecord(quotationRecord),
+    getQuotationLinkedDealItems(quotationRecord),
+  );
+
+const getConversionLineContext = (
+  product: QuotationRecord["purchasedProducts"][number],
+) => {
+  if (product.billingPeriod) return product.billingPeriod.label || "Billing period";
+
+  const billingPeriodKey = resolveStoredBillingPeriodKey(product);
+  if (billingPeriodKey) return billingPeriodKey;
+
+  const selectionKey = String(product.dealSelectionKey ?? "");
+  if (selectionKey.includes("phase")) return "Phase";
+  if (selectionKey.includes("retainer")) return "Retainer period";
+  if (selectionKey.includes("recurrent")) return "Recurrent period";
+
+  return "--";
+};
+
+const getConversionLineDiscount = (
+  product: QuotationRecord["purchasedProducts"][number],
+) => formatCurrencyAmount(getLineDiscountAmount(product), configStore.financial);
+
+const getConversionLineTaxStatus = (
+  product: QuotationRecord["purchasedProducts"][number],
+) => (product.taxApplicable === false ? "VAT not applied" : "VAT applicable");
 
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
@@ -973,6 +1041,33 @@ const performQuotationConversion = (
   return kind === "invoice" ? createdInvoice : createdProforma;
 };
 
+const openQuotationConversionFlow = (
+  quotationId: number,
+  kind: "proforma" | "invoice",
+) => {
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (!quotationRecord) return;
+
+  if (hasQuotationPhaseOrPeriodLines(quotationRecord)) {
+    const products = getQuotationConversionProductsForRecord(quotationRecord);
+    pendingQuotationConversionId.value = quotationId;
+    pendingQuotationConversionKind.value = kind;
+    selectedQuotationConversionIndexes.value =
+      products.map((_, index) => index);
+    quotationConversionDialogVisible.value = true;
+
+    return;
+  }
+
+  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
+    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
+
+    return;
+  }
+
+  performQuotationConversion(quotationId, kind);
+};
+
 const requestQuotationConversion = (
   quotationId: number,
   kind: "proforma" | "invoice",
@@ -987,22 +1082,15 @@ const requestQuotationConversion = (
     return;
   }
 
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
-    return;
-  }
-
-  if (quotationRecord.purchasedProducts.some(isPhaseOrPeriodProduct)) {
-    pendingQuotationConversionId.value = quotationId;
-    pendingQuotationConversionKind.value = kind;
-    selectedQuotationConversionIndexes.value =
-      quotationRecord.purchasedProducts.map((_, index) => index);
-    quotationConversionDialogVisible.value = true;
+  if (
+    isQuotationClosedForConversion(quotationRecord.quotation.quotationStatus)
+  ) {
+    pushFinanceWarning("Quotation cannot be converted.");
 
     return;
   }
 
-  performQuotationConversion(quotationId, kind);
+  openQuotationConversionFlow(quotationId, kind);
 };
 
 const convertQuotationToProforma = (quotationId: number) => {
@@ -1024,6 +1112,16 @@ const confirmQuotationConversion = () => {
   const quotationId = pendingQuotationConversionId.value;
   const kind = pendingQuotationConversionKind.value;
   if (quotationId === null || !kind) return;
+
+  const quotationRecord = quotationsStore.byId(quotationId);
+  if (
+    quotationRecord &&
+    isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)
+  ) {
+    quotationsStore.updateQuotation(quotationId, {
+      quotation: { quotationStatus: "Approval" },
+    });
+  }
 
   performQuotationConversion(
     quotationId,
@@ -1765,8 +1863,7 @@ watch(totalQuotations, (value) => {
 
       <VCardText>
         <VAlert type="info" variant="tonal" class="mb-4">
-          This quotation includes phases or periods. Select the lines to convert
-          after client approval.
+          Select the client-approved phases or periods to convert.
         </VAlert>
 
         <div class="d-flex flex-column gap-3">
@@ -1798,6 +1895,9 @@ watch(totalQuotations, (value) => {
                 </p>
                 <div class="text-caption text-medium-emphasis">
                   Qty {{ item.product.hours ?? 1 }}
+                  - {{ getConversionLineContext(item.product) }}
+                  - Discount {{ getConversionLineDiscount(item.product) }}
+                  - {{ getConversionLineTaxStatus(item.product) }}
                 </div>
               </div>
             </div>

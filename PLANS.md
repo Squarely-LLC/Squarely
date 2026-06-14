@@ -2,6 +2,29 @@
 
 This file stores finalized plans before implementation.
 
+## 2026-06-14 - Client Approval Conversion Selection Fix
+
+### Summary
+
+- Separate client approval from internal request approval.
+- Treat phase/period selection during conversion as the client-approved scope.
+
+### Key Changes
+
+- Do not add a standalone client approval menu item.
+- When converting a phase/period quotation, open the line-selection modal even if the quotation is not already `Approval`.
+- Build modal choices from real linked deal phases/periods, not the parent quotation line.
+- In Deals, reuse the same PF/INV create selectors and billing-period selector for quotation conversion.
+- The selected phases/periods are the client-approved scope; confirming marks the quotation `Approval` before converting selected lines.
+- Keep `Request Approval` as internal approval workflow and do not treat it as client approval.
+- For non-phase/period quotations, still block conversion until quotation status is client-approved.
+
+### Test Plan
+
+- Convert a phase/period quotation from Deals and verify selection modal opens before conversion.
+- Convert the same kind of quotation from Finance and verify selection modal opens before conversion.
+- Verify non-phase/period quotations still require client-approved status before conversion.
+
 ## 2026-06-14 - Fixed-Price Retainer/Recurrent Pricing
 
 ### Summary
@@ -233,3 +256,52 @@ Update Deals document workflow around quotation status, revisions, proforma-to-i
 - Generated business-readable descriptions are required for automatic document lines; manually edited descriptions remain user-controlled.
 - VAT remains the existing `Included` / `Not Applied` behavior because the current config has no numeric VAT rate.
 - The existing `Reccurent Service` spelling in code/data is preserved unless a separate rename is requested.
+
+## 2026-06-14 - Deals Document Sequence Unlock and Conversion Modal Fix
+
+### Summary
+
+- Fix document sequence cleanup so deleting downstream documents unlocks upstream documents.
+- Fix Deals and Finance quotation conversion so approved phase/period quotations reliably open the system selection modal.
+- Keep approval gating: non-`Approval` quotations still cannot convert.
+
+### Key Changes
+
+- Sequence unlock rules:
+  - When an invoice is deleted, clear matching `proforma.convertedInvoiceId` and `quotation.convertedInvoiceId`.
+  - Keep quotation `Converted` if it still has a related proforma; otherwise restore it to `Approval`.
+  - When a proforma is deleted, clear matching `quotation.convertedProformaId`.
+  - Restore quotation to `Approval` when no converted proforma or invoice link remains.
+  - Run cleanup at store level so Deals and Finance behave the same.
+
+- Delete behavior and locks:
+  - Converted proformas stay locked while `convertedInvoiceId` exists.
+  - Once invoice deletion clears `convertedInvoiceId`, the proforma becomes editable/deletable again.
+  - Older revisions stay locked regardless of link cleanup.
+  - Parent document deletion still removes revisions, and cleanup runs for every deleted ID.
+
+- Quotation conversion modal:
+  - Detect phase/period quotations from product metadata, linked deal items, and title/description fallback.
+  - In Deals and Finance, approved phase/period quotations open a system modal before conversion.
+  - Modal lines show title, description, qty/period or phase label, amount, discount, VAT/taxability status, and selected total.
+  - Non-`Approval` quotations show `Client approval is required before conversion.`
+
+- Conversion from selected lines:
+  - Convert selected lines only.
+  - Invoice conversion creates required proforma first, converts it to invoice, locks the proforma, and links both IDs.
+  - Use the same helper logic in Deals and Finance where practical.
+
+### Test Plan
+
+- Verify invoice deletion unlocks related proformas.
+- Verify proforma deletion clears quotation links and restores quotation status where appropriate.
+- Verify older revisions stay locked.
+- Verify approved phase/period quotations open the conversion modal in Deals and Finance.
+- Verify non-approved quotation conversion is blocked in both tabs.
+- Run targeted static checks for touched files only; do not run full build unless explicitly requested.
+
+### Assumptions
+
+- Restored upstream quotation status should be `Approval`.
+- Link cleanup belongs in stores, not just UI handlers.
+- “Whole sequence” means invoice -> proforma -> quotation links unwind when downstream documents are deleted.

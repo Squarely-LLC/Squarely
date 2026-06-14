@@ -45,6 +45,7 @@ import {
   type DealDocumentSelectableItem,
   buildCustomBillingPeriod,
   buildDealDocumentDraftRecord,
+  buildDealQuotationConversionProducts,
   buildDealDocumentUsageKey,
   buildMonthlyBillingPeriod,
   buildQuarterlyBillingPeriod,
@@ -58,6 +59,7 @@ import {
   getDealRecurrentServiceLines,
   getDealRetainerServiceLines,
   getQuotationTopLevelDealItems,
+  hasDealDocumentPhaseOrPeriodLines,
   getSelectableDealItems,
   resolveDealDocumentBillingMode,
   resolveDealDocumentBillingModeForItem,
@@ -79,7 +81,10 @@ import {
   buildQuotationThanksNote,
   formatCurrencyAmount,
 } from "@/utils/quotationConfig";
-import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  getLineDiscountAmount,
+  getQuotationGrandTotal,
+} from "@/utils/quotationPricing";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
 import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
@@ -195,12 +200,14 @@ interface DealDocumentContainer {
   purchasedProducts?: Array<{
     billingPeriod?: DealBillingPeriod | null;
     billingPeriodKey?: string | null;
+    catalogueItemId?: string | null;
     cost?: number | null;
     dealSelectionKey?: string | null;
     description?: string | null;
     discountType?: "none" | "percent" | "currency" | null;
     discountValue?: number | null;
     hours?: number | null;
+    taxApplicable?: boolean | null;
     title?: string | null;
   }>;
   convertedInvoiceId?: number | string | null;
@@ -3209,31 +3216,39 @@ const requestApproval = (
   notifications.push("Approval requested.", "success", 2500);
 };
 
+const isQuotationClientApproved = (status?: string | null) => {
+  const normalized = normalizeDocumentStatus(status);
+
+  return normalized === "approval" || normalized === "approved";
+};
+
 const isQuotationConversionApprovalBlocked = (
   record: DealDocumentPanelRecord,
 ) =>
-  normalizeDocumentStatus(record.status) !== "approval";
+  !isQuotationClientApproved(record.status);
 
 const canConvertQuotationRecord = (record: DealDocumentPanelRecord) =>
   !isDocumentConversionBlocked(record) &&
   !isQuotationConversionApprovalBlocked(record);
 
-const isPhaseOrPeriodProduct = (
-  product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
-) => {
-  const selectionKey = String(product.dealSelectionKey ?? "").toLowerCase();
+const resolveCatalogueRecordForDocuments = (id: string, typeHint?: string | null) =>
+  cataloguesStore.recordById(id, typeHint);
 
-  return Boolean(
-    product.billingPeriod ||
-      resolveStoredBillingPeriodKey(product) ||
-      selectionKey.includes("phase") ||
-      selectionKey.includes("retainer") ||
-      selectionKey.includes("recurrent"),
-  );
-};
+const getQuotationConversionProductsForRecord = (
+  record: DealDocumentPanelRecord,
+) =>
+  buildDealQuotationConversionProducts({
+    deal: props.deal,
+    products: record.record.purchasedProducts || [],
+    resolveCatalogueRecord: resolveCatalogueRecordForDocuments,
+  });
 
-const quotationConversionProducts = computed(
-  () => pendingQuotationConversionRecord.value?.record.purchasedProducts || [],
+const quotationConversionProducts = computed(() =>
+  pendingQuotationConversionRecord.value
+    ? getQuotationConversionProductsForRecord(
+        pendingQuotationConversionRecord.value,
+      )
+    : [],
 );
 
 const quotationConversionSelectionItems = computed(() =>
@@ -3255,6 +3270,31 @@ const selectedQuotationConversionProducts = computed(() => {
 const selectedQuotationConversionTotal = computed(() =>
   getQuotationGrandTotal(selectedQuotationConversionProducts.value as never),
 );
+
+const getConversionLineContext = (
+  product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
+) => {
+  if (product.billingPeriod)
+    return getDealBillingPeriodLabel(product.billingPeriod) || "Billing period";
+
+  const billingPeriodKey = resolveStoredBillingPeriodKey(product);
+  if (billingPeriodKey) return billingPeriodKey;
+
+  const selectionKey = String(product.dealSelectionKey ?? "");
+  if (selectionKey.includes("phase")) return "Phase";
+  if (selectionKey.includes("retainer")) return "Retainer period";
+  if (selectionKey.includes("recurrent")) return "Recurrent period";
+
+  return "--";
+};
+
+const getConversionLineDiscount = (
+  product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
+) => formatMoney(getLineDiscountAmount(product as never));
+
+const getConversionLineTaxStatus = (
+  product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
+) => (product.taxApplicable === false ? "VAT not applied" : "VAT applicable");
 
 const resolveDocumentPeriodPhase = (record: DealDocumentContainer) => {
   const labels = (record.purchasedProducts || [])
@@ -3932,28 +3972,31 @@ const closeQuotationConversionDialog = () => {
   selectedQuotationConversionIndexes.value = [];
 };
 
-const requestQuotationConversion = (
+const openQuotationConversionFlow = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   record: DealDocumentPanelRecord,
 ) => {
-  if (!canConvertQuotationRecord(record)) {
-    notifications.push(
-      isQuotationConversionApprovalBlocked(record)
-        ? APPROVAL_REQUIRED_MESSAGE
-        : "Quotation cannot be converted.",
-      "warning",
-      3000,
-    );
+  const products = getQuotationConversionProductsForRecord(record);
+  if (hasDealDocumentPhaseOrPeriodLines(products, props.deal.items || [])) {
+    pendingQuotationConversionRecord.value = record;
+    pendingQuotationConversionKind.value = kind;
+    selectedDocumentKind.value = kind;
+    selectedBillingMode.value = null;
+
+    if (billingModeOptions.value.length > 1) {
+      billingModeDialogVisible.value = true;
+    } else {
+      openSelectionDialog(
+        kind,
+        billingModeOptions.value[0]?.value ?? effectiveBillingMode.value,
+      );
+    }
 
     return;
   }
 
-  const products = record.record.purchasedProducts || [];
-  if (products.some(isPhaseOrPeriodProduct)) {
-    pendingQuotationConversionRecord.value = record;
-    pendingQuotationConversionKind.value = kind;
-    selectedQuotationConversionIndexes.value = products.map((_, index) => index);
-    quotationConversionDialogVisible.value = true;
+  if (isQuotationConversionApprovalBlocked(record)) {
+    notifications.push(APPROVAL_REQUIRED_MESSAGE, "warning", 3000);
 
     return;
   }
@@ -3961,14 +4004,43 @@ const requestQuotationConversion = (
   performQuotationConversion(kind, record, products);
 };
 
+const requestQuotationConversion = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  record: DealDocumentPanelRecord,
+) => {
+  if (isDocumentConversionBlocked(record)) {
+    notifications.push("Quotation cannot be converted.", "warning", 3000);
+
+    return;
+  }
+
+  openQuotationConversionFlow(kind, record);
+};
+
 const confirmQuotationConversion = () => {
   const record = pendingQuotationConversionRecord.value;
   const kind = pendingQuotationConversionKind.value;
   if (!record || !kind) return;
 
+  if (isQuotationConversionApprovalBlocked(record)) {
+    quotationsStore.updateQuotation(record.id, {
+      quotation: { quotationStatus: "Approval" },
+    } as never);
+  }
+
   performQuotationConversion(
     kind,
-    record,
+    {
+      ...record,
+      status: "Approval",
+      record: {
+        ...record.record,
+        quotation: {
+          ...record.record.quotation,
+          quotationStatus: "Approval",
+        },
+      },
+    },
     selectedQuotationConversionProducts.value,
   );
   closeQuotationConversionDialog();
@@ -5152,6 +5224,8 @@ const resetDocumentWorkflowState = () => {
   billingPeriodDialogVisible.value = false;
   selectionDialogVisible.value = false;
   externalDocumentSelectionKind.value = null;
+  pendingQuotationConversionRecord.value = null;
+  pendingQuotationConversionKind.value = null;
   pendingDocumentItems.value = [];
   pendingBillingPeriodGroups.value = [];
   activeBillingPeriodGroupIndex.value = 0;
@@ -5425,6 +5499,57 @@ const saveAndNavigateDocumentDraft = async (
     query: { dealDraft: "1" },
   });
 
+  resetDocumentWorkflowState();
+};
+
+const finishQuotationConversionFromSelection = (
+  selectedItems: DealDocumentSelectableItem[],
+  selectedBillingPeriods?: DealBillingPeriod[] | null,
+  selectedBillingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
+) => {
+  const record = pendingQuotationConversionRecord.value;
+  const kind = pendingQuotationConversionKind.value;
+  if (!record || !kind || !selectedItems.length) return;
+
+  const draft = buildDealDocumentDraftRecord("proforma", {
+    billingPeriods: selectedBillingPeriods?.length
+      ? selectedBillingPeriods
+      : null,
+    billingPeriodAssignments: selectedBillingPeriodAssignments || null,
+    billingPeriod: selectionNeedsBillingPeriod(selectedItems)
+      ? (selectedBillingPeriods?.[0] ?? billingPeriod.value)
+      : null,
+    contact: contact.value,
+    deal: props.deal,
+    financial: configStore.financial,
+    legal: configStore.legal,
+    nextId: nextIdForDocument("proforma"),
+    resolveCatalogueRecord: (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+    selectedItems,
+  });
+
+  if (isQuotationConversionApprovalBlocked(record)) {
+    quotationsStore.updateQuotation(record.id, {
+      quotation: { quotationStatus: "Approval" },
+    } as never);
+  }
+
+  performQuotationConversion(
+    kind,
+    {
+      ...record,
+      status: "Approval",
+      record: {
+        ...record.record,
+        quotation: {
+          ...record.record.quotation,
+          quotationStatus: "Approval",
+        },
+      },
+    },
+    draft.purchasedProducts,
+  );
   resetDocumentWorkflowState();
 };
 
@@ -5731,6 +5856,16 @@ const confirmBillingPeriod = () => {
       return;
     }
 
+    if (pendingQuotationConversionRecord.value && pendingQuotationConversionKind.value) {
+      finishQuotationConversionFromSelection(
+        items,
+        nextBillingPeriods,
+        billingPeriodAssignments,
+      );
+
+      return;
+    }
+
     void saveAndNavigateDocumentDraft(
       kind,
       items,
@@ -5831,6 +5966,12 @@ const confirmSelectedDocumentItems = async () => {
   if (externalDocumentSelectionKind.value) {
     openExternalDocumentDialog(externalDocumentSelectionKind.value, items);
     resetDocumentWorkflowState();
+
+    return;
+  }
+
+  if (pendingQuotationConversionRecord.value && pendingQuotationConversionKind.value) {
+    finishQuotationConversionFromSelection(items);
 
     return;
   }
@@ -8481,8 +8622,7 @@ const openEditTask = (taskId: number | string) => {
 
           <VCardText>
             <VAlert type="info" variant="tonal" class="mb-4">
-              This quotation includes phases or periods. Select the lines to
-              convert after client approval.
+              Select the client-approved phases or periods to convert.
             </VAlert>
 
             <div class="d-flex flex-column gap-3">
@@ -8512,9 +8652,9 @@ const openEditTask = (taskId: number | string) => {
                     </p>
                     <div class="text-caption text-medium-emphasis">
                       Qty {{ item.product.hours ?? 1 }}
-                      <template v-if="item.product.billingPeriod">
-                        - {{ getDealBillingPeriodLabel(item.product.billingPeriod) }}
-                      </template>
+                      - {{ getConversionLineContext(item.product) }}
+                      - Discount {{ getConversionLineDiscount(item.product) }}
+                      - {{ getConversionLineTaxStatus(item.product) }}
                     </div>
                   </div>
                 </div>

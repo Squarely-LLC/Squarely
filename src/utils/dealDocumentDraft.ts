@@ -72,6 +72,20 @@ type PurchasedProductLike =
   | ProformaPurchasedProduct
   | InvoicePurchasedProduct;
 
+type DealDocumentLineLike = {
+  billingPeriod?: DealBillingPeriod | null;
+  billingPeriodKey?: string | null;
+  catalogueItemId?: string | null;
+  dealSelectionKey?: string | null;
+  description?: string | null;
+  title?: string | null;
+};
+
+type DealDocumentLinkedItemLike = Pick<
+  DealItem,
+  "id" | "catalogueType" | "retainerPeriods" | "recurrentPeriods"
+>;
+
 export type DealDocumentKind = keyof typeof DEAL_DOCUMENT_DRAFT_KEYS;
 export type DealDocumentBillingMode =
   | "empty"
@@ -196,6 +210,140 @@ export const resolveDealDocumentBillingMode = (
 export const resolveDealDocumentBillingModeForItem = (
   item: Pick<DealItem, "catalogueType">,
 ) => resolveDealDocumentBillingMode([item]);
+
+const PHASE_PERIOD_TEXT_PATTERN =
+  /\b(phase|billing period|period\s+\d+|retainer|recurrent|recurring|start date|end date|number of periods)\b/i;
+
+export const isDealPhaseOrPeriodItem = (
+  item?: Pick<
+    DealItem,
+    "catalogueType" | "retainerPeriods" | "recurrentPeriods"
+  > | null,
+) => {
+  if (!item) return false;
+
+  const mode = resolveDealDocumentBillingModeForItem(item);
+
+  return (
+    mode === "contractual-stage" ||
+    mode === "retainer-period" ||
+    mode === "recurrent-period" ||
+    Number(item.retainerPeriods ?? 0) > 0 ||
+    Number(item.recurrentPeriods ?? 0) > 0
+  );
+};
+
+export const isDealDocumentPhaseOrPeriodLine = (
+  product?: DealDocumentLineLike | null,
+  linkedDealItems?: DealDocumentLinkedItemLike[] | null,
+) => {
+  if (!product) return false;
+
+  const selectionKey = String(product.dealSelectionKey ?? "").trim();
+  const normalizedSelectionKey = selectionKey.toLowerCase();
+  const billingPeriodKey = resolveStoredBillingPeriodKey(product);
+
+  if (
+    product.billingPeriod ||
+    billingPeriodKey ||
+    normalizedSelectionKey.includes("phase") ||
+    normalizedSelectionKey.includes("retainer") ||
+    normalizedSelectionKey.includes("recurrent")
+  ) {
+    return true;
+  }
+
+  const itemMatch = selectionKey.match(/^item-(\d+)/i);
+  const linkedItemId = itemMatch?.[1];
+  if (linkedItemId && linkedDealItems?.length) {
+    const linkedItem = linkedDealItems.find(
+      (item) => String(item.id) === linkedItemId,
+    );
+    if (isDealPhaseOrPeriodItem(linkedItem)) return true;
+  }
+
+  return PHASE_PERIOD_TEXT_PATTERN.test(
+    [product.title, product.description].filter(Boolean).join("\n"),
+  );
+};
+
+export const hasDealDocumentPhaseOrPeriodLines = (
+  products?: DealDocumentLineLike[] | null,
+  linkedDealItems?: DealDocumentLinkedItemLike[] | null,
+) => {
+  const actualProducts = products || [];
+
+  if (actualProducts.length) {
+    return actualProducts.some((product) =>
+      isDealDocumentPhaseOrPeriodLine(product, linkedDealItems),
+    );
+  }
+
+  return (linkedDealItems || []).some((item) => isDealPhaseOrPeriodItem(item));
+};
+
+function buildDealTermBillingPeriods(
+  item: Pick<
+    DealItem,
+    | "id"
+    | "retainerStartDate"
+    | "retainerEndDate"
+    | "retainerPeriods"
+    | "recurrentStartDate"
+    | "recurrentEndDate"
+    | "recurrentPeriods"
+  >,
+  type: "retainer" | "recurrent",
+) {
+  const startDateValue =
+    type === "retainer" ? item.retainerStartDate : item.recurrentStartDate;
+  const endDateValue =
+    type === "retainer" ? item.retainerEndDate : item.recurrentEndDate;
+  const totalPeriods = Number(
+    type === "retainer" ? item.retainerPeriods : item.recurrentPeriods,
+  );
+  const parsedStartDate = parseBillingPeriodDateValue(startDateValue);
+  const parsedEndDate = parseBillingPeriodDateValue(endDateValue);
+
+  if (
+    !parsedStartDate ||
+    !parsedEndDate ||
+    parsedEndDate < parsedStartDate ||
+    !Number.isInteger(totalPeriods) ||
+    totalPeriods <= 0
+  ) {
+    return [] as DealBillingPeriod[];
+  }
+
+  const dayMilliseconds = 24 * 60 * 60 * 1000;
+  const startMilliseconds = parsedStartDate.getTime();
+  const inclusiveDurationMilliseconds =
+    parsedEndDate.getTime() - startMilliseconds + dayMilliseconds;
+
+  return Array.from({ length: totalPeriods }, (_, index) => {
+    const periodStartMilliseconds =
+      startMilliseconds +
+      Math.floor((inclusiveDurationMilliseconds * index) / totalPeriods);
+    const rawPeriodEndMilliseconds =
+      startMilliseconds +
+      Math.floor((inclusiveDurationMilliseconds * (index + 1)) / totalPeriods) -
+      dayMilliseconds;
+    const periodStartDate = new Date(periodStartMilliseconds);
+    const periodEndDate =
+      index === totalPeriods - 1
+        ? new Date(parsedEndDate.getTime())
+        : new Date(Math.max(rawPeriodEndMilliseconds, periodStartMilliseconds));
+    const normalizedStartDate = formatBillingPeriodDateValue(periodStartDate);
+    const normalizedEndDate = formatBillingPeriodDateValue(periodEndDate);
+
+    return buildCustomBillingPeriod({
+      endDate: normalizedEndDate,
+      key: `${type}:${item.id}:period:${index + 1}`,
+      label: `Period ${index + 1} - ${normalizedStartDate} - ${normalizedEndDate}`,
+      startDate: normalizedStartDate,
+    });
+  });
+}
 
 export const filterDealDocumentItemsByBillingMode = <
   TItem extends Pick<DealItem, "catalogueType">,
@@ -1602,6 +1750,133 @@ function buildPurchasedProducts(
       title: "",
     }),
   ];
+}
+
+function normalizeDocumentMatchText(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function resolveQuotationConversionParentItem(
+  product: DealDocumentLineLike,
+  deal: DealProperties,
+) {
+  const selectionKey = String(product.dealSelectionKey ?? "").trim();
+  const itemMatch = selectionKey.match(/^item-(\d+)(?:-|$)/i);
+  const matchedBySelection = itemMatch?.[1]
+    ? deal.items.find((item) => String(item.id) === itemMatch[1])
+    : null;
+  if (matchedBySelection && isDealPhaseOrPeriodItem(matchedBySelection)) {
+    return matchedBySelection;
+  }
+
+  const catalogueItemId = String(product.catalogueItemId ?? "").trim();
+  if (catalogueItemId) {
+    const matchedByCatalogue = deal.items.find(
+      (item) =>
+        String(item.catalogueItemId ?? "") === catalogueItemId &&
+        isDealPhaseOrPeriodItem(item),
+    );
+    if (matchedByCatalogue) return matchedByCatalogue;
+  }
+
+  const productTitle = normalizeDocumentMatchText(product.title);
+  if (productTitle) {
+    const matchedByTitle = deal.items.find(
+      (item) =>
+        normalizeDocumentMatchText(item.name) === productTitle &&
+        isDealPhaseOrPeriodItem(item),
+    );
+    if (matchedByTitle) return matchedByTitle;
+  }
+
+  return null;
+}
+
+export function buildDealQuotationConversionProducts(input: {
+  deal?: DealProperties | null;
+  products?: DealDocumentLineLike[] | null;
+  resolveCatalogueRecord?: CatalogueRecordResolver;
+}): PurchasedProductLike[] {
+  const deal = input.deal;
+  const products = input.products || [];
+  if (!deal || !products.length) return products as PurchasedProductLike[];
+
+  const selectableItems = getSelectableDealItems(
+    deal.items,
+    input.resolveCatalogueRecord,
+  );
+  const expandedProducts: PurchasedProductLike[] = [];
+
+  products.forEach((product) => {
+    const parentItem = resolveQuotationConversionParentItem(product, deal);
+
+    if (!parentItem || !isDealPhaseOrPeriodItem(parentItem)) {
+      expandedProducts.push(product as PurchasedProductLike);
+      return;
+    }
+
+    const mode = resolveDealDocumentBillingModeForItem(parentItem);
+    const parentSelectableItems = selectableItems.filter(
+      (item) => String(item.id) === String(parentItem.id),
+    );
+
+    if (mode === "contractual-stage") {
+      const phaseProducts = parentSelectableItems
+        .filter((item) => item.catalogueType === "Phase")
+        .flatMap((item) =>
+          buildPurchasedProducts(
+            [item],
+            deal,
+            null,
+            null,
+            null,
+            input.resolveCatalogueRecord,
+          ),
+        );
+
+      expandedProducts.push(...phaseProducts);
+      return;
+    }
+
+    if (mode === "retainer-period" || mode === "recurrent-period") {
+      const lineType =
+        mode === "retainer-period"
+          ? "Retainer Service Line"
+          : "Recurrent Service Line";
+      const periodType =
+        mode === "retainer-period" ? "retainer" : "recurrent";
+      const serviceLines = parentSelectableItems.filter(
+        (item) => item.catalogueType === lineType,
+      );
+      const periods = buildDealTermBillingPeriods(parentItem, periodType);
+
+      if (!serviceLines.length || !periods.length) {
+        expandedProducts.push(product as PurchasedProductLike);
+        return;
+      }
+
+      expandedProducts.push(
+        ...periods.flatMap((period) =>
+          buildPurchasedProducts(
+            serviceLines,
+            deal,
+            period,
+            null,
+            null,
+            input.resolveCatalogueRecord,
+          ),
+        ),
+      );
+      return;
+    }
+
+    expandedProducts.push(product as PurchasedProductLike);
+  });
+
+  return expandedProducts.length ? expandedProducts : products as PurchasedProductLike[];
 }
 
 function buildServiceLabel(deal: DealProperties) {

@@ -19,6 +19,7 @@ declare global {
   const buildCustomBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']
   const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
   const buildDealDocumentUsageKey: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']
+  const buildDealQuotationConversionProducts: typeof import('./src/utils/dealDocumentDraft')['buildDealQuotationConversionProducts']
   const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
   const buildMonthlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']
   const buildProformaNote: typeof import('./src/utils/quotationConfig')['buildProformaNote']
@@ -85,7 +86,16 @@ declare global {
   const getDealBillingPeriodMonthValue: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodMonthValue']
   const getDealContractualPhaseLines: typeof import('./src/utils/dealDocumentDraft')['getDealContractualPhaseLines']
   const getDealDiscountTotal: typeof import('./src/utils/dealValue')['getDealDiscountTotal']
+  const getDealDocumentBalance: typeof import('./src/utils/dealBilling')['getDealDocumentBalance']
+  const getDealDocumentDiscountTotal: typeof import('./src/utils/dealBilling')['getDealDocumentDiscountTotal']
+  const getDealDocumentPaid: typeof import('./src/utils/dealBilling')['getDealDocumentPaid']
+  const getDealDocumentSubtotal: typeof import('./src/utils/dealBilling')['getDealDocumentSubtotal']
+  const getDealDocumentTotal: typeof import('./src/utils/dealBilling')['getDealDocumentTotal']
   const getDealGrandTotal: typeof import('./src/utils/dealValue')['getDealGrandTotal']
+  const getDealItemDiscountTotal: typeof import('./src/utils/dealBilling')['getDealItemDiscountTotal']
+  const getDealItemSubtotal: typeof import('./src/utils/dealBilling')['getDealItemSubtotal']
+  const getDealItemsDiscountTotal: typeof import('./src/utils/dealBilling')['getDealItemsDiscountTotal']
+  const getDealItemsGrandTotal: typeof import('./src/utils/dealBilling')['getDealItemsGrandTotal']
   const getDealItemsSubtotal: typeof import('./src/utils/dealValue')['getDealItemsSubtotal']
   const getDealRecurrentServiceLines: typeof import('./src/utils/dealDocumentDraft')['getDealRecurrentServiceLines']
   const getDealRetainerServiceLines: typeof import('./src/utils/dealDocumentDraft')['getDealRetainerServiceLines']
@@ -107,6 +117,7 @@ declare global {
   const getSelectableDealItems: typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
+  const hasDealDocumentPhaseOrPeriodLines: typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
   const inferDealBillingPeriodFromKey: typeof import('./src/utils/dealDocumentDraft')['inferDealBillingPeriodFromKey']
@@ -115,6 +126,8 @@ declare global {
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
   const isAutoBillableDealItem: typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']
   const isBillableRootDealItem: typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']
+  const isDealDocumentPhaseOrPeriodLine: typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']
+  const isDealPhaseOrPeriodItem: typeof import('./src/utils/dealDocumentDraft')['isDealPhaseOrPeriodItem']
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
@@ -457,6 +470,7 @@ declare module 'vue' {
     readonly buildCustomBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']>
     readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
     readonly buildDealDocumentUsageKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']>
+    readonly buildDealQuotationConversionProducts: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealQuotationConversionProducts']>
     readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
     readonly buildMonthlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']>
     readonly buildProformaNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildProformaNote']>
@@ -523,7 +537,17 @@ declare module 'vue' {
     readonly getDealBillingPeriodMonthValue: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodMonthValue']>
     readonly getDealContractualPhaseLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealContractualPhaseLines']>
     readonly getDealDiscountTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealDiscountTotal']>
+    readonly getDealDocumentBalance: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealDocumentBalance']>
+    readonly getDealDocumentDiscountTotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealDocumentDiscountTotal']>
+    readonly getDealDocumentPaid: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealDocumentPaid']>
+    readonly getDealDocumentSubtotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealDocumentSubtotal']>
+    readonly getDealDocumentTotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealDocumentTotal']>
     readonly getDealGrandTotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealGrandTotal']>
+    readonly getDealItemDiscountTotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealItemDiscountTotal']>
+    readonly getDealItemSubtotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealItemSubtotal']>
+    readonly getDealItemsDiscountTotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealItemsDiscountTotal']>
+    readonly getDealItemsGrandTotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealItemsGrandTotal']>
+    readonly getDealItemsSubtotal: UnwrapRef<typeof import('./src/utils/dealBilling')['getDealItemsSubtotal']>
     readonly getDealItemsSubtotal: UnwrapRef<typeof import('./src/utils/dealValue')['getDealItemsSubtotal']>
     readonly getDealRecurrentServiceLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealRecurrentServiceLines']>
     readonly getDealRetainerServiceLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealRetainerServiceLines']>
@@ -545,6 +569,7 @@ declare module 'vue' {
     readonly getSelectableDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']>
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
+    readonly hasDealDocumentPhaseOrPeriodLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inferDealBillingPeriodFromKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['inferDealBillingPeriodFromKey']>
@@ -553,6 +578,8 @@ declare module 'vue' {
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
     readonly isAutoBillableDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']>
     readonly isBillableRootDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']>
+    readonly isDealDocumentPhaseOrPeriodLine: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']>
+    readonly isDealPhaseOrPeriodItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealPhaseOrPeriodItem']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>

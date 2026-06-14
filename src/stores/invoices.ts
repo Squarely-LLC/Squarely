@@ -107,6 +107,56 @@ function triggerReceiptReconciliation() {
     });
 }
 
+function triggerInvoiceSequenceCleanup(invoiceIds: Array<number | string>) {
+  const normalizedIds = invoiceIds
+    .map((id) => String(id ?? "").trim())
+    .filter(Boolean);
+  if (!normalizedIds.length) return;
+
+  void Promise.all([
+    import("@/stores/proformas"),
+    import("@/stores/quotations"),
+  ])
+    .then(([{ useProformasStore }, { useQuotationsStore }]) => {
+      const deletedIds = new Set(normalizedIds);
+      const proformasStore = useProformasStore();
+      const quotationsStore = useQuotationsStore();
+
+      proformasStore.init();
+      quotationsStore.init();
+
+      proformasStore.items
+        .filter((record) => deletedIds.has(String(record.convertedInvoiceId ?? "")))
+        .forEach((record) => {
+          proformasStore.updateProforma(record.quotation.id, {
+            convertedInvoiceId: null,
+          });
+        });
+
+      quotationsStore.items
+        .filter((record) =>
+          deletedIds.has(String(record.quotation.convertedInvoiceId ?? "")),
+        )
+        .forEach((record) => {
+          const convertedProformaId =
+            record.quotation.convertedProformaId ?? null;
+          const hasRelatedProforma =
+            convertedProformaId !== null &&
+            Boolean(proformasStore.byId(convertedProformaId));
+
+          quotationsStore.updateQuotation(record.quotation.id, {
+            quotation: {
+              convertedInvoiceId: null,
+              quotationStatus: hasRelatedProforma ? "Converted" : "Approval",
+            },
+          });
+        });
+    })
+    .catch(() => {
+      // Ignore cleanup load failures; delete still succeeds.
+    });
+}
+
 function loadFromStorage(): InvoiceRecord[] | null {
   if (typeof window === "undefined") return null;
 
@@ -880,10 +930,15 @@ export const useInvoicesStore = defineStore("invoices", {
       const numericId = Number(target.quotation.id);
       const parentId = target.quotation.parentQuotationId;
 
-      this.items = this.items.filter((record) => {
-        if (String(record.quotation.id) === String(id)) return false;
+      const deletedInvoiceIds: Array<number | string> = [];
 
-        if (!parentId && record.quotation.parentQuotationId === numericId) {
+      this.items = this.items.filter((record) => {
+        const shouldDelete =
+          String(record.quotation.id) === String(id) ||
+          (!parentId && record.quotation.parentQuotationId === numericId);
+
+        if (shouldDelete) {
+          deletedInvoiceIds.push(record.quotation.id);
           return false;
         }
 
@@ -892,6 +947,7 @@ export const useInvoicesStore = defineStore("invoices", {
 
       this.items = resequenceRevisions(this.items);
       this.persistItems();
+      triggerInvoiceSequenceCleanup(deletedInvoiceIds);
       triggerReceiptReconciliation();
     },
 

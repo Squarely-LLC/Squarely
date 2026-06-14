@@ -107,6 +107,39 @@ function triggerReceiptReconciliation() {
     });
 }
 
+function triggerProformaSequenceCleanup(proformaIds: Array<number | string>) {
+  const normalizedIds = proformaIds
+    .map((id) => String(id ?? "").trim())
+    .filter(Boolean);
+  if (!normalizedIds.length) return;
+
+  void import("@/stores/quotations")
+    .then(({ useQuotationsStore }) => {
+      const deletedIds = new Set(normalizedIds);
+      const quotationsStore = useQuotationsStore();
+
+      quotationsStore.init();
+
+      quotationsStore.items
+        .filter((record) =>
+          deletedIds.has(String(record.quotation.convertedProformaId ?? "")),
+        )
+        .forEach((record) => {
+          const convertedInvoiceId = record.quotation.convertedInvoiceId ?? null;
+
+          quotationsStore.updateQuotation(record.quotation.id, {
+            quotation: {
+              convertedProformaId: null,
+              quotationStatus: convertedInvoiceId ? "Converted" : "Approval",
+            },
+          });
+        });
+    })
+    .catch(() => {
+      // Ignore cleanup load failures; delete still succeeds.
+    });
+}
+
 function loadFromStorage(): ProformaRecord[] | null {
   if (typeof window === "undefined") return null;
 
@@ -902,11 +935,15 @@ export const useProformasStore = defineStore("proformas", {
 
       const numericId = Number(target.quotation.id);
       const parentId = target.quotation.parentQuotationId;
+      const deletedProformaIds: Array<number | string> = [];
 
       this.items = this.items.filter((record) => {
-        if (String(record.quotation.id) === String(id)) return false;
+        const shouldDelete =
+          String(record.quotation.id) === String(id) ||
+          (!parentId && record.quotation.parentQuotationId === numericId);
 
-        if (!parentId && record.quotation.parentQuotationId === numericId) {
+        if (shouldDelete) {
+          deletedProformaIds.push(record.quotation.id);
           return false;
         }
 
@@ -915,6 +952,7 @@ export const useProformasStore = defineStore("proformas", {
 
       this.items = resequenceRevisions(this.items);
       this.persistItems();
+      triggerProformaSequenceCleanup(deletedProformaIds);
       triggerReceiptReconciliation();
     },
 
