@@ -40,7 +40,7 @@ const periodPurchasedProducts = (): QuotationRecord["purchasedProducts"] => [
     discountType: "none",
     discountValue: 0,
     description:
-      "Retainer service\nMonthly acoustic consulting retainer for ongoing workplace planning and review.\nStart Date: 1 May 2026\nEnd Date: 31 Jul 2026\nNumber of Periods: 3\nItems included: Monthly Acoustic Review, Monthly Reporting Pack",
+      "Monthly acoustic consulting retainer for ongoing workplace planning and review.\nStart Date: 1 May 2026\nEnd Date: 31 Jul 2026\nNumber of Periods: 3\nItems included: Monthly Acoustic Review, Monthly Reporting Pack",
     taxApplicable: false,
   },
   {
@@ -52,7 +52,7 @@ const periodPurchasedProducts = (): QuotationRecord["purchasedProducts"] => [
     discountType: "none",
     discountValue: 0,
     description:
-      "Recurrent service\nRecurring monthly cleaning and upkeep service for enclosed meeting pods.\nStart Date: 1 May 2026\nEnd Date: 31 Oct 2026\nNumber of Periods: 6\nItems included: Monthly Pod Cleaning Visit",
+      "Recurring monthly cleaning and upkeep service for enclosed meeting pods.\nStart Date: 1 May 2026\nEnd Date: 31 Oct 2026\nNumber of Periods: 6\nItems included: Monthly Pod Cleaning Visit",
     taxApplicable: false,
   },
   {
@@ -109,8 +109,10 @@ const buildRecord = (
     purchasedProducts?: QuotationRecord["purchasedProducts"];
   },
 ): QuotationRecord => {
-  const { purchasedProducts: overridePurchasedProducts, ...quotationOverrides } =
-    overrides;
+  const {
+    purchasedProducts: overridePurchasedProducts,
+    ...quotationOverrides
+  } = overrides;
   const purchasedProducts =
     overridePurchasedProducts ||
     defaultPurchasedProducts(Number(quotationOverrides.total || 0));
@@ -118,45 +120,45 @@ const buildRecord = (
 
   return {
     quotation: {
-    id,
-    quoteNumber: `QT-${id}`,
-    issuedDate: `${year}-04-0${(id % 7) + 1}`,
-    dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
-    service: "Architectural design services",
-    avatar,
-    quotationStatus: status,
-    balance: 0,
-    dealId: null,
-    linkedRecordType: null,
-    source: "squarely",
-    attachmentName: null,
-    attachmentFileKey: null,
-    parentQuotationId: null,
-    isRevision: false,
-    revisionLabel: null,
-    convertedProformaId: null,
-    convertedInvoiceId: null,
-    ...quotationOverrides,
-    total,
-  },
-  paymentDetails: {
-    totalDue: `$${total.toLocaleString()}`,
-    bankName: "Byblos Bank",
-    country: "Lebanon",
-    iban: "LB12345678901234567890123456",
-    swiftCode: "BYBALBBX",
-  },
-  payments: [],
-  purchasedProducts,
-  note: "Pricing is valid for 14 days from the issue date.",
-  showClientNote: true,
-  totalFx: null,
-  paymentMethod: "Bank Transfer",
-  paymentLink: null,
-  approvalMode: "Automatic",
-  approverEmployeeId: null,
-  salesperson: "Nour Khoury",
-  thanksNote: "Thank you for considering Squarely.",
+      id,
+      quoteNumber: `QT-${id}`,
+      issuedDate: `${year}-04-0${(id % 7) + 1}`,
+      dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
+      service: "Architectural design services",
+      avatar,
+      quotationStatus: status,
+      balance: 0,
+      dealId: null,
+      linkedRecordType: null,
+      source: "squarely",
+      attachmentName: null,
+      attachmentFileKey: null,
+      parentQuotationId: null,
+      isRevision: false,
+      revisionLabel: null,
+      convertedProformaId: null,
+      convertedInvoiceId: null,
+      ...quotationOverrides,
+      total,
+    },
+    paymentDetails: {
+      totalDue: `$${total.toLocaleString()}`,
+      bankName: "Byblos Bank",
+      country: "Lebanon",
+      iban: "LB12345678901234567890123456",
+      swiftCode: "BYBALBBX",
+    },
+    payments: [],
+    purchasedProducts,
+    note: "Pricing is valid for 14 days from the issue date.",
+    showClientNote: true,
+    totalFx: null,
+    paymentMethod: "Bank Transfer",
+    paymentLink: null,
+    approvalMode: "Automatic",
+    approverEmployeeId: null,
+    salesperson: "Nour Khoury",
+    thanksNote: "Thank you for considering Squarely.",
   };
 };
 

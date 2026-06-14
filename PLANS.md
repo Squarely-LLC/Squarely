@@ -414,3 +414,31 @@ Update Deals document workflow around quotation status, revisions, proforma-to-i
 - "Remove retainer and recurrent service titles" means removing only the generic generated label line, not included service names.
 - "Description width ends on item input" means the textarea stays within the item column.
 - Existing `Reccurent Service` spelling stays unchanged.
+
+## 2026-06-14 - Mock Data Alignment for Item Modal and Descriptions
+
+### Summary
+
+- Align fake API seed data with the updated Deals item modal rules and generated QT/PF/INV descriptions.
+- Keep mock totals and document relationships unchanged unless description/quantity metadata requires recalculation.
+
+### Key Changes
+
+- Remove old generated description lines from seeded QT/PF/INV purchased products:
+  - no `Retainer service` / `Recurrent service` leading labels,
+  - no contractual category fallback,
+  - no `Parent Item:` or `Phase:` lines.
+- Keep retainer/recurrent period metadata and included service names in seed descriptions.
+- Make contractual mock phases no longer imply editable/billing quantity in UI-facing seed data.
+- Keep retainer child service quantities as informational mock metadata where present.
+
+### Test Plan
+
+- Search mock data for removed description labels.
+- Verify seeded quotation/proforma/invoice totals still derive from purchased products.
+- Run targeted static/type checks for touched mock data files only; do not run full build.
+
+### Assumptions
+
+- Existing document totals remain valid because description cleanup does not change prices.
+- Contractual phase quantities may remain in stored purchased products where pricing currently depends on `hours`; UI hides the editable phase quantity.
