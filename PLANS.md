@@ -2,6 +2,73 @@
 
 This file stores finalized plans before implementation.
 
+## 2026-06-14 - Deals Item Quotation Warning and Invoice Lock
+
+### Summary
+
+- Fix already-quoted detection for full-deal quotations.
+- Remove item-level `Create Quotation` actions.
+- Lock invoiced items from edit/delete with notification.
+
+### Key Changes
+
+- Parent retainer/recurrent quotation lines count as quoted for parent and child rows.
+- Global quotation creation still includes all current quoteable items by default.
+- Item menus keep PF/INV actions but no QT action.
+- Invoiced item/phase/period usage blocks edit/delete with message.
+
+### Test Plan
+
+- Full-deal QT then second QT warns for all quoted items.
+- New items after first QT are included but not flagged as already quoted.
+- Invoiced item edit/delete blocked; non-invoiced item remains editable.
+
+## 2026-06-14 - Combined QT Conversion Selector Modal
+
+### Summary
+
+- Replace stacked conversion cards with one compact selector modal.
+- Show all QT-contained conversion bases in one modal.
+- Retainer and recurrent rows expose selectable periods in-row.
+
+### Key Changes
+
+- Conversion modal rows show checkbox, item, type, amount, discount, VAT, and optional period selector.
+- Conversion scope stays limited to selected QT rows.
+- Parent retainer/recurrent QT rows expose only their own periods.
+- Specific phase/period QT rows stay specific.
+- Deals and Finance share the same conversion option resolver.
+
+### Test Plan
+
+- Convert QT with retainer + recurrent and verify one modal with both period selectors.
+- Select one retainer period and one recurrent period and verify output lines.
+- Convert mixed QT and verify only QT-contained rows appear.
+- Run targeted checks only; no full build.
+
+## 2026-06-14 - Quotation Creation and Conversion Scope Fix
+
+### Summary
+
+- Keep global quotation creation as all current deal items by default.
+- Keep already-quoted warning as a system modal when selected/default quotation items were quoted before.
+- Scope QT conversion to the selected QT rows only.
+
+### Key Changes
+
+- Global `Create Quotation` continues to include all current quoteable deal items.
+- Future added items are included by default; already quoted old items trigger the existing warning modal.
+- QT conversion uses one modal containing only rows from the selected QT.
+- Parent QT rows can expand to their real phases/periods; already specific phase/period QT rows stay specific and do not expand to unrelated rows.
+- Do not use full deal PF/INV creation selectors for QT conversion because those can expose unrelated deal items.
+
+### Test Plan
+
+- First QT includes all current quoteable items.
+- Second QT after adding an item warns only for already quoted rows.
+- Convert a QT with one item and verify only that item appears.
+- Convert a mixed QT and verify only rows included in that QT appear.
+
 ## 2026-06-14 - Client Approval Conversion Selection Fix
 
 ### Summary

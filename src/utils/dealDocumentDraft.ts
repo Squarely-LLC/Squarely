@@ -86,6 +86,27 @@ type DealDocumentLinkedItemLike = Pick<
   "id" | "catalogueType" | "retainerPeriods" | "recurrentPeriods"
 >;
 
+export type DealQuotationConversionOptionKind =
+  | "item"
+  | "phase"
+  | "retainer-period"
+  | "recurrent-period";
+
+export interface DealQuotationConversionPeriodOption {
+  key: string;
+  label: string;
+  product: PurchasedProductLike;
+}
+
+export interface DealQuotationConversionOption {
+  key: string;
+  kind: DealQuotationConversionOptionKind;
+  title: string;
+  description: string;
+  product: PurchasedProductLike;
+  periods: DealQuotationConversionPeriodOption[];
+}
+
 export type DealDocumentKind = keyof typeof DEAL_DOCUMENT_DRAFT_KEYS;
 export type DealDocumentBillingMode =
   | "empty"
@@ -1811,6 +1832,14 @@ export function buildDealQuotationConversionProducts(input: {
   const expandedProducts: PurchasedProductLike[] = [];
 
   products.forEach((product) => {
+    const selectionKey = String(product.dealSelectionKey ?? "").trim();
+    const isSpecificSelection = /^item-\d+-.+/i.test(selectionKey);
+
+    if (product.billingPeriod || resolveStoredBillingPeriodKey(product) || isSpecificSelection) {
+      expandedProducts.push(product as PurchasedProductLike);
+      return;
+    }
+
     const parentItem = resolveQuotationConversionParentItem(product, deal);
 
     if (!parentItem || !isDealPhaseOrPeriodItem(parentItem)) {
@@ -1877,6 +1906,132 @@ export function buildDealQuotationConversionProducts(input: {
   });
 
   return expandedProducts.length ? expandedProducts : products as PurchasedProductLike[];
+}
+
+const getConversionOptionTypeLabel = (
+  kind: DealQuotationConversionOptionKind,
+) => {
+  if (kind === "phase") return "Phase";
+  if (kind === "retainer-period") return "Retainer";
+  if (kind === "recurrent-period") return "Recurrent";
+
+  return "Item";
+};
+
+const getConversionProductPeriodLabel = (
+  product: PurchasedProductLike,
+  fallbackIndex: number,
+) => {
+  const period = cloneDealBillingPeriod(product.billingPeriod);
+  if (period) return getDealBillingPeriodLabel(period);
+
+  const periodKey = resolveStoredBillingPeriodKey(product);
+  if (periodKey) return periodKey;
+
+  return `Period ${fallbackIndex + 1}`;
+};
+
+const resolveConversionOptionKind = (
+  product: PurchasedProductLike,
+  deal?: DealProperties | null,
+): DealQuotationConversionOptionKind => {
+  const parentItem = deal
+    ? resolveQuotationConversionParentItem(product, deal)
+    : null;
+  const parentMode = parentItem
+    ? resolveDealDocumentBillingModeForItem(parentItem)
+    : null;
+  const selectionKey = String(product.dealSelectionKey ?? "").toLowerCase();
+  const text = `${product.title ?? ""}\n${product.description ?? ""}`.toLowerCase();
+
+  if (parentMode === "retainer-period" || selectionKey.includes("retainer")) {
+    return "retainer-period";
+  }
+
+  if (
+    parentMode === "recurrent-period" ||
+    selectionKey.includes("recurrent") ||
+    selectionKey.includes("reccurent")
+  ) {
+    return "recurrent-period";
+  }
+
+  if (
+    parentMode === "contractual-stage" ||
+    selectionKey.includes("phase") ||
+    /\bphase\b/i.test(text)
+  ) {
+    return "phase";
+  }
+
+  return "item";
+};
+
+export function buildDealQuotationConversionOptions(input: {
+  deal?: DealProperties | null;
+  products?: DealDocumentLineLike[] | null;
+  resolveCatalogueRecord?: CatalogueRecordResolver;
+}): DealQuotationConversionOption[] {
+  const products = buildDealQuotationConversionProducts(input);
+  const options: DealQuotationConversionOption[] = [];
+  const periodGroups = new Map<string, DealQuotationConversionOption>();
+
+  products.forEach((product, index) => {
+    const kind = resolveConversionOptionKind(product, input.deal);
+    const title =
+      String(product.title ?? "").trim() ||
+      `${getConversionOptionTypeLabel(kind)} ${index + 1}`;
+    const description = String(product.description ?? "").trim();
+    const selectionKey = String(product.dealSelectionKey ?? "").trim();
+    const baseKey = [
+      kind,
+      selectionKey,
+      String(product.catalogueItemId ?? "").trim(),
+      title,
+    ]
+      .filter(Boolean)
+      .join(":");
+    const periodKey = resolveStoredBillingPeriodKey(product);
+    const isPeriodKind =
+      kind === "retainer-period" || kind === "recurrent-period";
+
+    if (isPeriodKind && periodKey) {
+      const optionKey = baseKey || `${kind}:${index}`;
+      let option = periodGroups.get(optionKey);
+
+      if (!option) {
+        option = {
+          description,
+          key: optionKey,
+          kind,
+          periods: [],
+          product,
+          title,
+        };
+        periodGroups.set(optionKey, option);
+        options.push(option);
+      }
+
+      option.periods.push({
+        key: periodKey,
+        label: getConversionProductPeriodLabel(product, option.periods.length),
+        product,
+      });
+
+      return;
+    }
+
+    options.push({
+      description,
+      key: baseKey || `${kind}:${index}`,
+      kind,
+      periods: [],
+      product,
+      title,
+    });
+  });
+
+  return options;
 }
 
 function buildServiceLabel(deal: DealProperties) {

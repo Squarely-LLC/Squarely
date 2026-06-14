@@ -43,8 +43,10 @@ import {
   type DealDocumentBillingMode,
   type DealDocumentKind,
   type DealDocumentSelectableItem,
+  type DealQuotationConversionOption,
   buildCustomBillingPeriod,
   buildDealDocumentDraftRecord,
+  buildDealQuotationConversionOptions,
   buildDealQuotationConversionProducts,
   buildDealDocumentUsageKey,
   buildMonthlyBillingPeriod,
@@ -83,6 +85,7 @@ import {
 } from "@/utils/quotationConfig";
 import {
   getLineDiscountAmount,
+  getLineTotal,
   getQuotationGrandTotal,
 } from "@/utils/quotationPricing";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -320,7 +323,8 @@ const pendingQuotationConversionRecord = ref<DealDocumentPanelRecord | null>(
 const pendingQuotationConversionKind = ref<
   Extract<DealPreviewKind, "proforma" | "invoice"> | null
 >(null);
-const selectedQuotationConversionIndexes = ref<number[]>([]);
+const selectedQuotationConversionOptionKeys = ref<string[]>([]);
+const selectedQuotationConversionPeriodKeys = ref<Record<string, string[]>>({});
 const pendingDocumentItems = ref<DealDocumentSelectableItem[]>([]);
 const billingPeriodPrices = reactive<Record<string, number>>({});
 const billingPeriod = ref<DealBillingPeriod>(buildMonthlyBillingPeriod());
@@ -1652,6 +1656,12 @@ const saveCreatedDraftItem = async () => {
 };
 
 const removeDealItem = (item: DealItemWithPlan) => {
+  if (isDealItemInvoiced(item)) {
+    notifyInvoicedItemLocked();
+
+    return;
+  }
+
   const isRelatedItemChild =
     item.catalogueType === "Related Item" &&
     !!item.parentItemId &&
@@ -1751,6 +1761,12 @@ const setEditFieldConstraints = (options: {
 };
 
 const openEditItem = (item: DealItemWithPlan) => {
+  if (isDealItemInvoiced(item)) {
+    notifyInvoicedItemLocked();
+
+    return;
+  }
+
   const isGeneratedRelatedItem =
     item.catalogueType === "Related Item" &&
     !!item.parentItemId &&
@@ -1870,6 +1886,16 @@ const saveEditedLine = async () => {
   };
 
   if (!valid) return;
+
+  const editSelectionKey =
+    editLine.mode === "item"
+      ? `item-${editLine.itemId}`
+      : `item-${editLine.parentItemId}-${editLine.overrideKey}`;
+  if (isSelectionInvoiced(editSelectionKey)) {
+    notifyInvoicedItemLocked();
+
+    return;
+  }
 
   const payload = buildOverridePayload();
 
@@ -3243,28 +3269,51 @@ const getQuotationConversionProductsForRecord = (
     resolveCatalogueRecord: resolveCatalogueRecordForDocuments,
   });
 
-const quotationConversionProducts = computed(() =>
+const getQuotationConversionOptionsForRecord = (
+  record: DealDocumentPanelRecord,
+) =>
+  buildDealQuotationConversionOptions({
+    deal: props.deal,
+    products: record.record.purchasedProducts || [],
+    resolveCatalogueRecord: resolveCatalogueRecordForDocuments,
+  });
+
+const quotationConversionOptions = computed(() =>
   pendingQuotationConversionRecord.value
-    ? getQuotationConversionProductsForRecord(
-        pendingQuotationConversionRecord.value,
-      )
+    ? getQuotationConversionOptionsForRecord(pendingQuotationConversionRecord.value)
     : [],
 );
 
-const quotationConversionSelectionItems = computed(() =>
-  quotationConversionProducts.value.map((product, index) => ({
-    index,
-    product,
-    title: product.title?.trim() || `Line ${index + 1}`,
-  })),
-);
+const initializeQuotationConversionSelection = (
+  options: DealQuotationConversionOption[],
+) => {
+  selectedQuotationConversionOptionKeys.value = options.map((option) => option.key);
+  selectedQuotationConversionPeriodKeys.value = Object.fromEntries(
+    options
+      .filter((option) => option.periods.length)
+      .map((option) => [
+        option.key,
+        option.periods.map((period) => period.key),
+      ]),
+  );
+};
 
 const selectedQuotationConversionProducts = computed(() => {
-  const selected = new Set(selectedQuotationConversionIndexes.value);
+  const selectedOptions = new Set(selectedQuotationConversionOptionKeys.value);
 
-  return quotationConversionProducts.value.filter((_, index) =>
-    selected.has(index),
-  );
+  return quotationConversionOptions.value.flatMap((option) => {
+    if (!selectedOptions.has(option.key)) return [];
+
+    if (!option.periods.length) return [option.product];
+
+    const selectedPeriods = new Set(
+      selectedQuotationConversionPeriodKeys.value[option.key] || [],
+    );
+
+    return option.periods
+      .filter((period) => selectedPeriods.has(period.key))
+      .map((period) => period.product);
+  });
 });
 
 const selectedQuotationConversionTotal = computed(() =>
@@ -3291,6 +3340,33 @@ const getConversionLineContext = (
 const getConversionLineDiscount = (
   product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
 ) => formatMoney(getLineDiscountAmount(product as never));
+
+const getConversionLineTotal = (
+  product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
+) => formatMoney(getLineTotal(product as never));
+
+const getConversionOptionTypeLabel = (
+  option: DealQuotationConversionOption,
+) => {
+  if (option.kind === "phase") return "Phase";
+  if (option.kind === "retainer-period") return "Retainer";
+  if (option.kind === "recurrent-period") return "Recurrent";
+
+  return "Item";
+};
+
+const getConversionOptionTotal = (option: DealQuotationConversionOption) => {
+  if (!option.periods.length) return getConversionLineTotal(option.product as never);
+
+  const selectedPeriods = new Set(
+    selectedQuotationConversionPeriodKeys.value[option.key] || [],
+  );
+  const products = option.periods
+    .filter((period) => selectedPeriods.has(period.key))
+    .map((period) => period.product);
+
+  return formatMoney(getQuotationGrandTotal(products as never));
+};
 
 const getConversionLineTaxStatus = (
   product: NonNullable<DealDocumentContainer["purchasedProducts"]>[number],
@@ -3969,7 +4045,8 @@ const closeQuotationConversionDialog = () => {
   quotationConversionDialogVisible.value = false;
   pendingQuotationConversionRecord.value = null;
   pendingQuotationConversionKind.value = null;
-  selectedQuotationConversionIndexes.value = [];
+  selectedQuotationConversionOptionKeys.value = [];
+  selectedQuotationConversionPeriodKeys.value = {};
 };
 
 const openQuotationConversionFlow = (
@@ -3978,19 +4055,12 @@ const openQuotationConversionFlow = (
 ) => {
   const products = getQuotationConversionProductsForRecord(record);
   if (hasDealDocumentPhaseOrPeriodLines(products, props.deal.items || [])) {
+    const options = getQuotationConversionOptionsForRecord(record);
+
     pendingQuotationConversionRecord.value = record;
     pendingQuotationConversionKind.value = kind;
-    selectedDocumentKind.value = kind;
-    selectedBillingMode.value = null;
-
-    if (billingModeOptions.value.length > 1) {
-      billingModeDialogVisible.value = true;
-    } else {
-      openSelectionDialog(
-        kind,
-        billingModeOptions.value[0]?.value ?? effectiveBillingMode.value,
-      );
-    }
+    initializeQuotationConversionSelection(options);
+    quotationConversionDialogVisible.value = true;
 
     return;
   }
@@ -4325,13 +4395,58 @@ const getDocumentUsage = (
   };
 };
 
-const isSelectionAlreadyQuoted = (selectionKey?: string | null) => {
-  const usage = getDocumentUsage(
-    selectionKey,
-    resolveSelectableItemBillingPeriodKey(selectionKey),
-  );
+const INVOICED_ITEM_LOCK_MESSAGE =
+  "This item has been invoiced and can no longer be edited or deleted.";
 
-  return usage.quotationCount > 0;
+const getInvoiceUsageCountForSelection = (selectionKey?: string | null) => {
+  const normalizedSelectionKey = String(selectionKey ?? "").trim();
+  if (!normalizedSelectionKey) return 0;
+
+  return Array.from(invoiceUsageBySelectionKey.value.entries()).reduce(
+    (count, [usageKey, usageCount]) => {
+      if (
+        usageKey === normalizedSelectionKey ||
+        usageKey.startsWith(`${normalizedSelectionKey}::`) ||
+        usageKey.startsWith(`${normalizedSelectionKey}-`)
+      ) {
+        return count + usageCount;
+      }
+
+      return count;
+    },
+    0,
+  );
+};
+
+const isSelectionInvoiced = (selectionKey?: string | null) =>
+  getInvoiceUsageCountForSelection(selectionKey) > 0;
+
+const getItemSelectionKey = (item: { id?: number | string | null }) =>
+  item.id === null || item.id === undefined ? "" : `item-${item.id}`;
+
+const isDealItemInvoiced = (item: { id?: number | string | null }) =>
+  isSelectionInvoiced(getItemSelectionKey(item));
+
+const notifyInvoicedItemLocked = () =>
+  notifications.push(INVOICED_ITEM_LOCK_MESSAGE, "warning", 3000);
+
+const isSelectionAlreadyQuoted = (selectionKey?: string | null) => {
+  const normalizedSelectionKey = String(selectionKey ?? "").trim();
+  const usage = getDocumentUsage(
+    normalizedSelectionKey,
+    resolveSelectableItemBillingPeriodKey(normalizedSelectionKey),
+  );
+  if (usage.quotationCount > 0) return true;
+
+  if (getDocumentUsage(normalizedSelectionKey, "").quotationCount > 0)
+    return true;
+
+  const parentMatch = normalizedSelectionKey.match(/^(item-\d+)-/i);
+  if (parentMatch?.[1]) {
+    return getDocumentUsage(parentMatch[1], "").quotationCount > 0;
+  }
+
+  return false;
 };
 
 const isSelectionDocumentActionDisabled = (selectionKey?: string | null) => {
@@ -5226,6 +5341,8 @@ const resetDocumentWorkflowState = () => {
   externalDocumentSelectionKind.value = null;
   pendingQuotationConversionRecord.value = null;
   pendingQuotationConversionKind.value = null;
+  selectedQuotationConversionOptionKeys.value = [];
+  selectedQuotationConversionPeriodKeys.value = {};
   pendingDocumentItems.value = [];
   pendingBillingPeriodGroups.value = [];
   activeBillingPeriodGroupIndex.value = 0;
@@ -6769,6 +6886,13 @@ const savePhase = async () => {
 };
 
 const removeGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
+  const selectableItem = findGoalSelectableItem(parentItem, goal);
+  if (isSelectionInvoiced(selectableItem?.selectionKey)) {
+    notifyInvoicedItemLocked();
+
+    return;
+  }
+
   if (!isRemovableChildGoal(goal)) {
     notifications.push(
       "Remove is only available for item children.",
@@ -7251,14 +7375,6 @@ const openEditTask = (taskId: number | string) => {
                         </VListItem>
                         <template v-if="isRetainerParentDealItem(item)">
                           <VDivider />
-                          <VListItem
-                            @click="openRetainerDocumentPage('quotation', item)"
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-file-text" />
-                            </template>
-                            <VListItemTitle>Create Quotation</VListItemTitle>
-                          </VListItem>
                           <VListItem
                             :disabled="
                               isRetainerParentDocumentActionDisabled(
@@ -8622,43 +8738,70 @@ const openEditTask = (taskId: number | string) => {
 
           <VCardText>
             <VAlert type="info" variant="tonal" class="mb-4">
-              Select the client-approved phases or periods to convert.
+              Select the client-approved items, phases, or periods to convert.
             </VAlert>
 
             <div class="d-flex flex-column gap-3">
-              <VCard
-                v-for="item in quotationConversionSelectionItems"
-                :key="item.index"
-                variant="tonal"
-                class="pa-3"
+              <div
+                v-for="option in quotationConversionOptions"
+                :key="option.key"
+                class="border rounded-lg pa-4 bg-var-theme-background"
               >
                 <div class="d-flex align-start gap-3">
                   <VCheckbox
-                    v-model="selectedQuotationConversionIndexes"
-                    :value="item.index"
+                    v-model="selectedQuotationConversionOptionKeys"
+                    :value="option.key"
                     density="compact"
                     hide-details
+                    class="mt-0"
                   />
-                  <div class="flex-grow-1">
-                    <div class="d-flex justify-space-between gap-3">
-                      <strong>{{ item.title }}</strong>
-                      <span>{{ formatMoney(item.product.cost) }}</span>
+
+                  <div class="flex-grow-1 min-w-0">
+                    <div class="d-flex flex-wrap align-center gap-2 mb-1">
+                      <strong>{{ option.title }}</strong>
+                      <VChip size="x-small" label color="primary" variant="tonal">
+                        {{ getConversionOptionTypeLabel(option) }}
+                      </VChip>
+                      <span class="ms-auto font-weight-medium">
+                        {{ getConversionOptionTotal(option) }}
+                      </span>
                     </div>
-                    <p
-                      v-if="item.product.description"
-                      class="text-body-2 text-medium-emphasis mb-2 conversion-line-description"
+
+                    <div class="text-caption text-medium-emphasis mb-2">
+                      Discount {{ getConversionLineDiscount(option.product) }}
+                      - {{ getConversionLineTaxStatus(option.product) }}
+                    </div>
+
+                    <VSelect
+                      v-if="option.periods.length"
+                      v-model="selectedQuotationConversionPeriodKeys[option.key]"
+                      :items="
+                        option.periods.map((period) => ({
+                          title: period.label,
+                          value: period.key,
+                        }))
+                      "
+                      :label="
+                        option.kind === 'recurrent-period'
+                          ? 'Recurrent Periods'
+                          : 'Retainer Periods'
+                      "
+                      chips
+                      multiple
+                      density="compact"
+                      hide-details
+                    />
+
+                    <div
+                      v-else
+                      class="text-caption text-medium-emphasis"
                     >
-                      {{ item.product.description }}
-                    </p>
-                    <div class="text-caption text-medium-emphasis">
-                      Qty {{ item.product.hours ?? 1 }}
-                      - {{ getConversionLineContext(item.product) }}
-                      - Discount {{ getConversionLineDiscount(item.product) }}
-                      - {{ getConversionLineTaxStatus(item.product) }}
+                      Qty {{ option.product.hours ?? 1 }}
+                      - {{ getConversionLineContext(option.product) }}
                     </div>
                   </div>
                 </div>
-              </VCard>
+              </div>
             </div>
 
             <div class="text-end font-weight-medium mt-4">
@@ -8673,7 +8816,7 @@ const openEditTask = (taskId: number | string) => {
                 ? 'Convert to Invoice'
                 : 'Convert to Proforma'
             "
-            :save-disabled="!selectedQuotationConversionIndexes.length"
+            :save-disabled="!selectedQuotationConversionProducts.length"
             @cancel="closeQuotationConversionDialog"
             @save="confirmQuotationConversion"
           />

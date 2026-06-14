@@ -17,12 +17,15 @@ import {
   formatCurrencyAmount,
 } from "@/utils/quotationConfig";
 import {
+  type DealQuotationConversionOption,
+  buildDealQuotationConversionOptions,
   buildDealQuotationConversionProducts,
   hasDealDocumentPhaseOrPeriodLines,
   resolveStoredBillingPeriodKey,
 } from "@/utils/dealDocumentDraft";
 import {
   getLineDiscountAmount,
+  getLineTotal,
   getQuotationGrandTotal,
 } from "@/utils/quotationPricing";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -59,7 +62,8 @@ const pendingQuotationConversionId = ref<number | null>(null);
 const pendingQuotationConversionKind = ref<"proforma" | "invoice" | null>(
   null,
 );
-const selectedQuotationConversionIndexes = ref<number[]>([]);
+const selectedQuotationConversionOptionKeys = ref<string[]>([]);
+const selectedQuotationConversionPeriodKeys = ref<Record<string, string[]>>({});
 
 type LinkedDocumentRef = {
   id: number;
@@ -699,28 +703,54 @@ const getQuotationConversionProductsForRecord = (
       cataloguesStore.recordById(id, typeHint),
   });
 
-const quotationConversionProducts = computed(() =>
+const getQuotationConversionOptionsForRecord = (
+  quotationRecord: QuotationRecord,
+) =>
+  buildDealQuotationConversionOptions({
+    deal: getQuotationLinkedDeal(quotationRecord),
+    products: quotationRecord.purchasedProducts,
+    resolveCatalogueRecord: (id, typeHint) =>
+      cataloguesStore.recordById(id, typeHint),
+  });
+
+const quotationConversionOptions = computed(() =>
   pendingQuotationConversionRecord.value
-    ? getQuotationConversionProductsForRecord(
+    ? getQuotationConversionOptionsForRecord(
         pendingQuotationConversionRecord.value,
       )
     : [],
 );
 
-const quotationConversionSelectionItems = computed(() =>
-  quotationConversionProducts.value.map((product, index) => ({
-    index,
-    product,
-    title: product.title?.trim() || `Line ${index + 1}`,
-  })),
-);
+const initializeQuotationConversionSelection = (
+  options: DealQuotationConversionOption[],
+) => {
+  selectedQuotationConversionOptionKeys.value = options.map((option) => option.key);
+  selectedQuotationConversionPeriodKeys.value = Object.fromEntries(
+    options
+      .filter((option) => option.periods.length)
+      .map((option) => [
+        option.key,
+        option.periods.map((period) => period.key),
+      ]),
+  );
+};
 
 const selectedQuotationConversionProducts = computed(() => {
-  const selected = new Set(selectedQuotationConversionIndexes.value);
+  const selectedOptions = new Set(selectedQuotationConversionOptionKeys.value);
 
-  return quotationConversionProducts.value.filter((_, index) =>
-    selected.has(index),
-  );
+  return quotationConversionOptions.value.flatMap((option) => {
+    if (!selectedOptions.has(option.key)) return [];
+
+    if (!option.periods.length) return [option.product];
+
+    const selectedPeriods = new Set(
+      selectedQuotationConversionPeriodKeys.value[option.key] || [],
+    );
+
+    return option.periods
+      .filter((period) => selectedPeriods.has(period.key))
+      .map((period) => period.product);
+  });
 });
 
 const selectedQuotationConversionTotal = computed(() =>
@@ -755,6 +785,36 @@ const getConversionLineContext = (
 const getConversionLineDiscount = (
   product: QuotationRecord["purchasedProducts"][number],
 ) => formatCurrencyAmount(getLineDiscountAmount(product), configStore.financial);
+
+const getConversionLineTotal = (
+  product: QuotationRecord["purchasedProducts"][number],
+) => formatCurrencyAmount(getLineTotal(product), configStore.financial);
+
+const getConversionOptionTypeLabel = (
+  option: DealQuotationConversionOption,
+) => {
+  if (option.kind === "phase") return "Phase";
+  if (option.kind === "retainer-period") return "Retainer";
+  if (option.kind === "recurrent-period") return "Recurrent";
+
+  return "Item";
+};
+
+const getConversionOptionTotal = (option: DealQuotationConversionOption) => {
+  if (!option.periods.length) return getConversionLineTotal(option.product);
+
+  const selectedPeriods = new Set(
+    selectedQuotationConversionPeriodKeys.value[option.key] || [],
+  );
+  const products = option.periods
+    .filter((period) => selectedPeriods.has(period.key))
+    .map((period) => period.product);
+
+  return formatCurrencyAmount(
+    getQuotationGrandTotal(products),
+    configStore.financial,
+  );
+};
 
 const getConversionLineTaxStatus = (
   product: QuotationRecord["purchasedProducts"][number],
@@ -1049,11 +1109,10 @@ const openQuotationConversionFlow = (
   if (!quotationRecord) return;
 
   if (hasQuotationPhaseOrPeriodLines(quotationRecord)) {
-    const products = getQuotationConversionProductsForRecord(quotationRecord);
+    const options = getQuotationConversionOptionsForRecord(quotationRecord);
     pendingQuotationConversionId.value = quotationId;
     pendingQuotationConversionKind.value = kind;
-    selectedQuotationConversionIndexes.value =
-      products.map((_, index) => index);
+    initializeQuotationConversionSelection(options);
     quotationConversionDialogVisible.value = true;
 
     return;
@@ -1105,7 +1164,8 @@ const closeQuotationConversionDialog = () => {
   quotationConversionDialogVisible.value = false;
   pendingQuotationConversionId.value = null;
   pendingQuotationConversionKind.value = null;
-  selectedQuotationConversionIndexes.value = [];
+  selectedQuotationConversionOptionKeys.value = [];
+  selectedQuotationConversionPeriodKeys.value = {};
 };
 
 const confirmQuotationConversion = () => {
@@ -1863,45 +1923,67 @@ watch(totalQuotations, (value) => {
 
       <VCardText>
         <VAlert type="info" variant="tonal" class="mb-4">
-          Select the client-approved phases or periods to convert.
+          Select the client-approved items, phases, or periods to convert.
         </VAlert>
 
         <div class="d-flex flex-column gap-3">
-          <VCard
-            v-for="item in quotationConversionSelectionItems"
-            :key="item.index"
-            variant="tonal"
-            class="pa-3"
+          <div
+            v-for="option in quotationConversionOptions"
+            :key="option.key"
+            class="border rounded-lg pa-4 bg-var-theme-background"
           >
             <div class="d-flex align-start gap-3">
               <VCheckbox
-                v-model="selectedQuotationConversionIndexes"
-                :value="item.index"
+                v-model="selectedQuotationConversionOptionKeys"
+                :value="option.key"
                 density="compact"
                 hide-details
+                class="mt-0"
               />
-              <div class="flex-grow-1">
-                <div class="d-flex justify-space-between gap-3">
-                  <strong>{{ item.title }}</strong>
-                  <span>
-                    {{ formatCurrencyAmount(item.product.cost, configStore.financial) }}
+
+              <div class="flex-grow-1 min-w-0">
+                <div class="d-flex flex-wrap align-center gap-2 mb-1">
+                  <strong>{{ option.title }}</strong>
+                  <VChip size="x-small" label color="primary" variant="tonal">
+                    {{ getConversionOptionTypeLabel(option) }}
+                  </VChip>
+                  <span class="ms-auto font-weight-medium">
+                    {{ getConversionOptionTotal(option) }}
                   </span>
                 </div>
-                <p
-                  v-if="item.product.description"
-                  class="text-body-2 text-medium-emphasis mb-2 conversion-line-description"
-                >
-                  {{ item.product.description }}
-                </p>
-                <div class="text-caption text-medium-emphasis">
-                  Qty {{ item.product.hours ?? 1 }}
-                  - {{ getConversionLineContext(item.product) }}
-                  - Discount {{ getConversionLineDiscount(item.product) }}
-                  - {{ getConversionLineTaxStatus(item.product) }}
+
+                <div class="text-caption text-medium-emphasis mb-2">
+                  Discount {{ getConversionLineDiscount(option.product) }}
+                  - {{ getConversionLineTaxStatus(option.product) }}
+                </div>
+
+                <VSelect
+                  v-if="option.periods.length"
+                  v-model="selectedQuotationConversionPeriodKeys[option.key]"
+                  :items="
+                    option.periods.map((period) => ({
+                      title: period.label,
+                      value: period.key,
+                    }))
+                  "
+                  :label="
+                    option.kind === 'recurrent-period'
+                      ? 'Recurrent Periods'
+                      : 'Retainer Periods'
+                  "
+                  chips
+                  multiple
+                  density="compact"
+                  hide-details
+                />
+
+                <div v-else class="text-caption text-medium-emphasis">
+                  Qty {{ option.product.hours ?? 1 }}
+                  - {{ getConversionLineContext(option.product) }}
                 </div>
               </div>
             </div>
-          </VCard>
+          </div>
         </div>
 
         <div class="text-end font-weight-medium mt-4">
@@ -1917,7 +1999,7 @@ watch(totalQuotations, (value) => {
             ? 'Convert to Invoice'
             : 'Convert to Proforma'
         "
-        :save-disabled="!selectedQuotationConversionIndexes.length"
+        :save-disabled="!selectedQuotationConversionProducts.length"
         @cancel="closeQuotationConversionDialog"
         @save="confirmQuotationConversion"
       />

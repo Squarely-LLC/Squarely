@@ -19,6 +19,7 @@ declare global {
   const buildCustomBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']
   const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
   const buildDealDocumentUsageKey: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']
+  const buildDealQuotationConversionOptions: typeof import('./src/utils/dealDocumentDraft')['buildDealQuotationConversionOptions']
   const buildDealQuotationConversionProducts: typeof import('./src/utils/dealDocumentDraft')['buildDealQuotationConversionProducts']
   const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
   const buildMonthlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']
@@ -470,6 +471,7 @@ declare module 'vue' {
     readonly buildCustomBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']>
     readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
     readonly buildDealDocumentUsageKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']>
+    readonly buildDealQuotationConversionOptions: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealQuotationConversionOptions']>
     readonly buildDealQuotationConversionProducts: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealQuotationConversionProducts']>
     readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
     readonly buildMonthlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']>
