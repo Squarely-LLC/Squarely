@@ -1283,6 +1283,19 @@ const dealRelatedRef = computed(() =>
     : null,
 );
 
+const linkedJobRelatedRef = computed(() =>
+  deal.value?.linkedJobId !== null && deal.value?.linkedJobId !== undefined
+    ? {
+        id: deal.value.linkedJobId,
+        name:
+          linkedJob.value?.code?.trim() ||
+          linkedJob.value?.name?.trim() ||
+          `Job #${deal.value.linkedJobId}`,
+        type: "job",
+      }
+    : null,
+);
+
 const taskRelationCandidates = computed(() => {
   const candidates: Array<{ id: number | string; type: string }> = [];
 
@@ -1293,8 +1306,29 @@ const taskRelationCandidates = computed(() => {
     });
   }
 
+  if (linkedJobRelatedRef.value) {
+    candidates.push({
+      id: linkedJobRelatedRef.value.id,
+      type: linkedJobRelatedRef.value.type,
+    });
+  }
+
   return candidates;
 });
+
+const isValidSalesTaskRelation = (relatedTo?: ToDo["relatedTo"] | null) =>
+  Boolean(
+    relatedTo &&
+      taskRelationCandidates.value.some(
+        (candidate) =>
+          relatedTo.type === candidate.type &&
+          String(relatedTo.id) === String(candidate.id),
+      ),
+  );
+
+const normalizeSalesTaskRelatedTo = (
+  relatedTo?: ToDo["relatedTo"] | null,
+) => (isValidSalesTaskRelation(relatedTo) ? { ...relatedTo } : dealRelatedRef.value);
 
 const goalTriggerOptions = computed(
   () => [] as Array<{ title: string; value: string }>,
@@ -1745,7 +1779,7 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
       payload.initial.collaborators.length
         ? payload.initial.collaborators
         : dealEmployeeCollaborators.value,
-    relatedTo: dealRelatedRef.value,
+    relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
     status: payload?.initial?.status ?? "pending",
     important: Boolean(payload?.initial?.important),
   };
@@ -1829,7 +1863,7 @@ const openEditTask = (todoId: number | string) => {
       collaborators: Array.isArray(todo.collaborators)
         ? todo.collaborators.map((collaborator) => ({ ...collaborator }))
         : [],
-      relatedTo: dealRelatedRef.value,
+      relatedTo: normalizeSalesTaskRelatedTo(todo.relatedTo),
       steps: Array.isArray(todo.steps)
         ? todo.steps.map((step) => ({ ...step }))
         : [],
@@ -1953,7 +1987,7 @@ const onTodoEdited = (payload: any) => {
                   ? payload.status
                   : "pending",
               attachment: payload.attachment ?? null,
-              relatedTo: dealRelatedRef.value,
+              relatedTo: normalizeSalesTaskRelatedTo(payload.relatedTo),
             },
       );
 
@@ -1978,7 +2012,7 @@ const onTodoEdited = (payload: any) => {
     notes: payload.notes,
     important: payload.important,
     attachment: payload.attachment,
-    relatedTo: dealRelatedRef.value,
+    relatedTo: normalizeSalesTaskRelatedTo(payload.relatedTo),
   };
 
   if ("completed" in payload) partial.completed = payload.completed;

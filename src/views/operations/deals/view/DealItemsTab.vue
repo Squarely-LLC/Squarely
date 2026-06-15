@@ -96,6 +96,7 @@ import {
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import InvoiceAddPaymentDrawer from "@/views/apps/invoice/InvoiceAddPaymentDrawer.vue";
 import DealProducedCustomizationForm from "@/views/operations/deals/view/DealProducedCustomizationForm.vue";
+import { formatSystemDate } from "@core/utils/formatters";
 import {
   computed,
   nextTick,
@@ -1318,6 +1319,35 @@ const buildDealRelatedTo = () => ({
   name: props.deal.code || `Deal #${props.deal.id}`,
   type: "deal",
 });
+
+const buildLinkedJobRelatedTo = () =>
+  props.deal.linkedJobId !== null && props.deal.linkedJobId !== undefined
+    ? {
+        id: props.deal.linkedJobId,
+        name: props.deal.linkedJobName || `Job #${props.deal.linkedJobId}`,
+        type: "job",
+      }
+    : null;
+
+const isValidSalesTaskRelation = (relatedTo?: ToDo["relatedTo"] | null) => {
+  if (!relatedTo) return false;
+
+  const matchesDeal =
+    relatedTo.type === "deal" &&
+    String(relatedTo.id) === String(props.deal.id);
+
+  const linkedJob = buildLinkedJobRelatedTo();
+  const matchesLinkedJob =
+    Boolean(linkedJob) &&
+    relatedTo.type === "job" &&
+    String(relatedTo.id) === String(linkedJob?.id);
+
+  return matchesDeal || matchesLinkedJob;
+};
+
+const normalizeSalesTaskRelatedTo = (
+  relatedTo?: ToDo["relatedTo"] | null,
+) => (isValidSalesTaskRelation(relatedTo) ? { ...relatedTo } : buildDealRelatedTo());
 
 const parseAfterWhen = (raw?: string | null) => {
   const base = new Date();
@@ -7099,10 +7129,12 @@ interface DealSalesTaskRow {
   title: string;
   afterWhen: string | null;
   startTrigger: ToDo["startTrigger"];
+  dueAt: string | null;
   notes: string;
   collaborators: ToDo["collaborators"];
   important: boolean;
   status: Status;
+  relatedTo: ToDo["relatedTo"];
   isImported: boolean;
   sourceLabel: string | null;
 }
@@ -7112,17 +7144,7 @@ const dealTodos = computed<DealTodo[]>(
     (todosStore.items || []).filter((todo) => {
       if (!todo?.relatedTo) return false;
 
-      const matchesDeal =
-        String(todo.relatedTo.id) === String(props.deal.id) &&
-        todo.relatedTo.type === "deal";
-
-      const matchesLinkedJob =
-        props.deal.linkedJobId !== null &&
-        props.deal.linkedJobId !== undefined &&
-        String(todo.relatedTo.id) === String(props.deal.linkedJobId) &&
-        todo.relatedTo.type === "job";
-
-      return matchesDeal || matchesLinkedJob;
+      return isValidSalesTaskRelation(todo.relatedTo);
     }) as DealTodo[],
 );
 
@@ -7137,7 +7159,12 @@ const manualDealSalesTodos = computed<DealTodo[]>(() =>
 
 const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
   const storedSalesTasks = Array.isArray(props.deal.salesTasks)
-    ? props.deal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
+    ? props.deal.salesTasks.map((task) =>
+        cloneDealSalesTaskTemplate({
+          ...task,
+          relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+        }),
+      )
     : [];
 
   const importedSalesTasks = buildImportedSalesTaskTemplates(
@@ -7181,7 +7208,7 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
         status: (todo.status as Status) || "pending",
         important: Boolean(todo.important),
         attachment: todo.attachment ?? null,
-        relatedTo: buildDealRelatedTo(),
+        relatedTo: normalizeSalesTaskRelatedTo(todo.relatedTo),
         steps: Array.isArray(todo.steps)
           ? todo.steps.map((step) => ({ ...step }))
           : [],
@@ -7225,6 +7252,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       id: todo.id,
       title: todo.title,
       afterWhen: todo.afterWhen ?? null,
+      dueAt: todo.dueAt ?? null,
       startTrigger: todo.startTrigger ?? {
         type: "time",
         goalId: null,
@@ -7234,6 +7262,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       collaborators: todo.collaborators || [],
       important: Boolean(todo.important),
       status: (todo.status as Status) || "pending",
+      relatedTo: normalizeSalesTaskRelatedTo(todo.relatedTo),
       isImported: false,
       sourceLabel: null,
     })),
@@ -7241,6 +7270,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       id: task.id,
       title: task.title,
       afterWhen: task.afterWhen ?? null,
+      dueAt: null,
       startTrigger: task.startTrigger ?? {
         type: "time",
         goalId: null,
@@ -7250,6 +7280,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       collaborators: task.collaborators || [],
       important: Boolean(task.important),
       status: (task.status as Status) || "pending",
+      relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
       isImported: task.sourceItemId !== null && task.sourceItemId !== undefined,
       sourceLabel:
         task.sourceItemId !== null && task.sourceItemId !== undefined
@@ -7270,6 +7301,94 @@ const todoStatusLabel = (status?: Status) => {
   if (status === "completed") return "Completed";
 
   return "Pending";
+};
+
+const statusOptions: { title: string; value: Status }[] = [
+  { title: "Pending", value: "pending" },
+  { title: "In Progress", value: "in_progress" },
+  { title: "For Review", value: "for_review" },
+  { title: "Completed", value: "completed" },
+];
+
+const taskStatusClass = (status?: Status) => ({
+  "text-primary": status === "in_progress",
+  "text-warning": status === "for_review",
+  "text-medium-emphasis": !status || status === "pending",
+  "text-success": status === "completed",
+});
+
+const formatTaskDueDate = (task: DealSalesTaskRow) => {
+  if (task.dueAt) return formatSystemDate(task.dueAt);
+  if (task.afterWhen) return formatTaskAfterWhen(task.afterWhen);
+
+  return "Immediately";
+};
+
+const salesTaskRelationLabel = (task: DealSalesTaskRow) =>
+  task.relatedTo?.type === "job" ? "Linked job" : "Deal";
+
+const isManualSalesTodo = (taskId: number | string) => {
+  const todo = todosStore.byId(taskId) as DealTodo | undefined;
+  if (!todo || !isValidSalesTaskRelation(todo.relatedTo)) return false;
+
+  return (
+    !String(todo.milestoneId ?? "").trim() &&
+    !String(todo.goalId ?? "").trim()
+  );
+};
+
+const updateSalesTaskTemplate = (
+  taskId: number | string,
+  patch: Partial<DealSalesTaskTemplate>,
+) => {
+  const nextSalesTasks = buildEditableSalesTasks().map((task) =>
+    String(task.id) === String(taskId)
+      ? cloneDealSalesTaskTemplate({
+          ...task,
+          ...patch,
+          relatedTo: normalizeSalesTaskRelatedTo(
+            patch.relatedTo ?? task.relatedTo,
+          ),
+        })
+      : cloneDealSalesTaskTemplate({
+          ...task,
+          relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+        }),
+  );
+
+  dealsStore.updateDeal(props.deal.id, { salesTasks: nextSalesTasks });
+};
+
+const updateSalesTaskStatus = (task: DealSalesTaskRow, status: Status) => {
+  if (isManualSalesTodo(task.id)) {
+    todosStore.updateTodo(task.id, {
+      status,
+      relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+    });
+    return;
+  }
+
+  updateSalesTaskTemplate(task.id, {
+    status,
+    relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+  });
+};
+
+const toggleSalesTaskImportant = (task: DealSalesTaskRow) => {
+  const important = !task.important;
+
+  if (isManualSalesTodo(task.id)) {
+    todosStore.updateTodo(task.id, {
+      important,
+      relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+    });
+    return;
+  }
+
+  updateSalesTaskTemplate(task.id, {
+    important,
+    relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+  });
 };
 
 const formatTaskAfterWhen = (afterWhen?: string | null) => {
@@ -9056,99 +9175,150 @@ const openEditTask = (taskId: number | string) => {
           </VBtn>
         </div>
 
-        <div v-if="salesTasks.length" class="d-flex flex-column gap-2">
-          <VCard
+        <div v-if="salesTasks.length" class="sales-task-list">
+          <div class="sales-task-list__header">
+            <span></span>
+            <span>Task</span>
+            <span>Due</span>
+            <span>Assigned</span>
+            <span>Status</span>
+            <span>Actions</span>
+          </div>
+
+          <div
             v-for="task in salesTasks"
             :key="task.id"
-            class="task-row"
-            variant="tonal"
+            class="sales-task-row"
             @click="openEditTask(task.id)"
           >
-            <div class="task-row-main">
-              <div class="task-row-left">
-                <div class="task-copy">
-                  <VTooltip :text="task.title" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <strong
-                        v-bind="tooltipProps"
-                        class="text-body-1 truncate-title"
-                      >
-                        {{ task.title }}
-                      </strong>
-                    </template>
-                  </VTooltip>
-                  <span class="text-sm">
-                    {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
-                  </span>
-                  <span v-if="task.sourceLabel" class="text-sm text-info">
-                    {{ task.sourceLabel }}
-                  </span>
-                  <span v-if="task.notes" class="text-sm text-medium-emphasis">
-                    {{ task.notes }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="task-row-side">
-                <div
-                  v-if="task.collaborators?.length"
-                  class="v-avatar-group demo-avatar-group"
-                >
-                  <VAvatar
-                    v-for="collaborator in task.collaborators.slice(0, 2)"
-                    :key="collaborator.id"
-                    :size="28"
-                    color="primary"
-                  >
-                    <template v-if="collaborator.avatarUrl">
-                      <VImg :src="collaborator.avatarUrl" />
-                    </template>
-                    <template v-else>
-                      <span class="task-mono">
-                        {{ collaboratorInitials(collaborator.name) }}
-                      </span>
-                    </template>
-                    <VTooltip activator="parent" location="top">
-                      {{ collaborator.name }}
-                    </VTooltip>
-                  </VAvatar>
-                  <VAvatar
-                    v-if="task.collaborators.length > 2"
-                    :size="28"
-                    color="secondary"
-                  >
-                    +{{ task.collaborators.length - 2 }}
-                  </VAvatar>
-                </div>
-
+            <div class="sales-task-row__star">
+              <VBtn
+                icon
+                variant="text"
+                size="small"
+                @click.stop="toggleSalesTaskImportant(task)"
+              >
                 <VIcon
-                  v-if="task.important"
-                  icon="tabler-star-filled"
+                  :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
                   color="warning"
-                  size="18"
+                  size="20"
                 />
-                <VBtn
-                  icon
-                  variant="text"
-                  size="x-small"
-                  @click.stop="emit('delete-task', task.id)"
-                >
-                  <VIcon icon="tabler-trash" color="error" size="18" />
-                </VBtn>
-                <span
-                  class="text-sm"
-                  :class="{
-                    'text-primary': task.status === 'in_progress',
-                    'text-warning': task.status === 'for_review',
-                    'text-medium-emphasis': task.status === 'pending',
-                    'text-success': task.status === 'completed',
-                  }"
-                >
-                  {{ todoStatusLabel(task.status) }}
+              </VBtn>
+            </div>
+
+            <div class="sales-task-row__main">
+              <VTooltip :text="task.title" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <h6 v-bind="tooltipProps" class="text-base mb-0">
+                    {{ task.title }}
+                  </h6>
+                </template>
+              </VTooltip>
+              <div class="text-sm text-medium-emphasis truncate-title">
+                {{ task.notes || formatTaskStart(task.afterWhen, task.startTrigger) }}
+              </div>
+              <div class="d-flex align-center flex-wrap gap-2 text-xs mt-1">
+                <span class="text-medium-emphasis">
+                  {{ salesTaskRelationLabel(task) }}
+                </span>
+                <span v-if="task.sourceLabel" class="text-info">
+                  {{ task.sourceLabel }}
                 </span>
               </div>
             </div>
-          </VCard>
+
+            <div class="sales-task-row__due text-body-2">
+              {{ formatTaskDueDate(task) }}
+            </div>
+
+            <div class="sales-task-row__assigned">
+              <div
+                v-if="task.collaborators?.length"
+                class="v-avatar-group demo-avatar-group"
+              >
+                <VAvatar
+                  v-for="collaborator in task.collaborators.slice(0, 3)"
+                  :key="collaborator.id"
+                  :size="32"
+                  color="primary"
+                >
+                  <template v-if="collaborator.avatarUrl">
+                    <VImg :src="collaborator.avatarUrl" />
+                  </template>
+                  <template v-else>
+                    <span class="task-mono">
+                      {{ collaboratorInitials(collaborator.name) }}
+                    </span>
+                  </template>
+                  <VTooltip activator="parent" location="top">
+                    {{ collaborator.name }}
+                  </VTooltip>
+                </VAvatar>
+                <VAvatar
+                  v-if="task.collaborators.length > 3"
+                  :size="32"
+                  color="secondary"
+                >
+                  +{{ task.collaborators.length - 3 }}
+                </VAvatar>
+              </div>
+              <span v-else class="text-medium-emphasis">-</span>
+            </div>
+
+            <div class="sales-task-row__status">
+              <VMenu location="bottom start">
+                <template #activator="{ props: menuProps }">
+                  <VBtn
+                    v-bind="menuProps"
+                    variant="text"
+                    size="small"
+                    class="status-trigger px-0 text-none"
+                    :class="taskStatusClass(task.status)"
+                    @click.stop
+                  >
+                    <span class="text-body-2">
+                      {{ todoStatusLabel(task.status) }}
+                    </span>
+                    <VIcon icon="tabler-chevron-down" size="16" class="ms-1" />
+                  </VBtn>
+                </template>
+
+                <VList density="compact" min-width="180">
+                  <VListItem
+                    v-for="option in statusOptions"
+                    :key="option.value"
+                    :active="task.status === option.value"
+                    @click.stop="updateSalesTaskStatus(task, option.value)"
+                  >
+                    <template #prepend>
+                      <VIcon
+                        icon="tabler-check"
+                        size="16"
+                        :class="
+                          task.status === option.value
+                            ? 'text-primary'
+                            : 'opacity-0'
+                        "
+                      />
+                    </template>
+
+                    <VListItemTitle :class="taskStatusClass(option.value)">
+                      {{ option.title }}
+                    </VListItemTitle>
+                  </VListItem>
+                </VList>
+              </VMenu>
+            </div>
+
+            <div class="sales-task-row__actions">
+              <IconBtn @click.stop="openEditTask(task.id)">
+                <VIcon icon="tabler-edit" />
+              </IconBtn>
+              <IconBtn @click.stop="emit('delete-task', task.id)">
+                <VIcon icon="tabler-trash" color="error" />
+              </IconBtn>
+            </div>
+          </div>
         </div>
 
         <div v-else class="text-body-2 text-medium-emphasis empty-tasks">
@@ -11477,61 +11647,79 @@ const openEditTask = (taskId: number | string) => {
   }
 }
 
-.task-row {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    transform 0.18s ease;
-}
-
-.task-row:hover {
-  border-color: rgba(var(--v-theme-primary), 0.28);
-  transform: translateY(-1px);
-}
-
-.task-row-main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-block: 1rem;
-  padding-inline: 1.125rem;
-}
-
-.task-row-left {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: flex-start;
-  gap: 0.5rem;
-  min-inline-size: 0;
-}
-
-.task-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-inline-size: 0;
-}
-
-.task-copy strong,
-.task-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.task-row-side {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  align-self: center;
-  gap: 0.75rem;
-}
-
 .task-mono {
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
+}
+
+.sales-task-list {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 6px;
+}
+
+.sales-task-list__header,
+.sales-task-row {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 3rem minmax(16rem, 1fr) minmax(7rem, 0.45fr) minmax(
+      7rem,
+      0.45fr
+    ) minmax(7rem, 0.42fr) 5.5rem;
+}
+
+.sales-task-list__header {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding-block: 0.75rem;
+  padding-inline: 0.5rem 1rem;
+  text-transform: uppercase;
+}
+
+.sales-task-row {
+  cursor: pointer;
+  min-block-size: 4.5rem;
+  padding-block: 0.625rem;
+  padding-inline: 0.5rem 1rem;
+}
+
+.sales-task-row + .sales-task-row {
+  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.sales-task-row:hover {
+  background: rgba(var(--v-theme-on-surface), 0.035);
+}
+
+.sales-task-row__main {
+  min-inline-size: 0;
+}
+
+.sales-task-row__due,
+.sales-task-row__assigned,
+.sales-task-row__status,
+.sales-task-row__actions {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.sales-task-row__assigned,
+.sales-task-row__actions {
+  justify-content: flex-start;
+}
+
+.sales-task-row__actions {
+  gap: 0.25rem;
+}
+
+.status-trigger {
+  justify-content: flex-start;
+  min-inline-size: 0;
 }
 
 .empty-tasks {
@@ -11611,18 +11799,24 @@ const openEditTask = (taskId: number | string) => {
     max-inline-size: 100%;
   }
 
-  .task-row-main {
-    flex-direction: column;
-    align-items: stretch;
+  .sales-task-list__header {
+    display: none;
   }
 
-  .task-row-left,
-  .task-row-side {
-    inline-size: 100%;
+  .sales-task-row {
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    row-gap: 0.5rem;
   }
 
-  .task-row-side {
-    justify-content: space-between;
+  .sales-task-row__due,
+  .sales-task-row__assigned,
+  .sales-task-row__status,
+  .sales-task-row__actions {
+    grid-column: 2;
+  }
+
+  .sales-task-row__actions {
+    justify-content: flex-start;
   }
 }
 </style>

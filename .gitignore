@@ -12,6 +12,7 @@ node_modules
 dist
 dist-ssr
 *.local
+%USERPROFILE%/
 
 /cypress/videos/
 /cypress/screenshots/
@@ -19,8 +20,6 @@ dist-ssr
 # 👉 Custom Git ignores
 
 # Editor directories and files
-.clinerules
-.cursorrules
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -52,4 +51,3 @@ src/**/*.js
 src/**/*.js.map
 src/**/*.jsx
 src/**/*.jsx.map
-PLANS.md
