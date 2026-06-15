@@ -114,7 +114,7 @@ export const useTodos = defineStore("todos", {
       return s.items.filter(
         (t) =>
           t.title.toLowerCase().includes(ql) ||
-          (t.notes || "").toLowerCase().includes(ql)
+          (t.notes || "").toLowerCase().includes(ql),
       );
     },
     meetingsAll: (s) => s.meetings,
@@ -127,7 +127,7 @@ export const useTodos = defineStore("todos", {
         (m) =>
           m.subject.toLowerCase().includes(ql) ||
           (m.location || "").toLowerCase().includes(ql) ||
-          (m.note || "").toLowerCase().includes(ql)
+          (m.note || "").toLowerCase().includes(ql),
       );
     },
   },
@@ -213,6 +213,7 @@ export const useTodos = defineStore("todos", {
           return next;
         });
         copy.relatedTo = t.relatedTo ?? null;
+        copy.source = t.source ?? null;
         copy.goalId = t.goalId ?? null;
         copy.milestoneId = t.milestoneId ?? null;
         copy.afterWhen = t.afterWhen ?? null;
@@ -237,9 +238,8 @@ export const useTodos = defineStore("todos", {
           saveToStorage(state.items);
           saveMeetingsToStorage(state.meetings);
         },
-        { detached: true }
+        { detached: true },
       );
-
     },
 
     addTodo(todo: Partial<ToDo>) {
@@ -264,6 +264,7 @@ export const useTodos = defineStore("todos", {
         messages: (todo as any).messages || [],
         attachment: normalizeAttachment((todo as any).attachment),
         relatedTo: (todo as any).relatedTo || null,
+        source: (todo as any).source ?? null,
         goalId: (todo as any).goalId ?? null,
         milestoneId: (todo as any).milestoneId ?? null,
         createdAt: now,
@@ -276,7 +277,8 @@ export const useTodos = defineStore("todos", {
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx === -1) return;
       const nextPatch = { ...patch } as any;
-      if ("dueAt" in nextPatch) nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
+      if ("dueAt" in nextPatch)
+        nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
       if (Array.isArray(nextPatch.steps)) {
         nextPatch.steps = nextPatch.steps.map((step: any) => {
           const nextStep = { ...step, dueAt: toDateOnlyISOString(step?.dueAt) };
@@ -303,10 +305,15 @@ export const useTodos = defineStore("todos", {
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx !== -1) this.items.splice(idx, 1);
     },
-    syncDealReferences(deals: Array<{ id: number | string; code?: string | null }>) {
+    syncDealReferences(
+      deals: Array<{ id: number | string; code?: string | null }>,
+    ) {
       const codeById = new Map(
         deals
-          .map((deal) => [String(deal.id), String(deal.code ?? "").trim()] as const)
+          .map(
+            (deal) =>
+              [String(deal.id), String(deal.code ?? "").trim()] as const,
+          )
           .filter(([, code]) => code.length),
       );
 
@@ -408,21 +415,21 @@ export const useTodos = defineStore("todos", {
       if (idx === -1) return;
       const prev = this.meetings[idx];
       const startAt = patch.startAt ?? prev.startAt;
-        const duration =
-          typeof patch.duration === "number" ? patch.duration : prev.duration;
+      const duration =
+        typeof patch.duration === "number" ? patch.duration : prev.duration;
 
-        const next: Meeting = {
-          ...prev,
-          ...patch,
-          relatedTo:
-            patch.relatedTo !== undefined
-              ? (patch.relatedTo as any)
-              : prev.relatedTo ?? null,
-          endAt: computeEndAt(startAt, duration),
-          updatedAt: new Date().toISOString(),
-        };
-        this.meetings.splice(idx, 1, next);
-        return next;
+      const next: Meeting = {
+        ...prev,
+        ...patch,
+        relatedTo:
+          patch.relatedTo !== undefined
+            ? (patch.relatedTo as any)
+            : (prev.relatedTo ?? null),
+        endAt: computeEndAt(startAt, duration),
+        updatedAt: new Date().toISOString(),
+      };
+      this.meetings.splice(idx, 1, next);
+      return next;
     },
 
     removeMeeting(id: number | string) {

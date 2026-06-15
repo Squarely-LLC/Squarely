@@ -86,6 +86,12 @@ export type ToDo = {
   messages?: Message[]; // <-- new, optional
   attachment?: ToDoAttachment | null;
   relatedTo?: { id: string | number; name: string; type: string } | null;
+  source?: {
+    type: "deal-sales-task";
+    dealId: string | number;
+    itemId: string | number;
+    taskId: string | number;
+  } | null;
   goalId?: string | number | null;
   milestoneId?: string | number | null;
   createdAt: string;

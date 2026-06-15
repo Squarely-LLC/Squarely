@@ -550,6 +550,92 @@ const resolveDealSalesTasks = (
   return [...storedSalesTasks, ...missingImportedTasks, ...legacyManualTasks];
 };
 
+const buildSalesTaskSource = (
+  currentDeal: DealProperties,
+  itemId: number | string,
+  taskId: number | string,
+): NonNullable<ToDo["source"]> => ({
+  type: "deal-sales-task",
+  dealId: currentDeal.id,
+  itemId,
+  taskId,
+});
+
+const isGeneratedSalesTaskForSource = (
+  todo: ToDo,
+  currentDeal: DealProperties,
+  itemId: number | string,
+  taskId?: number | string | null,
+) =>
+  todo.source?.type === "deal-sales-task" &&
+  String(todo.source.dealId) === String(currentDeal.id) &&
+  String(todo.source.itemId) === String(itemId) &&
+  (taskId === null ||
+    taskId === undefined ||
+    String(todo.source.taskId) === String(taskId));
+
+const materializeImportedSalesTasksForDeal = (currentDeal: DealProperties) => {
+  resolveDealSalesTasks(currentDeal)
+    .filter(
+      (task) =>
+        task.sourceItemId !== null &&
+        task.sourceItemId !== undefined &&
+        task.sourceTaskId !== null &&
+        task.sourceTaskId !== undefined,
+    )
+    .forEach((task) => {
+      const sourceItemId = task.sourceItemId as number | string;
+      const sourceTaskId = task.sourceTaskId as number | string;
+      const existing = todosStore.items.find((todo) =>
+        isGeneratedSalesTaskForSource(
+          todo,
+          currentDeal,
+          sourceItemId,
+          sourceTaskId,
+        ),
+      );
+      const payload: Partial<ToDo> = {
+        title: task.title,
+        collaborators: normalizeTaskCollaborators(task.collaborators),
+        dueAt: task.afterWhen
+          ? resolveTaskDueAt(task.afterWhen, new Date().toISOString())
+          : new Date().toISOString(),
+        afterWhen: task.afterWhen ?? null,
+        startTrigger: task.startTrigger ?? {
+          type: "time",
+          goalId: null,
+          taskId: null,
+        },
+        status: task.status || "pending",
+        notes: task.notes || "",
+        important: Boolean(task.important),
+        attachment: task.attachment ?? null,
+        relatedTo: {
+          id: currentDeal.id,
+          name: currentDeal.code || `Deal #${currentDeal.id}`,
+          type: "deal",
+        },
+        steps: Array.isArray(task.steps)
+          ? task.steps.map((step) => ({
+              ...step,
+              collaborators: normalizeTaskCollaborators(step.collaborators),
+            }))
+          : [],
+        source: buildSalesTaskSource(currentDeal, sourceItemId, sourceTaskId),
+      };
+
+      if (existing) {
+        todosStore.updateTodo(existing.id, {
+          source: payload.source,
+          relatedTo: payload.relatedTo,
+        });
+        return;
+      }
+
+      todosStore.addTodo(payload);
+    });
+};
+
 const isDraftDealItem = (item: DealItem, record: CatalogueRecord | null) => {
   if (item.parentItemId) return false;
   if (!record) return true;
@@ -985,6 +1071,7 @@ const resolveLatestDealState = () => {
 
   if (latest) {
     const migrated = migrateLegacyDealSalesTasksToTodos(latest);
+    materializeImportedSalesTasksForDeal(migrated);
     deal.value = cloneDeal(migrated);
     return migrated;
   }
@@ -997,7 +1084,9 @@ const resolveDeal = () => {
   const found = dealsStore.byId(route.params.id);
 
   if (found) {
-    deal.value = cloneDeal(migrateLegacyDealSalesTasksToTodos(found));
+    const migrated = migrateLegacyDealSalesTasksToTodos(found);
+    materializeImportedSalesTasksForDeal(migrated);
+    deal.value = cloneDeal(migrated);
     error.value = null;
   } else {
     deal.value = null;

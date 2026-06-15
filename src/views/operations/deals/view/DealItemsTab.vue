@@ -1423,6 +1423,131 @@ const parseAfterWhen = (raw?: string | null) => {
   return next.toISOString();
 };
 
+const buildSalesTaskSource = (
+  itemId: number | string,
+  taskId: number | string,
+): NonNullable<ToDo["source"]> => ({
+  type: "deal-sales-task",
+  dealId: props.deal.id,
+  itemId,
+  taskId,
+});
+
+const isGeneratedSalesTaskForSource = (
+  todo: ToDo,
+  itemId: number | string,
+  taskId?: number | string | null,
+) =>
+  todo.source?.type === "deal-sales-task" &&
+  String(todo.source.dealId) === String(props.deal.id) &&
+  String(todo.source.itemId) === String(itemId) &&
+  (taskId === null ||
+    taskId === undefined ||
+    String(todo.source.taskId) === String(taskId));
+
+const findGeneratedSalesTask = (
+  itemId: number | string,
+  taskId: number | string,
+) =>
+  todosStore.items.find((todo) =>
+    isGeneratedSalesTaskForSource(todo, itemId, taskId),
+  );
+
+const buildTodoFromImportedSalesTask = (
+  task: DealSalesTaskTemplate,
+): Partial<ToDo> | null => {
+  if (task.sourceItemId === null || task.sourceItemId === undefined)
+    return null;
+  if (task.sourceTaskId === null || task.sourceTaskId === undefined)
+    return null;
+
+  return {
+    title: task.title,
+    collaborators: normalizeSalesTaskCollaborators(task.collaborators),
+    dueAt: task.afterWhen
+      ? parseAfterWhen(task.afterWhen)
+      : new Date().toISOString(),
+    afterWhen: task.afterWhen ?? null,
+    startTrigger: task.startTrigger ?? {
+      type: "time",
+      goalId: null,
+      taskId: null,
+    },
+    notes: task.notes || "",
+    status: task.status || "pending",
+    important: Boolean(task.important),
+    attachment: task.attachment ?? null,
+    relatedTo: buildDealRelatedTo(),
+    steps: Array.isArray(task.steps)
+      ? task.steps.map((step) => ({
+          ...step,
+          collaborators: normalizeSalesTaskCollaborators(step.collaborators),
+        }))
+      : [],
+    source: buildSalesTaskSource(task.sourceItemId, task.sourceTaskId),
+  };
+};
+
+const materializeImportedSalesTasks = () => {
+  const catalogueImportedSalesTasks = buildImportedSalesTaskTemplates(
+    props.deal.items || [],
+  );
+  const legacyImportedSalesTasks = Array.isArray(props.deal.salesTasks)
+    ? props.deal.salesTasks
+        .filter(
+          (task) =>
+            task.sourceItemId !== null && task.sourceItemId !== undefined,
+        )
+        .map((task) =>
+          cloneDealSalesTaskTemplate({
+            ...task,
+            relatedTo: buildDealRelatedTo(),
+          }),
+        )
+    : [];
+  const importedSalesTasks = [
+    ...catalogueImportedSalesTasks,
+    ...legacyImportedSalesTasks.filter(
+      (legacyTask) =>
+        !catalogueImportedSalesTasks.some(
+          (catalogueTask) =>
+            String(catalogueTask.sourceItemId) ===
+              String(legacyTask.sourceItemId) &&
+            String(catalogueTask.sourceTaskId) ===
+              String(legacyTask.sourceTaskId),
+        ),
+    ),
+  ];
+
+  importedSalesTasks.forEach((task) => {
+    if (task.sourceItemId === null || task.sourceItemId === undefined) return;
+    if (task.sourceTaskId === null || task.sourceTaskId === undefined) return;
+
+    const existing = findGeneratedSalesTask(
+      task.sourceItemId,
+      task.sourceTaskId,
+    );
+    const payload = buildTodoFromImportedSalesTask(task);
+    if (!payload) return;
+
+    if (existing) {
+      todosStore.updateTodo(existing.id, {
+        source: payload.source,
+        relatedTo: buildDealRelatedTo(),
+      });
+      return;
+    }
+
+    todosStore.addTodo(payload);
+  });
+};
+
+const removeGeneratedSalesTasksForItem = (itemId: number | string) => {
+  todosStore.items
+    .filter((todo) => isGeneratedSalesTaskForSource(todo, itemId))
+    .forEach((todo) => todosStore.removeTodo(todo.id));
+};
+
 const extractSalesTasks = (record: unknown): CatalogueSalesTask[] => {
   if (!record || typeof record !== "object") return [];
 
@@ -1496,6 +1621,12 @@ const buildImportedSalesTaskTemplates = (
       );
     });
 };
+
+watch(
+  () => props.deal.items,
+  () => materializeImportedSalesTasks(),
+  { deep: true, immediate: true },
+);
 
 const nextItemId = () => {
   const ids = (props.deal.items || [])
@@ -1797,8 +1928,12 @@ const removeDealItem = (item: DealItemWithPlan) => {
       (existingItem) =>
         existingItem.id === item.id || existingItem.parentItemId === item.id,
     )
-    .flatMap((existingItem) => existingItem.generatedTaskIds || [])
-    .forEach((taskId) => todosStore.removeTodo(taskId));
+    .forEach((existingItem) => {
+      removeGeneratedSalesTasksForItem(existingItem.id);
+      (existingItem.generatedTaskIds || []).forEach((taskId) =>
+        todosStore.removeTodo(taskId),
+      );
+    });
 
   const nextSalesTasks = isRelatedItemChild
     ? buildEditableSalesTasks()
@@ -7209,32 +7344,23 @@ const manualDealSalesTodos = computed<DealTodo[]>(() =>
 
 const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
   const storedSalesTasks = Array.isArray(props.deal.salesTasks)
-    ? props.deal.salesTasks.map((task) =>
-        cloneDealSalesTaskTemplate({
-          ...task,
-          relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
-        }),
-      )
+    ? props.deal.salesTasks
+        .filter(
+          (task) =>
+            task.sourceItemId === null || task.sourceItemId === undefined,
+        )
+        .map((task) =>
+          cloneDealSalesTaskTemplate({
+            ...task,
+            relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+          }),
+        )
     : [];
-
-  const importedSalesTasks = buildImportedSalesTaskTemplates(
-    props.deal.items || [],
-    nextDealSalesTaskId(storedSalesTasks),
-  );
-
-  const missingImportedSalesTasks = importedSalesTasks.filter(
-    (task) =>
-      !storedSalesTasks.some(
-        (existingTask) =>
-          Number(existingTask.sourceItemId ?? 0) ===
-            Number(task.sourceItemId ?? 0) &&
-          Number(existingTask.sourceTaskId ?? 0) ===
-            Number(task.sourceTaskId ?? 0),
-      ),
-  );
 
   const legacyManualSalesTasks = dealTodos.value
     .filter((todo) => {
+      if (todo.source?.type === "deal-sales-task") return false;
+
       const milestoneId = String(todo.milestoneId ?? "").trim();
       const goalId = String(todo.goalId ?? "").trim();
 
@@ -7242,9 +7368,7 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
     })
     .map((todo, index) =>
       cloneDealSalesTaskTemplate({
-        id:
-          nextDealSalesTaskId([...storedSalesTasks, ...importedSalesTasks]) +
-          index,
+        id: nextDealSalesTaskId(storedSalesTasks) + index,
         title: todo.title,
         collaborators: normalizeSalesTaskCollaborators(todo.collaborators),
         afterWhen: todo.afterWhen ?? null,
@@ -7276,11 +7400,7 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
         ),
     );
 
-  return [
-    ...storedSalesTasks,
-    ...missingImportedSalesTasks,
-    ...legacyManualSalesTasks,
-  ];
+  return [...storedSalesTasks, ...legacyManualSalesTasks];
 };
 
 const salesTasks = computed<DealSalesTaskRow[]>(() => {
@@ -7313,8 +7433,11 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
       important: Boolean(todo.important),
       status: (todo.status as Status) || "pending",
       relatedTo: normalizeSalesTaskRelatedTo(todo.relatedTo),
-      isImported: false,
-      sourceLabel: null,
+      isImported: todo.source?.type === "deal-sales-task",
+      sourceLabel:
+        todo.source?.type === "deal-sales-task"
+          ? "From item sales task template"
+          : null,
     })),
     ...fallbackTasks.map((task) => ({
       id: task.id,
