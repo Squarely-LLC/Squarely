@@ -43,6 +43,33 @@ const contactsOptions = computed(() =>
     avatarUrl: c.picture,
   })),
 );
+const parseContactAssigneeId = (value: number | string | null | undefined) => {
+  const raw = String(value ?? "").trim();
+
+  return raw.startsWith("contact:") ? raw.slice("contact:".length) : raw;
+};
+const resolveContactOption = (value: number | string | null | undefined) => {
+  const parsedId = parseContactAssigneeId(value);
+
+  return contactsOptions.value.find(
+    (contact) => String(contact.id) === String(parsedId),
+  );
+};
+const resolveAssignSelectValue = (contact: ContactRef) =>
+  resolveContactOption(contact.id)?.id ?? contact.id;
+const resolveAssignedContact = (value: number | string): ContactRef => {
+  const contact = resolveContactOption(value);
+
+  if (contact) return { ...contact };
+
+  const parsedId = parseContactAssigneeId(value);
+
+  return {
+    id: value,
+    name: `Contact #${parsedId || value}`,
+    avatarUrl: null,
+  };
+};
 const { all } = storeToRefs(todosStore); // reactive list from store
 
 // optional: current author to display (use an email as the name to match the screenshot)
@@ -414,7 +441,7 @@ const updateStatus = (t: ToDo, status: Status) =>
 const openAssignDialog = (t: ToDo) => {
   assignDialogTodoId.value = t.id;
   selectedAssignedIds.value = Array.isArray(t.collaborators)
-    ? t.collaborators.map((c) => c.id)
+    ? t.collaborators.map(resolveAssignSelectValue)
     : [];
   isAssignDialogOpen.value = true;
 };
@@ -428,13 +455,7 @@ const closeAssignDialog = () => {
 const saveAssignedCollaborators = () => {
   if (assignDialogTodoId.value == null) return;
 
-  const selected = selectedAssignedIds.value
-    .map((id) =>
-      contactsOptions.value.find(
-        (contact) => String(contact.id) === String(id),
-      ),
-    )
-    .filter(Boolean) as ContactRef[];
+  const selected = selectedAssignedIds.value.map(resolveAssignedContact);
 
   todosStore.updateTodo(assignDialogTodoId.value, {
     collaborators: selected,
