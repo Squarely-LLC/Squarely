@@ -956,6 +956,8 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
       :doc="dialogDoc"
       :documentTypes="documentTypes"
       :fileCategories="fileCategories"
+      auto-fill-name-from-type
+      auto-enable-expiry-reminder-on-date
       @save="onDialogSave"
     />
     <EmailDialog

@@ -1,8 +1,8 @@
 /* stylelint-disable @stylistic/no-eol-whitespace */ /* stylelint-disable
 @stylistic/no-eol-whitespace */
-  <script setup lang="ts">
-  import DialogActionBar from "@/components/DialogActionBar.vue";
-  import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
+<script setup lang="ts">
+import DialogActionBar from "@/components/DialogActionBar.vue";
+import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
 import { getFileInfo, saveFile } from "@/utils/fileStore";
 import { computed, reactive, ref, watch } from "vue";
@@ -12,6 +12,8 @@ const props = defineProps<{
   doc?: JobDocument | null;
   documentTypes?: string[];
   fileCategories?: readonly string[];
+  autoFillNameFromType?: boolean;
+  autoEnableExpiryReminderOnDate?: boolean;
 }>();
 
 const emits = defineEmits<{
@@ -162,6 +164,7 @@ function isAcceptableLink(url?: string | null) {
 
 // UI: expansion panel state for expiry (null = closed, 0 = opened)
 const expiryExpanded = ref<number | null>(null);
+const lastAutoFilledName = ref<string | null>(null);
 
 function resetForm() {
   Object.assign(form, {
@@ -178,6 +181,7 @@ function resetForm() {
     fileUrlBlob: undefined,
   });
   expiryExpanded.value = null;
+  lastAutoFilledName.value = null;
   fileError.value = null;
 }
 
@@ -187,6 +191,7 @@ function populateForm(d: JobDocument | null | undefined) {
     return;
   }
   Object.assign(form, { ...d });
+  lastAutoFilledName.value = null;
   // populate helper fields when editing an existing doc
   // prioritize idb: pointers (persisted files) so we show friendly name+size
   if (d.fileUrl && String(d.fileUrl).startsWith("idb:")) {
@@ -250,6 +255,35 @@ watch(open, (isOpen) => {
     resetForm();
   }
 });
+
+watch(
+  () => form.type,
+  (type) => {
+    if (!props.autoFillNameFromType) return;
+
+    const nextName = String(type ?? "").trim();
+    if (!nextName) return;
+
+    const currentName = String(form.name ?? "").trim();
+    const canAutoFill =
+      !currentName ||
+      (!!lastAutoFilledName.value && currentName === lastAutoFilledName.value);
+
+    if (!canAutoFill) return;
+
+    form.name = nextName;
+    lastAutoFilledName.value = nextName;
+  },
+);
+
+watch(
+  () => form.expiry,
+  (expiry) => {
+    if (!props.autoEnableExpiryReminderOnDate) return;
+
+    form.expiryReminder = Boolean(expiry);
+  },
+);
 
 // validation: require category, name and an attachment (fileAttachment or stored blob or link)
 const hasAttachment = computed(() => {
