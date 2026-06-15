@@ -1,6 +1,7 @@
 import type { Meeting, Message, ToDo, ToDoAttachment } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { usePeopleStore } from "@/stores/people";
+import { getSignedInAuthorRef, normalizeAuthorRef } from "@/utils/currentAccount";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY_MEETINGS = "app.meetings.v2";
@@ -51,6 +52,7 @@ function computeEndAt(startAt: string, durationMin: number): string {
 function normalizeMessage(message: any): Message {
   return {
     ...message,
+    author: normalizeAuthorRef(message?.author),
     body: message?.body ?? "",
     createdAt: message?.createdAt ?? new Date().toISOString(),
     isRead: Boolean(message?.isRead),
@@ -264,8 +266,17 @@ export const useTodos = defineStore("todos", {
         status: (todo.status as ToDo["status"]) || "pending",
         steps: todo.steps || [],
         notes: todo.notes || "",
-        activities: todo.activities || [],
-        messages: (todo as any).messages || [],
+        activities: Array.isArray(todo.activities)
+          ? todo.activities.map((activity: any) => ({
+              ...activity,
+              author: normalizeAuthorRef(activity.author),
+            }))
+          : [],
+        messages: Array.isArray((todo as any).messages)
+          ? (todo as any).messages.map((message: any) =>
+              normalizeMessage(message),
+            )
+          : [],
         attachment: normalizeAttachment((todo as any).attachment),
         relatedTo: (todo as any).relatedTo || null,
         source: (todo as any).source ?? null,
@@ -294,6 +305,11 @@ export const useTodos = defineStore("todos", {
         nextPatch.messages = nextPatch.messages.map((message: any) =>
           normalizeMessage(message),
         );
+      if (Array.isArray(nextPatch.activities))
+        nextPatch.activities = nextPatch.activities.map((activity: any) => ({
+          ...activity,
+          author: normalizeAuthorRef(activity.author),
+        }));
       if ("attachment" in nextPatch)
         nextPatch.attachment = normalizeAttachment(nextPatch.attachment);
       delete nextPatch.priority;
@@ -401,7 +417,9 @@ export const useTodos = defineStore("todos", {
         location: meeting.location || "",
         note: meeting.note || "",
         attachments: meeting.attachments || [],
-        requestedBy: (meeting.requestedBy as any) || null,
+        requestedBy: meeting.requestedBy
+          ? normalizeAuthorRef(meeting.requestedBy as any)
+          : getSignedInAuthorRef(),
         notes: Array.isArray((meeting as any).notes)
           ? (meeting as any).notes
           : [],
@@ -429,6 +447,12 @@ export const useTodos = defineStore("todos", {
           patch.relatedTo !== undefined
             ? (patch.relatedTo as any)
             : (prev.relatedTo ?? null),
+        requestedBy:
+          patch.requestedBy !== undefined
+            ? normalizeAuthorRef(patch.requestedBy as any)
+            : prev.requestedBy
+              ? normalizeAuthorRef(prev.requestedBy as any)
+              : getSignedInAuthorRef(),
         endAt: computeEndAt(startAt, duration),
         updatedAt: new Date().toISOString(),
       };

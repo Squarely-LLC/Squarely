@@ -46,6 +46,10 @@ import {
   getEmployeeOptions,
   getEmployeeRefs,
 } from "@/utils/peopleOptions";
+import {
+  getSignedInAuthorRef,
+  getSignedInIdentity,
+} from "@/utils/currentAccount";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
@@ -113,7 +117,6 @@ const isAddNoteDialogVisible = ref(false);
 const noteDraft = ref("");
 const isCollaboratorDialogVisible = ref(false);
 const collaboratorDialogValue = ref<Array<number | string>>([]);
-const userData = useCookie<any>("userData");
 
 const tabKeys = ["items", "activity", "documents", "notes"] as const;
 const tabs = [
@@ -1488,11 +1491,7 @@ const saveDealNote = () => {
   const body = noteDraft.value.trim();
   if (!body) return;
 
-  const user = userData.value || {};
-  const authorName =
-    [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
-    String(user.fullName || user.name || user.username || "").trim() ||
-    null;
+  const authorName = getSignedInIdentity().name;
   const createdAt = new Date().toISOString();
   const updated = dealsStore.updateDeal(deal.value.id, {
     notes: [
@@ -2228,7 +2227,7 @@ const upsertDealEmailThread = (payload: any) => {
     .join("\n");
   const newMessage = {
     id: `deal-email-${Date.now()}`,
-    author: { id: "me", name: "You" },
+    author: getSignedInAuthorRef(),
     body,
     createdAt: new Date().toISOString(),
     isRead: true,

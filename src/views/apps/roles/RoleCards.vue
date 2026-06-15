@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import roleIllustration from "@images/illustrations/standingGirlImg.png";
 import { useAccountsStore } from "@/stores/accounts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { currentUserData } from "@/utils/currentAccount";
@@ -15,8 +16,10 @@ const notifications = useNotificationsStore();
 accountsStore.init();
 
 const roles = computed(() => accountsStore.currentCenterRoles);
-const currentAccount = computed(() =>
-  accountsStore.userById(currentUserData()?.id) ?? accountsStore.currentCenterUsers[0],
+const currentAccount = computed(
+  () =>
+    accountsStore.userById(currentUserData()?.id) ??
+    accountsStore.currentCenterUsers[0],
 );
 const canCreateRoles = computed(() =>
   accountsStore.can(currentAccount.value, "usersRoles", "create"),
@@ -68,25 +71,33 @@ const avatarText = (name?: string | null) =>
 const roleUsers = (role: RoleRecord) =>
   accountsStore.currentCenterUsers.filter((user) => user.roleId === role.id);
 
-const permissionSummary = (role: RoleRecord) =>
-  role.permissions
-    .filter((permission) => permission.viewScope !== "none")
-    .map((permission) => permission.moduleLabel);
-
-const actionCount = (role: RoleRecord) =>
-  role.permissions.reduce(
-    (total, permission) => total + permission.actions.length,
-    0,
-  );
-
 const currentRole = computed(() =>
   editingRoleId.value ? accountsStore.roleById(editingRoleId.value) : null,
 );
 
-const canModifyRole = (role?: RoleRecord | null) =>
+const canEditRole = (role?: RoleRecord | null) =>
+  !!role && canUpdateRoles.value;
+
+const canRemoveRole = (role?: RoleRecord | null) =>
   !!role &&
-  role.name !== "Account Owner / Super Admin" &&
-  canUpdateRoles.value;
+  !role.system &&
+  canDeleteRoles.value &&
+  roleUsers(role).length === 0;
+
+const makeCopyName = (name: string) => {
+  const base = `${name} Copy`;
+  let next = base;
+  let suffix = 2;
+  const names = new Set(
+    roles.value.map((role) => role.name.trim().toLowerCase()),
+  );
+  while (names.has(next.toLowerCase())) {
+    next = `${base} ${suffix}`;
+    suffix += 1;
+  }
+
+  return next;
+};
 
 const openAddRole = () => {
   if (!canCreateRoles.value) {
@@ -95,8 +106,7 @@ const openAddRole = () => {
   }
 
   const template =
-    accountsStore.currentCenterRoles.find((role) => role.name === "Admin") ??
-    accountsStore.currentCenterRoles[0];
+    roles.value.find((role) => role.name === "Admin") ?? roles.value[0];
 
   editingRoleId.value = null;
   draft.name = "";
@@ -105,7 +115,7 @@ const openAddRole = () => {
 };
 
 const openEditRole = (role: RoleRecord) => {
-  if (!canModifyRole(role)) {
+  if (!canEditRole(role)) {
     notifications.push("This role cannot be edited.", "error");
     return;
   }
@@ -114,6 +124,27 @@ const openEditRole = (role: RoleRecord) => {
   draft.name = role.name;
   draft.permissions = clone(role.permissions);
   isDialogVisible.value = true;
+};
+
+const cloneRole = (role: RoleRecord) => {
+  if (!canCreateRoles.value) {
+    notifications.push("You do not have permission to create roles.", "error");
+    return;
+  }
+
+  try {
+    accountsStore.createRole({
+      name: makeCopyName(role.name),
+      permissions: clone(role.permissions),
+    });
+    notifications.push("Role copied", "success", 2500);
+  } catch (error) {
+    notifications.push(
+      error instanceof Error ? error.message : "Unable to copy role",
+      "error",
+      3500,
+    );
+  }
 };
 
 const closeDialog = () => {
@@ -155,10 +186,7 @@ const saveRole = async () => {
 };
 
 const deleteRole = (role: RoleRecord) => {
-  if (!canDeleteRoles.value) {
-    notifications.push("You do not have permission to delete roles.", "error");
-    return;
-  }
+  if (!canRemoveRole(role)) return;
 
   try {
     accountsStore.deleteRole(role.id);
@@ -171,117 +199,103 @@ const deleteRole = (role: RoleRecord) => {
     );
   }
 };
+
+const deleteTooltip = (role: RoleRecord) => {
+  if (role.system) return "Default roles cannot be deleted";
+  if (!canDeleteRoles.value) return "No permission to delete roles";
+  if (roleUsers(role).length > 0) return "Assigned roles cannot be deleted";
+  return "Delete role";
+};
 </script>
 
 <template>
   <section>
-    <div class="d-flex justify-end mb-4">
-      <VBtn
-        prepend-icon="tabler-plus"
-        :disabled="!canCreateRoles"
-        @click="openAddRole"
-      >
-        Add Role
-      </VBtn>
-    </div>
-
     <VRow>
+      <VCol cols="12">
+        <h4 class="text-h4 mb-1">Roles List</h4>
+        <p class="text-body-1 mb-0">
+          A role provided access to predefined menus and features so that
+          depending on assigned role an administrator can have access to what he
+          need
+        </p>
+      </VCol>
+
       <VCol v-for="role in roles" :key="role.id" cols="12" sm="6" lg="4">
         <VCard>
-          <VCardText class="d-flex align-center pb-4">
-            <div class="text-body-1">
-              Total {{ roleUsers(role).length }} users
+          <VCardText class="role-card">
+            <div class="d-flex align-center justify-space-between">
+              <span class="text-body-1">
+                Total {{ roleUsers(role).length }} users
+              </span>
+
+              <div class="v-avatar-group">
+                <VAvatar
+                  v-for="user in roleUsers(role).slice(0, 4)"
+                  :key="user.id"
+                  size="38"
+                  :image="user.avatar || undefined"
+                  :color="user.avatar ? undefined : 'primary'"
+                  :variant="user.avatar ? undefined : 'tonal'"
+                >
+                  <span v-if="!user.avatar">{{ avatarText(user.fullName) }}</span>
+                </VAvatar>
+                <VAvatar v-if="roleUsers(role).length > 4" color="secondary">
+                  +{{ roleUsers(role).length - 4 }}
+                </VAvatar>
+              </div>
             </div>
 
-            <VSpacer />
-
-            <div class="v-avatar-group">
-              <VAvatar
-                v-for="user in roleUsers(role).slice(0, 3)"
-                :key="user.id"
-                size="38"
-                :image="user.avatar || undefined"
-                :color="user.avatar ? undefined : 'primary'"
-                :variant="user.avatar ? undefined : 'tonal'"
-              >
-                <span v-if="!user.avatar">{{ avatarText(user.fullName) }}</span>
-              </VAvatar>
-
-              <VAvatar v-if="roleUsers(role).length > 3" color="secondary">
-                +{{ roleUsers(role).length - 3 }}
-              </VAvatar>
-            </div>
-          </VCardText>
-
-          <VCardText>
-            <div class="d-flex justify-space-between align-start gap-4">
+            <div class="d-flex align-end justify-space-between mt-8">
               <div>
-                <h5 class="text-h5">
-                  {{ role.name }}
-                </h5>
-                <div class="text-body-2 text-medium-emphasis">
-                  {{ actionCount(role) }} allowed actions
-                </div>
+                <h5 class="text-h5 mb-1">{{ role.name }}</h5>
+                <VBtn
+                  variant="text"
+                  density="compact"
+                  class="pa-0"
+                  :disabled="!canEditRole(role)"
+                  @click="openEditRole(role)"
+                >
+                  Edit Role
+                </VBtn>
               </div>
 
-              <VChip
-                v-if="role.name.includes('Super Admin')"
-                color="primary"
-                size="small"
-              >
-                Master
-              </VChip>
+              <div class="d-flex align-center">
+                <IconBtn :disabled="!canCreateRoles" @click="cloneRole(role)">
+                  <VIcon icon="tabler-copy" />
+                  <VTooltip activator="parent">Copy role</VTooltip>
+                </IconBtn>
+                <IconBtn
+                  :disabled="!canRemoveRole(role)"
+                  @click="deleteRole(role)"
+                >
+                  <VIcon icon="tabler-trash" />
+                  <VTooltip activator="parent">
+                    {{ deleteTooltip(role) }}
+                  </VTooltip>
+                </IconBtn>
+              </div>
             </div>
+          </VCardText>
+        </VCard>
+      </VCol>
 
-            <div class="d-flex flex-wrap gap-2 mt-4">
-              <VChip
-                v-for="module in permissionSummary(role).slice(0, 5)"
-                :key="module"
-                size="small"
-                variant="tonal"
-              >
-                {{ module }}
-              </VChip>
-              <VChip
-                v-if="permissionSummary(role).length > 5"
-                size="small"
-                color="secondary"
-                variant="tonal"
-              >
-                +{{ permissionSummary(role).length - 5 }}
-              </VChip>
-            </div>
+      <VCol cols="12" sm="6" lg="4">
+        <VCard>
+          <VCardText class="add-role-card">
+            <img :src="roleIllustration" class="add-role-card__image" alt="" />
 
-            <div class="d-flex gap-2 mt-6">
+            <div class="add-role-card__copy">
               <VBtn
-                size="small"
-                variant="tonal"
-                :disabled="!canModifyRole(role)"
-                @click="openEditRole(role)"
+                :disabled="!canCreateRoles"
+                class="mb-4"
+                @click="openAddRole"
               >
-                Edit Role
+                Add New Role
               </VBtn>
-              <IconBtn
-                :disabled="
-                  role.name === 'Account Owner / Super Admin' ||
-                  !canDeleteRoles ||
-                  roleUsers(role).length > 0
-                "
-                @click="deleteRole(role)"
-              >
-                <VIcon icon="tabler-trash" />
-                <VTooltip activator="parent">
-                  {{
-                    role.name === "Account Owner / Super Admin"
-                      ? "Master role cannot be deleted"
-                      : !canDeleteRoles
-                        ? "No permission to delete roles"
-                      : roleUsers(role).length > 0
-                        ? "Assigned roles cannot be deleted"
-                        : "Delete role"
-                  }}
-                </VTooltip>
-              </IconBtn>
+              <div class="text-body-1 text-medium-emphasis">
+                Add new role,<br />
+                if it doesn't exist.
+              </div>
             </div>
           </VCardText>
         </VCard>
@@ -366,3 +380,30 @@ const deleteRole = (role: RoleRecord) => {
     </VDialog>
   </section>
 </template>
+
+<style scoped>
+.role-card {
+  min-block-size: 154px;
+}
+
+.add-role-card {
+  display: flex;
+  min-block-size: 154px;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.add-role-card__image {
+  align-self: flex-end;
+  block-size: 130px;
+  inline-size: 42%;
+  object-fit: contain;
+  object-position: bottom left;
+}
+
+.add-role-card__copy {
+  max-inline-size: 11rem;
+  text-align: end;
+}
+</style>

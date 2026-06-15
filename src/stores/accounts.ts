@@ -251,9 +251,6 @@ export const useAccountsStore = defineStore("accounts", {
       if (index === -1) throw new Error("Role not found.");
 
       const current = this.roles[index];
-      if (current.name === "Account Owner / Super Admin")
-        throw new Error("The master role cannot be changed.");
-
       const name = patch.name.trim();
       if (!name) throw new Error("Role name is required.");
       if (
@@ -281,8 +278,8 @@ export const useAccountsStore = defineStore("accounts", {
       const index = this.roles.findIndex((role) => role.id === id);
       if (index === -1) return;
       const role = this.roles[index];
-      if (role.name === "Account Owner / Super Admin")
-        throw new Error("The master role cannot be deleted.");
+      if (role.system)
+        throw new Error("Default roles cannot be deleted.");
       if (this.users.some((user) => user.roleId === id))
         throw new Error("This role is assigned to users and cannot be deleted.");
 
@@ -322,12 +319,17 @@ export const useAccountsStore = defineStore("accounts", {
         current.username = usernameFromEmail(nextEmail);
       }
 
-      if (patch.fullName !== undefined) current.fullName = patch.fullName;
-      if (patch.roleId !== undefined) current.roleId = patch.roleId;
+      if (patch.fullName !== undefined)
+        current.fullName = patch.fullName.trim();
+      if (patch.roleId !== undefined) {
+        const role = this.roleById(patch.roleId);
+        if (!role) throw new Error("Role is required.");
+        current.roleId = role.id;
+      }
       if (patch.status !== undefined) current.status = patch.status;
       if (patch.password !== undefined && patch.password.trim()) {
         current.password = patch.password.trim();
-        current.temporaryPassword = patch.temporaryPassword ?? false;
+        current.temporaryPassword = patch.temporaryPassword ?? true;
       }
       if (patch.avatar !== undefined) current.avatar = patch.avatar;
       current.updatedAt = new Date().toISOString();

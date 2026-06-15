@@ -76,6 +76,7 @@ declare global {
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
+  const ensureAccountEmployeeLink: typeof import('./src/utils/accountEmployeeLink')['ensureAccountEmployeeLink']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterDealDocumentItemsByBillingMode: typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']
   const findCurrentUserOption: typeof import('./src/utils/currentAccount')['findCurrentUserOption']
@@ -135,6 +136,8 @@ declare global {
   const getSalesEmployeeOptions: typeof import('./src/utils/peopleOptions')['getSalesEmployeeOptions']
   const getSalesPeopleOptions: typeof import('./src/utils/peopleOptions')['getSalesPeopleOptions']
   const getSelectableDealItems: typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']
+  const getSignedInAuthorRef: typeof import('./src/utils/currentAccount')['getSignedInAuthorRef']
+  const getSignedInIdentity: typeof import('./src/utils/currentAccount')['getSignedInIdentity']
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
   const hasDealDocumentPhaseOrPeriodLines: typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']
@@ -182,6 +185,7 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const nextTick: typeof import('vue')['nextTick']
+  const normalizeAuthorRef: typeof import('./src/utils/currentAccount')['normalizeAuthorRef']
   const normalizeBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']
   const normalizeDocumentSourceModes: typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
@@ -557,6 +561,7 @@ declare module 'vue' {
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
+    readonly ensureAccountEmployeeLink: UnwrapRef<typeof import('./src/utils/accountEmployeeLink')['ensureAccountEmployeeLink']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterDealDocumentItemsByBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']>
     readonly findCurrentUserOption: UnwrapRef<typeof import('./src/utils/currentAccount')['findCurrentUserOption']>
@@ -617,6 +622,8 @@ declare module 'vue' {
     readonly getSalesEmployeeOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getSalesEmployeeOptions']>
     readonly getSalesPeopleOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getSalesPeopleOptions']>
     readonly getSelectableDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']>
+    readonly getSignedInAuthorRef: UnwrapRef<typeof import('./src/utils/currentAccount')['getSignedInAuthorRef']>
+    readonly getSignedInIdentity: UnwrapRef<typeof import('./src/utils/currentAccount')['getSignedInIdentity']>
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasDealDocumentPhaseOrPeriodLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']>
@@ -664,6 +671,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
+    readonly normalizeAuthorRef: UnwrapRef<typeof import('./src/utils/currentAccount')['normalizeAuthorRef']>
     readonly normalizeBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']>
     readonly normalizeDocumentSourceModes: UnwrapRef<typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>

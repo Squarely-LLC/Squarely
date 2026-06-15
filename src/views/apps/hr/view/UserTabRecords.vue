@@ -2,6 +2,7 @@
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, ref } from "vue";
 import { useEmployeesStore } from "../../../../stores/employees";
+import { normalizeAuthorRef } from "@/utils/currentAccount";
 
 const props = defineProps({
   user: { type: Object as () => any, required: false },
@@ -189,6 +190,7 @@ async function handleSaveRecord(payload: any) {
     if (!record) return;
     const normalized = {
       ...record,
+      author: normalizeAuthorRef(record.author),
       id:
         record.id ??
         payload?.id ??

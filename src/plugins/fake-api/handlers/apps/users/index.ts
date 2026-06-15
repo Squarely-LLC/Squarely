@@ -16,6 +16,9 @@ const normalizeEmail = (email?: string | null) =>
     .trim()
     .toLowerCase();
 
+const usernameFromEmail = (email: string) =>
+  email.split("@")[0]?.replace(/[^a-z0-9_.-]/gi, "") || "user";
+
 const toTableUser = (user: AccountUserRecord) => {
   const state = loadAccountRoleState();
   const role = state.roles.find((entry) => entry.id === user.roleId);
@@ -28,6 +31,7 @@ const toTableUser = (user: AccountUserRecord) => {
     country: "",
     currentPlan: user.temporaryPassword ? "temporary password" : "standard",
     billing: user.isMaster ? "Master Account" : "Center Account",
+    temporaryPasswordValue: user.temporaryPassword ? user.password : null,
   };
 };
 
@@ -107,6 +111,80 @@ export const handlerAppsUsers = [
     saveAccountRoleState(state);
 
     return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.put<PathParams>("/api/apps/users/:id", async ({ params, request }) => {
+    const payload = (await request.json()) as Partial<AccountUserRecord> & {
+      role?: string;
+    };
+    const state = loadAccountRoleState();
+    const index = state.users.findIndex(
+      (entry) => String(entry.id) === String(params.id),
+    );
+    if (index === -1)
+      return HttpResponse.json({ message: "User not found" }, { status: 404 });
+
+    const user = state.users[index];
+    const role =
+      payload.roleId || payload.role
+        ? state.roles.find((entry) => entry.id === payload.roleId) ||
+          state.roles.find((entry) => entry.name === payload.role)
+        : state.roles.find((entry) => entry.id === user.roleId);
+
+    if (!role)
+      return HttpResponse.json(
+        { message: "Role is required." },
+        { status: 400 },
+      );
+
+    if (user.isMaster) {
+      if (role.id !== user.roleId)
+        return HttpResponse.json(
+          { message: "The master account role cannot be changed." },
+          { status: 403 },
+        );
+      if (payload.status && payload.status !== user.status)
+        return HttpResponse.json(
+          { message: "The master account cannot be deactivated." },
+          { status: 403 },
+        );
+    }
+
+    const email =
+      payload.email !== undefined ? normalizeEmail(payload.email) : user.email;
+    if (!email)
+      return HttpResponse.json(
+        { message: "Email is required." },
+        { status: 400 },
+      );
+    if (
+      email !== normalizeEmail(user.email) &&
+      state.users.some(
+        (entry) => entry.id !== user.id && normalizeEmail(entry.email) === email,
+      )
+    )
+      return HttpResponse.json(
+        { message: "A user with this email already exists." },
+        { status: 409 },
+      );
+
+    user.fullName =
+      payload.fullName !== undefined
+        ? String(payload.fullName || email).trim()
+        : user.fullName;
+    user.email = email;
+    user.username = usernameFromEmail(email);
+    user.roleId = role.id;
+    user.status = payload.status || user.status;
+    if (payload.avatar !== undefined) user.avatar = payload.avatar || null;
+    if (payload.password && String(payload.password).trim()) {
+      user.password = String(payload.password).trim();
+      user.temporaryPassword = payload.temporaryPassword ?? true;
+    }
+    user.updatedAt = new Date().toISOString();
+    saveAccountRoleState(state);
+
+    return HttpResponse.json(toTableUser(user));
   }),
 
   http.post("/api/apps/users", async ({ request }) => {
