@@ -46,14 +46,14 @@ const C: Record<string, ContactRef> = new Proxy(
       const id = nameToId[prop];
       return id ? contactRef(id) : undefined;
     },
-  }
+  },
 ) as Record<string, ContactRef>;
 
 const employeePersonIdByLegacyId: Record<number, number> = {
   1: 1,
   2: 2,
-  3: 6,
-  4: 18,
+  3: 3,
+  4: 4,
 };
 
 const employeeRef = (legacyEmployeeId: number): ContactRef => {

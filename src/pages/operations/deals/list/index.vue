@@ -221,18 +221,15 @@ const getDealCollaboratorEntry = (value: number | string) => {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
 
-  if (raw.startsWith("contact:")) {
-    const contact = getContactEntry(raw.slice("contact:".length));
+  const legacyEmployeeAliases: Record<string, number> = {
+    "6": 3,
+    "18": 4,
+  };
 
-    return contact
-      ? {
-          name: contact.name,
-          picture: contact.picture,
-        }
-      : null;
-  }
+  if (raw.startsWith("contact:")) return null;
 
-  const employee = employeeDirectory.value.get(Number(value));
+  const employeeId = legacyEmployeeAliases[raw] ?? Number(value);
+  const employee = employeeDirectory.value.get(employeeId);
 
   return employee ?? null;
 };

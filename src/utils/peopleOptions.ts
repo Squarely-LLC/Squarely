@@ -88,6 +88,10 @@ const optionFromPerson = (
   email: person.email,
   avatar: person.picture ?? null,
   avatarUrl: person.picture ?? null,
+  contactId:
+    person.legacyContactId ?? (person.crmProfile ? person.id : undefined),
+  employeeId:
+    person.legacyEmployeeId ?? (person.hrProfile ? person.id : undefined),
 });
 
 export const getContactRefs = () =>
@@ -182,6 +186,8 @@ export const resolvePeopleSelection = (
     (option) =>
       String(option.id) === String(value) ||
       String(option.id) === unprefixed ||
+      String(option.contactId ?? "") === unprefixed ||
+      String(option.employeeId ?? "") === unprefixed ||
       String((option as PeopleSelectOption).value) === raw,
   );
 

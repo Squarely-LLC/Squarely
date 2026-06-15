@@ -45,7 +45,7 @@ export const db: DB = {
       stage: "Negotation",
       important: true,
       location: "Dubai",
-      collaborators: [1, 2, 6],
+      collaborators: [1, 2, 3],
       note: "Client wants phased delivery around store launch.",
       customFieldValues: {
         additional_field_1: 15880,
@@ -218,7 +218,7 @@ export const db: DB = {
       stage: "Pre-Sale",
       important: false,
       location: "Riyadh",
-      collaborators: [2, 18],
+      collaborators: [2, 4],
       note: "Pending final material palette approval.",
       customFieldValues: {
         additional_field_1: 4280,
@@ -338,7 +338,7 @@ export const db: DB = {
       stage: "Active",
       important: true,
       location: "Online",
-      collaborators: [1, 6, 18],
+      collaborators: [1, 3, 4],
       note: "Fast turnaround requested for June activation.",
       customFieldValues: {
         additional_field_1: 7680,
@@ -466,9 +466,7 @@ export const db: DB = {
           note: "Indoor planter set with liners for lobbies, corridors, and breakout spaces.",
         },
       ],
-      salesTasks: [
-        salesTask(1, "Confirm retainer scope", "+1 week", "", 1, 1),
-      ],
+      salesTasks: [salesTask(1, "Confirm retainer scope", "+1 week", "", 1, 1)],
       documents: [
         {
           id: 1,

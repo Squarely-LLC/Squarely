@@ -1162,26 +1162,22 @@ const resolveDealCollaborator = (value: number | string) => {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
 
-  if (raw.startsWith("contact:")) {
-    const contactId = Number(raw.slice("contact:".length));
-    const contact = contactsStore.byId(contactId);
+  const legacyEmployeeAliases: Record<string, number> = {
+    "6": 3,
+    "18": 4,
+  };
 
-    return {
-      id: raw,
-      name: contact?.fullName || `Contact ${contactId}`,
-      avatarUrl: contact?.picture || null,
-      type: "contact" as const,
-      contactId,
-    };
-  }
+  if (raw.startsWith("contact:")) return null;
 
-  const employeeId = Number(value);
+  const employeeId = legacyEmployeeAliases[raw] ?? Number(value);
   const employee = employeesStore.byId(employeeId);
+
+  if (!employee) return null;
 
   return {
     id: employeeId,
-    name: employee?.fullName || `Employee ${employeeId}`,
-    avatarUrl: employee?.picture || null,
+    name: employee.fullName,
+    avatarUrl: employee.picture || null,
     type: "employee" as const,
     employeeId,
   };
@@ -1207,14 +1203,7 @@ const dealEmployeeCollaborators = computed(
               name: collaborator.name,
               avatarUrl: collaborator.avatarUrl,
               type: collaborator.type,
-              employeeId:
-                collaborator.type === "employee"
-                  ? collaborator.employeeId
-                  : undefined,
-              contactId:
-                collaborator.type === "contact"
-                  ? collaborator.contactId
-                  : undefined,
+              employeeId: collaborator.employeeId,
             }
           : null;
       })
@@ -1222,9 +1211,8 @@ const dealEmployeeCollaborators = computed(
       id: number | string;
       name: string;
       avatarUrl: string | null;
-      type: "contact" | "employee";
+      type: "employee";
       employeeId?: number;
-      contactId?: number;
     }>,
 );
 
@@ -1324,9 +1312,8 @@ const dealLinkedEntities = computed(() => {
       name: collaborator.name,
       avatarUrl: collaborator.avatarUrl,
       type: collaborator.type,
-      contactId: collaborator.contactId,
       employeeId: collaborator.employeeId,
-      roles: [collaborator.type] as ["contact" | "employee"],
+      roles: ["employee"] as ["employee"],
     });
   });
 

@@ -16,6 +16,7 @@ import {
   getContactOptions,
   getEmployeeOptions,
   getSalesPeopleOptions,
+  type PeopleSelectOption,
 } from "@/utils/peopleOptions";
 import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
 import { City, Country } from "country-state-city";
@@ -269,6 +270,72 @@ const defaultCreatorValue = computed(() => {
   );
 });
 
+const defaultCollaboratorValue = computed(() => {
+  const displayName = currentUserDisplayName.value;
+  const matchCollaborator = allCollaboratorOptions.value.find(
+    (option) => option.title.trim().toLowerCase() === displayName,
+  );
+
+  return (
+    matchCollaborator?.value ?? allCollaboratorOptions.value[0]?.value ?? null
+  );
+});
+
+const canonicalEmployeeAliases: Record<string, number> = {
+  "6": 3,
+  "18": 4,
+};
+
+const findOptionByValue = (
+  value: number | string | null | undefined,
+  options: PeopleSelectOption[],
+) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const unprefixed = raw.startsWith("contact:")
+    ? raw.slice("contact:".length)
+    : raw;
+  const alias = canonicalEmployeeAliases[unprefixed];
+
+  return (
+    options.find(
+      (option) =>
+        String(option.value) === raw ||
+        String(option.value) === unprefixed ||
+        String(option.id ?? "") === unprefixed ||
+        String(option.employeeId ?? "") === unprefixed ||
+        (alias !== undefined &&
+          (String(option.value) === String(alias) ||
+            String(option.id ?? "") === String(alias) ||
+            String(option.employeeId ?? "") === String(alias))),
+    ) ?? null
+  );
+};
+
+const normalizeCollaborators = (
+  values: unknown,
+  options = allCollaboratorOptions.value,
+) => {
+  if (!Array.isArray(values)) return [];
+
+  const seen = new Set<string>();
+  const normalized: Array<number | string> = [];
+
+  values.forEach((value) => {
+    const option = findOptionByValue(value as number | string, options);
+    if (!option) return;
+
+    const key = String(option.value);
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    normalized.push(option.value);
+  });
+
+  return normalized;
+};
+
 const selectedSalesman = computed({
   get: () => localDeal.value.salesman ?? null,
   set: (value: number | string | null) => {
@@ -403,7 +470,8 @@ const getTodayDateValue = () => {
 };
 
 const buildEmptyDeal = (): Partial<DealProperties> => {
-  const creator = defaultCreatorValue.value;
+  const salesman = defaultCreatorValue.value;
+  const collaborator = defaultCollaboratorValue.value;
 
   return {
     name: "",
@@ -413,13 +481,13 @@ const buildEmptyDeal = (): Partial<DealProperties> => {
     projectName: null,
     relatedTo: null,
     linkedJobId: null,
-    salesman: creator,
+    salesman,
     type: typeOptions.value[0] || null,
     estimatedDeliveryDate: getTodayDateValue(),
     stage: stageOptions.value[0] || null,
     important: false,
     location: defaultLocation.value || null,
-    collaborators: creator ? [creator] : [],
+    collaborators: collaborator ? [collaborator] : [],
     note: "",
     customFieldValues: buildDefaultCustomFieldValues(),
   };
@@ -434,9 +502,7 @@ const sanitiseDeal = (deal: DealProperties | null): Partial<DealProperties> => {
     ...raw,
     name: raw.name || "",
     amount: raw.amount ?? null,
-    collaborators: Array.isArray(raw.collaborators)
-      ? [...raw.collaborators]
-      : [],
+    collaborators: normalizeCollaborators(raw.collaborators),
     projectCode: raw.projectCode || null,
     projectName: raw.projectName || null,
     linkedJobId: raw.linkedJobId ?? null,
@@ -568,6 +634,7 @@ const onCancel = () => {
 
 const buildSubmitPayload = (): Partial<DealProperties> => ({
   ...localDeal.value,
+  collaborators: normalizeCollaborators(localDeal.value.collaborators),
   location: composeLocation() || null,
   customFieldValues: buildDefaultCustomFieldValues(
     localDeal.value.customFieldValues,
