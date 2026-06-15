@@ -9,6 +9,10 @@ import type {
 } from "@/data/schema";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import {
+  getSignedInAuthorRef,
+  normalizeAuthorRef,
+} from "@/utils/currentAccount";
 import { getEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
 import { formatSystemDate } from "@core/utils/formatters";
 import { storeToRefs } from "pinia";
@@ -60,8 +64,7 @@ const resolveAssignedContact = (value: number | string): ContactRef => {
 };
 const { all } = storeToRefs(todosStore); // reactive list from store
 
-// optional: current author to display (use an email as the name to match the screenshot)
-const CURRENT_AUTHOR: ContactRef = { id: "me", name: "test@squarely.app" };
+const currentAuthor = computed<ContactRef>(() => getSignedInAuthorRef());
 
 function openMessageDialog(t: ToDo) {
   msgTodo.value = t;
@@ -693,7 +696,7 @@ function addMessageToTodo(payload: {
     : [];
   messages.push({
     id: payload.messageId ?? Date.now(),
-    author: payload.author,
+    author: normalizeAuthorRef(payload.author ?? currentAuthor.value),
     body,
     createdAt: new Date().toISOString(),
     isRead: true,
@@ -724,6 +727,7 @@ function onMessageEdit(payload: {
         String(message.id) === String(payload.messageId)
           ? {
               ...message,
+              author: normalizeAuthorRef(message.author),
               body,
               editedAt: new Date().toISOString(),
             }
@@ -1325,13 +1329,13 @@ function onRowClick(e: MouseEvent, payload: any) {
     <WriteMessageDialog
       v-model="isMsgDialogOpen"
       :todo="msgTodo"
-      :author="CURRENT_AUTHOR"
+      :author="currentAuthor"
     />
 
     <MessageDrawer
       v-model:is-drawer-open="isMessageDrawerOpen"
       :todo="messageDrawerTodo"
-      :author="CURRENT_AUTHOR"
+      :author="currentAuthor"
       @send="onMessageSend"
       @edit-message="onMessageEdit"
       @toggle-read="onMessageReadStateChange"

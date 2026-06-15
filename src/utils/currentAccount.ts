@@ -18,8 +18,15 @@ export interface SignedInIdentity {
 const isPlaceholderAuthor = (value: any) => {
   const id = String(value?.id ?? value ?? "").trim().toLowerCase();
   const name = String(value?.name ?? "").trim().toLowerCase();
+  const email = String(value?.email ?? "").trim().toLowerCase();
 
-  return id === "me" || name === "you" || name === "me";
+  return (
+    id === "me" ||
+    name === "you" ||
+    name === "me" ||
+    name === "test@squarely.app" ||
+    email === "test@squarely.app"
+  );
 };
 
 export const getSignedInIdentity = (): SignedInIdentity => {
