@@ -45,7 +45,7 @@ export const db: DB = {
       stage: "Negotation",
       important: true,
       location: "Dubai",
-      collaborators: [1, 2, 3],
+      collaborators: [1, 2, 6],
       note: "Client wants phased delivery around store launch.",
       customFieldValues: {
         additional_field_1: 15880,
@@ -212,13 +212,13 @@ export const db: DB = {
       projectName: "Riyadh North Showroom",
       relatedTo: 5,
       linkedJobId: null,
-      salesman: 2,
+      salesman: 5,
       type: "Wholesale",
       estimatedDeliveryDate: "2026-06-05",
       stage: "Pre-Sale",
       important: false,
       location: "Riyadh",
-      collaborators: [2, 4],
+      collaborators: [2, 18],
       note: "Pending final material palette approval.",
       customFieldValues: {
         additional_field_1: 4280,
@@ -338,7 +338,7 @@ export const db: DB = {
       stage: "Active",
       important: true,
       location: "Online",
-      collaborators: [1, 3, 4],
+      collaborators: [1, 6, 18],
       note: "Fast turnaround requested for June activation.",
       customFieldValues: {
         additional_field_1: 7680,

@@ -20,7 +20,7 @@ export const db: DB = {
       type: "Architecture",
       flag: "Normal",
       relatedTo: 1,
-      collaborators: [1, 3, 6],
+      collaborators: [1, 6, 18],
       note: "Concept development for mixed-use complex with hospitality component.",
       stakeholders: [
         { id: 1, contactId: 1, role: "Client" },
@@ -99,7 +99,7 @@ export const db: DB = {
       type: "Stands & Events",
       flag: "High",
       relatedTo: 5,
-      collaborators: [2, 5, 8],
+      collaborators: [2, 18],
       note: "Immersive pavilion for tech expo with interactive lighting.",
       stakeholders: [
         { id: 1, contactId: 5, role: "Primary Sponsor" },
@@ -159,7 +159,7 @@ export const db: DB = {
       type: "Interior",
       flag: "Low",
       relatedTo: 3,
-      collaborators: [3, 7, 9],
+      collaborators: [1, 6],
       note: "Phased renovation of executive floors while occupied.",
       stakeholders: [
         { id: 1, contactId: 3, role: "Owner" },

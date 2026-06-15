@@ -1,4 +1,5 @@
 import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
+import { db as employeesDb } from "@/plugins/fake-api/handlers/apps/employees/db";
 import { db as dealsDb } from "@/plugins/fake-api/handlers/operations/deals/db";
 import type { ContactRef, Meeting, ToDo } from "./schema";
 
@@ -48,6 +49,36 @@ const C: Record<string, ContactRef> = new Proxy(
   }
 ) as Record<string, ContactRef>;
 
+const employeePersonIdByLegacyId: Record<number, number> = {
+  1: 1,
+  2: 2,
+  3: 6,
+  4: 18,
+};
+
+const employeeRef = (legacyEmployeeId: number): ContactRef => {
+  const employee = employeesDb.users.find(
+    (user) => Number(user.id) === Number(legacyEmployeeId),
+  );
+  const personId =
+    employeePersonIdByLegacyId[legacyEmployeeId] ?? legacyEmployeeId;
+
+  return employee
+    ? {
+        id: personId,
+        name: employee.fullName,
+        avatarUrl: employee.picture || undefined,
+      }
+    : { id: personId, name: `Person #${personId}` };
+};
+
+const E = {
+  lina: employeeRef(1),
+  farah: employeeRef(2),
+  daniel: employeeRef(3),
+  rana: employeeRef(4),
+};
+
 // shared meeting time helpers
 const MEET_NOW = new Date();
 const atMin = (mins: number) => {
@@ -80,7 +111,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 501,
     title: "Fix the PC build",
-    collaborators: [C.ted, C.dana, C.pierre, C.alex],
+    collaborators: [E.lina, E.farah, E.daniel, E.rana],
     dueAt: dateOnlyISO(0),
     priority: "normal",
     important: false,
@@ -89,7 +120,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "501-1",
         title: "Replace AIO thermal pads",
-        collaborators: [C.pierre, C.alex],
+        collaborators: [E.daniel, E.rana],
         dueAt: dateOnlyISO(0),
         priority: "high",
         status: "pending",
@@ -100,7 +131,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "501-2",
         title: "Retest temps",
-        collaborators: [C.ted],
+        collaborators: [E.lina],
         dueAt: dateOnlyISO(1),
         priority: "normal",
         status: "pending",
@@ -149,7 +180,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 502,
     title: "Inspect Zigbee network status",
-    collaborators: [C.pierre, C.dana, C.ted],
+    collaborators: [E.daniel, E.farah, E.lina],
     dueAt: dateOnlyISO(1),
     priority: "high",
     important: true,
@@ -158,7 +189,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "502-1",
         title: "Check channel utilization",
-        collaborators: [C.alex],
+        collaborators: [E.rana],
         dueAt: dateOnlyISO(2),
         priority: "normal",
         status: "pending",
@@ -218,7 +249,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 503,
     title: "QA Medusa checkout",
-    collaborators: [C.lina, C.omar, C.alex, C.nora],
+    collaborators: [E.lina, E.rana, E.farah],
     dueAt: dateOnlyISO(5),
     priority: "high",
     important: false,
@@ -227,7 +258,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "503-1",
         title: "Mock payment provider",
-        collaborators: [C.omar],
+        collaborators: [E.lina],
         dueAt: dateOnlyISO(2),
         priority: "high",
         status: "pending",
@@ -287,7 +318,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 504,
     title: "Write feature documentation",
-    collaborators: [C.dana, C.ted, C.alex, C.omar, C.pierre],
+    collaborators: [E.farah, E.lina, E.rana, E.daniel],
     dueAt: dateOnlyISO(1),
     priority: "high",
     important: true,
@@ -296,7 +327,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "504-1",
         title: "Update screenshots",
-        collaborators: [C.dana, C.pierre],
+        collaborators: [E.farah, E.daniel],
         dueAt: dateOnlyISO(1),
         priority: "low",
         status: "completed",
@@ -307,7 +338,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "504-2",
         title: "Update Tables",
-        collaborators: [C.dana],
+        collaborators: [E.farah],
         dueAt: dateOnlyISO(1),
         priority: "high",
         status: "for_review",
@@ -388,7 +419,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 505,
     title: "Prepare release notes",
-    collaborators: [C.alex, C.nora],
+    collaborators: [E.rana, E.farah],
     dueAt: dateOnlyISO(4),
     priority: "normal",
     important: false,
@@ -397,7 +428,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "505-1",
         title: "Collect merged PRs",
-        collaborators: [C.alex],
+        collaborators: [E.rana],
         dueAt: dateOnlyISO(3),
         priority: "low",
         status: "pending",
@@ -408,7 +439,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "505-2",
         title: "Write highlights",
-        collaborators: [C.nora],
+        collaborators: [E.farah],
         dueAt: dateOnlyISO(4),
         priority: "normal",
         status: "pending",
@@ -457,7 +488,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 506,
     title: "Refactor auth middleware",
-    collaborators: [C.ted, C.pierre],
+    collaborators: [E.lina, E.daniel],
     dueAt: dateOnlyISO(-1),
     priority: "high",
     important: false,
@@ -466,7 +497,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "506-1",
         title: "Extract token parser",
-        collaborators: [C.ted],
+        collaborators: [E.lina],
         dueAt: dateOnlyISO(-1),
         priority: "normal",
         status: "in_progress",
@@ -477,7 +508,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "506-2",
         title: "Add unit tests",
-        collaborators: [C.pierre],
+        collaborators: [E.daniel],
         dueAt: dateOnlyISO(1),
         priority: "high",
         status: "pending",
@@ -526,7 +557,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 507,
     title: "Add SSO to admin",
-    collaborators: [C.dana, C.pierre],
+    collaborators: [E.farah, E.daniel],
     dueAt: dateOnlyISO(7),
     priority: "normal",
     important: false,
@@ -535,7 +566,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "507-1",
         title: "SAML metadata import",
-        collaborators: [C.dana],
+        collaborators: [E.farah],
         dueAt: dateOnlyISO(6),
         priority: "normal",
         status: "pending",
@@ -546,7 +577,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "507-2",
         title: "SP initiated login",
-        collaborators: [C.pierre],
+        collaborators: [E.daniel],
         dueAt: dateOnlyISO(8),
         priority: "normal",
         status: "for_review",
@@ -595,7 +626,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 508,
     title: "Create onboarding checklist",
-    collaborators: [C.lina, C.dana],
+    collaborators: [E.lina, E.farah],
     dueAt: dateOnlyISO(12),
     priority: "normal",
     important: false,
@@ -604,7 +635,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "508-1",
         title: "Draft steps",
-        collaborators: [C.dana],
+        collaborators: [E.farah],
         dueAt: dateOnlyISO(10),
         priority: "normal",
         status: "for_review",
@@ -615,7 +646,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "508-2",
         title: "Checklist UI",
-        collaborators: [C.lina],
+        collaborators: [E.lina],
         dueAt: dateOnlyISO(12),
         priority: "low",
         status: "pending",
@@ -664,7 +695,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 509,
     title: "Add end-to-end tests",
-    collaborators: [C.ted, C.dana],
+    collaborators: [E.lina, E.farah],
     dueAt: dateOnlyISO(13),
     priority: "high",
     important: false,
@@ -673,7 +704,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "509-1",
         title: "Checkout flow",
-        collaborators: [C.ted],
+        collaborators: [E.lina],
         dueAt: dateOnlyISO(12),
         priority: "high",
         status: "for_review",
@@ -684,7 +715,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "509-2",
         title: "Account creation",
-        collaborators: [C.dana],
+        collaborators: [E.farah],
         dueAt: dateOnlyISO(14),
         priority: "normal",
         status: "pending",
@@ -733,7 +764,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 510,
     title: "Warehouse stock sync",
-    collaborators: [C.omar, C.pierre],
+    collaborators: [E.lina, E.daniel],
     dueAt: dateOnlyISO(16),
     priority: "high",
     important: false,
@@ -742,7 +773,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "510-1",
         title: "Webhook receiver",
-        collaborators: [C.omar],
+        collaborators: [E.lina],
         dueAt: dateOnlyISO(15),
         priority: "high",
         status: "in_progress",
@@ -753,7 +784,7 @@ export const SeedTodos: ToDo[] = [
       {
         id: "510-2",
         title: "Reconciliation job",
-        collaborators: [C.pierre],
+        collaborators: [E.daniel],
         dueAt: dateOnlyISO(17),
         priority: "normal",
         status: "pending",
@@ -850,7 +881,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 512,
     title: "Optimize product search",
-    collaborators: [C.pierre],
+    collaborators: [E.daniel],
     dueAt: dateOnlyISO(14),
     priority: "high",
     important: false,
@@ -896,7 +927,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 513,
     title: "Set up error budgets",
-    collaborators: [C.dana],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(6),
     priority: "low",
     important: false,
@@ -942,7 +973,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 514,
     title: "Migrate icons to Tabler 2",
-    collaborators: [C.nora, C.alex],
+    collaborators: [E.farah, E.rana],
     dueAt: dateOnlyISO(11),
     priority: "normal",
     important: false,
@@ -988,7 +1019,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 515,
     title: "Tune Postgres vacuum",
-    collaborators: [C.pierre],
+    collaborators: [E.daniel],
     dueAt: dateOnlyISO(-2),
     priority: "normal",
     important: false,
@@ -1034,7 +1065,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 516,
     title: "Clean up flaky specs",
-    collaborators: [C.alex],
+    collaborators: [E.rana],
     dueAt: dateOnlyISO(18),
     priority: "low",
     important: false,
@@ -1080,7 +1111,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 517,
     title: "Create Terraform modules",
-    collaborators: [C.omar],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(20),
     priority: "normal",
     important: false,
@@ -1126,7 +1157,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 518,
     title: "Rotate API keys",
-    collaborators: [C.ted],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(2),
     priority: "high",
     important: false,
@@ -1172,7 +1203,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 519,
     title: "Document webhooks",
-    collaborators: [C.dana, C.alex],
+    collaborators: [E.farah, E.rana],
     dueAt: dateOnlyISO(-5),
     priority: "low",
     important: false,
@@ -1218,7 +1249,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 520,
     title: "Add feature flags",
-    collaborators: [C.alex],
+    collaborators: [E.rana],
     dueAt: dateOnlyISO(1),
     priority: "normal",
     important: false,
@@ -1264,7 +1295,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 521,
     title: "Create backups playbook",
-    collaborators: [C.pierre, C.omar],
+    collaborators: [E.daniel, E.lina],
     dueAt: dateOnlyISO(21),
     priority: "normal",
     important: false,
@@ -1310,7 +1341,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 522,
     title: "Accessibility sweep",
-    collaborators: [C.nora],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(19),
     priority: "low",
     important: false,
@@ -1356,7 +1387,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 523,
     title: "Improve build caching",
-    collaborators: [C.ted],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(15),
     priority: "normal",
     important: false,
@@ -1402,7 +1433,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 524,
     title: "Add email templates",
-    collaborators: [C.dana],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(8),
     priority: "low",
     important: false,
@@ -1448,7 +1479,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 525,
     title: "Finalize pricing page",
-    collaborators: [C.lina, C.alex],
+    collaborators: [E.lina, E.rana],
     dueAt: dateOnlyISO(9),
     priority: "normal",
     important: false,
@@ -1494,7 +1525,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 526,
     title: "Add export to CSV",
-    collaborators: [C.alex],
+    collaborators: [E.rana],
     dueAt: dateOnlyISO(6),
     priority: "normal",
     important: false,
@@ -1540,7 +1571,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 527,
     title: "Set up alert routing",
-    collaborators: [C.omar],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(23),
     priority: "normal",
     important: false,
@@ -1586,7 +1617,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 528,
     title: "Kubernetes liveness probes",
-    collaborators: [C.omar, C.pierre],
+    collaborators: [E.lina, E.daniel],
     dueAt: dateOnlyISO(11),
     priority: "high",
     important: false,
@@ -1632,7 +1663,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 529,
     title: "Observability dashboard",
-    collaborators: [C.dana, C.ted],
+    collaborators: [E.farah, E.lina],
     dueAt: dateOnlyISO(13),
     priority: "normal",
     important: false,
@@ -1678,7 +1709,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 530,
     title: "Optimistic UI updates",
-    collaborators: [C.alex],
+    collaborators: [E.rana],
     dueAt: dateOnlyISO(4),
     priority: "low",
     important: false,
@@ -1770,7 +1801,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 532,
     title: "Admin audit logs",
-    collaborators: [C.ted, C.pierre],
+    collaborators: [E.lina, E.daniel],
     dueAt: dateOnlyISO(24),
     priority: "high",
     important: false,
@@ -1816,7 +1847,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 533,
     title: "Payment retries strategy",
-    collaborators: [C.omar],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(5),
     priority: "normal",
     important: false,
@@ -1862,7 +1893,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 534,
     title: "Customer import wizard",
-    collaborators: [C.lina],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(30),
     priority: "normal",
     important: false,
@@ -1954,7 +1985,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 536,
     title: "GTM tag audit",
-    collaborators: [C.nora],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(3),
     priority: "low",
     important: false,
@@ -2000,7 +2031,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 537,
     title: "Cookie consent update",
-    collaborators: [C.nora, C.alex],
+    collaborators: [E.farah, E.rana],
     dueAt: dateOnlyISO(2),
     priority: "normal",
     important: false,
@@ -2046,7 +2077,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 538,
     title: "Storefront performance pass",
-    collaborators: [C.pierre, C.lina],
+    collaborators: [E.daniel, E.lina],
     dueAt: dateOnlyISO(27),
     priority: "high",
     important: false,
@@ -2092,7 +2123,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 539,
     title: "Invoice PDF branding",
-    collaborators: [C.lina],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(7),
     priority: "low",
     important: false,
@@ -2138,7 +2169,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 540,
     title: "Upgrade Node runtime",
-    collaborators: [C.ted],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(31),
     priority: "normal",
     important: true,
@@ -2230,7 +2261,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 542,
     title: "Abandoned cart email copy",
-    collaborators: [C.dana],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(3),
     priority: "low",
     important: false,
@@ -2322,7 +2353,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 544,
     title: "Weekly maintenance window",
-    collaborators: [C.omar],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(9),
     priority: "normal",
     important: false,
@@ -2368,7 +2399,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 545,
     title: "Clarify refund policy",
-    collaborators: [C.dana],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(12),
     priority: "low",
     important: false,
@@ -2414,7 +2445,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 546,
     title: "Evaluate Sentry sampling",
-    collaborators: [C.pierre],
+    collaborators: [E.daniel],
     dueAt: dateOnlyISO(4),
     priority: "normal",
     important: true,
@@ -2460,7 +2491,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 547,
     title: "Switch to pnpm in CI",
-    collaborators: [C.alex],
+    collaborators: [E.rana],
     dueAt: dateOnlyISO(2),
     priority: "normal",
     important: false,
@@ -2552,7 +2583,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 549,
     title: "Refine 404 page",
-    collaborators: [C.lina],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(5),
     priority: "low",
     important: false,
@@ -2598,7 +2629,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 550,
     title: "Sync billing addresses",
-    collaborators: [C.dana],
+    collaborators: [E.farah],
     dueAt: dateOnlyISO(8),
     priority: "normal",
     important: true,
@@ -2762,7 +2793,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 553,
     title: "MFA enrollment stats",
-    collaborators: [C.ted],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(6),
     priority: "low",
     important: false,
@@ -2854,7 +2885,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 555,
     title: "Cleanup old S3 buckets",
-    collaborators: [C.omar],
+    collaborators: [E.lina],
     dueAt: dateOnlyISO(29),
     priority: "normal",
     important: true,
@@ -2900,7 +2931,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 560,
     title: "Confirm final wall finish samples",
-    collaborators: [C.dana, C.ted],
+    collaborators: [E.farah, E.lina],
     dueAt: dateOnlyISO(2),
     afterWhen: "+2 days",
     startTrigger: { type: "time", goalId: null, taskId: null },
@@ -2944,7 +2975,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 562,
     title: "Confirm maintenance access windows",
-    collaborators: [C.omar, C.nora],
+    collaborators: [E.lina, E.farah],
     dueAt: dateOnlyISO(3),
     afterWhen: "+3 days",
     startTrigger: { type: "time", goalId: null, taskId: null },
@@ -2982,7 +3013,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 563,
     title: "Collect event site readiness checklist",
-    collaborators: [C.lina, C.alex],
+    collaborators: [E.lina, E.rana],
     dueAt: dateOnlyISO(1),
     afterWhen: "+1 day",
     startTrigger: { type: "time", goalId: null, taskId: null },
@@ -3243,4 +3274,3 @@ export const SeedMeetings: Meeting[] = [
     endAt: endAtFrom(atMin(9 * 60), 25),
   },
 ];
-
