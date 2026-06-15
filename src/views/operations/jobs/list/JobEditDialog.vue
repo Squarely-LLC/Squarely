@@ -8,7 +8,10 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
-import { useContactsStore } from "@/stores/contacts";
+import {
+  getEmployeeOptions,
+  getSalesContactOptions,
+} from "@/utils/peopleOptions";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 interface Props {
@@ -28,16 +31,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 const emit = defineEmits<Emit>();
 const configStore = useConfigStore();
-const contactsStore = useContactsStore();
 configStore.init();
-contactsStore.init();
 
-const contactOptions = computed(() =>
-  contactsStore.all.map((contact) => ({
-    title: contact.fullName,
-    value: contact.id,
-  })),
-);
+const relatedContactOptions = computed(() => getSalesContactOptions());
+const collaboratorOptions = computed(() => getEmployeeOptions());
 
 const stageOptions = computed(() => {
   return (configStore.configurations?.crm?.jobStages || [
@@ -193,7 +190,7 @@ const onCancel = () => {
                 v-model="localJob.relatedTo"
                 label="Related To"
                 placeholder="Select Contact"
-                :items="contactOptions"
+                :items="relatedContactOptions"
                 clearable
                 clear-icon="tabler-x"
               />
@@ -203,7 +200,7 @@ const onCancel = () => {
                 v-model="localJob.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"
-                :items="contactOptions"
+                :items="collaboratorOptions"
                 multiple
                 clearable
                 clear-icon="tabler-x"

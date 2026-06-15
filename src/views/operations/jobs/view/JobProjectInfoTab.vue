@@ -7,9 +7,12 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
-import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import {
+  getEmployeeOptions,
+  getSalesContactOptions,
+} from "@/utils/peopleOptions";
 import { computed, nextTick, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 interface Props {
@@ -17,10 +20,8 @@ interface Props {
 }
 const props = defineProps<Props>();
 const jobsStore = useJobsStore();
-const contactsStore = useContactsStore();
 const notifications = useNotificationsStore();
 const configStore = useConfigStore();
-contactsStore.init();
 configStore.init();
 
 const stageOptions = computed(() => {
@@ -43,12 +44,8 @@ const typeOptions: JobType[] = [
 ];
 const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
 const job = computed(() => jobsStore.byId(props.jobId));
-const contactOptions = computed(() =>
-  contactsStore.all.map((contact) => ({
-    title: contact.fullName,
-    value: contact.id,
-  })),
-);
+const relatedContactOptions = computed(() => getSalesContactOptions());
+const collaboratorOptions = computed(() => getEmployeeOptions());
 
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
@@ -209,7 +206,7 @@ const onReset = () => {
               v-model="localJob.relatedTo"
               label="Related To"
               placeholder="Select Contact"
-              :items="contactOptions"
+              :items="relatedContactOptions"
               clearable
               clear-icon="tabler-x"
             />
@@ -219,7 +216,7 @@ const onReset = () => {
               v-model="localJob.collaborators"
               label="Collaborators"
               placeholder="Select collaborators"
-              :items="contactOptions"
+              :items="collaboratorOptions"
               multiple
               chips
               closable-chips

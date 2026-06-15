@@ -7,6 +7,7 @@ import type {
 import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { computed, nextTick, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 
@@ -123,13 +124,7 @@ const secondaryConnections = computed(() =>
 
 const contactsStore = useContactsStore();
 
-const contactsOptions = computed(() =>
-  contactsStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  })),
-);
+const contactsOptions = computed(() => getContactAndEmployeeRefs());
 
 // Menu actions for connections (kept minimal — expand as needed)
 const moreList = [
@@ -626,13 +621,12 @@ function openAddTodoDrawerForContact(conn: any) {
   try {
     const initial = {
       title: `Follow up: ${conn.contactName ?? ""}`,
-      collaborators: [
-        {
-          id: conn.contactId,
-          name: conn.contactName ?? "",
-          avatarUrl: conn.picture ?? null,
-        },
-      ],
+      collaborators: [],
+      relatedTo: {
+        id: conn.contactId,
+        name: conn.contactName ?? "",
+        type: "contact",
+      },
     };
 
     // If the component exposes openWith, use it; otherwise set visible and rely on prop handling
@@ -1258,6 +1252,7 @@ function onContactEditSubmit(payload: ContactProperties) {
     ref="addTodoDrawerRef"
     v-model:is-drawer-open="isAddTodoDrawerVisible"
     :collaborators-options="[]"
+    :hide-related-to-field="true"
     @user-data="onTodoCreated"
   />
   <AddMeetingDrawer

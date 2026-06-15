@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
-import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { computed, nextTick, ref, watch } from "vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -61,7 +61,7 @@ const props = withDefaults(
     contacts: () => [],
     source: "contacts",
     lockRelatedTo: false,
-  }
+  },
 );
 
 const emit = defineEmits<{
@@ -72,9 +72,6 @@ const emit = defineEmits<{
 
 const jobsStore = useJobsStore();
 jobsStore.init();
-
-const employeesStore = useEmployeesStore();
-employeesStore.init();
 
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
@@ -90,7 +87,11 @@ const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
 const selectedRelatedKey = ref<string | null>(null);
-const initialRelatedTo = ref<{ id: string | number; name: string; type: string } | null>(null);
+const initialRelatedTo = ref<{
+  id: string | number;
+  name: string;
+  type: string;
+} | null>(null);
 
 // build stable keys so contact/employee ids don't collide
 const contactKey = (id: string | number) => `contact-${id}`;
@@ -98,7 +99,7 @@ const employeeKey = (id: string | number) => `employee-${id}`;
 const combinedKey = (
   contactId?: string | number,
   employeeId?: string | number,
-  name?: string
+  name?: string,
 ) =>
   `both-${contactId ?? "none"}-${employeeId ?? "none"}-${(
     name || ""
@@ -113,30 +114,54 @@ const relatedOptions = computed(() =>
     value: `job-${job.id}`,
     type: "job" as const,
     rawId: job.id,
-  }))
+  })),
 );
 
 // Normalized options for the Linked to dropdown (contacts + employees + both)
 const linkedItems = computed<ContactRef[]>(() => {
-  const contacts = props.contacts.map((contact) => ({
-    ...contact,
-    contactId: contact.id,
-    group: "Contacts",
-    type: "contact" as const,
-    roles: ["contact"] as const,
-    value: contactKey(contact.id),
-  }));
+  const sourceItems = props.contacts.length
+    ? props.contacts
+    : getContactAndEmployeeRefs();
+  const normalizedItems = sourceItems.map((item) => {
+    const type =
+      item.type ??
+      (item.roles?.includes("contact") && item.roles?.includes("employee")
+        ? "employee_contact"
+        : item.roles?.includes("employee")
+          ? "employee"
+          : "contact");
+    const contactId =
+      item.contactId ?? (type !== "employee" ? item.id : undefined);
+    const employeeId =
+      item.employeeId ?? (type !== "contact" ? item.id : undefined);
 
-  const employees = employeesStore.all.map((employee) => ({
-    id: employee.id,
-    employeeId: employee.id,
-    name: employee.fullName,
-    avatarUrl: employee.picture || null,
-    group: "Employees",
-    type: "employee" as const,
-    roles: ["employee"] as const,
-    value: employeeKey(employee.id),
-  }));
+    return {
+      ...item,
+      contactId,
+      employeeId,
+      type,
+      roles:
+        type === "employee_contact"
+          ? (["contact", "employee"] as ("contact" | "employee")[])
+          : type === "employee"
+            ? (["employee"] as ("contact" | "employee")[])
+            : (["contact"] as ("contact" | "employee")[]),
+      group:
+        type === "employee_contact"
+          ? "Employees & Contacts"
+          : type === "employee"
+            ? "Employees"
+            : "Contacts",
+      value:
+        item.value !== undefined && item.value !== null
+          ? String(item.value)
+          : type === "employee_contact"
+            ? combinedKey(contactId, employeeId, item.name)
+            : type === "employee"
+              ? employeeKey(employeeId ?? item.id)
+              : contactKey(contactId ?? item.id),
+    };
+  });
 
   const nameKey = (name?: string | null) =>
     (name || "").toString().trim().toLowerCase();
@@ -146,39 +171,56 @@ const linkedItems = computed<ContactRef[]>(() => {
   const usedEmployees = new Set<string | number>();
 
   const contactMap = new Map<string, ContactRef>();
-  contacts.forEach((c) => {
-    contactMap.set(nameKey(c.name) || String(c.contactId), c);
-  });
+  normalizedItems
+    .filter((item) =>
+      (item.roles as readonly ("contact" | "employee")[] | undefined)?.includes(
+        "contact",
+      ),
+    )
+    .forEach((c) => {
+      contactMap.set(nameKey(c.name) || String(c.contactId), c);
+    });
 
-  employees.forEach((e) => {
-    const key = nameKey(e.name) || String(e.employeeId);
-    const matchingContact = contactMap.get(key);
-    if (matchingContact) {
-      merged.push({
-        id: matchingContact.contactId ?? e.employeeId,
-        contactId: matchingContact.contactId,
-        employeeId: e.employeeId,
-        name: matchingContact.name || e.name,
-        avatarUrl: matchingContact.avatarUrl || e.avatarUrl || null,
-        type: "employee_contact",
-        roles: ["contact", "employee"],
-        group: "Employees & Contacts",
-        value: combinedKey(matchingContact.contactId, e.employeeId, e.name),
-      });
-      usedContacts.add(matchingContact.contactId!);
-      usedEmployees.add(e.employeeId!);
-    }
-  });
+  normalizedItems
+    .filter((item) =>
+      (item.roles as readonly ("contact" | "employee")[] | undefined)?.includes(
+        "employee",
+      ),
+    )
+    .forEach((e) => {
+      const key = nameKey(e.name) || String(e.employeeId);
+      const matchingContact = contactMap.get(key);
+      if (matchingContact && matchingContact.value !== e.value) {
+        merged.push({
+          id: matchingContact.contactId ?? e.employeeId ?? e.id,
+          contactId: matchingContact.contactId,
+          employeeId: e.employeeId,
+          name: matchingContact.name || e.name,
+          avatarUrl: matchingContact.avatarUrl || e.avatarUrl || null,
+          type: "employee_contact",
+          roles: ["contact", "employee"],
+          group: "Employees & Contacts",
+          value: combinedKey(matchingContact.contactId, e.employeeId, e.name),
+        });
+        usedContacts.add(matchingContact.contactId!);
+        usedEmployees.add(e.employeeId!);
+      }
+    });
 
   merged.push(
-    ...contacts.filter((c) => !usedContacts.has(c.contactId!)),
-    ...employees.filter((e) => !usedEmployees.has(e.employeeId!))
+    ...(normalizedItems.filter(
+      (item) =>
+        !usedContacts.has(item.contactId!) &&
+        !usedEmployees.has(item.employeeId!),
+    ) as ContactRef[]),
   );
 
   return [...merged].sort((a, b) =>
-    (a.name || "").toString().localeCompare((b.name || "").toString(), undefined, {
-      sensitivity: "base",
-    })
+    (a.name || "")
+      .toString()
+      .localeCompare((b.name || "").toString(), undefined, {
+        sensitivity: "base",
+      }),
   );
 });
 
@@ -311,7 +353,7 @@ function applyInitial(initial?: any) {
     if (initial.title) subject.value = String(initial.title);
     if (initial.initialStart || initial.start)
       startAt.value = toDateTimeLocalString(
-        initial.initialStart || initial.start
+        initial.initialStart || initial.start,
       );
     if (initial.durationMins) durationMins.value = Number(initial.durationMins);
     if (initial.meetingType) meetingType.value = String(initial.meetingType);
@@ -403,17 +445,17 @@ const linkedContactsPayload = computed<ContactRef[]>(() =>
       roles && roles.length
         ? roles
         : type === "employee_contact"
-        ? (["contact", "employee"] as ("contact" | "employee")[])
-        : type === "employee"
-        ? (["employee"] as ("contact" | "employee")[])
-        : (["contact"] as ("contact" | "employee")[]);
+          ? (["contact", "employee"] as ("contact" | "employee")[])
+          : type === "employee"
+            ? (["employee"] as ("contact" | "employee")[])
+            : (["contact"] as ("contact" | "employee")[]);
 
     const normalizedId =
       type === "employee"
-        ? employeeId ?? rest.id
+        ? (employeeId ?? rest.id)
         : type === "contact"
-        ? contactId ?? rest.id
-        : contactId ?? employeeId ?? rest.id;
+          ? (contactId ?? rest.id)
+          : (contactId ?? employeeId ?? rest.id);
 
     return {
       ...rest,
@@ -423,7 +465,7 @@ const linkedContactsPayload = computed<ContactRef[]>(() =>
       employeeId: employeeId ?? (type !== "contact" ? normalizedId : undefined),
       roles: normalizedRoles,
     };
-  })
+  }),
 );
 
 const required = (value: unknown) =>
@@ -438,8 +480,8 @@ const positiveInteger = (value: unknown) => {
     typeof value === "number"
       ? value
       : typeof value === "string" && value.trim() !== ""
-      ? Number(value)
-      : Number.NaN;
+        ? Number(value)
+        : Number.NaN;
 
   return Number.isFinite(numericValue) && numericValue > 0
     ? true
@@ -452,12 +494,12 @@ const isValidStart = computed(() => {
 });
 
 watch(
-  [() => props.contacts, () => employeesStore.all],
+  [() => props.contacts],
   () => {
     const validKeys = new Set(
       linkedItems.value
         .map((item) => item.value)
-        .filter((v): v is string => !!v)
+        .filter((v): v is string => !!v),
     );
 
     const normalized = selectedLinkedIds.value
@@ -469,7 +511,7 @@ watch(
 
     selectedLinkedIds.value = Array.from(new Set(normalized));
   },
-  { deep: true }
+  { deep: true },
 );
 
 watch(
@@ -482,7 +524,7 @@ watch(
       selectedRelatedKey.value = null;
     }
   },
-  { deep: true }
+  { deep: true },
 );
 
 watch(
@@ -502,7 +544,7 @@ watch(
       nextTick(() => resetForm());
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 function initialiseForm() {
@@ -545,13 +587,13 @@ async function onSubmit() {
 
   const startDate = new Date(startAt.value);
   const endDate = new Date(
-    startDate.getTime() + Number(durationMins.value) * 60_000
+    startDate.getTime() + Number(durationMins.value) * 60_000,
   );
 
   const location = buildLocation();
 
   const relatedOption = relatedOptions.value.find(
-    (opt) => opt.value === selectedRelatedKey.value
+    (opt) => opt.value === selectedRelatedKey.value,
   );
 
   const payload: NewMeetingPayload = {
@@ -610,7 +652,7 @@ function toDateTimeLocalString(input?: string | Date) {
 
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate()
+    date.getDate(),
   )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 </script>
@@ -733,8 +775,8 @@ function toDateTimeLocalString(input?: string | Date) {
                               r === "employee_contact"
                                 ? "Employee & Contact"
                                 : r === "employee"
-                                ? "Employee"
-                                : "Contact"
+                                  ? "Employee"
+                                  : "Contact",
                             )
                             .join(" & ")
                         }}

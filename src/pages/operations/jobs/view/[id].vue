@@ -10,6 +10,10 @@ import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import {
+  getContactAndEmployeeRefs,
+  getEmployeeRefs,
+} from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -217,7 +221,7 @@ const isAddStakeholderDialogVisible = ref(false);
 const confirmDeleteStakeholderVisible = ref(false);
 const deleteStakeholderCandidateId = ref<number | null>(null);
 
-// Contact options for dropdowns
+// People options for drawers
 const contactOptions = computed(() =>
   contactsStore.all.map((c) => ({
     id: c.id,
@@ -225,6 +229,8 @@ const contactOptions = computed(() =>
     avatarUrl: c.picture || null,
   })),
 );
+const taskCollaboratorOptions = computed(() => getEmployeeRefs());
+const meetingContacts = computed(() => getContactAndEmployeeRefs());
 
 // Stakeholder action handlers
 const handleStakeholderTodo = (contact: {
@@ -812,7 +818,7 @@ const closeSnagDrawer = () => {
     <AddNewToDoDrawer
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
-      :collaborators-options="[]"
+      :collaborators-options="taskCollaboratorOptions"
       :initial="addTodoInitial"
       @user-data="onTodoCreated"
     />
@@ -820,7 +826,7 @@ const closeSnagDrawer = () => {
     <EditToDoDrawer
       v-model:is-drawer-open="isEditTodoDrawerVisible"
       :todo="editingTodo"
-      :collaborators-options="contactOptions"
+      :collaborators-options="taskCollaboratorOptions"
       @save="onTodoEdited"
       @saveSteps="onTodoStepsEdited"
     />
@@ -829,7 +835,7 @@ const closeSnagDrawer = () => {
     <AddMeetingDrawer
       ref="addMeetingRef"
       v-model:modelValue="isAddMeetingOpen"
-      :contacts="contactOptions"
+      :contacts="meetingContacts"
       :lock-related-to="lockMeetingRelatedTo"
       @cancel="closeMeetingDrawer"
       @save="onMeetingCreated"
@@ -839,7 +845,7 @@ const closeSnagDrawer = () => {
     <AddSiteSurveysDrawer
       ref="addSurveyRef"
       v-model:modelValue="isAddSurveyOpen"
-      :contacts="contactOptions"
+      :contacts="[]"
       :lock-related-to="true"
       @cancel="closeSurveyDrawer"
       @save="closeSurveyDrawer"
@@ -849,7 +855,7 @@ const closeSnagDrawer = () => {
     <AddSnaglistsDrawer
       ref="addSnagRef"
       v-model:modelValue="isAddSnagOpen"
-      :contacts="contactOptions"
+      :contacts="[]"
       :lock-related-to="true"
       @cancel="closeSnagDrawer"
       @save="closeSnagDrawer"

@@ -7,6 +7,7 @@ import type {
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, nextTick, ref } from "vue";
 import { useRouter } from "vue-router";
@@ -109,13 +110,7 @@ const secondaryConnections = computed(() =>
 
 const employeesStore = useEmployeesStore();
 
-const contactsOptions = computed(() =>
-  employeesStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  })),
-);
+const contactsOptions = computed(() => getContactAndEmployeeRefs());
 
 // Menu actions for connections (kept minimal — expand as needed)
 const moreList = [

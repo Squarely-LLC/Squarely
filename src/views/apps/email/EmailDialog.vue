@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { useContactsStore } from "@/stores/contacts";
+import { getContactAndEmployeeEmailOptions } from "@/utils/peopleOptions";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 const props = withDefaults(defineProps<{ isDialogVisible?: boolean }>(), {
@@ -191,20 +191,9 @@ type Attachment = {
 const attachments = ref<Array<Attachment>>([]);
 const createdObjectUrls = new Set<string>();
 
-// contacts for autocomplete
-const contactsStore = useContactsStore();
-try {
-  contactsStore.init();
-} catch {}
-
 const contactEmailOptions = computed(() => {
   try {
-    return (contactsStore.all || [])
-      .filter((c: any) => c && c.email)
-      .map((c: any) => ({
-        title: `${c.fullName || c.email} <${c.email}>`,
-        value: String(c.email),
-      }));
+    return getContactAndEmployeeEmailOptions();
   } catch {
     return [];
   }

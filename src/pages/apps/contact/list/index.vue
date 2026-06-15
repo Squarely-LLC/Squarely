@@ -3,6 +3,7 @@
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 
 import type {
@@ -629,25 +630,18 @@ const isAddMeetingOpen = ref(false);
 const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
 
-const contactsOptions = computed(() =>
-  contactsStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  })),
-);
+const contactsOptions = computed(() => getContactAndEmployeeRefs());
 
 const openAddTodoDrawerForContact = (contact: ContactProperties) => {
   try {
     const initial = {
       title: `Follow up: ${contact.fullName ?? ""}`,
-      collaborators: [
-        {
-          id: contact.id,
-          name: contact.fullName,
-          avatarUrl: contact.picture ?? null,
-        },
-      ],
+      collaborators: [],
+      relatedTo: {
+        id: contact.id,
+        name: contact.fullName,
+        type: "contact",
+      },
     } as any;
 
     if (addTodoDrawerRef.value?.openWith) {
@@ -1212,6 +1206,7 @@ const updateItemsPerPage = (value: number | string) => {
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="[]"
+      :hide-related-to-field="true"
       @user-data="onTodoCreated"
     />
 

@@ -11,6 +11,7 @@ import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { getDealGrandTotal } from "@/utils/dealValue";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -433,13 +434,7 @@ const dialogError = ref<string | null>(null);
 const isStageDialogVisible = ref(false);
 const stageDialogValue = ref<string | null>(null);
 const stageDialogDealId = ref<number | null>(null);
-const meetingContacts = computed(() =>
-  contactsStore.all.map((contact) => ({
-    id: contact.id,
-    name: contact.fullName,
-    avatarUrl: contact.picture || null,
-  })),
-);
+const meetingContacts = computed(() => getContactAndEmployeeRefs());
 
 const openAddDialog = () => {
   selectedDeal.value = null;
@@ -885,7 +880,9 @@ const updateItemsPerPage = (value: number | string) => {
                     {{ formatDate(item.estimatedDeliveryDate) }}
                   </button>
 
-                  <div class="d-flex align-center gap-2 flex-wrap min-inline-size-0">
+                  <div
+                    class="d-flex align-center gap-2 flex-wrap min-inline-size-0"
+                  >
                     <button
                       type="button"
                       class="deal-cell__inline-link deal-cell__title text-base font-weight-medium"
@@ -935,7 +932,9 @@ const updateItemsPerPage = (value: number | string) => {
               <VAvatar
                 size="30"
                 :color="
-                  getContactEntry(item.relatedTo)?.picture ? undefined : 'primary'
+                  getContactEntry(item.relatedTo)?.picture
+                    ? undefined
+                    : 'primary'
                 "
                 :class="
                   getContactEntry(item.relatedTo)?.picture

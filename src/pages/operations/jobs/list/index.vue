@@ -11,6 +11,7 @@ import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -354,13 +355,7 @@ const flagDialogValue = ref<JobFlag | null>(null);
 const stageDialogValue = ref<JobStage | null>(null);
 const flagDialogJobId = ref<number | null>(null);
 const stageDialogJobId = ref<number | null>(null);
-const meetingContacts = computed(() =>
-  contactsStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture || null,
-  })),
-);
+const meetingContacts = computed(() => getContactAndEmployeeRefs());
 
 const confirmDelete = (id: number) => {
   deleteCandidateId.value = id;

@@ -7,7 +7,9 @@
 export {}
 declare global {
   const $api: typeof import('./src/utils/api')['$api']
+  const CONTACT_REQUIREMENT_OPTIONS: typeof import('./src/utils/crmContactRequirement')['CONTACT_REQUIREMENT_OPTIONS']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
+  const DEFAULT_DOCUMENT_SOURCE_MODES: typeof import('./src/utils/documentSourceModes')['DEFAULT_DOCUMENT_SOURCE_MODES']
   const EffectScope: typeof import('vue')['EffectScope']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
@@ -41,6 +43,7 @@ declare global {
   const computedInject: typeof import('@vueuse/core')['computedInject']
   const computedWithControl: typeof import('@vueuse/core')['computedWithControl']
   const confirmedValidator: typeof import('./src/@core/utils/validators')['confirmedValidator']
+  const contactRequirementToFlags: typeof import('./src/utils/crmContactRequirement')['contactRequirementToFlags']
   const controlledComputed: typeof import('@vueuse/core')['controlledComputed']
   const controlledRef: typeof import('@vueuse/core')['controlledRef']
   const createApp: typeof import('vue')['createApp']
@@ -80,6 +83,11 @@ declare global {
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getBillableRootDealItems: typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
+  const getContactAndEmployeeEmailOptions: typeof import('./src/utils/peopleOptions')['getContactAndEmployeeEmailOptions']
+  const getContactAndEmployeeOptions: typeof import('./src/utils/peopleOptions')['getContactAndEmployeeOptions']
+  const getContactAndEmployeeRefs: typeof import('./src/utils/peopleOptions')['getContactAndEmployeeRefs']
+  const getContactOptions: typeof import('./src/utils/peopleOptions')['getContactOptions']
+  const getContactRefs: typeof import('./src/utils/peopleOptions')['getContactRefs']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
   const getDealBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodKey']
@@ -101,10 +109,13 @@ declare global {
   const getDealRecurrentServiceLines: typeof import('./src/utils/dealDocumentDraft')['getDealRecurrentServiceLines']
   const getDealRetainerServiceLines: typeof import('./src/utils/dealDocumentDraft')['getDealRetainerServiceLines']
   const getDocumentSequencePrefix: typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']
+  const getEmployeeOptions: typeof import('./src/utils/peopleOptions')['getEmployeeOptions']
+  const getEmployeeRefs: typeof import('./src/utils/peopleOptions')['getEmployeeRefs']
   const getFileInfo: typeof import('./src/utils/fileStore')['getFileInfo']
   const getFileName: typeof import('./src/utils/fileStore')['getFileName']
   const getFileObjectUrl: typeof import('./src/utils/fileStore')['getFileObjectUrl']
   const getFileRecord: typeof import('./src/utils/fileStore')['getFileRecord']
+  const getFinancialDocumentSourceModes: typeof import('./src/utils/documentSourceModes')['getFinancialDocumentSourceModes']
   const getLineBaseTotal: typeof import('./src/utils/quotationPricing')['getLineBaseTotal']
   const getLineDiscountAmount: typeof import('./src/utils/quotationPricing')['getLineDiscountAmount']
   const getLineTotal: typeof import('./src/utils/quotationPricing')['getLineTotal']
@@ -115,6 +126,9 @@ declare global {
   const getQuotationGrandTotal: typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']
   const getQuotationSubtotal: typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']
   const getQuotationTopLevelDealItems: typeof import('./src/utils/dealDocumentDraft')['getQuotationTopLevelDealItems']
+  const getSalesContactOptions: typeof import('./src/utils/peopleOptions')['getSalesContactOptions']
+  const getSalesEmployeeOptions: typeof import('./src/utils/peopleOptions')['getSalesEmployeeOptions']
+  const getSalesPeopleOptions: typeof import('./src/utils/peopleOptions')['getSalesPeopleOptions']
   const getSelectableDealItems: typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
@@ -130,6 +144,8 @@ declare global {
   const isDealDocumentPhaseOrPeriodLine: typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']
   const isDealPhaseOrPeriodItem: typeof import('./src/utils/dealDocumentDraft')['isDealPhaseOrPeriodItem']
   const isDefined: typeof import('@vueuse/core')['isDefined']
+  const isDocumentSourceExternal: typeof import('./src/utils/documentSourceModes')['isDocumentSourceExternal']
+  const isDocumentSourceInternal: typeof import('./src/utils/documentSourceModes')['isDocumentSourceInternal']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
   const isLiteralRelatedDealItem: typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']
@@ -160,6 +176,7 @@ declare global {
   const markRaw: typeof import('vue')['markRaw']
   const nextTick: typeof import('vue')['nextTick']
   const normalizeBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']
+  const normalizeDocumentSourceModes: typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
@@ -205,8 +222,10 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
+  const resolveContactRequirement: typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']
   const resolveDealDocumentBillingMode: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']
   const resolveDealDocumentBillingModeForItem: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']
+  const resolvePeopleSelection: typeof import('./src/utils/peopleOptions')['resolvePeopleSelection']
   const resolveQuotationLogoUrl: typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
   const resolveStoredBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['resolveStoredBillingPeriodKey']
@@ -459,7 +478,9 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly $api: UnwrapRef<typeof import('./src/utils/api')['$api']>
+    readonly CONTACT_REQUIREMENT_OPTIONS: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['CONTACT_REQUIREMENT_OPTIONS']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
+    readonly DEFAULT_DOCUMENT_SOURCE_MODES: UnwrapRef<typeof import('./src/utils/documentSourceModes')['DEFAULT_DOCUMENT_SOURCE_MODES']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
@@ -493,6 +514,7 @@ declare module 'vue' {
     readonly computedInject: UnwrapRef<typeof import('@vueuse/core')['computedInject']>
     readonly computedWithControl: UnwrapRef<typeof import('@vueuse/core')['computedWithControl']>
     readonly confirmedValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['confirmedValidator']>
+    readonly contactRequirementToFlags: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['contactRequirementToFlags']>
     readonly controlledComputed: UnwrapRef<typeof import('@vueuse/core')['controlledComputed']>
     readonly controlledRef: UnwrapRef<typeof import('@vueuse/core')['controlledRef']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
@@ -532,6 +554,11 @@ declare module 'vue' {
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getBillableRootDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']>
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
+    readonly getContactAndEmployeeEmailOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactAndEmployeeEmailOptions']>
+    readonly getContactAndEmployeeOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactAndEmployeeOptions']>
+    readonly getContactAndEmployeeRefs: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactAndEmployeeRefs']>
+    readonly getContactOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactOptions']>
+    readonly getContactRefs: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactRefs']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getDealBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodKey']>
@@ -554,10 +581,13 @@ declare module 'vue' {
     readonly getDealRecurrentServiceLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealRecurrentServiceLines']>
     readonly getDealRetainerServiceLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealRetainerServiceLines']>
     readonly getDocumentSequencePrefix: UnwrapRef<typeof import('./src/utils/quotationConfig')['getDocumentSequencePrefix']>
+    readonly getEmployeeOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getEmployeeOptions']>
+    readonly getEmployeeRefs: UnwrapRef<typeof import('./src/utils/peopleOptions')['getEmployeeRefs']>
     readonly getFileInfo: UnwrapRef<typeof import('./src/utils/fileStore')['getFileInfo']>
     readonly getFileName: UnwrapRef<typeof import('./src/utils/fileStore')['getFileName']>
     readonly getFileObjectUrl: UnwrapRef<typeof import('./src/utils/fileStore')['getFileObjectUrl']>
     readonly getFileRecord: UnwrapRef<typeof import('./src/utils/fileStore')['getFileRecord']>
+    readonly getFinancialDocumentSourceModes: UnwrapRef<typeof import('./src/utils/documentSourceModes')['getFinancialDocumentSourceModes']>
     readonly getLineBaseTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getLineBaseTotal']>
     readonly getLineDiscountAmount: UnwrapRef<typeof import('./src/utils/quotationPricing')['getLineDiscountAmount']>
     readonly getLineTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getLineTotal']>
@@ -568,6 +598,9 @@ declare module 'vue' {
     readonly getQuotationGrandTotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationGrandTotal']>
     readonly getQuotationSubtotal: UnwrapRef<typeof import('./src/utils/quotationPricing')['getQuotationSubtotal']>
     readonly getQuotationTopLevelDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getQuotationTopLevelDealItems']>
+    readonly getSalesContactOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getSalesContactOptions']>
+    readonly getSalesEmployeeOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getSalesEmployeeOptions']>
+    readonly getSalesPeopleOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getSalesPeopleOptions']>
     readonly getSelectableDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getSelectableDealItems']>
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
@@ -583,6 +616,8 @@ declare module 'vue' {
     readonly isDealDocumentPhaseOrPeriodLine: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']>
     readonly isDealPhaseOrPeriodItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealPhaseOrPeriodItem']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
+    readonly isDocumentSourceExternal: UnwrapRef<typeof import('./src/utils/documentSourceModes')['isDocumentSourceExternal']>
+    readonly isDocumentSourceInternal: UnwrapRef<typeof import('./src/utils/documentSourceModes')['isDocumentSourceInternal']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>
     readonly isLiteralRelatedDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']>
@@ -613,6 +648,7 @@ declare module 'vue' {
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly normalizeBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']>
+    readonly normalizeDocumentSourceModes: UnwrapRef<typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
@@ -658,8 +694,10 @@ declare module 'vue' {
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
+    readonly resolveContactRequirement: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']>
     readonly resolveDealDocumentBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']>
     readonly resolveDealDocumentBillingModeForItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']>
+    readonly resolvePeopleSelection: UnwrapRef<typeof import('./src/utils/peopleOptions')['resolvePeopleSelection']>
     readonly resolveQuotationLogoUrl: UnwrapRef<typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveStoredBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveStoredBillingPeriodKey']>

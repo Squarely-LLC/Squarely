@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 import { useRouter } from "vue-router";
 
@@ -615,13 +616,7 @@ const deductionTarget = ref<EmployeeProperties | null>(null);
 const isAddAdvanceOpen = ref(false);
 const advanceTarget = ref<EmployeeProperties | null>(null);
 
-const contactsOptions = computed(() =>
-  employeesStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  })),
-);
+const contactsOptions = computed(() => getContactAndEmployeeRefs());
 
 const openAddTaskDrawerForContact = (contact: EmployeeProperties) => {
   try {

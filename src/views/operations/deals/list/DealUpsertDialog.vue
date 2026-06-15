@@ -10,9 +10,13 @@ import type {
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
-import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import {
+  getContactOptions,
+  getEmployeeOptions,
+  getSalesPeopleOptions,
+} from "@/utils/peopleOptions";
 import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
 import { City, Country } from "country-state-city";
 import { computed, nextTick, ref, toRaw, watch } from "vue";
@@ -53,14 +57,12 @@ const pendingSubmitPayload = ref<Partial<DealProperties> | null>(null);
 const configStore = useConfigStore();
 const contactsStore = useContactsStore();
 const dealsStore = useDealsStore();
-const employeesStore = useEmployeesStore();
 const jobsStore = useJobsStore();
 const notificationsStore = useNotificationsStore();
 
 configStore.init();
 contactsStore.init();
 dealsStore.init();
-employeesStore.init();
 jobsStore.init();
 
 const stageOptions = computed(
@@ -94,7 +96,9 @@ const locationCountryOptions = (Country.getAllCountries() ?? [])
   .sort((left, right) => left.label.localeCompare(right.label));
 
 const findCountryOption = (countryKey?: string | null) => {
-  const key = String(countryKey ?? "").trim().toLowerCase();
+  const key = String(countryKey ?? "")
+    .trim()
+    .toLowerCase();
   if (!key) return null;
 
   return (
@@ -158,8 +162,10 @@ const setLocationFromDeal = (location?: string | null) => {
   const possibleCountry = parts.length > 1 ? parts.at(-1) : "";
   const matchedCountry = findCountryOption(possibleCountry);
 
-  selectedLocationCountry.value = matchedCountry?.label ?? possibleCountry ?? "";
-  selectedLocationCity.value = parts.length > 1 ? parts.slice(0, -1).join(", ") : parts[0] ?? "";
+  selectedLocationCountry.value =
+    matchedCountry?.label ?? possibleCountry ?? "";
+  selectedLocationCity.value =
+    parts.length > 1 ? parts.slice(0, -1).join(", ") : (parts[0] ?? "");
   locationCountrySearch.value = selectedLocationCountry.value;
   locationCitySearch.value = selectedLocationCity.value;
   updateLocationCitiesForCountry(selectedLocationCountry.value);
@@ -192,7 +198,8 @@ const onLocationCityKeydown = (event: KeyboardEvent) => {
 
   const match = locationCityOptions.value.find(
     (city) =>
-      city.toLowerCase().startsWith(query) || city.toLowerCase().includes(query),
+      city.toLowerCase().startsWith(query) ||
+      city.toLowerCase().includes(query),
   );
 
   if (!match) return;
@@ -202,7 +209,9 @@ const onLocationCityKeydown = (event: KeyboardEvent) => {
 };
 
 const locationCountryFilter = (_value: unknown, query: string, item: any) => {
-  const safeQuery = String(query ?? "").trim().toLowerCase();
+  const safeQuery = String(query ?? "")
+    .trim()
+    .toLowerCase();
   if (!safeQuery) return true;
 
   const label = String(item?.raw?.label ?? "").toLowerCase();
@@ -224,47 +233,11 @@ const customFieldDefinitions = computed<DealCustomFieldDefinition[]>(() => {
   }));
 });
 
-const contactOptions = computed(() =>
-  contactsStore.all.map((contact) => ({
-    title: contact.fullName,
-    value: contact.id,
-    avatar: contact.picture || null,
-  })),
-);
+const contactOptions = computed(() => getContactOptions());
 
-const salesmanOptions = computed(() =>
-  [
-    ...contactsStore.all
-      .filter((contact) => contact.worksInSales)
-      .map((contact) => ({
-        title: contact.fullName,
-        value: `contact:${contact.id}`,
-        avatar: contact.picture || null,
-      })),
-    ...employeesStore.all
-      .filter((employee) => employee.employment?.isSalesTeamMember)
-      .map((employee) => ({
-        title: employee.fullName,
-        value: employee.id,
-        avatar: employee.picture || null,
-      })),
-  ].sort((left, right) => left.title.localeCompare(right.title)),
-);
+const salesmanOptions = computed(() => getSalesPeopleOptions());
 
-const allCollaboratorOptions = computed(() =>
-  [
-    ...contactsStore.all.map((contact) => ({
-      title: contact.fullName,
-      value: `contact:${contact.id}`,
-      avatar: contact.picture || null,
-    })),
-    ...employeesStore.all.map((employee) => ({
-      title: employee.fullName,
-      value: employee.id,
-      avatar: employee.picture || null,
-    })),
-  ].sort((left, right) => left.title.localeCompare(right.title)),
-);
+const allCollaboratorOptions = computed(() => getEmployeeOptions());
 
 const currentUserDisplayName = computed(() =>
   String(
@@ -290,7 +263,9 @@ const defaultCreatorValue = computed(() => {
   if (matchCollaborator) return matchCollaborator.value;
 
   return (
-    salesmanOptions.value[0]?.value ?? allCollaboratorOptions.value[0]?.value ?? null
+    salesmanOptions.value[0]?.value ??
+    allCollaboratorOptions.value[0]?.value ??
+    null
   );
 });
 
@@ -932,7 +907,11 @@ const onSubmit = async () => {
     @submit="onAddContactSubmit"
   />
 
-  <VDialog v-model="isProjectCodeConfirmDialogVisible" max-width="480" persistent>
+  <VDialog
+    v-model="isProjectCodeConfirmDialogVisible"
+    max-width="480"
+    persistent
+  >
     <DialogCloseBtn @click="closeProjectCodeConfirmDialog" />
     <VCard>
       <VCardItem>

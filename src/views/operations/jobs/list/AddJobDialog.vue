@@ -8,7 +8,10 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
-import { useContactsStore } from "@/stores/contacts";
+import {
+  getEmployeeOptions,
+  getSalesContactOptions,
+} from "@/utils/peopleOptions";
 import { computed, nextTick, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
 interface Props {
@@ -22,9 +25,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
-const contactsStore = useContactsStore();
 const configStore = useConfigStore();
-contactsStore.init();
 configStore.init();
 
 const stageOptions = computed(() => {
@@ -46,13 +47,8 @@ const typeOptions: JobType[] = [
   "Other",
 ];
 const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
-const contactOptions = computed(() =>
-  contactsStore.all.map((contact) => ({
-    title: contact.fullName,
-    value: contact.id,
-    avatar: (contact as any).avatar || (contact as any).picture || null,
-  })),
-);
+const relatedContactOptions = computed(() => getSalesContactOptions());
+const collaboratorOptions = computed(() => getEmployeeOptions());
 const avatarText = (name?: string | null) => {
   const safe = (name || "").trim();
   if (!safe) return "??";
@@ -209,7 +205,7 @@ const onCancel = () => {
                 v-model="localJob.relatedTo"
                 label="Related To"
                 placeholder="Select Contact"
-                :items="contactOptions"
+                :items="relatedContactOptions"
                 item-title="title"
                 item-value="value"
                 clearable
@@ -246,7 +242,7 @@ const onCancel = () => {
                 v-model="localJob.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"
-                :items="contactOptions"
+                :items="collaboratorOptions"
                 item-title="title"
                 item-value="value"
                 multiple

@@ -20,7 +20,7 @@ interface Emit {
   (e: "update:isDialogVisible", val: boolean): void;
   (
     e: "add-connection",
-    payload: { contactId: number | string; relation?: string }
+    payload: { contactId: number | string; relation?: string },
   ): void;
 }
 
@@ -92,45 +92,42 @@ const membersList: Member[] = [
   },
 ];
 
-// Use contacts store when available to present real contacts (exclude self and already connected)
-import { useContactsStore } from "@/stores/contacts";
+// CRM connections can link contacts and employees.
+import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { computed } from "vue";
 import { useDisplay } from "vuetify";
-
-const contactsStore = useContactsStore();
 
 // Vuetify display composable (replaces $vuetify.display usage)
 const display = useDisplay();
 
 const availableMembers = computed(() => {
-  // If store isn't initialized or has no items, fallback to static membersList
-  const all =
-    contactsStore.items && contactsStore.items.length
-      ? contactsStore.items
-      : null;
-  if (!all) return membersList;
+  const all = getContactAndEmployeeRefs();
+  if (!all.length) return membersList;
 
   const excludeIds = new Set(
-    (props.existingConnections || []).map((id) => String(id))
+    (props.existingConnections || []).map((id) => String(id)),
   );
   if (props.currentContactId) excludeIds.add(String(props.currentContactId));
 
-  // map ContactProperties -> Member shape
   return all
     .filter((c) => !excludeIds.has(String(c.id)))
     .map((c) => ({
       id: c.id,
-      avatar: c.picture || "",
-      name: c.fullName,
+      avatar: c.avatarUrl || "",
+      name: c.name,
       email: c.email || "",
       permission: "Can View" as Permission,
     }));
 });
 
 import type { ContactProperties } from "@/plugins/fake-api/handlers/apps/contact/types";
+import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
 import AddNewUserDialog from "@/views/apps/contact/list/AddNewUserDialog.vue";
 import { ref } from "vue";
+
+const contactsStore = useContactsStore();
+contactsStore.init();
 
 // currently selected member id from autocomplete
 const selectedMemberId = ref<number | string | null>(null);

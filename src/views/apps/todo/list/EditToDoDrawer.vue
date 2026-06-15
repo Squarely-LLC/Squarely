@@ -10,6 +10,7 @@ import type {
 import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
+import { resolvePeopleSelection } from "@/utils/peopleOptions";
 import { formatSystemDate } from "@core/utils/formatters";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
@@ -122,7 +123,11 @@ const idToContact = computed(
 const selectedCollaborators = computed<ContactRef[]>(
   () =>
     selectedCollaboratorIds.value
-      .map((id) => idToContact.value.get(id))
+      .map(
+        (id) =>
+          idToContact.value.get(id) ||
+          resolvePeopleSelection(id, props.collaboratorsOptions, "Employee"),
+      )
       .filter(Boolean) as ContactRef[],
 );
 const initials = (n?: string) =>

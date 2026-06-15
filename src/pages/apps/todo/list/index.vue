@@ -8,8 +8,8 @@ import type {
   ToDoStep,
 } from "@/data/schema";
 import { useNotificationsStore } from "@/stores/notifications";
-import { usePeopleStore } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
+import { getEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
 import { formatSystemDate } from "@core/utils/formatters";
 import { storeToRefs } from "pinia";
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
@@ -33,16 +33,8 @@ const msgTodo: any = ref(null);
 const todosStore = useTodos();
 todosStore.init(); // load from localStorage or seeds
 
-// people for dropdowns
-const peopleStore = usePeopleStore();
-peopleStore.init();
-const contactsOptions = computed(() =>
-  peopleStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  })),
-);
+// Task assignment is internal: employees only.
+const contactsOptions = computed(() => getEmployeeRefs());
 const parseContactAssigneeId = (value: number | string | null | undefined) => {
   const raw = String(value ?? "").trim();
 
@@ -64,11 +56,7 @@ const resolveAssignedContact = (value: number | string): ContactRef => {
 
   const parsedId = parseContactAssigneeId(value);
 
-  return {
-    id: value,
-    name: `Contact #${parsedId || value}`,
-    avatarUrl: null,
-  };
+  return resolvePeopleSelection(value, contactsOptions.value, "Employee");
 };
 const { all } = storeToRefs(todosStore); // reactive list from store
 

@@ -41,6 +41,11 @@ import {
   getDealItemsGrandTotal,
 } from "@/utils/dealBilling";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
+import {
+  getContactAndEmployeeRefs,
+  getEmployeeOptions,
+  getEmployeeRefs,
+} from "@/utils/peopleOptions";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
@@ -1223,13 +1228,7 @@ const dealEmployeeCollaborators = computed(
     }>,
 );
 
-const employeeOptions = computed(() =>
-  employeesStore.all.map((employee) => ({
-    id: employee.id,
-    name: employee.fullName,
-    avatarUrl: employee.picture || null,
-  })),
-);
+const employeeOptions = computed(() => getEmployeeRefs());
 
 type DealBillingDocument = InvoiceRecord | ProformaRecord;
 
@@ -1302,22 +1301,7 @@ const dealBillingToBeInvoiced = computed(() =>
   ),
 );
 
-const dealCollaboratorOptions = computed(() =>
-  [
-    ...employeesStore.all.map((employee) => ({
-      title: employee.fullName,
-      value: employee.id,
-      avatarUrl: employee.picture || null,
-      type: "employee",
-    })),
-    ...contactsStore.all.map((contact) => ({
-      title: contact.fullName,
-      value: `contact:${contact.id}`,
-      avatarUrl: contact.picture || null,
-      type: "contact",
-    })),
-  ].sort((left, right) => left.title.localeCompare(right.title)),
-);
+const dealCollaboratorOptions = computed(() => getEmployeeOptions());
 
 const dealLinkedEntities = computed(() => {
   const entries: Array<any> = [];
@@ -1349,21 +1333,7 @@ const dealLinkedEntities = computed(() => {
   return entries;
 });
 
-const meetingContacts = computed(() =>
-  contactsStore.all.map((contact) => ({
-    id: contact.id,
-    name: contact.fullName,
-    avatarUrl: contact.picture || null,
-  })),
-);
-
-const contactOptions = computed(() =>
-  contactsStore.all.map((contact) => ({
-    id: contact.id,
-    name: contact.fullName,
-    avatarUrl: contact.picture || null,
-  })),
-);
+const meetingContacts = computed(() => getContactAndEmployeeRefs());
 
 const taskCollaboratorOptions = computed(() => {
   const byKey = new Map<string, ContactRef>();
@@ -1371,7 +1341,6 @@ const taskCollaboratorOptions = computed(() => {
     byKey.set(String(option.id), option);
   };
 
-  contactOptions.value.forEach(addOption);
   employeeOptions.value.forEach(addOption);
   dealEmployeeCollaborators.value.forEach((collaborator) =>
     addOption({
@@ -2447,7 +2416,7 @@ watch(
     <AddMeetingDrawer
       ref="addMeetingRef"
       v-model:modelValue="isAddMeetingOpen"
-      :contacts="contactOptions"
+      :contacts="meetingContacts"
       :lock-related-to="lockMeetingRelatedTo"
       @cancel="closeMeetingDrawer"
       @save="onMeetingCreated"

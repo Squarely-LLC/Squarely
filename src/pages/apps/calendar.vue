@@ -9,8 +9,11 @@ import { useDisplay } from "vuetify";
 
 import type { ToDo } from "@/data/schema";
 import { useNotificationsStore } from "@/stores/notifications";
-import { usePeopleStore } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
+import {
+  getContactAndEmployeeRefs,
+  getEmployeeRefs,
+} from "@/utils/peopleOptions";
 import { useCalendarOptions } from "@/views/apps/calendar/useCalendar";
 import { useCalendarStore } from "@/views/apps/calendar/useCalendarStore";
 import AddMeetingDrawer, {
@@ -81,19 +84,8 @@ const todos = useTodos();
 const display = useDisplay();
 todos.init();
 
-// people for dropdowns
-const peopleStore = usePeopleStore();
-peopleStore.init();
-const contactsOptions = computed(() =>
-  peopleStore.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  })),
-);
-
-// legacy alias used in the template/components
-const collaboratorsOptions = contactsOptions;
+const taskCollaboratorOptions = computed(() => getEmployeeRefs());
+const meetingLinkedOptions = computed(() => getContactAndEmployeeRefs());
 
 function normalizeCalendarFilters() {
   const colorByLabel = new Map([
@@ -1157,7 +1149,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
     <EditToDoDrawer
       :is-drawer-open="isEditOpen"
       :todo="selectedTodo || undefined"
-      :collaborators-options="collaboratorsOptions"
+      :collaborators-options="taskCollaboratorOptions"
       @update:isDrawerOpen="isEditOpen = $event"
       @save="handleSave"
       @saveSteps="handleSaveSteps"
@@ -1167,7 +1159,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
     <!-- 👉 Add To-Do Drawer -->
     <AddNewToDoDrawer
       :is-drawer-open="isAddOpen"
-      :collaborators-options="collaboratorsOptions"
+      :collaborators-options="taskCollaboratorOptions"
       @update:isDrawerOpen="isAddOpen = $event"
       @user-data="handleCreate"
     />
@@ -1222,7 +1214,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
     <AddMeetingDrawer
       v-model="isAddMeetingOpen"
       :initial-start="drawerInitialStart"
-      :contacts="collaboratorsOptions"
+      :contacts="meetingLinkedOptions"
       @save="onCreateMeeting"
     />
   </div>

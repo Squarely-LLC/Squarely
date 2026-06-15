@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { requiredValidator } from "@/@core/utils/validators";
 import type { ContactRef, Status, ToDo, ToDoAttachment } from "@/data/schema";
-import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
-import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
+import { getEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 import type { VForm } from "vuetify/components/VForm";
 
@@ -87,13 +86,6 @@ const statusOptions: { title: string; value: Status }[] = [
 const selectedStatus = ref<Status>("pending");
 
 /* ===== Helpers ===== */
-// Fallback to canonical contacts store when parent didn't provide options
-const contactsStore = useContactsStore();
-contactsStore.init();
-
-const employeesStore = useEmployeesStore();
-employeesStore.init();
-
 const jobsStore = useJobsStore();
 jobsStore.init();
 
@@ -121,12 +113,7 @@ const isRelatedToLocked = computed(() => relatedToLocked.value);
 const effectiveOptions = computed(() => {
   if (props.collaboratorsOptions.length) return props.collaboratorsOptions;
 
-  const store = props.source === "employees" ? employeesStore : contactsStore;
-  return store.all.map((c) => ({
-    id: c.id,
-    name: c.fullName,
-    avatarUrl: c.picture,
-  }));
+  return getEmployeeRefs();
 });
 
 const idToContact = computed(
@@ -135,7 +122,12 @@ const idToContact = computed(
 const selectedCollaborators = computed<ContactRef[]>(() => {
   const mapAny = idToContact.value as Map<any, ContactRef>;
   return selectedCollaboratorIds.value
-    .map((id) => mapAny.get(Number(id)) || mapAny.get(String(id)))
+    .map(
+      (id) =>
+        mapAny.get(Number(id)) ||
+        mapAny.get(String(id)) ||
+        resolvePeopleSelection(id, effectiveOptions.value, "Employee"),
+    )
     .filter(Boolean) as ContactRef[];
 });
 
@@ -218,7 +210,9 @@ function loadInitialAndMaybeFocus() {
         ? `deal-${init.relatedTo.id}`
         : init.relatedTo?.type === "job"
           ? `job-${init.relatedTo.id}`
-          : null;
+          : init.relatedTo?.type === "contact"
+            ? null
+            : null;
     relatedToLocked.value = false;
     goalId.value = init.goalId ?? goalId.value;
     milestoneId.value = init.milestoneId ?? milestoneId.value;
