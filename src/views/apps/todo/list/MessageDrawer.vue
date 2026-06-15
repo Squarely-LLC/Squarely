@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ContactRef, Message } from "@/data/schema";
+import { normalizeAuthorRef } from "@/utils/currentAccount";
 import { formatSystemDate } from "@core/utils/formatters";
 import {
   computed,
@@ -88,7 +89,12 @@ const localList = ref<Message[]>([]);
 const message = ref("");
 
 function readPropMessages(): Message[] {
-  return props.todo?.messages ? [...props.todo.messages] : [];
+  return props.todo?.messages
+    ? props.todo.messages.map((message) => ({
+        ...message,
+        author: normalizeAuthorRef(message.author) as ContactRef,
+      }))
+    : [];
 }
 
 const messagesSignature = computed(() =>
@@ -145,7 +151,7 @@ function send() {
   // 1) Optimistic append → instant UI
   const optimistic: Message = {
     id: optimisticId,
-    author: props.author,
+    author: normalizeAuthorRef(props.author) as ContactRef,
     body,
     createdAt: new Date().toISOString(),
     isRead: true,
@@ -167,6 +173,12 @@ function send() {
 /* ===== Helpers ===== */
 const initials = (n?: string) =>
   n ? (n.trim().match(/\b\w/g) || []).slice(0, 2).join("").toUpperCase() : "?";
+const authorName = (message: Message) => message.author?.name || "User";
+const authorAvatar = (message: Message) => {
+  const author = message.author;
+
+  return author && "avatarUrl" in author ? author.avatarUrl ?? undefined : undefined;
+};
 const fmtDate = (iso?: string) => {
   if (!iso) return "";
   return formatSystemDate(iso);
@@ -308,17 +320,17 @@ const canToggleRead = (message: Message) => !isOwnMessage(message);
                     <div class="d-flex align-center justify-space-between mb-2">
                       <div class="d-flex align-center gap-3">
                         <VAvatar size="28" color="primary">
-                          <template v-if="m.author?.avatarUrl">
-                            <VImg :src="m.author?.avatarUrl" />
+                          <template v-if="authorAvatar(m)">
+                            <VImg :src="authorAvatar(m)" />
                           </template>
                           <template v-else>
                             <span class="text-xxs font-weight-bold">{{
-                              initials(m.author?.name)
+                              initials(authorName(m))
                             }}</span>
                           </template>
                         </VAvatar>
                         <strong class="text-body-2">{{
-                          m.author?.name || "test@squarely.app"
+                          authorName(m)
                         }}</strong>
                       </div>
                       <div class="d-flex align-center gap-2">

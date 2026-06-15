@@ -651,7 +651,7 @@ function addActivityToTodo(payload: {
 }) {
   const t = todosStore.byId(payload.id);
   if (!t) return;
-  const author = payload.author ?? CURRENT_AUTHOR;
+  const author = normalizeAuthorRef(payload.author ?? currentAuthor.value);
   const activities: Activity[] = [
     ...t.activities,
     {
