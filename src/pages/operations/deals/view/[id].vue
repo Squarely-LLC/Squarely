@@ -33,9 +33,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
-import {
-  getQuotationTopLevelDealItems,
-} from "@/utils/dealDocumentDraft";
+import { getQuotationTopLevelDealItems } from "@/utils/dealDocumentDraft";
 import {
   getDealDocumentBalance,
   getDealDocumentPaid,
@@ -419,15 +417,48 @@ const migrateLegacyDealSalesTasksToTodos = (
 const resolveDealSalesTasks = (
   currentDeal: DealProperties,
 ): DealSalesTaskTemplate[] => {
+  const currentDealRelatedTo: SalesTaskRelatedTo = {
+    id: currentDeal.id,
+    name: currentDeal.code || `Deal #${currentDeal.id}`,
+    type: "deal",
+  };
+  const linkedJobId = currentDeal.linkedJobId;
+  const currentLinkedJobRelatedTo: SalesTaskRelatedTo | null =
+    linkedJobId !== null && linkedJobId !== undefined
+      ? {
+          id: linkedJobId,
+          name:
+            linkedJob.value?.code ||
+            linkedJob.value?.name ||
+            `Job #${linkedJobId}`,
+          type: "job",
+        }
+      : null;
+  const normalizeCurrentTaskRelation = (
+    relatedTo?: ToDo["relatedTo"] | null,
+  ): SalesTaskRelatedTo => {
+    const matchesDeal =
+      relatedTo?.type === "deal" &&
+      String(relatedTo.id) === String(currentDeal.id);
+    const matchesLinkedJob =
+      Boolean(currentLinkedJobRelatedTo) &&
+      relatedTo?.type === "job" &&
+      String(relatedTo.id) === String(currentLinkedJobRelatedTo?.id);
+
+    return matchesDeal || matchesLinkedJob
+      ? {
+          id: relatedTo.id,
+          name: relatedTo.name,
+          type: relatedTo.type,
+        }
+      : currentDealRelatedTo;
+  };
+
   const storedSalesTasks = Array.isArray(currentDeal.salesTasks)
     ? currentDeal.salesTasks.map((task) =>
         cloneDealSalesTaskTemplate({
           ...task,
-          relatedTo: {
-            id: currentDeal.id,
-            name: currentDeal.code || `Deal #${currentDeal.id}`,
-            type: "deal",
-          },
+          relatedTo: normalizeCurrentTaskRelation(task.relatedTo),
         }),
       )
     : [];
@@ -446,11 +477,7 @@ const resolveDealSalesTasks = (
         cloneDealSalesTaskTemplate({
           ...task,
           id: nextId++,
-          relatedTo: {
-            id: currentDeal.id,
-            name: currentDeal.code || `Deal #${currentDeal.id}`,
-            type: "deal",
-          },
+          relatedTo: currentDealRelatedTo,
           sourceItemId: item.id,
           sourceTaskId: task.id ?? index + 1,
         }),
@@ -469,8 +496,15 @@ const resolveDealSalesTasks = (
   const legacyManualTasks = (todosStore.items || [])
     .filter((todo) => {
       if (!todo?.relatedTo) return false;
-      if (String(todo.relatedTo.id) !== String(currentDeal.id)) return false;
-      if (todo.relatedTo.type !== "deal") return false;
+      const matchesDeal =
+        todo.relatedTo.type === "deal" &&
+        String(todo.relatedTo.id) === String(currentDeal.id);
+      const matchesLinkedJob =
+        Boolean(currentLinkedJobRelatedTo) &&
+        todo.relatedTo.type === "job" &&
+        String(todo.relatedTo.id) === String(currentLinkedJobRelatedTo?.id);
+
+      if (!matchesDeal && !matchesLinkedJob) return false;
 
       return (
         !String(todo.milestoneId ?? "").trim() &&
@@ -496,11 +530,7 @@ const resolveDealSalesTasks = (
         status: todo.status || "pending",
         important: Boolean(todo.important),
         attachment: todo.attachment ?? null,
-        relatedTo: todo.relatedTo ?? {
-          id: currentDeal.id,
-          name: currentDeal.code || `Deal #${currentDeal.id}`,
-          type: "deal",
-        },
+        relatedTo: normalizeCurrentTaskRelation(todo.relatedTo),
         steps: Array.isArray(todo.steps)
           ? todo.steps.map((step) => ({ ...step }))
           : [],
@@ -1283,6 +1313,8 @@ const dealRelatedRef = computed(() =>
     : null,
 );
 
+type SalesTaskRelatedTo = NonNullable<ToDo["relatedTo"]>;
+
 const linkedJobRelatedRef = computed(() =>
   deal.value?.linkedJobId !== null && deal.value?.linkedJobId !== undefined
     ? {
@@ -1319,16 +1351,23 @@ const taskRelationCandidates = computed(() => {
 const isValidSalesTaskRelation = (relatedTo?: ToDo["relatedTo"] | null) =>
   Boolean(
     relatedTo &&
-      taskRelationCandidates.value.some(
-        (candidate) =>
-          relatedTo.type === candidate.type &&
-          String(relatedTo.id) === String(candidate.id),
-      ),
+    taskRelationCandidates.value.some(
+      (candidate) =>
+        relatedTo.type === candidate.type &&
+        String(relatedTo.id) === String(candidate.id),
+    ),
   );
 
 const normalizeSalesTaskRelatedTo = (
   relatedTo?: ToDo["relatedTo"] | null,
-) => (isValidSalesTaskRelation(relatedTo) ? { ...relatedTo } : dealRelatedRef.value);
+): SalesTaskRelatedTo | null =>
+  isValidSalesTaskRelation(relatedTo) && relatedTo
+    ? {
+        id: relatedTo.id,
+        name: relatedTo.name,
+        type: relatedTo.type,
+      }
+    : dealRelatedRef.value;
 
 const goalTriggerOptions = computed(
   () => [] as Array<{ title: string; value: string }>,
@@ -1624,13 +1663,17 @@ const saveDeal = (payload: Partial<DealProperties>) => {
   try {
     const shouldApplyManualStage =
       payload.stage !== undefined &&
-      String(payload.stage ?? "").trim() !== String(deal.value.stage ?? "").trim();
+      String(payload.stage ?? "").trim() !==
+        String(deal.value.stage ?? "").trim();
     const { stage, ...restPayload } = payload;
     const basePatch = shouldApplyManualStage ? restPayload : payload;
     let updated = dealsStore.updateDeal(deal.value.id, basePatch);
 
     if (updated && shouldApplyManualStage) {
-      updated = dealsStore.updateDealStageManually(deal.value.id, stage ?? null);
+      updated = dealsStore.updateDealStageManually(
+        deal.value.id,
+        stage ?? null,
+      );
     }
 
     if (!updated) {
@@ -1779,7 +1822,7 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
       payload.initial.collaborators.length
         ? payload.initial.collaborators
         : dealEmployeeCollaborators.value,
-    relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+    relatedTo: dealRelatedRef.value,
     status: payload?.initial?.status ?? "pending",
     important: Boolean(payload?.initial?.important),
   };
@@ -1897,9 +1940,12 @@ const deleteTask = (todoId: number | string) => {
   if (!deal.value) return;
 
   const updatedDeal = dealsStore.updateDeal(deal.value.id, {
-    salesTasks: resolveDealSalesTasks(deal.value).filter(
-      (task) => String(task.id) !== String(todoId),
-    ),
+    salesTasks: resolveDealSalesTasks(deal.value)
+      .filter((task) => String(task.id) !== String(todoId))
+      .map((task) => ({
+        ...task,
+        relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+      })),
   });
   if (updatedDeal) deal.value = cloneDeal(updatedDeal);
   notifications.push("Task deleted", "success", 3000);
@@ -2040,9 +2086,13 @@ const onTodoStepsEdited = (payload: { id: number | string; steps: any[] }) => {
         String(task.id) === String(payload.id)
           ? {
               ...task,
+              relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
               steps: payload.steps.map((step) => ({ ...step })),
             }
-          : task,
+          : {
+              ...task,
+              relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+            },
       ),
     });
     if (updatedDeal) deal.value = cloneDeal(updatedDeal);

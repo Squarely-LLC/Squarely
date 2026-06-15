@@ -112,6 +112,8 @@ const props = defineProps<{
   deal: DealProperties;
 }>();
 
+type SalesTaskRelatedTo = NonNullable<ToDo["relatedTo"]>;
+
 const emit = defineEmits<{
   (e: "open-add-task", payload: { initial: Partial<ToDo> }): void;
   (e: "open-edit-task", todoId: number | string): void;
@@ -1314,17 +1316,17 @@ const handleProducedProductReturn = async () => {
   } catch {}
 };
 
-const buildDealRelatedTo = () => ({
+const buildDealRelatedTo = (): SalesTaskRelatedTo => ({
   id: props.deal.id,
   name: props.deal.code || `Deal #${props.deal.id}`,
   type: "deal",
 });
 
-const buildLinkedJobRelatedTo = () =>
+const buildLinkedJobRelatedTo = (): SalesTaskRelatedTo | null =>
   props.deal.linkedJobId !== null && props.deal.linkedJobId !== undefined
     ? {
         id: props.deal.linkedJobId,
-        name: props.deal.linkedJobName || `Job #${props.deal.linkedJobId}`,
+        name: `Job #${props.deal.linkedJobId}`,
         type: "job",
       }
     : null;
@@ -1333,8 +1335,7 @@ const isValidSalesTaskRelation = (relatedTo?: ToDo["relatedTo"] | null) => {
   if (!relatedTo) return false;
 
   const matchesDeal =
-    relatedTo.type === "deal" &&
-    String(relatedTo.id) === String(props.deal.id);
+    relatedTo.type === "deal" && String(relatedTo.id) === String(props.deal.id);
 
   const linkedJob = buildLinkedJobRelatedTo();
   const matchesLinkedJob =
@@ -1347,7 +1348,14 @@ const isValidSalesTaskRelation = (relatedTo?: ToDo["relatedTo"] | null) => {
 
 const normalizeSalesTaskRelatedTo = (
   relatedTo?: ToDo["relatedTo"] | null,
-) => (isValidSalesTaskRelation(relatedTo) ? { ...relatedTo } : buildDealRelatedTo());
+): SalesTaskRelatedTo =>
+  isValidSalesTaskRelation(relatedTo) && relatedTo
+    ? {
+        id: relatedTo.id,
+        name: relatedTo.name,
+        type: relatedTo.type,
+      }
+    : buildDealRelatedTo();
 
 const parseAfterWhen = (raw?: string | null) => {
   const base = new Date();
@@ -7332,8 +7340,7 @@ const isManualSalesTodo = (taskId: number | string) => {
   if (!todo || !isValidSalesTaskRelation(todo.relatedTo)) return false;
 
   return (
-    !String(todo.milestoneId ?? "").trim() &&
-    !String(todo.goalId ?? "").trim()
+    !String(todo.milestoneId ?? "").trim() && !String(todo.goalId ?? "").trim()
   );
 };
 
@@ -7420,15 +7427,6 @@ const formatTaskStart = (
     return "After goal completion";
 
   return afterWhen ? `After ${formatTaskAfterWhen(afterWhen)}` : "Immediately";
-};
-
-const toggleTaskCompleted = (taskId: number | string) => {
-  const task = todosStore.byId(taskId);
-  if (!task) return;
-
-  todosStore.updateTodo(taskId, {
-    status: task.status === "completed" ? "pending" : "completed",
-  });
 };
 
 const openAddTask = () => {
@@ -9215,7 +9213,10 @@ const openEditTask = (taskId: number | string) => {
                 </template>
               </VTooltip>
               <div class="text-sm text-medium-emphasis truncate-title">
-                {{ task.notes || formatTaskStart(task.afterWhen, task.startTrigger) }}
+                {{
+                  task.notes ||
+                  formatTaskStart(task.afterWhen, task.startTrigger)
+                }}
               </div>
               <div class="d-flex align-center flex-wrap gap-2 text-xs mt-1">
                 <span class="text-medium-emphasis">
@@ -11663,10 +11664,9 @@ const openEditTask = (taskId: number | string) => {
 .sales-task-row {
   display: grid;
   align-items: center;
-  grid-template-columns: 3rem minmax(16rem, 1fr) minmax(7rem, 0.45fr) minmax(
-      7rem,
-      0.45fr
-    ) minmax(7rem, 0.42fr) 5.5rem;
+  grid-template-columns:
+    3rem minmax(16rem, 1fr) minmax(7rem, 0.45fr) minmax(7rem, 0.45fr)
+    minmax(7rem, 0.42fr) 5.5rem;
 }
 
 .sales-task-list__header {
