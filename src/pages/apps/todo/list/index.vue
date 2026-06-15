@@ -7,8 +7,8 @@ import type {
   ToDo,
   ToDoStep,
 } from "@/data/schema";
-import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
+import { usePeopleStore } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
 import { formatSystemDate } from "@core/utils/formatters";
 import { storeToRefs } from "pinia";
@@ -33,11 +33,11 @@ const msgTodo: any = ref(null);
 const todosStore = useTodos();
 todosStore.init(); // load from localStorage or seeds
 
-// contacts for dropdowns
-const contactsStore = useContactsStore();
-contactsStore.init();
+// people for dropdowns
+const peopleStore = usePeopleStore();
+peopleStore.init();
 const contactsOptions = computed(() =>
-  contactsStore.all.map((c) => ({
+  peopleStore.all.map((c) => ({
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,

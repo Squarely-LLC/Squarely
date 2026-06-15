@@ -27,6 +27,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
+import { resolveEmployeePersonId } from "@/stores/people";
 
 const STORAGE_KEY = "app.quotations.v6";
 const PROFORMA_STORAGE_KEY = "app.proformas.v2";
@@ -43,9 +44,7 @@ function safeClone<T>(value: T, fallback: T): T {
     try {
       return structuredClone(raw);
     } catch (error) {
-      if (
-        !(error instanceof DOMException && error.name === "DataCloneError")
-      ) {
+      if (!(error instanceof DOMException && error.name === "DataCloneError")) {
         console.warn(
           "structuredClone failed while cloning quotation data:",
           error,
@@ -125,7 +124,10 @@ function loadFollowUpDocumentsFromStorage<T>(
 
     return Array.isArray(parsed) ? (parsed as T[]) : fallback;
   } catch (error) {
-    console.warn(`Failed to load follow-up documents from ${storageKey}:`, error);
+    console.warn(
+      `Failed to load follow-up documents from ${storageKey}:`,
+      error,
+    );
     return fallback;
   }
 }
@@ -309,7 +311,7 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
       : "Automatic";
   cloned.approverEmployeeId =
     cloned.approvalMode === "Request Approval"
-      ? (cloned.approverEmployeeId ?? null)
+      ? resolveEmployeePersonId(cloned.approverEmployeeId ?? null)
       : null;
   cloned.approvalRequestedAt =
     cloned.approvalMode === "Request Approval"
@@ -655,7 +657,7 @@ function normaliseQuotationRecord(
         : null,
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
-        ? (payload.approverEmployeeId ?? null)
+        ? resolveEmployeePersonId(payload.approverEmployeeId ?? null)
         : null,
     salesperson:
       payload.salesperson?.trim() || buildQuotationSalesperson(config.legal),
@@ -763,8 +765,8 @@ function mergeQuotationRecord(
   merged.approverEmployeeId =
     merged.approvalMode === "Request Approval"
       ? patch.approverEmployeeId === undefined
-        ? (original.approverEmployeeId ?? null)
-        : (patch.approverEmployeeId ?? null)
+        ? resolveEmployeePersonId(original.approverEmployeeId ?? null)
+        : resolveEmployeePersonId(patch.approverEmployeeId ?? null)
       : null;
   merged.approvalRequestedAt =
     merged.approvalMode === "Request Approval"
@@ -981,7 +983,10 @@ export const useQuotationsStore = defineStore("quotations", {
 
     markQuotationSent(id: number | string) {
       const current = this.byId(id);
-      if (!current || !canMarkQuotationSent(current.quotation.quotationStatus)) {
+      if (
+        !current ||
+        !canMarkQuotationSent(current.quotation.quotationStatus)
+      ) {
         return current;
       }
 

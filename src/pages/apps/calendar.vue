@@ -8,8 +8,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 
 import type { ToDo } from "@/data/schema";
-import { useContactsStore } from "@/stores/contacts";
 import { useNotificationsStore } from "@/stores/notifications";
+import { usePeopleStore } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
 import { useCalendarOptions } from "@/views/apps/calendar/useCalendar";
 import { useCalendarStore } from "@/views/apps/calendar/useCalendarStore";
@@ -36,7 +36,7 @@ function meetingDurationFromEvent(e: any) {
   if (start && end) {
     const mins = Math.max(
       0,
-      Math.round((end.getTime() - start.getTime()) / 60000)
+      Math.round((end.getTime() - start.getTime()) / 60000),
     );
     return fmtMinutes(mins);
   }
@@ -81,15 +81,15 @@ const todos = useTodos();
 const display = useDisplay();
 todos.init();
 
-// contacts for dropdowns
-const contactsStore = useContactsStore();
-contactsStore.init();
+// people for dropdowns
+const peopleStore = usePeopleStore();
+peopleStore.init();
 const contactsOptions = computed(() =>
-  contactsStore.all.map((c) => ({
+  peopleStore.all.map((c) => ({
     id: c.id,
     name: c.fullName,
     avatarUrl: c.picture,
-  }))
+  })),
 );
 
 // legacy alias used in the template/components
@@ -140,13 +140,14 @@ function normalizeCalendarFilters() {
   const selected = (
     Array.isArray(store.selectedCalendars) ? store.selectedCalendars : []
   )
-    .map((label) => legacyLabelMap.get(String(label).trim()) ?? String(label).trim())
+    .map(
+      (label) =>
+        legacyLabelMap.get(String(label).trim()) ?? String(label).trim(),
+    )
     .filter((label) => availableByLabel.has(label));
 
   store.selectedCalendars =
-    selected.length > 0
-      ? [...new Set(selected)]
-      : [...availableByLabel.keys()];
+    selected.length > 0 ? [...new Set(selected)] : [...availableByLabel.keys()];
 }
 
 /* ========================= UI State ============================== */
@@ -201,7 +202,7 @@ const handleTaskMorePopoverRequest = (
       important?: boolean;
       status?: string;
     }>;
-  }>
+  }>,
 ) => {
   const width = 320;
   const height = 280;
@@ -210,11 +211,11 @@ const handleTaskMorePopoverRequest = (
     open: true,
     x: Math.min(
       Math.max(16, Number(e.detail?.x ?? 0) + 12),
-      window.innerWidth - width - 16
+      window.innerWidth - width - 16,
     ),
     y: Math.min(
       Math.max(16, Number(e.detail?.y ?? 0) + 12),
-      window.innerHeight - height - 16
+      window.innerHeight - height - 16,
     ),
     date: String(e.detail?.date ?? ""),
     tasks: Array.isArray(e.detail?.tasks) ? e.detail.tasks : [],
@@ -357,7 +358,7 @@ function jumpToDateFn(val: string) {
 const isEditOpen = ref(false);
 const selectedId = ref<number | string | null>(null);
 const selectedTodo = computed(() =>
-  selectedId.value != null ? todos.byId(selectedId.value) ?? null : null
+  selectedId.value != null ? (todos.byId(selectedId.value) ?? null) : null,
 );
 
 /* ========================= Meetings function source ============== */
@@ -386,7 +387,7 @@ const meetingEvents = computed(() => {
       (m as any).endAt ||
       new Date(
         new Date(m.startAt).getTime() +
-          Number(m.duration || DEFAULT_MEETING_MINUTES) * 60000
+          Number(m.duration || DEFAULT_MEETING_MINUTES) * 60000,
       ).toISOString();
 
     return {
@@ -429,7 +430,7 @@ calendarOptions.eventClick = (arg: any) => {
             arg.event.extendedProps?.meetingId ??
             arg.event.id?.toString()?.replace(/^meeting-/, ""),
         },
-      })
+      }),
     );
     return;
   }
@@ -475,9 +476,9 @@ calendarOptions.eventsSet = (events: any[]) => {
       .filter(
         (e) =>
           e?.extendedProps?.type === "meeting" &&
-          e?.source?.id === MEETING_SOURCE_ID
+          e?.source?.id === MEETING_SOURCE_ID,
       )
-      .map(meetingEventKey)
+      .map(meetingEventKey),
   );
 
   // remove any meeting with same key coming from other sources
@@ -508,7 +509,7 @@ calendarOptions.eventAdd = (addInfo: any) => {
       (x: EventApi) =>
         x?.extendedProps?.type === "meeting" &&
         x?.source?.id === MEETING_SOURCE_ID &&
-        meetingEventKey(x) === meetingEventKey(e)
+        meetingEventKey(x) === meetingEventKey(e),
     );
     if (hasOurs) e.remove();
   }
@@ -575,7 +576,7 @@ function persistEventChange(e: any) {
       if (e.start && e.end) {
         nextDuration = Math.max(
           1,
-          Math.round((e.end.getTime() - e.start.getTime()) / 60000)
+          Math.round((e.end.getTime() - e.start.getTime()) / 60000),
         );
       }
     }
@@ -633,9 +634,7 @@ onMounted(() => {
       } as any);
     }
     if (
-      !store.availableCalendars?.some(
-        (c: any) => c.label === "Sales Booking"
-      )
+      !store.availableCalendars?.some((c: any) => c.label === "Sales Booking")
     ) {
       store.availableCalendars.push({
         label: "Sales Booking",
@@ -670,7 +669,7 @@ onMounted(() => {
 
     // hand API to any consumers
     window.dispatchEvent(
-      new CustomEvent("calendar:provide-api", { detail: api })
+      new CustomEvent("calendar:provide-api", { detail: api }),
     );
   }
 });
@@ -679,7 +678,7 @@ onMounted(() => {
 watch(
   () => store.selectedCalendars.slice(),
   () => refCalendar.value?.getApi?.()?.refetchEvents(),
-  { deep: true }
+  { deep: true },
 );
 
 watch(
@@ -687,7 +686,7 @@ watch(
     (todos.meetings || [])
       .map((m) => `${m.id}-${m.startAt}-${m.endAt}-${m.duration}`)
       .join("|"),
-  () => refCalendar.value?.getApi?.()?.refetchEvents()
+  () => refCalendar.value?.getApi?.()?.refetchEvents(),
 );
 
 // guard: if HMR loses the source, re-add it
@@ -705,7 +704,7 @@ watch(
       meetingSourceAdded = true;
       api.refetchEvents();
     }
-  }
+  },
 );
 
 // keep calendar in sync when filters or meetings change
@@ -715,7 +714,7 @@ watch(
     const api = refCalendar.value?.getApi?.();
     api?.refetchEvents();
   },
-  { deep: true }
+  { deep: true },
 );
 
 /* ========================= Open To-Do edit drawer ================ */
@@ -742,12 +741,12 @@ onMounted(() => {
     sidebarMediaQuery.addEventListener("change", sidebarMediaQueryListener);
     window.addEventListener(
       "calendar:open-left-sidebar",
-      handleSidebarOpenRequest as EventListener
+      handleSidebarOpenRequest as EventListener,
     );
     window.addEventListener("todo:open-edit", onOpenEdit as EventListener);
     window.addEventListener(
       "calendar:open-task-more",
-      handleTaskMorePopoverRequest as EventListener
+      handleTaskMorePopoverRequest as EventListener,
     );
     window.addEventListener("mousedown", handleGlobalPointerDown);
   }
@@ -759,29 +758,19 @@ onUnmounted(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener(
       "calendar:open-left-sidebar",
-      handleSidebarOpenRequest as EventListener
+      handleSidebarOpenRequest as EventListener,
     );
     window.removeEventListener("todo:open-edit", onOpenEdit as EventListener);
     window.removeEventListener(
       "calendar:open-task-more",
-      handleTaskMorePopoverRequest as EventListener
+      handleTaskMorePopoverRequest as EventListener,
     );
     window.removeEventListener("mousedown", handleGlobalPointerDown);
   }
 });
 
 /* ========================= Drawer save handlers ================== */
-function handleSave(payload: {
-  id: number | string;
-  title: string;
-  collaborators: any[];
-  dueAt: string;
-  priority: "low" | "normal" | "high";
-  status: "pending" | "in_progress" | "for_review" | "completed";
-  notes: string;
-  important: boolean;
-  attachment?: any;
-}) {
+function handleSave(payload: Partial<ToDo> & { id: number | string }) {
   todos.updateTodo(payload.id, { ...payload });
 }
 function handleSaveSteps(v: { id: number | string; steps: any[] }) {
@@ -976,7 +965,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                           <VAvatar
                             v-for="c in event.extendedProps.collaborators.slice(
                               0,
-                              3
+                              3,
                             )"
                             :key="c.id"
                             :size="28"
@@ -1017,7 +1006,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                           <VAvatar
                             v-for="c in event.extendedProps.linkedTo.slice(
                               0,
-                              3
+                              3,
                             )"
                             :key="c.id"
                             :size="28"
@@ -1071,7 +1060,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                           >
                             {{
                               String(
-                                event.extendedProps?.status || "pending"
+                                event.extendedProps?.status || "pending",
                               ).replace("_", " ")
                             }}
                           </VChip>
@@ -1121,7 +1110,7 @@ function handleAddActivity(v: { id: number | string; body: string }) {
                           <VAvatar
                             v-for="c in event.extendedProps.collaborators.slice(
                               0,
-                              3
+                              3,
                             )"
                             :key="c.id"
                             :size="28"
@@ -1183,52 +1172,52 @@ function handleAddActivity(v: { id: number | string; body: string }) {
       @user-data="handleCreate"
     />
 
-      <div
-        v-if="taskMorePopover.open"
-        class="calendar-task-more-popover fc-popover fc-more-popover"
-        :style="{
-          left: `${taskMorePopover.x}px`,
-          top: `${taskMorePopover.y}px`,
-        }"
-      >
-        <div
-          class="calendar-task-more-popover__header fc-popover-header"
+    <div
+      v-if="taskMorePopover.open"
+      class="calendar-task-more-popover fc-popover fc-more-popover"
+      :style="{
+        left: `${taskMorePopover.x}px`,
+        top: `${taskMorePopover.y}px`,
+      }"
+    >
+      <div class="calendar-task-more-popover__header fc-popover-header">
+        <div class="fc-popover-title">
+          {{
+            taskMorePopover.date
+              ? formatSystemDate(taskMorePopover.date)
+              : "Tasks"
+          }}
+        </div>
+        <button
+          type="button"
+          class="calendar-task-more-popover__close"
+          @click="closeTaskMorePopover"
         >
-          <div class="fc-popover-title">
-              {{ taskMorePopover.date ? formatSystemDate(taskMorePopover.date) : "Tasks" }}
-          </div>
-          <button
-            type="button"
-            class="calendar-task-more-popover__close"
-            @click="closeTaskMorePopover"
-          >
-            ×
-          </button>
-        </div>
-
-        <div class="calendar-task-more-popover__list fc-popover-body">
-          <button
-            v-for="task in taskMorePopover.tasks"
-            :key="task.id"
-            type="button"
-            class="calendar-task-more-popover__item fc-daygrid-event fc-daygrid-dot-event"
-            @click="openTaskFromPopover(task.id)"
-          >
-            <span
-              class="calendar-task-more-popover__dot fc-daygrid-event-dot"
-            />
-            <span class="calendar-task-more-popover__text">
-              {{ task.title || "Untitled task" }}
-            </span>
-            <VIcon
-              v-if="task.important"
-              icon="tabler-star-filled"
-              size="14"
-              color="warning"
-            />
-          </button>
-        </div>
+          ×
+        </button>
       </div>
+
+      <div class="calendar-task-more-popover__list fc-popover-body">
+        <button
+          v-for="task in taskMorePopover.tasks"
+          :key="task.id"
+          type="button"
+          class="calendar-task-more-popover__item fc-daygrid-event fc-daygrid-dot-event"
+          @click="openTaskFromPopover(task.id)"
+        >
+          <span class="calendar-task-more-popover__dot fc-daygrid-event-dot" />
+          <span class="calendar-task-more-popover__text">
+            {{ task.title || "Untitled task" }}
+          </span>
+          <VIcon
+            v-if="task.important"
+            icon="tabler-star-filled"
+            size="14"
+            color="warning"
+          />
+        </button>
+      </div>
+    </div>
 
     <AddMeetingDrawer
       v-model="isAddMeetingOpen"

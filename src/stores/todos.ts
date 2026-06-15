@@ -1,6 +1,6 @@
 import type { Meeting, Message, ToDo, ToDoAttachment } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
-import { useContactsStore } from "@/stores/contacts";
+import { usePeopleStore } from "@/stores/people";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY_MEETINGS = "app.meetings.v2";
@@ -135,8 +135,8 @@ export const useTodos = defineStore("todos", {
     init() {
       // ensure contacts are seeded/initialized first so we can resolve collaborator refs
       try {
-        const contactsStore = useContactsStore();
-        contactsStore.init();
+        const peopleStore = usePeopleStore();
+        peopleStore.init();
       } catch (error) {
         // swallow — if pinia isn't ready yet this will be retried later when UI initializes
         // console.warn('contacts store init failed during todos init:', error)
@@ -155,14 +155,18 @@ export const useTodos = defineStore("todos", {
           ? storedTodos
           : [...SeedTodos];
 
-      // map collaborator/author refs to contact store entries when possible
-      const contactsStore = useContactsStore();
+      // map collaborator/author refs to canonical people entries when possible
+      const peopleStore = usePeopleStore();
       const resolveRef = (ref: any) => {
         if (!ref) return ref;
-        const id = ref.id ?? ref;
+        const rawId = ref.id ?? ref;
+        const id =
+          typeof rawId === "string" && rawId.startsWith("contact:")
+            ? rawId.slice("contact:".length)
+            : rawId;
 
         // Only match by id — seeded todos should reference contact IDs directly.
-        const byId = contactsStore.byId(id);
+        const byId = peopleStore.byId(id);
         if (byId) {
           return {
             id: byId.id,

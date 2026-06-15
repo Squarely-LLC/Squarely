@@ -1,29 +1,30 @@
 import { database } from "@/plugins/fake-api/handlers/apps/invoice/db";
 import type {
-    Client,
-    Invoice,
-    InvoicePaymentEntry,
-    InvoiceRecord,
-    InvoiceStatus,
-    PaymentDetails,
-    PurchasedProduct,
+  Client,
+  Invoice,
+  InvoicePaymentEntry,
+  InvoiceRecord,
+  InvoiceStatus,
+  PaymentDetails,
+  PurchasedProduct,
 } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import {
-    cloneDealBillingPeriod,
-    inferDealBillingPeriodFromKey,
+  cloneDealBillingPeriod,
+  inferDealBillingPeriodFromKey,
 } from "@/utils/dealDocumentDraft";
 import {
-    buildDocumentNote,
-    buildQuotationPaymentDetails,
-    buildQuotationSalesperson,
-    buildQuotationThanksNote,
-    getDocumentSequencePrefix,
-    loadActiveAppConfigurations,
+  buildDocumentNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
+import { resolveEmployeePersonId } from "@/stores/people";
 
 const STORAGE_KEY = "app.invoices.v3";
 type InvoicePayload = Omit<Partial<InvoiceRecord>, "quotation"> & {
@@ -126,7 +127,9 @@ function triggerInvoiceSequenceCleanup(invoiceIds: Array<number | string>) {
       quotationsStore.init();
 
       proformasStore.items
-        .filter((record) => deletedIds.has(String(record.convertedInvoiceId ?? "")))
+        .filter((record) =>
+          deletedIds.has(String(record.convertedInvoiceId ?? "")),
+        )
         .forEach((record) => {
           proformasStore.updateProforma(record.quotation.id, {
             convertedInvoiceId: null,
@@ -336,7 +339,7 @@ function sanitizeStoredRecord(record: InvoiceRecord): InvoiceRecord {
       : "Automatic";
   cloned.approverEmployeeId =
     cloned.approvalMode === "Request Approval"
-      ? (cloned.approverEmployeeId ?? null)
+      ? resolveEmployeePersonId(cloned.approverEmployeeId ?? null)
       : null;
   cloned.approvalRequestedAt =
     cloned.approvalMode === "Request Approval"
@@ -642,7 +645,7 @@ function normaliseInvoiceRecord(
         : null,
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
-        ? (payload.approverEmployeeId ?? null)
+        ? resolveEmployeePersonId(payload.approverEmployeeId ?? null)
         : null,
     salesperson:
       payload.salesperson?.trim() || buildQuotationSalesperson(config.legal),
@@ -741,8 +744,8 @@ function mergeInvoiceRecord(
   merged.approverEmployeeId =
     merged.approvalMode === "Request Approval"
       ? patch.approverEmployeeId === undefined
-        ? (original.approverEmployeeId ?? null)
-        : (patch.approverEmployeeId ?? null)
+        ? resolveEmployeePersonId(original.approverEmployeeId ?? null)
+        : resolveEmployeePersonId(patch.approverEmployeeId ?? null)
       : null;
   merged.approvalRequestedAt =
     merged.approvalMode === "Request Approval"

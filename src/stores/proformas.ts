@@ -24,6 +24,7 @@ import { normalizeRichText } from "@/utils/richText";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
+import { resolveEmployeePersonId } from "@/stores/people";
 
 const STORAGE_KEY = "app.proformas.v2";
 type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
@@ -125,7 +126,8 @@ function triggerProformaSequenceCleanup(proformaIds: Array<number | string>) {
           deletedIds.has(String(record.quotation.convertedProformaId ?? "")),
         )
         .forEach((record) => {
-          const convertedInvoiceId = record.quotation.convertedInvoiceId ?? null;
+          const convertedInvoiceId =
+            record.quotation.convertedInvoiceId ?? null;
 
           quotationsStore.updateQuotation(record.quotation.id, {
             quotation: {
@@ -266,11 +268,11 @@ function isLatestRevisionRecord(
   return String(latest.quotation.id) === String(target.quotation.id);
 }
 
-function isLockedProforma(
-  records: ProformaRecord[],
-  target: ProformaRecord,
-) {
-  return Boolean(target.convertedInvoiceId) || !isLatestRevisionRecord(records, target);
+function isLockedProforma(records: ProformaRecord[], target: ProformaRecord) {
+  return (
+    Boolean(target.convertedInvoiceId) ||
+    !isLatestRevisionRecord(records, target)
+  );
 }
 
 function sanitizeStoredRecord(record: ProformaRecord): ProformaRecord {
@@ -331,7 +333,7 @@ function sanitizeStoredRecord(record: ProformaRecord): ProformaRecord {
       : "Automatic";
   cloned.approverEmployeeId =
     cloned.approvalMode === "Request Approval"
-      ? (cloned.approverEmployeeId ?? null)
+      ? resolveEmployeePersonId(cloned.approverEmployeeId ?? null)
       : null;
   cloned.approvalRequestedAt =
     cloned.approvalMode === "Request Approval"
@@ -643,7 +645,7 @@ function normaliseProformaRecord(
         : null,
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
-        ? (payload.approverEmployeeId ?? null)
+        ? resolveEmployeePersonId(payload.approverEmployeeId ?? null)
         : null,
     salesperson:
       payload.salesperson?.trim() || buildQuotationSalesperson(config.legal),
@@ -748,8 +750,8 @@ function mergeProformaRecord(
   merged.approverEmployeeId =
     merged.approvalMode === "Request Approval"
       ? patch.approverEmployeeId === undefined
-        ? (original.approverEmployeeId ?? null)
-        : (patch.approverEmployeeId ?? null)
+        ? resolveEmployeePersonId(original.approverEmployeeId ?? null)
+        : resolveEmployeePersonId(patch.approverEmployeeId ?? null)
       : null;
   merged.approvalRequestedAt =
     merged.approvalMode === "Request Approval"

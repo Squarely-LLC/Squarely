@@ -15,6 +15,7 @@ import type {
   DealStageLifecycleEvent,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useConfigStore } from "@/stores/config";
+import { resolveEmployeePersonId } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
 
 const STORAGE_KEY = "app.deals.v5";
@@ -182,7 +183,9 @@ function resolveDealStageOptions() {
 }
 
 function findConfiguredStage(stageName: string) {
-  const safeStageName = String(stageName ?? "").trim().toLowerCase();
+  const safeStageName = String(stageName ?? "")
+    .trim()
+    .toLowerCase();
   if (!safeStageName) return null;
 
   return (
@@ -197,12 +200,16 @@ function resolveCanonicalStage(
 ) {
   return (
     findConfiguredStage(stageName) ??
-    (stageName === "Pre-Sale" ? resolveDealStageOptions()[0] ?? stageName : stageName)
+    (stageName === "Pre-Sale"
+      ? (resolveDealStageOptions()[0] ?? stageName)
+      : stageName)
   );
 }
 
 function resolveStageIndex(stage: string | null | undefined) {
-  const safeStage = String(stage ?? "").trim().toLowerCase();
+  const safeStage = String(stage ?? "")
+    .trim()
+    .toLowerCase();
   if (!safeStage) return -1;
 
   return resolveDealStageOptions().findIndex(
@@ -280,12 +287,14 @@ function normalizeCollaborators(
 
         const numeric = Number(trimmed);
 
-        return Number.isFinite(numeric) ? numeric : trimmed;
+        return Number.isFinite(numeric)
+          ? resolveEmployeePersonId(numeric)
+          : trimmed;
       }
 
       const numeric = Number(value);
 
-      return Number.isFinite(numeric) ? numeric : null;
+      return Number.isFinite(numeric) ? resolveEmployeePersonId(numeric) : null;
     })
     .filter(
       (value): value is number | string =>
@@ -309,13 +318,15 @@ function normalizeSalesman(
 
     const numeric = Number(trimmed);
 
-    return Number.isFinite(numeric) ? numeric : trimmed;
+    return Number.isFinite(numeric)
+      ? resolveEmployeePersonId(numeric)
+      : trimmed;
   }
 
   const numeric = Number(salesman);
 
   return Number.isFinite(numeric)
-    ? numeric
+    ? resolveEmployeePersonId(numeric)
     : (normalizedCollaborators[0] ?? null);
 }
 
@@ -381,7 +392,8 @@ function normalizeItems(items: DealItem[] | undefined | null): DealItem[] {
       catalogueItemId: normalizeString(item.catalogueItemId),
       catalogueType: normalizeString(item.catalogueType),
       itemTypeLabel:
-        normalizeString(item.itemTypeLabel) || normalizeString(item.catalogueType),
+        normalizeString(item.itemTypeLabel) ||
+        normalizeString(item.catalogueType),
       parentItemId: normalizeNullableNumber(item.parentItemId),
       sourceRelatedItemId: normalizeNullableNumber(item.sourceRelatedItemId),
       quantity: normalizeAmount(item.quantity) ?? 1,
@@ -620,7 +632,8 @@ function normalizeDocuments(
       expiryReminder: Boolean(document.expiryReminder),
       note: normalizeString(document.note) || undefined,
       fileUrl: normalizeString(document.fileUrl) || undefined,
-      createdAt: normalizeString(document.createdAt) || new Date().toISOString(),
+      createdAt:
+        normalizeString(document.createdAt) || new Date().toISOString(),
     }))
     .filter((document) => document.name);
 }
