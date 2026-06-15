@@ -2,6 +2,7 @@
 import { requiredValidator } from "@/@core/utils/validators";
 import type { ContactRef, Status, ToDo, ToDoAttachment } from "@/data/schema";
 import { useContactsStore } from "@/stores/contacts";
+import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
@@ -96,19 +97,30 @@ employeesStore.init();
 const jobsStore = useJobsStore();
 jobsStore.init();
 
-const relatedOptions = computed(() =>
-  jobsStore.all.map((job) => ({
+const dealsStore = useDealsStore();
+dealsStore.init();
+
+const relatedOptions = computed(() => [
+  ...dealsStore.all.map((deal) => ({
+    title: deal.code || `Deal #${deal.id}`,
+    value: `deal-${deal.id}`,
+    type: "deal" as const,
+    rawId: deal.id,
+  })),
+  ...jobsStore.all.map((job) => ({
     title: job.name,
     value: `job-${job.id}`,
     type: "job" as const,
     rawId: job.id,
   })),
-);
+]);
 
 const isRelatedToLocked = computed(() => relatedToLocked.value);
 
 // Use employees or contacts based on source prop
 const effectiveOptions = computed(() => {
+  if (props.collaboratorsOptions.length) return props.collaboratorsOptions;
+
   const store = props.source === "employees" ? employeesStore : contactsStore;
   return store.all.map((c) => ({
     id: c.id,
@@ -202,8 +214,12 @@ function loadInitialAndMaybeFocus() {
     important.value = !!init.important;
     relatedTo.value = init.relatedTo ?? relatedTo.value;
     selectedRelatedKey.value =
-      init.relatedTo?.type === "job" ? `job-${init.relatedTo.id}` : null;
-    relatedToLocked.value = Boolean(init.relatedTo);
+      init.relatedTo?.type === "deal"
+        ? `deal-${init.relatedTo.id}`
+        : init.relatedTo?.type === "job"
+          ? `job-${init.relatedTo.id}`
+          : null;
+    relatedToLocked.value = false;
     goalId.value = init.goalId ?? goalId.value;
     milestoneId.value = init.milestoneId ?? milestoneId.value;
     selectedStatus.value = (init.status as any) ?? selectedStatus.value;

@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import DialogActionBar from "@/components/DialogActionBar.vue";
-import type { ToDo } from "@/data/schema";
+import type { ContactRef, ToDo } from "@/data/schema";
 import type { InvoiceRecord } from "@/plugins/fake-api/handlers/apps/invoice/types";
 import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
@@ -372,9 +372,7 @@ const migrateLegacyDealSalesTasksToTodos = (
 
     todosStore.addTodo({
       title: task.title,
-      collaborators: Array.isArray(task.collaborators)
-        ? task.collaborators.map((collaborator) => ({ ...collaborator }))
-        : [],
+      collaborators: normalizeTaskCollaborators(task.collaborators),
       dueAt: new Date().toISOString(),
       afterWhen: task.afterWhen ?? null,
       startTrigger: task.startTrigger
@@ -458,6 +456,7 @@ const resolveDealSalesTasks = (
     ? currentDeal.salesTasks.map((task) =>
         cloneDealSalesTaskTemplate({
           ...task,
+          collaborators: normalizeTaskCollaborators(task.collaborators),
           relatedTo: normalizeCurrentTaskRelation(task.relatedTo),
         }),
       )
@@ -515,7 +514,7 @@ const resolveDealSalesTasks = (
       cloneDealSalesTaskTemplate({
         id: nextId + index,
         title: todo.title,
-        collaborators: todo.collaborators || [],
+        collaborators: normalizeTaskCollaborators(todo.collaborators),
         afterWhen: todo.afterWhen ?? null,
         startTrigger: (todo.startTrigger as
           | CatalogueTaskStartTrigger
@@ -1277,6 +1276,56 @@ const contactOptions = computed(() =>
   })),
 );
 
+const taskCollaboratorOptions = computed(() => {
+  const byKey = new Map<string, ContactRef>();
+  const addOption = (option: ContactRef) => {
+    byKey.set(String(option.id), option);
+  };
+
+  contactOptions.value.forEach(addOption);
+  employeeOptions.value.forEach(addOption);
+  dealEmployeeCollaborators.value.forEach((collaborator) =>
+    addOption({
+      id: collaborator.id,
+      name: collaborator.name,
+      avatarUrl: collaborator.avatarUrl,
+    }),
+  );
+
+  return Array.from(byKey.values()).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+});
+
+const resolveTaskCollaborator = (entry: unknown): ContactRef => {
+  const raw =
+    entry && typeof entry === "object"
+      ? (entry as Partial<ContactRef> & { fullName?: string; picture?: string })
+      : null;
+  const rawId =
+    raw?.id ??
+    (typeof entry === "string" || typeof entry === "number" ? entry : null);
+  const matched = taskCollaboratorOptions.value.find(
+    (option) => String(option.id) === String(rawId),
+  );
+
+  if (matched) return { ...matched };
+
+  const fallbackName =
+    raw?.name || raw?.fullName || `User #${rawId ?? "unknown"}`;
+
+  return {
+    id: rawId ?? fallbackName,
+    name: fallbackName,
+    avatarUrl: raw?.avatarUrl ?? raw?.picture ?? null,
+  };
+};
+
+const normalizeTaskCollaborators = (collaborators: unknown): ContactRef[] =>
+  Array.isArray(collaborators)
+    ? collaborators.map(resolveTaskCollaborator)
+    : [];
+
 const linkedJob = computed(() => {
   const linkedJobId = Number(deal.value?.linkedJobId ?? NaN);
   if (!Number.isFinite(linkedJobId)) return null;
@@ -1820,8 +1869,8 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
       payload?.initial?.collaborators &&
       Array.isArray(payload.initial.collaborators) &&
       payload.initial.collaborators.length
-        ? payload.initial.collaborators
-        : dealEmployeeCollaborators.value,
+        ? normalizeTaskCollaborators(payload.initial.collaborators)
+        : normalizeTaskCollaborators(dealEmployeeCollaborators.value),
     relatedTo: dealRelatedRef.value,
     status: payload?.initial?.status ?? "pending",
     important: Boolean(payload?.initial?.important),
@@ -1867,7 +1916,7 @@ const mapSalesTaskTemplateToEditableTodo = (
     id: task.id,
     title: task.title,
     collaborators: Array.isArray(task.collaborators)
-      ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+      ? normalizeTaskCollaborators(task.collaborators)
       : [],
     dueAt,
     status:
@@ -1904,7 +1953,7 @@ const openEditTask = (todoId: number | string) => {
     editingTodo.value = {
       ...todo,
       collaborators: Array.isArray(todo.collaborators)
-        ? todo.collaborators.map((collaborator) => ({ ...collaborator }))
+        ? normalizeTaskCollaborators(todo.collaborators)
         : [],
       relatedTo: normalizeSalesTaskRelatedTo(todo.relatedTo),
       steps: Array.isArray(todo.steps)
@@ -1966,8 +2015,8 @@ const handleDocumentTodoRequest = (payload: {
       payload?.initial?.collaborators &&
       Array.isArray(payload.initial.collaborators) &&
       payload.initial.collaborators.length
-        ? payload.initial.collaborators
-        : dealEmployeeCollaborators.value,
+        ? normalizeTaskCollaborators(payload.initial.collaborators)
+        : normalizeTaskCollaborators(dealEmployeeCollaborators.value),
     relatedTo: dealRelatedRef.value,
   };
   isAddTodoDrawerVisible.value = true;
@@ -1987,6 +2036,7 @@ const onTodoCreated = (payload: any) => {
     todosStore.addTodo &&
       todosStore.addTodo({
         ...payload,
+        collaborators: normalizeTaskCollaborators(payload.collaborators),
         relatedTo: dealRelatedRef.value,
       });
     notifications.push("Task created", "success", 3500);
@@ -2018,11 +2068,7 @@ const onTodoEdited = (payload: any) => {
           : {
               ...task,
               title: String(payload.title ?? "").trim(),
-              collaborators: Array.isArray(payload.collaborators)
-                ? payload.collaborators.map((collaborator: any) => ({
-                    ...collaborator,
-                  }))
-                : [],
+              collaborators: normalizeTaskCollaborators(payload.collaborators),
               afterWhen: payload.dueAt ?? null,
               notes: String(payload.notes ?? "").trim(),
               important: Boolean(payload.important),
@@ -2052,7 +2098,7 @@ const onTodoEdited = (payload: any) => {
 
   const partial: any = {
     title: payload.title,
-    collaborators: payload.collaborators,
+    collaborators: normalizeTaskCollaborators(payload.collaborators),
     dueAt: payload.dueAt,
     status: payload.status,
     notes: payload.notes,
@@ -2321,10 +2367,7 @@ watch(
     <AddNewToDoDrawer
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
-      :collaborators-options="[]"
-      :hide-related-to-field="true"
-      :show-immediate-due-option="showImmediateDueOption"
-      source="employees"
+      :collaborators-options="taskCollaboratorOptions"
       :initial="addTodoInitial ?? undefined"
       @user-data="onTodoCreated"
     />
@@ -2332,9 +2375,7 @@ watch(
     <EditToDoDrawer
       v-model:is-drawer-open="isEditTodoDrawerVisible"
       :todo="editingTodo"
-      :hide-related-to-field="true"
-      :show-immediate-due-option="showImmediateDueOptionOnEdit"
-      :collaborators-options="employeeOptions"
+      :collaborators-options="taskCollaboratorOptions"
       @save="onTodoEdited"
       @saveSteps="onTodoStepsEdited"
     />

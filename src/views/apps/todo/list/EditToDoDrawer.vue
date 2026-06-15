@@ -7,6 +7,7 @@ import type {
   ToDoAttachment,
   ToDoStep,
 } from "@/data/schema";
+import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
 import { formatSystemDate } from "@core/utils/formatters";
@@ -94,16 +95,25 @@ const statusOptions: { title: string; value: Status }[] = [
 const jobsStore = useJobsStore();
 jobsStore.init();
 
-const relatedOptions = computed(() =>
-  jobsStore.all.map((job) => ({
+const dealsStore = useDealsStore();
+dealsStore.init();
+
+const relatedOptions = computed(() => [
+  ...dealsStore.all.map((deal) => ({
+    title: deal.code || `Deal #${deal.id}`,
+    value: `deal-${deal.id}`,
+    type: "deal" as const,
+    rawId: deal.id,
+  })),
+  ...jobsStore.all.map((job) => ({
     title: job.name,
     value: `job-${job.id}`,
     type: "job" as const,
     rawId: job.id,
   })),
-);
+]);
 
-const isRelatedToLocked = computed(() => props.todo?.relatedTo?.type === "job");
+const isRelatedToLocked = computed(() => false);
 
 /* ===== Helpers ===== */
 const idToContact = computed(
@@ -229,7 +239,11 @@ function loadFromToDo(t: ToDo) {
       ? t.attachment?.url || ""
       : t.attachment?.name || "";
   selectedRelatedKey.value =
-    t.relatedTo?.type === "job" ? `job-${t.relatedTo.id}` : null;
+    t.relatedTo?.type === "deal"
+      ? `deal-${t.relatedTo.id}`
+      : t.relatedTo?.type === "job"
+        ? `job-${t.relatedTo.id}`
+        : null;
   selectedStatus.value = (t.status ?? "pending") as Status;
 
   steps.value = structuredClone(toRaw(t.steps ?? [])) as ToDoStep[];

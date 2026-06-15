@@ -32,6 +32,7 @@ import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
+import { useEmployeesStore } from "@/stores/employees";
 import type { InvoicePaymentInput } from "@/stores/invoices";
 import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -126,6 +127,7 @@ const cataloguesStore = useCataloguesStore();
 const configStore = useConfigStore();
 const contactsStore = useContactsStore();
 const dealsStore = useDealsStore();
+const employeesStore = useEmployeesStore();
 const quotationsStore = useQuotationsStore();
 const proformasStore = useProformasStore();
 const invoicesStore = useInvoicesStore();
@@ -137,6 +139,7 @@ cataloguesStore.init();
 configStore.init();
 contactsStore.init();
 dealsStore.init();
+employeesStore.init();
 quotationsStore.init();
 proformasStore.init();
 invoicesStore.init();
@@ -1357,6 +1360,45 @@ const normalizeSalesTaskRelatedTo = (
       }
     : buildDealRelatedTo();
 
+const resolveSalesTaskCollaborator = (entry: unknown) => {
+  const raw =
+    entry && typeof entry === "object"
+      ? (entry as {
+          id?: number | string;
+          name?: string;
+          fullName?: string;
+          avatarUrl?: string | null;
+          picture?: string | null;
+        })
+      : null;
+  const rawId =
+    raw?.id ??
+    (typeof entry === "string" || typeof entry === "number" ? entry : null);
+  const employee = rawId !== null ? employeesStore.byId(Number(rawId)) : null;
+  const contact = rawId !== null ? contactsStore.byId(Number(rawId)) : null;
+
+  return {
+    id: rawId ?? raw?.name ?? "unknown",
+    name:
+      raw?.name ||
+      raw?.fullName ||
+      employee?.fullName ||
+      contact?.fullName ||
+      `User #${rawId ?? "unknown"}`,
+    avatarUrl:
+      raw?.avatarUrl ??
+      raw?.picture ??
+      employee?.picture ??
+      contact?.picture ??
+      null,
+  };
+};
+
+const normalizeSalesTaskCollaborators = (collaborators: unknown) =>
+  Array.isArray(collaborators)
+    ? collaborators.map(resolveSalesTaskCollaborator)
+    : [];
+
 const parseAfterWhen = (raw?: string | null) => {
   const base = new Date();
 
@@ -1395,7 +1437,7 @@ const cloneDealSalesTaskTemplate = (
 ): DealSalesTaskTemplate => ({
   ...task,
   collaborators: Array.isArray(task.collaborators)
-    ? task.collaborators.map((collaborator) => ({ ...collaborator }))
+    ? normalizeSalesTaskCollaborators(task.collaborators)
     : [],
   startTrigger: task.startTrigger
     ? {
@@ -7204,7 +7246,7 @@ const buildEditableSalesTasks = (): DealSalesTaskTemplate[] => {
           nextDealSalesTaskId([...storedSalesTasks, ...importedSalesTasks]) +
           index,
         title: todo.title,
-        collaborators: todo.collaborators || [],
+        collaborators: normalizeSalesTaskCollaborators(todo.collaborators),
         afterWhen: todo.afterWhen ?? null,
         startTrigger: (todo.startTrigger as any) ?? {
           type: "time",
@@ -7267,7 +7309,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
         taskId: null,
       },
       notes: todo.notes || "",
-      collaborators: todo.collaborators || [],
+      collaborators: normalizeSalesTaskCollaborators(todo.collaborators),
       important: Boolean(todo.important),
       status: (todo.status as Status) || "pending",
       relatedTo: normalizeSalesTaskRelatedTo(todo.relatedTo),
@@ -7285,7 +7327,7 @@ const salesTasks = computed<DealSalesTaskRow[]>(() => {
         taskId: null,
       },
       notes: task.notes || "",
-      collaborators: task.collaborators || [],
+      collaborators: normalizeSalesTaskCollaborators(task.collaborators),
       important: Boolean(task.important),
       status: (task.status as Status) || "pending",
       relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
