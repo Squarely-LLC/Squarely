@@ -1,166 +1,173 @@
-import is from '@sindresorhus/is'
-import { destr } from 'destr'
-import type { PathParams } from 'msw'
-import { HttpResponse, http } from 'msw'
-import { db } from '@db/apps/users/db'
-import { paginateArray } from '@api-utils/paginateArray'
+import { paginateArray } from "@api-utils/paginateArray";
+import is from "@sindresorhus/is";
+import { destr } from "destr";
+import type { PathParams } from "msw";
+import { HttpResponse, http } from "msw";
+import { ensureAccountEmployeeLink } from "@/utils/accountEmployeeLink";
+import {
+  loadAccountRoleState,
+  publicUser,
+  saveAccountRoleState,
+  type AccountUserRecord,
+} from "@/utils/accountRoles";
+
+const normalizeEmail = (email?: string | null) =>
+  String(email ?? "")
+    .trim()
+    .toLowerCase();
+
+const toTableUser = (user: AccountUserRecord) => {
+  const state = loadAccountRoleState();
+  const role = state.roles.find((entry) => entry.id === user.roleId);
+
+  return {
+    ...publicUser(user, role),
+    company: user.centerId,
+    role: role?.name ?? user.roleId,
+    contact: "",
+    country: "",
+    currentPlan: user.temporaryPassword ? "temporary password" : "standard",
+    billing: user.isMaster ? "Master Account" : "Center Account",
+  };
+};
 
 export const handlerAppsUsers = [
-  // Get Users Details
-  http.get(('/api/apps/users'), ({ request }) => {
-    const url = new URL(request.url)
+  http.get("/api/apps/users", ({ request }) => {
+    const state = loadAccountRoleState();
+    const url = new URL(request.url);
+    const q = url.searchParams.get("q");
+    const role = url.searchParams.get("role");
+    const status = url.searchParams.get("status");
+    const sortBy = url.searchParams.get("sortBy");
+    const orderBy = url.searchParams.get("orderBy");
+    const itemsPerPage = destr(url.searchParams.get("itemsPerPage"));
+    const page = destr(url.searchParams.get("page"));
+    const itemsPerPageLocal = is.number(itemsPerPage) ? itemsPerPage : 10;
+    const pageLocal = is.number(page) ? page : 1;
+    const queryLower = String(q ?? "").toLowerCase();
 
-    const q = url.searchParams.get('q')
-    const role = url.searchParams.get('role')
-    const plan = url.searchParams.get('plan')
-    const status = url.searchParams.get('status')
-    const sortBy = url.searchParams.get('sortBy')
-    const itemsPerPage = url.searchParams.get('itemsPerPage')
-    const page = url.searchParams.get('page')
-    const orderBy = url.searchParams.get('orderBy')
+    let filteredUsers = state.users.map(toTableUser).filter((user) => {
+      const matchesQuery =
+        user.fullName.toLowerCase().includes(queryLower) ||
+        user.email.toLowerCase().includes(queryLower);
+      const matchesRole = role
+        ? user.roleId === role || user.role === role
+        : true;
+      const matchesStatus = status ? user.status === status : true;
 
-    const searchQuery = is.string(q) ? q : undefined
-    const queryLower = (searchQuery ?? '').toString().toLowerCase()
+      return matchesQuery && matchesRole && matchesStatus;
+    });
 
-    const parsedSortBy = destr(sortBy)
-    const sortByLocal = is.string(parsedSortBy) ? parsedSortBy : ''
-
-    const parsedOrderBy = destr(orderBy)
-    const orderByLocal = is.string(parsedOrderBy) ? parsedOrderBy : ''
-
-    const parsedItemsPerPage = destr(itemsPerPage)
-    const parsedPage = destr(page)
-
-    const itemsPerPageLocal = is.number(parsedItemsPerPage) ? parsedItemsPerPage : 10
-    const pageLocal = is.number(parsedPage) ? parsedPage : 1
-
-    // filter users
-    let filteredUsers = db.users.filter(user => ((user.fullName.toLowerCase().includes(queryLower) || user.email.toLowerCase().includes(queryLower)) && user.role === (role || user.role) && user.currentPlan === (plan || user.currentPlan) && user.status === (status || user.status))).reverse()
-
-    // sort users
-    if (sortByLocal) {
-      console.log(sortByLocal)
-      if (sortByLocal === 'user') {
-        filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === 'asc')
-            return a.fullName.localeCompare(b.fullName)
-          else
-            return b.fullName.localeCompare(a.fullName)
-        })
-      }
-      if (sortByLocal === 'email') {
-        filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === 'asc')
-            return a.email.localeCompare(b.email)
-          else
-            return b.email.localeCompare(a.email)
-        })
-      }
-      if (sortByLocal === 'role') {
-        filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === 'asc')
-            return a.role.localeCompare(b.role)
-          else
-            return b.role.localeCompare(a.role)
-        })
-      }
-      if (sortByLocal === 'plan') {
-        filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === 'asc')
-            return a.currentPlan.localeCompare(b.currentPlan)
-          else
-            return b.currentPlan.localeCompare(a.currentPlan)
-        })
-      }
-      if (sortByLocal === 'status') {
-        filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === 'asc')
-            return a.status.localeCompare(b.status)
-          else
-            return b.status.localeCompare(a.status)
-        })
-      }
-      if (sortByLocal === 'billing') {
-        filteredUsers = filteredUsers.sort((a, b) => {
-          if (orderByLocal === 'asc')
-            return a.billing.localeCompare(b.billing)
-          else
-            return b.billing.localeCompare(a.billing)
-        })
-      }
+    const sortKey = is.string(destr(sortBy)) ? String(destr(sortBy)) : "";
+    const direction = is.string(destr(orderBy)) ? String(destr(orderBy)) : "";
+    if (sortKey) {
+      filteredUsers = filteredUsers.sort((a, b) => {
+        const left = String((a as any)[sortKey] ?? "");
+        const right = String((b as any)[sortKey] ?? "");
+        return direction === "asc"
+          ? left.localeCompare(right)
+          : right.localeCompare(left);
+      });
+    } else {
+      filteredUsers.reverse();
     }
 
-    const totalUsers = filteredUsers.length
-
-    // total pages
-    const totalPages = Math.ceil(totalUsers / itemsPerPageLocal)
-
-    return HttpResponse.json(
-      {
-        users: paginateArray(filteredUsers, itemsPerPageLocal, pageLocal),
-        totalPages,
-        totalUsers,
-        page: pageLocal > Math.ceil(totalUsers / itemsPerPageLocal) ? 1 : page,
-      },
-      { status: 200 },
-    )
+    return HttpResponse.json({
+      users: paginateArray(filteredUsers, itemsPerPageLocal, pageLocal),
+      totalPages: Math.ceil(filteredUsers.length / itemsPerPageLocal),
+      totalUsers: filteredUsers.length,
+      page: pageLocal,
+    });
   }),
 
-  // Get Single User Detail
-  http.get<PathParams>(('/api/apps/users/:id'), ({ params }) => {
-    const userId = Number(params.id)
+  http.get<PathParams>("/api/apps/users/:id", ({ params }) => {
+    const state = loadAccountRoleState();
+    const user = state.users.find(
+      (entry) => String(entry.id) === String(params.id),
+    );
+    if (!user)
+      return HttpResponse.json({ message: "User not found" }, { status: 404 });
 
-    const user = db.users.find(e => e.id === userId)
+    return HttpResponse.json(toTableUser(user));
+  }),
 
-    if (!user) {
-      return HttpResponse.json({ message: 'User not found' }, { status: 404 })
-    }
-    else {
+  http.delete<PathParams>("/api/apps/users/:id", ({ params }) => {
+    const state = loadAccountRoleState();
+    const index = state.users.findIndex(
+      (entry) => String(entry.id) === String(params.id),
+    );
+    if (index === -1)
+      return HttpResponse.json("User not found", { status: 404 });
+    if (state.users[index].isMaster)
+      return HttpResponse.json("The master account cannot be deleted.", {
+        status: 403,
+      });
+
+    state.users.splice(index, 1);
+    saveAccountRoleState(state);
+
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post("/api/apps/users", async ({ request }) => {
+    const payload = (await request.json()) as Partial<AccountUserRecord> & {
+      role?: string;
+      password?: string;
+    };
+    const state = loadAccountRoleState();
+    const email = normalizeEmail(payload.email);
+    if (!email)
       return HttpResponse.json(
-        {
-          ...user,
-          ...{
-            taskDone: 1230,
-            projectDone: 568,
-            taxId: 'Tax-8894',
-            language: 'English',
-          },
-        },
-        { status: 200 },
-      )
-    }
+        { message: "Email is required." },
+        { status: 400 },
+      );
+    if (state.users.some((user) => normalizeEmail(user.email) === email))
+      return HttpResponse.json(
+        { message: "A user with this email already exists." },
+        { status: 409 },
+      );
+
+    const role =
+      state.roles.find((entry) => entry.id === payload.roleId) ||
+      state.roles.find((entry) => entry.name === payload.role) ||
+      state.roles.find((entry) => entry.name === "Admin");
+
+    if (!role)
+      return HttpResponse.json(
+        { message: "Role is required." },
+        { status: 400 },
+      );
+
+    const nextId =
+      Math.max(0, ...state.users.map((user) => Number(user.id) || 0)) + 1;
+    const now = new Date().toISOString();
+    const employeeLink = ensureAccountEmployeeLink({
+      fullName: String(payload.fullName || email),
+      email,
+      avatar: payload.avatar || null,
+    });
+    const user: AccountUserRecord = {
+      id: nextId,
+      centerId: payload.centerId || state.users[0]?.centerId || role.centerId,
+      employeeId: payload.employeeId ?? employeeLink.employeeId,
+      personId: payload.personId ?? payload.employeeId ?? employeeLink.personId,
+      fullName: String(payload.fullName || email).trim(),
+      username: payload.username || email.split("@")[0],
+      email,
+      password: payload.password || `Temp#${nextId}Squarely`,
+      roleId: role.id,
+      status: payload.status || "active",
+      avatar: payload.avatar || employeeLink.avatar || null,
+      temporaryPassword: payload.temporaryPassword ?? true,
+      createdBy: payload.createdBy ?? null,
+      isMaster: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    state.users.unshift(user);
+    saveAccountRoleState(state);
+
+    return HttpResponse.json({ body: toTableUser(user) }, { status: 201 });
   }),
-
-  // Delete User
-  http.delete(('/api/apps/users/:id'), ({ params }) => {
-    const userId = Number(params.id)
-
-    const userIndex = db.users.findIndex(e => e.id === userId)
-
-    if (userIndex === -1) {
-      return HttpResponse.json('User not found', { status: 404 })
-    }
-    else {
-      db.users.splice(userIndex, 1)
-
-      return new HttpResponse(null, {
-        status: 204,
-      })
-    }
-  }),
-
-  // 👉 Add user
-  http.post(('/api/apps/users'), async ({ request }) => {
-    const user = await request.json() as any
-
-    db.users.push({
-      ...user,
-      id: db.users.length + 1,
-    })
-
-    return HttpResponse.json(
-      { body: user },
-      { status: 201 },
-    )
-  }),
-]
+];

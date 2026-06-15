@@ -12,6 +12,7 @@ import { useContactsStore } from "@/stores/contacts";
 import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { findCurrentUserOption } from "@/utils/currentAccount";
 import {
   getContactOptions,
   getEmployeeOptions,
@@ -271,6 +272,9 @@ const defaultCreatorValue = computed(() => {
 });
 
 const defaultCollaboratorValue = computed(() => {
+  const current = findCurrentUserOption(allCollaboratorOptions.value);
+  if (current) return current.value;
+
   const displayName = currentUserDisplayName.value;
   const matchCollaborator = allCollaboratorOptions.value.find(
     (option) => option.title.trim().toLowerCase() === displayName,

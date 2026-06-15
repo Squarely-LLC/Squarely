@@ -161,6 +161,7 @@ declare module 'vue-router/auto-routes' {
     'product-list': RouteRecordInfo<'product-list', '/product/list', Record<never, never>, Record<never, never>>,
     'register': RouteRecordInfo<'register', '/register', Record<never, never>, Record<never, never>>,
     'session': RouteRecordInfo<'session', '/session', Record<never, never>, Record<never, never>>,
+    'settings-users-roles': RouteRecordInfo<'settings-users-roles', '/settings/users-roles', Record<never, never>, Record<never, never>>,
     'tables-data-table': RouteRecordInfo<'tables-data-table', '/tables/data-table', Record<never, never>, Record<never, never>>,
     'tables-simple-table': RouteRecordInfo<'tables-simple-table', '/tables/simple-table', Record<never, never>, Record<never, never>>,
     'verify': RouteRecordInfo<'verify', '/verify', Record<never, never>, Record<never, never>>,

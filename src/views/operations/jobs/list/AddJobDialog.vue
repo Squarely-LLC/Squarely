@@ -8,6 +8,7 @@ import type {
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
+import { findCurrentUserOption } from "@/utils/currentAccount";
 import {
   getEmployeeOptions,
   getSalesContactOptions,
@@ -49,6 +50,13 @@ const typeOptions: JobType[] = [
 const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
 const relatedContactOptions = computed(() => getSalesContactOptions());
 const collaboratorOptions = computed(() => getEmployeeOptions());
+const defaultCollaboratorValue = computed(() =>
+  Number(findCurrentUserOption(collaboratorOptions.value)?.value ?? NaN),
+);
+const defaultCollaborators = () =>
+  Number.isFinite(defaultCollaboratorValue.value)
+    ? [defaultCollaboratorValue.value]
+    : [];
 const avatarText = (name?: string | null) => {
   const safe = (name || "").trim();
   if (!safe) return "??";
@@ -71,7 +79,7 @@ const localJob = ref<Partial<JobProperties>>({
   type: "Architecture",
   flag: "Normal",
   relatedTo: null,
-  collaborators: [],
+  collaborators: defaultCollaborators(),
   note: "",
 });
 const dialogModelValueUpdate = (value: boolean) => {
@@ -91,7 +99,7 @@ const resetForm = () => {
     type: "Architecture",
     flag: "Normal",
     relatedTo: null,
-    collaborators: [],
+    collaborators: defaultCollaborators(),
     note: "",
   };
   nextTick(() => {

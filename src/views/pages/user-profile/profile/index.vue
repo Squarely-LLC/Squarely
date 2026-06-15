@@ -6,23 +6,62 @@ import Connection from "./Connection.vue";
 import ProjectList from "./ProjectList.vue";
 import Teams from "./Teams.vue";
 
-const router = useRoute("pages-user-profile-tab");
+const userData = useCookie<any>("userData");
 const profileTabData = ref<ProfileTab>();
 
-const fetchAboutData = async () => {
-  if (router.params.tab === "profile") {
-    const data = await $api("/pages/profile", {
-      query: {
-        tab: router.params.tab,
+const buildProfileData = (): ProfileTab =>
+  ({
+    about: [
+      {
+        property: "Full Name",
+        value: userData.value?.fullName || userData.value?.username || "User",
+        icon: "tabler-user",
       },
-    }).catch((err) => console.log(err));
+      {
+        property: "Role",
+        value: userData.value?.role || "User",
+        icon: "tabler-shield",
+      },
+      {
+        property: "Status",
+        value: userData.value?.status || "active",
+        icon: "tabler-circle-check",
+      },
+    ],
+    contacts: [
+      {
+        property: "Email",
+        value: userData.value?.email || "--",
+        icon: "tabler-mail",
+      },
+      {
+        property: "Employee",
+        value: userData.value?.employeeId || userData.value?.personId || "--",
+        icon: "tabler-id",
+      },
+    ],
+    teams: [
+      {
+        property: "Center",
+        value: userData.value?.centerId || "--",
+      },
+    ],
+    overview: [
+      {
+        property: "Temporary Password",
+        value: userData.value?.temporaryPassword ? "Yes" : "No",
+        icon: "tabler-key",
+      },
+    ],
+    connections: [],
+    teamsTech: [],
+  }) as unknown as ProfileTab;
 
-    profileTabData.value = data;
-  }
+const fetchAboutData = async () => {
+  profileTabData.value = buildProfileData();
 };
 
-watch(router, fetchAboutData, { immediate: true });
-console.log(profileTabData);
+watch(userData, fetchAboutData, { immediate: true, deep: true });
 </script>
 
 <template>

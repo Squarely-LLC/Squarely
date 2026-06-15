@@ -1,119 +1,194 @@
 <script setup lang="ts">
-import AddNewUserDrawer from '@/views/apps/user/list/AddNewUserDrawer.vue'
-import type { UserProperties } from '@db/apps/users/types'
+import { emailValidator, requiredValidator } from "@/@core/utils/validators";
+import { useAccountsStore } from "@/stores/accounts";
+import { useNotificationsStore } from "@/stores/notifications";
+import { currentUserData } from "@/utils/currentAccount";
+import type { AccountStatus } from "@/utils/accountRoles";
+import type { VForm } from "vuetify/components/VForm";
 
-// 👉 Store
-const searchQuery = ref('')
-const selectedRole = ref()
-const selectedPlan = ref()
-const selectedStatus = ref()
+const accountsStore = useAccountsStore();
+const notifications = useNotificationsStore();
+accountsStore.init();
 
-// Data table options
-const itemsPerPage = ref(10)
-const page = ref(1)
-const sortBy = ref()
-const orderBy = ref()
-const selectedRows = ref([])
+const searchQuery = ref("");
+const selectedRole = ref<string | null>(null);
+const selectedStatus = ref<AccountStatus | null>(null);
+const itemsPerPage = ref(10);
+const page = ref(1);
+const sortBy = ref<any[]>([]);
+const selectedRows = ref<number[]>([]);
+const isAddUserDialogVisible = ref(false);
+const refForm = ref<VForm>();
+const isFormValid = ref(false);
+const currentAccount = computed(() =>
+  accountsStore.userById(currentUserData()?.id) ?? accountsStore.currentCenterUsers[0],
+);
+const canCreateUsers = computed(() =>
+  accountsStore.can(currentAccount.value, "usersRoles", "create"),
+);
+const canDeleteUsers = computed(() =>
+  accountsStore.can(currentAccount.value, "usersRoles", "delete"),
+);
 
-// Update data table options
-const updateOptions = (options: any) => {
-  sortBy.value = options.sortBy[0]?.key
-  orderBy.value = options.sortBy[0]?.order
-}
+const draft = reactive({
+  fullName: "",
+  email: "",
+  roleId: "",
+  status: "active" as AccountStatus,
+  password: "",
+});
 
-// Headers
+const roleOptions = computed(() =>
+  accountsStore.currentCenterRoles.map((role) => ({
+    title: role.name,
+    value: role.id,
+  })),
+);
+
+const statusOptions = [
+  { title: "Active", value: "active" },
+  { title: "Pending", value: "pending" },
+  { title: "Inactive", value: "inactive" },
+];
+
 const headers = [
-  { title: 'User', key: 'user' },
-  { title: 'Role', key: 'role' },
-  { title: 'Plan', key: 'plan' },
-  { title: 'Billing', key: 'billing' },
-  { title: 'Status', key: 'status' },
-  { title: 'Actions', key: 'actions', sortable: false },
-]
+  { title: "User", key: "user" },
+  { title: "Role", key: "role" },
+  { title: "Status", key: "status" },
+  { title: "Password", key: "temporaryPassword", sortable: false },
+  { title: "Actions", key: "actions", sortable: false },
+];
 
-// 👉 Fetching users
-const { data: usersData, execute: fetchUsers } = await useApi<any>(createUrl('/apps/users', {
-  query: {
-    q: searchQuery,
-    status: selectedStatus,
-    plan: selectedPlan,
-    role: selectedRole,
-    itemsPerPage,
-    page,
-    sortBy,
-    orderBy,
-  },
-}))
+const avatarText = (name?: string | null) =>
+  String(name || "?")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
-const users = computed((): UserProperties[] => usersData.value.users)
-const totalUsers = computed(() => usersData.value.totalUsers)
+const decoratedUsers = computed(() =>
+  accountsStore.currentCenterUsers.map((user) => ({
+    ...user,
+    roleName: accountsStore.roleById(user.roleId)?.name ?? user.roleId,
+  })),
+);
 
-// 👉 search filters
-const roles = [
-  { title: 'Admin', value: 'admin' },
-  { title: 'Author', value: 'author' },
-  { title: 'Editor', value: 'editor' },
-  { title: 'Maintainer', value: 'maintainer' },
-  { title: 'Subscriber', value: 'subscriber' },
-]
+const filteredUsers = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase();
+  return decoratedUsers.value.filter((user) => {
+    const matchesQuery = query
+      ? [user.fullName, user.email, user.roleName].some((value) =>
+          String(value ?? "")
+            .toLowerCase()
+            .includes(query),
+        )
+      : true;
+    const matchesRole = selectedRole.value
+      ? user.roleId === selectedRole.value
+      : true;
+    const matchesStatus = selectedStatus.value
+      ? user.status === selectedStatus.value
+      : true;
 
-const resolveUserRoleVariant = (role: string) => {
-  const roleLowerCase = role.toLowerCase()
+    return matchesQuery && matchesRole && matchesStatus;
+  });
+});
 
-  if (roleLowerCase === 'subscriber')
-    return { color: 'primary', icon: 'tabler-user' }
-  if (roleLowerCase === 'author')
-    return { color: 'warning', icon: 'tabler-settings' }
-  if (roleLowerCase === 'maintainer')
-    return { color: 'success', icon: 'tabler-chart-donut' }
-  if (roleLowerCase === 'editor')
-    return { color: 'info', icon: 'tabler-pencil' }
-  if (roleLowerCase === 'admin')
-    return { color: 'error', icon: 'tabler-device-laptop' }
+const displayedUsers = computed(() => {
+  const items = [...filteredUsers.value];
+  const sort = sortBy.value?.[0];
+  if (sort?.key) {
+    items.sort((left, right) => {
+      const a = String((left as any)[sort.key] ?? "");
+      const b = String((right as any)[sort.key] ?? "");
+      return sort.order === "asc" ? a.localeCompare(b) : b.localeCompare(a);
+    });
+  }
 
-  return { color: 'primary', icon: 'tabler-user' }
-}
+  const start = (page.value - 1) * itemsPerPage.value;
+  return itemsPerPage.value === -1
+    ? items
+    : items.slice(start, start + itemsPerPage.value);
+});
 
-const resolveUserStatusVariant = (stat: string) => {
-  const statLowerCase = stat.toLowerCase()
-  if (statLowerCase === 'pending')
-    return 'warning'
-  if (statLowerCase === 'active')
-    return 'success'
-  if (statLowerCase === 'inactive')
-    return 'secondary'
+const resolveUserStatusVariant = (status: string) => {
+  if (status === "active") return "success";
+  if (status === "pending") return "warning";
+  if (status === "inactive") return "secondary";
+  return "primary";
+};
 
-  return 'primary'
-}
+const resetDraft = () => {
+  draft.fullName = "";
+  draft.email = "";
+  draft.roleId =
+    roleOptions.value[1]?.value ?? roleOptions.value[0]?.value ?? "";
+  draft.status = "active";
+  draft.password = "";
+};
 
-const isAddNewUserDrawerVisible = ref(false)
+const openAddUser = () => {
+  if (!canCreateUsers.value) {
+    notifications.push("You do not have permission to create users.", "error");
+    return;
+  }
+  resetDraft();
+  isAddUserDialogVisible.value = true;
+};
 
-// 👉 Add new user
-const addNewUser = async (userData: UserProperties) => {
-  await $api('/apps/users', {
-    method: 'POST',
-    body: userData,
-  })
+const closeAddUser = () => {
+  isAddUserDialogVisible.value = false;
+  nextTick(() => {
+    refForm.value?.resetValidation();
+  });
+};
 
-  // refetch User
-  fetchUsers()
-}
+const saveUser = async () => {
+  const { valid } = (await refForm.value?.validate()) ?? { valid: true };
+  if (!valid) return;
 
-// 👉 Delete user
-const deleteUser = async (id: number) => {
-  await $api(`/apps/users/${id}`, {
-    method: 'DELETE',
-  })
+  try {
+    const created = accountsStore.createUser({
+      ...draft,
+      password: draft.password || undefined,
+      temporaryPassword: true,
+    });
+    notifications.push(
+      `User created. Temporary password: ${created.password}`,
+      "success",
+      6000,
+    );
+    closeAddUser();
+  } catch (error) {
+    notifications.push(
+      error instanceof Error ? error.message : "Unable to create user",
+      "error",
+      4000,
+    );
+  }
+};
 
-  // Delete from selectedRows
-  const index = selectedRows.value.findIndex(row => row === id)
-  if (index !== -1)
-    selectedRows.value.splice(index, 1)
+const deleteUser = (id: number) => {
+  if (!canDeleteUsers.value) {
+    notifications.push("You do not have permission to delete users.", "error");
+    return;
+  }
 
-  // refetch User
-  // TODO: Make this async
-  fetchUsers()
-}
+  try {
+    accountsStore.deleteUser(id);
+    selectedRows.value = selectedRows.value.filter((row) => row !== id);
+    notifications.push("User deleted", "success", 2500);
+  } catch (error) {
+    notifications.push(
+      error instanceof Error ? error.message : "Unable to delete user",
+      "error",
+      3500,
+    );
+  }
+};
 </script>
 
 <template>
@@ -121,118 +196,95 @@ const deleteUser = async (id: number) => {
     <VCard>
       <VCardText class="d-flex flex-wrap gap-4">
         <div class="d-flex gap-2 align-center">
-          <p class="text-body-1 mb-0">
-            Show
-          </p>
+          <p class="text-body-1 mb-0">Show</p>
           <AppSelect
             :model-value="itemsPerPage"
             :items="[
               { value: 10, title: '10' },
               { value: 25, title: '25' },
               { value: 50, title: '50' },
-              { value: 100, title: '100' },
               { value: -1, title: 'All' },
             ]"
-            style="inline-size: 5.5rem;"
-            @update:model-value="itemsPerPage = parseInt($event, 10)"
+            style="inline-size: 5.5rem"
+            @update:model-value="itemsPerPage = Number($event)"
           />
         </div>
 
         <VSpacer />
 
         <div class="d-flex align-center flex-wrap gap-4">
-          <!-- 👉 Search  -->
           <AppTextField
             v-model="searchQuery"
-            placeholder="Search User"
-            style="inline-size: 15.625rem;"
+            placeholder="Search users"
+            style="inline-size: 15.625rem"
           />
 
-          <!-- 👉 Add user button -->
           <AppSelect
             v-model="selectedRole"
             placeholder="Select Role"
-            :items="roles"
+            :items="roleOptions"
             clearable
             clear-icon="tabler-x"
-            style="inline-size: 10rem;"
+            style="inline-size: 13rem"
           />
+
+          <AppSelect
+            v-model="selectedStatus"
+            placeholder="Select Status"
+            :items="statusOptions"
+            clearable
+            clear-icon="tabler-x"
+            style="inline-size: 10rem"
+          />
+
+          <VBtn
+            prepend-icon="tabler-plus"
+            :disabled="!canCreateUsers"
+            @click="openAddUser"
+          >
+            Add User
+          </VBtn>
         </div>
       </VCardText>
 
       <VDivider />
 
-      <!-- SECTION datatable -->
       <VDataTableServer
         v-model:items-per-page="itemsPerPage"
         v-model:model-value="selectedRows"
         v-model:page="page"
-        :items-per-page-options="[
-          { value: 10, title: '10' },
-          { value: 20, title: '20' },
-          { value: 50, title: '50' },
-          { value: -1, title: '$vuetify.dataFooter.itemsPerPageAll' },
-        ]"
-        :items="users"
-        :items-length="totalUsers"
+        v-model:sort-by="sortBy"
+        :items="displayedUsers"
+        :items-length="filteredUsers.length"
         :headers="headers"
         class="text-no-wrap"
         show-select
-        @update:options="updateOptions"
       >
-        <!-- User -->
         <template #item.user="{ item }">
           <div class="d-flex align-center gap-x-4">
             <VAvatar
               size="34"
               :variant="!item.avatar ? 'tonal' : undefined"
-              :color="!item.avatar ? resolveUserRoleVariant(item.role).color : undefined"
+              :color="!item.avatar ? 'primary' : undefined"
             >
-              <VImg
-                v-if="item.avatar"
-                :src="item.avatar"
-              />
+              <VImg v-if="item.avatar" :src="item.avatar" />
               <span v-else>{{ avatarText(item.fullName) }}</span>
             </VAvatar>
             <div class="d-flex flex-column">
-              <h6 class="text-base">
-                <RouterLink
-                  :to="{ name: 'apps-user-view-id', params: { id: item.id } }"
-                  class="font-weight-medium text-link"
-                >
-                  {{ item.fullName }}
-                </RouterLink>
+              <h6 class="text-base font-weight-medium">
+                {{ item.fullName }}
               </h6>
-              <div class="text-sm">
-                {{ item.email }}
-              </div>
+              <div class="text-sm">{{ item.email }}</div>
             </div>
           </div>
         </template>
 
-        <!-- 👉 Role -->
         <template #item.role="{ item }">
-          <div class="d-flex align-center gap-x-2">
-            <VIcon
-              :size="22"
-              :icon="resolveUserRoleVariant(item.role).icon"
-              :color="resolveUserRoleVariant(item.role).color"
-            />
-
-            <div class="text-capitalize text-high-emphasis text-body-1">
-              {{ item.role }}
-            </div>
-          </div>
+          <VChip size="small" variant="tonal">
+            {{ item.roleName }}
+          </VChip>
         </template>
 
-        <!-- Plan -->
-        <template #item.plan="{ item }">
-          <div class="text-body-1 text-high-emphasis text-capitalize">
-            {{ item.currentPlan }}
-          </div>
-        </template>
-
-        <!-- Status -->
         <template #item.status="{ item }">
           <VChip
             :color="resolveUserStatusVariant(item.status)"
@@ -244,75 +296,99 @@ const deleteUser = async (id: number) => {
           </VChip>
         </template>
 
-        <!-- Actions -->
-        <template #item.actions="{ item }">
-          <IconBtn @click="deleteUser(item.id)">
-            <VIcon icon="tabler-trash" />
-          </IconBtn>
-
-          <IconBtn>
-            <VIcon icon="tabler-eye" />
-          </IconBtn>
-
-          <VBtn
-            icon
-            variant="text"
-            color="medium-emphasis"
+        <template #item.temporaryPassword="{ item }">
+          <VChip
+            :color="item.temporaryPassword ? 'warning' : 'success'"
+            size="small"
+            variant="tonal"
           >
-            <VIcon icon="tabler-dots-vertical" />
-            <VMenu activator="parent">
-              <VList>
-                <VListItem :to="{ name: 'apps-user-view-id', params: { id: item.id } }">
-                  <template #prepend>
-                    <VIcon icon="tabler-eye" />
-                  </template>
+            {{ item.temporaryPassword ? "Temporary" : "Set" }}
+          </VChip>
+        </template>
 
-                  <VListItemTitle>View</VListItemTitle>
-                </VListItem>
-
-                <VListItem link>
-                  <template #prepend>
-                    <VIcon icon="tabler-pencil" />
-                  </template>
-                  <VListItemTitle>Edit</VListItemTitle>
-                </VListItem>
-
-                <VListItem @click="deleteUser(item.id)">
-                  <template #prepend>
-                    <VIcon icon="tabler-trash" />
-                  </template>
-                  <VListItemTitle>Delete</VListItemTitle>
-                </VListItem>
-              </VList>
-            </VMenu>
-          </VBtn>
+        <template #item.actions="{ item }">
+          <IconBtn
+            :disabled="item.isMaster || !canDeleteUsers"
+            @click="deleteUser(item.id)"
+          >
+            <VIcon icon="tabler-trash" />
+            <VTooltip activator="parent">
+              {{
+                item.isMaster
+                  ? "Master account cannot be deleted"
+                  : !canDeleteUsers
+                    ? "No permission to delete users"
+                    : "Delete"
+              }}
+            </VTooltip>
+          </IconBtn>
         </template>
 
         <template #bottom>
           <TablePagination
             v-model:page="page"
             :items-per-page="itemsPerPage"
-            :total-items="totalUsers"
+            :total-items="filteredUsers.length"
           />
         </template>
       </VDataTableServer>
-      <!-- SECTION -->
     </VCard>
 
-    <!-- 👉 Add New User -->
-    <AddNewUserDrawer
-      v-model:is-drawer-open="isAddNewUserDrawerVisible"
-      @user-data="addNewUser"
-    />
+    <VDialog v-model="isAddUserDialogVisible" max-width="560">
+      <DialogCloseBtn @click="closeAddUser" />
+      <VCard class="pa-sm-8 pa-5">
+        <VCardTitle>Add User</VCardTitle>
+        <VCardText>
+          <VForm ref="refForm" v-model="isFormValid" @submit.prevent="saveUser">
+            <VRow>
+              <VCol cols="12">
+                <AppTextField
+                  v-model="draft.fullName"
+                  label="Name"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppTextField
+                  v-model="draft.email"
+                  label="Email"
+                  :rules="[requiredValidator, emailValidator]"
+                />
+              </VCol>
+              <VCol cols="12">
+                <AppSelect
+                  v-model="draft.roleId"
+                  label="Role"
+                  :items="roleOptions"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12" md="6">
+                <AppSelect
+                  v-model="draft.status"
+                  label="Status"
+                  :items="statusOptions"
+                  :rules="[requiredValidator]"
+                />
+              </VCol>
+              <VCol cols="12" md="6">
+                <AppTextField
+                  v-model="draft.password"
+                  label="Temporary Password"
+                  placeholder="Auto-generate if empty"
+                />
+              </VCol>
+            </VRow>
+          </VForm>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" color="secondary" @click="closeAddUser">
+            Cancel
+          </VBtn>
+          <VBtn color="primary" @click="saveUser">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </section>
 </template>
-
-<style lang="scss">
-.text-capitalize {
-  text-transform: capitalize;
-}
-
-.user-list-name:not(:hover) {
-  color: rgba(var(--v-theme-on-background), var(--v-medium-emphasis-opacity));
-}
-</style>

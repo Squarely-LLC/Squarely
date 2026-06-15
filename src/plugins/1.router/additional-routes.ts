@@ -12,11 +12,12 @@ export const redirects: RouteRecordRaw[] = [
     redirect: (to) => {
       // TODO: Get type from backend
       const userData = useCookie<Record<string, unknown> | null | undefined>(
-        "userData"
+        "userData",
       );
       const userRole = userData.value?.role;
 
-      if (userRole === "admin") return { name: "dashboards-analytics" };
+      if (userData.value && userRole !== "client")
+        return { name: "dashboards-analytics" };
       if (userRole === "client") return { name: "login" };
 
       return { name: "login", query: to.query };

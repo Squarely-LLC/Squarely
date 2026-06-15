@@ -18,6 +18,7 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const buildAbilityRules: typeof import('./src/utils/accountRoles')['buildAbilityRules']
   const buildCustomBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']
   const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
   const buildDealDocumentUsageKey: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']
@@ -61,6 +62,9 @@ declare global {
   const createTemplatePromise: typeof import('@vueuse/core')['createTemplatePromise']
   const createUnrefFn: typeof import('@vueuse/core')['createUnrefFn']
   const createUrl: typeof import('./src/@core/composable/createUrl')['createUrl']
+  const currentCenterId: typeof import('./src/utils/accountRoles')['currentCenterId']
+  const currentCenterName: typeof import('./src/utils/accountRoles')['currentCenterName']
+  const currentUserData: typeof import('./src/utils/currentAccount')['currentUserData']
   const customRef: typeof import('vue')['customRef']
   const debouncedRef: typeof import('@vueuse/core')['debouncedRef']
   const debouncedWatch: typeof import('@vueuse/core')['debouncedWatch']
@@ -74,6 +78,7 @@ declare global {
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterDealDocumentItemsByBillingMode: typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']
+  const findCurrentUserOption: typeof import('./src/utils/currentAccount')['findCurrentUserOption']
   const formatCurrencyAmount: typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
@@ -133,6 +138,7 @@ declare global {
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
   const hasDealDocumentPhaseOrPeriodLines: typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']
+  const hasRolePermission: typeof import('./src/utils/accountRoles')['hasRolePermission']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
   const inferDealBillingPeriodFromKey: typeof import('./src/utils/dealDocumentDraft')['inferDealBillingPeriodFromKey']
@@ -159,6 +165,7 @@ declare global {
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
+  const loadAccountRoleState: typeof import('./src/utils/accountRoles')['loadAccountRoleState']
   const loadActiveAppConfigurations: typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']
   const loadDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['loadDealDocumentDraft']
   const loadInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['loadInvoicePreviewDraft']
@@ -205,6 +212,7 @@ declare global {
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const provide: typeof import('vue')['provide']
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
+  const publicUser: typeof import('./src/utils/accountRoles')['publicUser']
   const reactify: typeof import('@vueuse/core')['reactify']
   const reactifyObject: typeof import('@vueuse/core')['reactifyObject']
   const reactive: typeof import('vue')['reactive']
@@ -233,11 +241,13 @@ declare global {
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
   const richTextToPlainText: typeof import('./src/utils/richText')['richTextToPlainText']
+  const saveAccountRoleState: typeof import('./src/utils/accountRoles')['saveAccountRoleState']
   const saveDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['saveDealDocumentDraft']
   const saveFile: typeof import('./src/utils/fileStore')['saveFile']
   const saveInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']
   const saveProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']
   const saveQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']
+  const seedAccountRoleState: typeof import('./src/utils/accountRoles')['seedAccountRoleState']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
   const shallowReactive: typeof import('vue')['shallowReactive']
@@ -489,6 +499,7 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly buildAbilityRules: UnwrapRef<typeof import('./src/utils/accountRoles')['buildAbilityRules']>
     readonly buildCustomBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']>
     readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
     readonly buildDealDocumentUsageKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']>
@@ -532,6 +543,9 @@ declare module 'vue' {
     readonly createTemplatePromise: UnwrapRef<typeof import('@vueuse/core')['createTemplatePromise']>
     readonly createUnrefFn: UnwrapRef<typeof import('@vueuse/core')['createUnrefFn']>
     readonly createUrl: UnwrapRef<typeof import('./src/@core/composable/createUrl')['createUrl']>
+    readonly currentCenterId: UnwrapRef<typeof import('./src/utils/accountRoles')['currentCenterId']>
+    readonly currentCenterName: UnwrapRef<typeof import('./src/utils/accountRoles')['currentCenterName']>
+    readonly currentUserData: UnwrapRef<typeof import('./src/utils/currentAccount')['currentUserData']>
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
     readonly debouncedWatch: UnwrapRef<typeof import('@vueuse/core')['debouncedWatch']>
@@ -545,6 +559,7 @@ declare module 'vue' {
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterDealDocumentItemsByBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']>
+    readonly findCurrentUserOption: UnwrapRef<typeof import('./src/utils/currentAccount')['findCurrentUserOption']>
     readonly formatCurrencyAmount: UnwrapRef<typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
@@ -605,6 +620,7 @@ declare module 'vue' {
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasDealDocumentPhaseOrPeriodLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']>
+    readonly hasRolePermission: UnwrapRef<typeof import('./src/utils/accountRoles')['hasRolePermission']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inferDealBillingPeriodFromKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['inferDealBillingPeriodFromKey']>
@@ -631,6 +647,7 @@ declare module 'vue' {
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
+    readonly loadAccountRoleState: UnwrapRef<typeof import('./src/utils/accountRoles')['loadAccountRoleState']>
     readonly loadActiveAppConfigurations: UnwrapRef<typeof import('./src/utils/quotationConfig')['loadActiveAppConfigurations']>
     readonly loadDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['loadDealDocumentDraft']>
     readonly loadInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['loadInvoicePreviewDraft']>
@@ -677,6 +694,7 @@ declare module 'vue' {
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
+    readonly publicUser: UnwrapRef<typeof import('./src/utils/accountRoles')['publicUser']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
     readonly reactifyObject: UnwrapRef<typeof import('@vueuse/core')['reactifyObject']>
     readonly reactive: UnwrapRef<typeof import('vue')['reactive']>
@@ -705,11 +723,13 @@ declare module 'vue' {
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
     readonly richTextToPlainText: UnwrapRef<typeof import('./src/utils/richText')['richTextToPlainText']>
+    readonly saveAccountRoleState: UnwrapRef<typeof import('./src/utils/accountRoles')['saveAccountRoleState']>
     readonly saveDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['saveDealDocumentDraft']>
     readonly saveFile: UnwrapRef<typeof import('./src/utils/fileStore')['saveFile']>
     readonly saveInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['saveInvoicePreviewDraft']>
     readonly saveProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']>
     readonly saveQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']>
+    readonly seedAccountRoleState: UnwrapRef<typeof import('./src/utils/accountRoles')['seedAccountRoleState']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>

@@ -3,6 +3,7 @@ import { requiredValidator } from "@/@core/utils/validators";
 import type { ContactRef, Status, ToDo, ToDoAttachment } from "@/data/schema";
 import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
+import { findCurrentUserOption } from "@/utils/currentAccount";
 import { getFileObjectUrl, saveFile } from "@/utils/fileStore";
 import { getEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
@@ -115,6 +116,9 @@ const effectiveOptions = computed(() => {
 
   return getEmployeeRefs();
 });
+const defaultCollaboratorOption = computed(() =>
+  findCurrentUserOption(effectiveOptions.value),
+);
 
 const idToContact = computed(
   () => new Map(effectiveOptions.value.map((c) => [c.id, c] as const)),
@@ -136,7 +140,9 @@ function resetForm() {
   syncingAttachmentInput.value = true;
   refForm.value?.resetValidation();
   title.value = "";
-  selectedCollaboratorIds.value = [];
+  selectedCollaboratorIds.value = defaultCollaboratorOption.value
+    ? [defaultCollaboratorOption.value.id]
+    : [];
   dueMode.value = getDefaultDueMode(props.showImmediateDueOption);
   dueAt.value = getDefaultDueAt(props.showImmediateDueOption);
   notes.value = "";

@@ -2,6 +2,13 @@
 import RoleCards from "@/views/apps/roles/RoleCards.vue";
 import UserList from "@/views/apps/roles/UserList.vue";
 
+definePage({
+  meta: {
+    action: "read",
+    subject: "usersRoles",
+  },
+});
+
 const activeTab = ref("roles");
 
 const tabs = [
@@ -15,7 +22,7 @@ const tabs = [
     <VCol cols="12">
       <h4 class="text-h4 mb-1">Users & Roles</h4>
       <p class="text-body-1 mb-0">
-        Manage center accounts, roles, and module permissions.
+        Manage user accounts and role permissions for the current center.
       </p>
     </VCol>
 
