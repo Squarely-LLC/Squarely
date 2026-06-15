@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import { useConfigStore } from "@/stores/config";
+import { resolveContactRequirement } from "@/utils/crmContactRequirement";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
 import { computed, nextTick, ref, watch } from "vue";
@@ -72,7 +73,7 @@ const typeOptions = ["Entity", "Individual"];
 
 const categoryOptions = computed(() => {
   const crmConfig = configStore.configurations?.crm;
-  const contactType = localContact.value.type;
+  const contactType = String(localContact.value.type ?? "");
 
   let categories: string[] = [];
   if (contactType === "Entity" || contactType === "Organization") {
@@ -94,31 +95,44 @@ const categoryOptions = computed(() => {
 
 const isEntityContact = computed(
   () =>
-    localContact.value.type === "Entity" ||
-    localContact.value.type === "Organization",
+    String(localContact.value.type ?? "") === "Entity" ||
+    String(localContact.value.type ?? "") === "Organization",
 );
+
+const activeContactRequirement = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = String(localContact.value.type ?? "");
+  const isEntity = contactType === "Entity" || contactType === "Organization";
+
+  return resolveContactRequirement(
+    isEntity ? crmConfig?.organization : crmConfig?.individual,
+  );
+});
+
+const eitherContactValidator = () =>
+  String(localContact.value.email ?? "").trim() ||
+  String(localContact.value.number ?? "").trim() ||
+  "Enter phone or email";
 
 // Conditional validators based on contact type and configuration
 const emailRules = computed(() => {
-  const crmConfig = configStore.configurations?.crm;
-  const contactType = localContact.value.type;
-  const isEntity = contactType === "Entity" || contactType === "Organization";
-  const requireEmail = isEntity
-    ? crmConfig?.organization?.requireEmail
-    : crmConfig?.individual?.requireEmail;
+  const requirement = activeContactRequirement.value;
 
-  return requireEmail ? [requiredValidator, emailValidator] : [emailValidator];
+  if (requirement === "email" || requirement === "both")
+    return [requiredValidator, emailValidator];
+  if (requirement === "either") return [eitherContactValidator, emailValidator];
+
+  return [emailValidator];
 });
 
 const phoneRules = computed(() => {
-  const crmConfig = configStore.configurations?.crm;
-  const contactType = localContact.value.type;
-  const isEntity = contactType === "Entity" || contactType === "Organization";
-  const requirePhone = isEntity
-    ? crmConfig?.organization?.requirePhone
-    : crmConfig?.individual?.requirePhone;
+  const requirement = activeContactRequirement.value;
 
-  return requirePhone ? [requiredValidator] : [];
+  if (requirement === "phone" || requirement === "both")
+    return [requiredValidator];
+  if (requirement === "either") return [eitherContactValidator];
+
+  return [];
 });
 
 // Build country options

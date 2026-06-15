@@ -6,6 +6,10 @@ import { useContactsStore } from "@/stores/contacts";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { cloneProformaRecord, useProformasStore } from "@/stores/proformas";
+import {
+  isDocumentSourceExternal,
+  isDocumentSourceInternal,
+} from "@/utils/documentSourceModes";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -72,6 +76,15 @@ invoicesStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
+const canCreateProformaSource = computed(() =>
+  isDocumentSourceInternal(configStore.financial, "proforma"),
+);
+const canAttachProformaSource = computed(() =>
+  isDocumentSourceExternal(configStore.financial, "proforma"),
+);
+const canCreateInvoiceSource = computed(() =>
+  isDocumentSourceInternal(configStore.financial, "invoice"),
+);
 
 const contactsStore = useContactsStore();
 contactsStore.init();
@@ -92,6 +105,10 @@ const canSelectRows = computed(() => currentUserRole.value === "auditor");
 
 const pushFinanceSuccess = (message: string) => {
   notifications.push(message, "success", 3500);
+};
+
+const pushFinanceWarning = (message: string) => {
+  notifications.push(message, "warning", 3500);
 };
 
 const getQuotationLabel = (quotationId: number) => {
@@ -692,6 +709,12 @@ const openDuplicateDraft = async (quotationId: number) => {
 };
 
 const convertProformaToInvoice = (quotationId: number) => {
+  if (!canCreateInvoiceSource.value) {
+    pushFinanceWarning("Invoices are configured for external attachments.");
+
+    return;
+  }
+
   const proformaRecord = quotationsStore.byId(quotationId);
   if (!proformaRecord) return;
 
@@ -914,13 +937,17 @@ const computedMoreList = computed(() => {
           prependIcon: "tabler-copy",
           onClick: () => openDuplicateDraft(paramId),
         },
-        {
-          title: "Convert to Tax invoice",
-          value: "convert-to-tax-invoice",
-          prependIcon: "tabler-file-invoice",
-          disabled: Boolean(proformaRecord?.convertedInvoiceId),
-          onClick: () => convertProformaToInvoice(paramId),
-        },
+        ...(canCreateInvoiceSource.value
+          ? [
+              {
+                title: "Convert to Tax invoice",
+                value: "convert-to-tax-invoice",
+                prependIcon: "tabler-file-invoice",
+                disabled: Boolean(proformaRecord?.convertedInvoiceId),
+                onClick: () => convertProformaToInvoice(paramId),
+              },
+            ]
+          : []),
       ];
     })(),
     {
@@ -1047,12 +1074,14 @@ watch(totalQuotations, (value) => {
 
             <VList>
               <VListItem
+                v-if="canCreateProformaSource"
                 :to="{ name: 'apps-proforma-add' }"
                 prepend-icon="tabler-building-estate"
               >
                 From Squarely
               </VListItem>
               <VListItem
+                v-if="canAttachProformaSource"
                 prepend-icon="tabler-paperclip"
                 @click="openExternalQuotationDialog"
               >
@@ -1362,11 +1391,7 @@ watch(totalQuotations, (value) => {
                 v-model="externalQuotationForm.status"
                 placeholder="Select status"
                 :rules="[requiredValidator]"
-                :items="[
-                  'Not Paid',
-                  'Partially Paid',
-                  'Paid',
-                ]"
+                :items="['Not Paid', 'Partially Paid', 'Paid']"
               />
             </div>
           </VCol>
@@ -1407,7 +1432,6 @@ watch(totalQuotations, (value) => {
               {{ externalQuotationSuccess }}
             </VAlert>
           </VCol>
-
         </VRow>
       </VForm>
 
@@ -1536,7 +1560,6 @@ watch(totalQuotations, (value) => {
   display: flex;
   align-items: flex-start;
 }
-
 
 .quotation-form-control {
   inline-size: 100%;

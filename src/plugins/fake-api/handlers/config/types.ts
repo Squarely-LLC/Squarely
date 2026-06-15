@@ -35,11 +35,20 @@ export interface InvoicingSettings {
   noteOnProforma?: string
 }
 
+export type DocumentSourceMode = 'internal' | 'external'
+
+export interface DocumentSourceModeSettings {
+  quotation: DocumentSourceMode
+  proforma: DocumentSourceMode
+  invoice: DocumentSourceMode
+}
+
 export interface FinancialConfig {
   currency?: string
   vat?: VatSettings
   bankDetails?: BankDetailsItem[]
   invoicing?: InvoicingSettings
+  documentSourceModes?: Partial<DocumentSourceModeSettings>
   expenseCategories?: string[]
   documentTypes?: string[]
   invoiceSequence?: string // pattern or prefix
@@ -70,14 +79,17 @@ export interface HrConfig {
   reimbursables?: string[]
 }
 
+export type CrmContactRequirement = 'none' | 'phone' | 'email' | 'both' | 'either'
+
 export interface CrmEntitySettings {
   category?: string
   requirePhone?: boolean
   requireEmail?: boolean
+  contactRequirement?: CrmContactRequirement
   inactiveAfterMonths?: number | null // months after which contact becomes inactive
 }
 
-interface CrmConfig {
+export interface CrmConfig {
   DefaultContactType?: string
   organization?: any
   individual?: any

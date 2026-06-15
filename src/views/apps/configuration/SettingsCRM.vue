@@ -1,7 +1,13 @@
 ﻿<script setup lang="ts">
 import EditableChipList from "@/components/EditableChipList.vue";
+import type { CrmContactRequirement } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
+import {
+  CONTACT_REQUIREMENT_OPTIONS,
+  contactRequirementToFlags,
+  resolveContactRequirement,
+} from "@/utils/crmContactRequirement";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 
 const store = useConfigStore();
@@ -10,10 +16,10 @@ const notifications = useNotificationsStore();
 
 const categoryLabel = computed(() => "Category");
 const categoryPlaceholder = computed(
-  () => `Add ${categoryLabel.value.toLowerCase()}s`
+  () => `Add ${categoryLabel.value.toLowerCase()}s`,
 );
 const indCategoryPlaceholder = computed(
-  () => `Add ${categoryLabel.value.toLowerCase()}s`
+  () => `Add ${categoryLabel.value.toLowerCase()}s`,
 );
 
 const categories = ref<string[]>([]);
@@ -48,11 +54,9 @@ const isSavingFlags = ref(false);
 const isSavingIndFlags = ref(false);
 const isSavingDefaultContactType = ref(false);
 
-const requirePhone = ref(false);
-const requireEmail = ref(false);
+const contactRequirement = ref<CrmContactRequirement>("none");
 const inactiveAfterMonths = ref(0);
-const indRequirePhone = ref(false);
-const indRequireEmail = ref(false);
+const indContactRequirement = ref<CrmContactRequirement>("none");
 const indInactiveAfterMonths = ref(0);
 let inactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let indInactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
@@ -87,14 +91,12 @@ const loadData = () => {
   defaultContactType.value = (org as any)?.DefaultContactType ?? "Individual";
 
   const orgSection = org.organization || {};
-  requirePhone.value = !!orgSection.requirePhone;
-  requireEmail.value = !!orgSection.requireEmail;
+  contactRequirement.value = resolveContactRequirement(orgSection);
   inactiveAfterMonths.value = Number(orgSection.inactiveAfterMonths ?? 0);
   categories.value = cleanEntries((org as any)?.organizationCategories || []);
 
   const indSection = org.individual || {};
-  indRequirePhone.value = !!indSection.requirePhone;
-  indRequireEmail.value = !!indSection.requireEmail;
+  indContactRequirement.value = resolveContactRequirement(indSection);
   indInactiveAfterMonths.value = Number(indSection.inactiveAfterMonths ?? 0);
   indCategories.value = cleanEntries((org as any)?.individualCategories || []);
 
@@ -126,10 +128,10 @@ const loadData = () => {
   const explicitCats = (org as any)?.documentCategories;
   if (Array.isArray(explicitTypes) || Array.isArray(explicitCats)) {
     docTypes.value = cleanEntries(
-      Array.isArray(explicitTypes) ? explicitTypes : []
+      Array.isArray(explicitTypes) ? explicitTypes : [],
     );
     docCategories.value = cleanEntries(
-      Array.isArray(explicitCats) ? explicitCats : []
+      Array.isArray(explicitCats) ? explicitCats : [],
     );
     const dr = (org as any)?.documentRenewable;
     if (typeof dr === "string") {
@@ -145,7 +147,7 @@ const loadData = () => {
     const docEntry = docs[0] || {};
     docTypes.value = cleanEntries((docEntry.type || "").toString().split(","));
     docCategories.value = cleanEntries(
-      (docEntry.category || "").toString().split(",")
+      (docEntry.category || "").toString().split(","),
     );
     documentRenewable.value =
       typeof docEntry.renewable === "boolean" ? docEntry.renewable : null;
@@ -164,7 +166,7 @@ type ListSaverOptions = {
   payloadBuilder?: (cleaned: string[]) => any;
   saveFn?: (
     cleaned: string[],
-    action: SavePayload["action"]
+    action: SavePayload["action"],
   ) => Promise<boolean>;
 };
 
@@ -279,8 +281,8 @@ const saveDocuments = async (action: "update" | "delete" = "update") => {
       documentRenewable.value === true
         ? "yes"
         : documentRenewable.value === false
-        ? "no"
-        : null,
+          ? "no"
+          : null,
   };
   const res = await store.saveRemote({ crm: payload } as any);
   isSavingDocuments.value = false;
@@ -364,12 +366,13 @@ const saveDealsSettings = async () => {
 const saveFlags = async () => {
   if (isSavingFlags.value) return;
   isSavingFlags.value = true;
+  const flags = contactRequirementToFlags(contactRequirement.value);
   const res = await store.saveRemote({
     crm: {
       organization: {
         ...(store.configurations.crm?.organization || {}),
-        requirePhone: requirePhone.value,
-        requireEmail: requireEmail.value,
+        ...flags,
+        contactRequirement: contactRequirement.value,
         inactiveAfterMonths: inactiveAfterMonths.value,
       },
     },
@@ -386,12 +389,13 @@ const saveFlags = async () => {
 const saveIndFlags = async () => {
   if (isSavingIndFlags.value) return;
   isSavingIndFlags.value = true;
+  const flags = contactRequirementToFlags(indContactRequirement.value);
   const res = await store.saveRemote({
     crm: {
       individual: {
         ...(store.configurations.crm?.individual || {}),
-        requirePhone: indRequirePhone.value,
-        requireEmail: indRequireEmail.value,
+        ...flags,
+        contactRequirement: indContactRequirement.value,
         inactiveAfterMonths: indInactiveAfterMonths.value,
       },
     },
@@ -544,37 +548,31 @@ onUnmounted(() => {
                 :disabled="isSavingFlags"
                 @keydown="
                   (e: KeyboardEvent) => {
-                    if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                    if (
+                      e.key === '-' ||
+                      e.key === 'e' ||
+                      e.key === 'E' ||
+                      e.key === '+'
+                    )
+                      e.preventDefault();
                   }
                 "
                 @input="onInactiveInput"
               />
             </VCol>
-            <VCol cols="6" md="4">
-              <VRadioGroup
-                label="Require Phone?"
-                v-model="requirePhone"
-                inline
+            <VCol cols="12" md="8">
+              <AppSelect
+                v-model="contactRequirement"
+                :items="CONTACT_REQUIREMENT_OPTIONS"
+                item-title="title"
+                item-value="value"
+                label="Required Contact Info"
+                hide-details
+                density="compact"
+                :loading="isSavingFlags"
                 :disabled="isSavingFlags"
-                class="mb-0"
-                @change="() => void saveFlags()"
-              >
-                <VRadio :value="true" label="Yes" />
-                <VRadio :value="false" label="No" />
-              </VRadioGroup>
-            </VCol>
-            <VCol cols="6" md="4">
-              <VRadioGroup
-                label="Require Email?"
-                v-model="requireEmail"
-                inline
-                :disabled="isSavingFlags"
-                class="mb-0"
-                @change="() => void saveFlags()"
-              >
-                <VRadio :value="true" label="Yes" />
-                <VRadio :value="false" label="No" />
-              </VRadioGroup>
+                @update:model-value="() => void saveFlags()"
+              />
             </VCol>
           </VRow>
         </VCardText>
@@ -610,37 +608,31 @@ onUnmounted(() => {
                 :disabled="isSavingIndFlags"
                 @keydown="
                   (e: KeyboardEvent) => {
-                    if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                    if (
+                      e.key === '-' ||
+                      e.key === 'e' ||
+                      e.key === 'E' ||
+                      e.key === '+'
+                    )
+                      e.preventDefault();
                   }
                 "
                 @input="onIndInactiveInput"
               />
             </VCol>
-            <VCol cols="6" md="4">
-              <VRadioGroup
-                label="Require Phone?"
-                v-model="indRequirePhone"
-                inline
+            <VCol cols="12" md="8">
+              <AppSelect
+                v-model="indContactRequirement"
+                :items="CONTACT_REQUIREMENT_OPTIONS"
+                item-title="title"
+                item-value="value"
+                label="Required Contact Info"
+                hide-details
+                density="compact"
+                :loading="isSavingIndFlags"
                 :disabled="isSavingIndFlags"
-                class="mb-0"
-                @change="() => void saveIndFlags()"
-              >
-                <VRadio :value="true" label="Yes" />
-                <VRadio :value="false" label="No" />
-              </VRadioGroup>
-            </VCol>
-            <VCol cols="6" md="4">
-              <VRadioGroup
-                label="Require Email?"
-                v-model="indRequireEmail"
-                inline
-                :disabled="isSavingIndFlags"
-                class="mb-0"
-                @change="() => void saveIndFlags()"
-              >
-                <VRadio :value="true" label="Yes" />
-                <VRadio :value="false" label="No" />
-              </VRadioGroup>
+                @update:model-value="() => void saveIndFlags()"
+              />
             </VCol>
           </VRow>
         </VCardText>
@@ -816,7 +808,13 @@ onUnmounted(() => {
             :disabled="isSavingActivitySettings"
             @keydown="
               (e: KeyboardEvent) => {
-                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                if (
+                  e.key === '-' ||
+                  e.key === 'e' ||
+                  e.key === 'E' ||
+                  e.key === '+'
+                )
+                  e.preventDefault();
               }
             "
             @input="onJobAlertInput"
@@ -843,7 +841,13 @@ onUnmounted(() => {
             :disabled="isSavingActivitySettings"
             @keydown="
               (e: KeyboardEvent) => {
-                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                if (
+                  e.key === '-' ||
+                  e.key === 'e' ||
+                  e.key === 'E' ||
+                  e.key === '+'
+                )
+                  e.preventDefault();
               }
             "
             @input="onLeadLostInInput"
@@ -864,7 +868,13 @@ onUnmounted(() => {
             :disabled="isSavingActivitySettings"
             @keydown="
               (e: KeyboardEvent) => {
-                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                if (
+                  e.key === '-' ||
+                  e.key === 'e' ||
+                  e.key === 'E' ||
+                  e.key === '+'
+                )
+                  e.preventDefault();
               }
             "
             @input="onQuotationLostInInput"
@@ -891,7 +901,13 @@ onUnmounted(() => {
             :disabled="isSavingActivitySettings"
             @keydown="
               (e: KeyboardEvent) => {
-                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                if (
+                  e.key === '-' ||
+                  e.key === 'e' ||
+                  e.key === 'E' ||
+                  e.key === '+'
+                )
+                  e.preventDefault();
               }
             "
             @input="onDealAlertInput"
@@ -900,7 +916,6 @@ onUnmounted(() => {
       </VRow>
     </VCardText>
   </VCard>
-
 </template>
 
 <style scoped>

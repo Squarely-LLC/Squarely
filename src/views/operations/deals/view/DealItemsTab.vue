@@ -76,6 +76,11 @@ import {
   getDealItemsGrandTotal,
   getDealItemsSubtotal,
 } from "@/utils/dealBilling";
+import {
+  type DealDocumentSourceKind,
+  isDocumentSourceExternal,
+  isDocumentSourceInternal,
+} from "@/utils/documentSourceModes";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -134,6 +139,22 @@ proformasStore.init();
 invoicesStore.init();
 receiptsStore.init();
 todosStore.init();
+
+const canCreateDocumentSource = (kind: DealDocumentSourceKind) =>
+  isDocumentSourceInternal(configStore.financial, kind);
+
+const canAttachDocumentSource = (kind: DealDocumentSourceKind) =>
+  isDocumentSourceExternal(configStore.financial, kind);
+
+const canCreateAnyDocumentSource = () =>
+  canCreateDocumentSource("quotation") ||
+  canCreateDocumentSource("proforma") ||
+  canCreateDocumentSource("invoice");
+
+const canAttachAnyDocumentSource = () =>
+  canAttachDocumentSource("quotation") ||
+  canAttachDocumentSource("proforma") ||
+  canAttachDocumentSource("invoice");
 
 interface DerivedGoal {
   id: string;
@@ -3904,6 +3925,16 @@ const convertQuotationToProforma = (
   record: DealDocumentPanelRecord,
   selectedProducts = record.record.purchasedProducts || [],
 ) => {
+  if (!canCreateDocumentSource("proforma")) {
+    notifications.push(
+      "Proformas are configured for external attachments.",
+      "warning",
+      3000,
+    );
+
+    return null;
+  }
+
   if (!canConvertQuotationRecord(record)) {
     notifications.push(
       isQuotationConversionApprovalBlocked(record)
@@ -3946,6 +3977,16 @@ const convertQuotationToProforma = (
 };
 
 const convertProformaRecordToInvoice = (record: DealDocumentPanelRecord) => {
+  if (!canCreateDocumentSource("invoice")) {
+    notifications.push(
+      "Invoices are configured for external attachments.",
+      "warning",
+      3000,
+    );
+
+    return null;
+  }
+
   if (isDocumentConversionBlocked(record)) return null;
 
   const created = invoicesStore.addInvoice({
@@ -5619,6 +5660,16 @@ const saveAndNavigateDocumentDraft = async (
   selectedBillingPeriods?: DealBillingPeriod[] | null,
   selectedBillingPeriodAssignments?: Record<string, DealBillingPeriod[]> | null,
 ) => {
+  if (!canCreateDocumentSource(kind)) {
+    notifications.push(
+      "This document type is configured for external attachments.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
   if (!selectedItems.length) {
     notifications.push("This deal has no billable items yet", "warning", 2500);
 
@@ -6645,6 +6696,16 @@ const openExternalDocumentDialog = (
   items: DealDocumentSelectableItem[] = [],
   period: DealBillingPeriod | null = null,
 ) => {
+  if (!canAttachDocumentSource(kind)) {
+    notifications.push(
+      "This document type is configured for internal creation.",
+      "warning",
+      3000,
+    );
+
+    return;
+  }
+
   selectedExternalDocumentKind.value = kind;
   setExternalDocumentTargets(items, period);
   isExternalDocumentFormValid.value = false;
@@ -7461,6 +7522,7 @@ const openEditTask = (taskId: number | string) => {
                         <template v-if="isRetainerParentDealItem(item)">
                           <VDivider />
                           <VListItem
+                            v-if="canCreateDocumentSource('proforma')"
                             :disabled="
                               isRetainerParentDocumentActionDisabled(
                                 'proforma',
@@ -7475,6 +7537,7 @@ const openEditTask = (taskId: number | string) => {
                             <VListItemTitle>Create Proforma</VListItemTitle>
                           </VListItem>
                           <VListItem
+                            v-if="canCreateDocumentSource('invoice')"
                             :disabled="
                               isRetainerParentDocumentActionDisabled(
                                 'invoice',
@@ -7490,6 +7553,7 @@ const openEditTask = (taskId: number | string) => {
                           </VListItem>
                           <VDivider />
                           <VListItem
+                            v-if="canAttachDocumentSource('quotation')"
                             @click="
                               openRetainerExternalDocumentDialog(
                                 'quotation',
@@ -7505,6 +7569,7 @@ const openEditTask = (taskId: number | string) => {
                             >
                           </VListItem>
                           <VListItem
+                            v-if="canAttachDocumentSource('proforma')"
                             :disabled="
                               isRetainerParentDocumentActionDisabled(
                                 'proforma',
@@ -7526,6 +7591,7 @@ const openEditTask = (taskId: number | string) => {
                             >
                           </VListItem>
                           <VListItem
+                            v-if="canAttachDocumentSource('invoice')"
                             :disabled="
                               isRetainerParentDocumentActionDisabled(
                                 'invoice',
@@ -7762,6 +7828,7 @@ const openEditTask = (taskId: number | string) => {
                           </div>
                           <VDivider class="my-1" />
                           <VListItem
+                            v-if="canCreateDocumentSource('proforma')"
                             :disabled="
                               isSectionDocumentActionDisabled(
                                 'proforma',
@@ -7779,6 +7846,7 @@ const openEditTask = (taskId: number | string) => {
                             <VListItemTitle>Create Proforma</VListItemTitle>
                           </VListItem>
                           <VListItem
+                            v-if="canCreateDocumentSource('invoice')"
                             :disabled="
                               isSectionDocumentActionDisabled(
                                 'invoice',
@@ -7797,6 +7865,7 @@ const openEditTask = (taskId: number | string) => {
                           </VListItem>
                           <VDivider />
                           <VListItem
+                            v-if="canAttachDocumentSource('proforma')"
                             :disabled="
                               isSectionDocumentActionDisabled(
                                 'proforma',
@@ -7820,6 +7889,7 @@ const openEditTask = (taskId: number | string) => {
                             </VListItemTitle>
                           </VListItem>
                           <VListItem
+                            v-if="canAttachDocumentSource('invoice')"
                             :disabled="
                               isSectionDocumentActionDisabled(
                                 'invoice',
@@ -7910,6 +7980,7 @@ const openEditTask = (taskId: number | string) => {
                             <VMenu activator="parent">
                               <VList>
                                 <VListItem
+                                  v-if="canCreateDocumentSource('proforma')"
                                   :disabled="
                                     isSectionDocumentActionDisabled(
                                       'proforma',
@@ -7933,6 +8004,7 @@ const openEditTask = (taskId: number | string) => {
                                   >
                                 </VListItem>
                                 <VListItem
+                                  v-if="canCreateDocumentSource('invoice')"
                                   :disabled="
                                     isSectionDocumentActionDisabled(
                                       'invoice',
@@ -7957,6 +8029,7 @@ const openEditTask = (taskId: number | string) => {
                                 </VListItem>
                                 <VDivider />
                                 <VListItem
+                                  v-if="canAttachDocumentSource('proforma')"
                                   :disabled="
                                     isSectionDocumentActionDisabled(
                                       'proforma',
@@ -7980,6 +8053,7 @@ const openEditTask = (taskId: number | string) => {
                                   >
                                 </VListItem>
                                 <VListItem
+                                  v-if="canAttachDocumentSource('invoice')"
                                   :disabled="
                                     isSectionDocumentActionDisabled(
                                       'invoice',
@@ -8145,6 +8219,7 @@ const openEditTask = (taskId: number | string) => {
                                   >
                                     <VDivider />
                                     <VListItem
+                                      v-if="canCreateDocumentSource('proforma')"
                                       :disabled="
                                         isGoalProformaActionDisabled(
                                           item,
@@ -8169,6 +8244,7 @@ const openEditTask = (taskId: number | string) => {
                                       >
                                     </VListItem>
                                     <VListItem
+                                      v-if="canCreateDocumentSource('invoice')"
                                       :disabled="
                                         isGoalInvoiceActionDisabled(
                                           item,
@@ -8194,6 +8270,7 @@ const openEditTask = (taskId: number | string) => {
                                     </VListItem>
                                     <VDivider />
                                     <VListItem
+                                      v-if="canAttachDocumentSource('proforma')"
                                       @click="
                                         openGoalExternalDocumentDialog(
                                           'proforma',
@@ -8211,6 +8288,7 @@ const openEditTask = (taskId: number | string) => {
                                       </VListItemTitle>
                                     </VListItem>
                                     <VListItem
+                                      v-if="canAttachDocumentSource('invoice')"
                                       @click="
                                         openGoalExternalDocumentDialog(
                                           'invoice',
@@ -8291,6 +8369,7 @@ const openEditTask = (taskId: number | string) => {
         <template #append>
           <div class="items-overview-card__actions">
             <VBtn
+              v-if="canAttachAnyDocumentSource()"
               icon
               variant="tonal"
               color="secondary"
@@ -8302,6 +8381,7 @@ const openEditTask = (taskId: number | string) => {
               <VMenu activator="parent">
                 <VList density="compact">
                   <VListItem
+                    v-if="canAttachDocumentSource('quotation')"
                     :disabled="
                       isRetainerPanelDocumentActionDisabled('quotation')
                     "
@@ -8313,6 +8393,7 @@ const openEditTask = (taskId: number | string) => {
                     <VListItemTitle>Attach Quotation</VListItemTitle>
                   </VListItem>
                   <VListItem
+                    v-if="canAttachDocumentSource('proforma')"
                     :disabled="
                       isRetainerPanelDocumentActionDisabled('proforma')
                     "
@@ -8324,6 +8405,7 @@ const openEditTask = (taskId: number | string) => {
                     <VListItemTitle>Attach Proforma</VListItemTitle>
                   </VListItem>
                   <VListItem
+                    v-if="canAttachDocumentSource('invoice')"
                     :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
                     @click="openPanelExternalDocumentFlow('invoice')"
                   >
@@ -8336,6 +8418,7 @@ const openEditTask = (taskId: number | string) => {
               </VMenu>
             </VBtn>
             <VBtn
+              v-if="canCreateAnyDocumentSource()"
               icon
               variant="tonal"
               color="secondary"
@@ -8347,6 +8430,7 @@ const openEditTask = (taskId: number | string) => {
               <VMenu activator="parent">
                 <VList density="compact">
                   <VListItem
+                    v-if="canCreateDocumentSource('quotation')"
                     :disabled="
                       isRetainerPanelDocumentActionDisabled('quotation')
                     "
@@ -8358,6 +8442,7 @@ const openEditTask = (taskId: number | string) => {
                     <VListItemTitle>Create Quotation</VListItemTitle>
                   </VListItem>
                   <VListItem
+                    v-if="canCreateDocumentSource('proforma')"
                     :disabled="
                       isRetainerPanelDocumentActionDisabled('proforma')
                     "
@@ -8369,6 +8454,7 @@ const openEditTask = (taskId: number | string) => {
                     <VListItemTitle>Create Proforma</VListItemTitle>
                   </VListItem>
                   <VListItem
+                    v-if="canCreateDocumentSource('invoice')"
                     :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
                     @click="openPanelDocumentPage('invoice')"
                   >
@@ -8538,7 +8624,10 @@ const openEditTask = (taskId: number | string) => {
                                     </VListItemTitle>
                                   </VListItem>
                                   <VListItem
-                                    v-if="panel.key === 'quotation'"
+                                    v-if="
+                                      panel.key === 'quotation' &&
+                                      canCreateDocumentSource('proforma')
+                                    "
                                     @click="
                                       requestQuotationConversion(
                                         'proforma',
@@ -8554,7 +8643,10 @@ const openEditTask = (taskId: number | string) => {
                                     >
                                   </VListItem>
                                   <VListItem
-                                    v-if="panel.key === 'quotation'"
+                                    v-if="
+                                      panel.key === 'quotation' &&
+                                      canCreateDocumentSource('invoice')
+                                    "
                                     @click="
                                       requestQuotationConversion(
                                         'invoice',
@@ -8570,7 +8662,10 @@ const openEditTask = (taskId: number | string) => {
                                     >
                                   </VListItem>
                                   <VListItem
-                                    v-if="panel.key === 'proforma'"
+                                    v-if="
+                                      panel.key === 'proforma' &&
+                                      canCreateDocumentSource('invoice')
+                                    "
                                     :disabled="isDocumentConverted(record)"
                                     @click="
                                       convertDocumentToInvoice(

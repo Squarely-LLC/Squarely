@@ -1,5 +1,6 @@
 import { db as seedDb } from "@/plugins/fake-api/handlers/config/db";
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
+import { normalizeDocumentSourceModes } from "@/utils/documentSourceModes";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY = "app.configurations.v1";
@@ -63,15 +64,14 @@ const normalizeConfigurations = (
   const defaultDealStages = ["Pre-Sale", "Negotation", "Active", "Closed"];
   const configuredDealStages = next.deals?.dealStages || [];
   const dealStages =
-    (
-      configuredDealStages.length === legacyDealStages.length &&
-      configuredDealStages.every((stage, index) => stage === legacyDealStages[index])
-    ) || (
-      configuredDealStages.length === previousDefaultDealStages.length &&
+    (configuredDealStages.length === legacyDealStages.length &&
+      configuredDealStages.every(
+        (stage, index) => stage === legacyDealStages[index],
+      )) ||
+    (configuredDealStages.length === previousDefaultDealStages.length &&
       configuredDealStages.every(
         (stage, index) => stage === previousDefaultDealStages[index],
-      )
-    )
+      ))
       ? defaultDealStages
       : configuredDealStages.length
         ? configuredDealStages
@@ -79,6 +79,12 @@ const normalizeConfigurations = (
 
   return {
     ...next,
+    financial: {
+      ...(next.financial || {}),
+      documentSourceModes: normalizeDocumentSourceModes(
+        next.financial?.documentSourceModes,
+      ),
+    },
     deals: {
       ...(next.deals || {}),
       dealPrefix,
@@ -89,7 +95,7 @@ const normalizeConfigurations = (
 
 const normalizePatch = (
   current: AppConfigurations,
-  patch: Partial<AppConfigurations>
+  patch: Partial<AppConfigurations>,
 ): Partial<AppConfigurations> => {
   const normalized: Partial<AppConfigurations> = {};
   const entries = Object.entries(patch ?? {});
@@ -148,7 +154,9 @@ export const useConfigStore = defineStore("appConfigurations", {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("Failed to save configurations");
-        const data = normalizeConfigurations((await res.json()) as AppConfigurations);
+        const data = normalizeConfigurations(
+          (await res.json()) as AppConfigurations,
+        );
         // Only update sections that were part of the payload to avoid
         // clobbering other in-memory edits from different tabs/views.
         const keys = Object.keys(payload || {}) as (keyof AppConfigurations)[];

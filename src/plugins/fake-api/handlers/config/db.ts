@@ -49,6 +49,11 @@ export const db: ConfigDB = {
         noteOnQuotation: 'Prices valid for 14 days from issue date.',
         noteOnProforma: 'Prices valid for 14 days from issue date.',
       },
+      documentSourceModes: {
+        quotation: 'internal',
+        proforma: 'internal',
+        invoice: 'internal',
+      },
       expenseCategories: [
         'Office Supplies',
         'Transport & Fuel',
@@ -116,12 +121,14 @@ export const db: ConfigDB = {
         category: 'B2B',
         requirePhone: true,
         requireEmail: true,
+        contactRequirement: 'both',
         inactiveAfterMonths: 4,
       },
       individual: {
         category: 'B2C',
         requirePhone: false,
         requireEmail: true,
+        contactRequirement: 'email',
         inactiveAfterMonths: 4,
       },
       individualCategories: [

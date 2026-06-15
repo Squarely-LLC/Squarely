@@ -5,6 +5,10 @@ import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { cloneInvoiceRecord, useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
+import {
+  isDocumentSourceExternal,
+  isDocumentSourceInternal,
+} from "@/utils/documentSourceModes";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -64,6 +68,12 @@ quotationsStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
+const canCreateInvoiceSource = computed(() =>
+  isDocumentSourceInternal(configStore.financial, "invoice"),
+);
+const canAttachInvoiceSource = computed(() =>
+  isDocumentSourceExternal(configStore.financial, "invoice"),
+);
 
 const contactsStore = useContactsStore();
 contactsStore.init();
@@ -927,12 +937,14 @@ watch(totalQuotations, (value) => {
 
             <VList>
               <VListItem
+                v-if="canCreateInvoiceSource"
                 :to="{ name: 'apps-invoice-add' }"
                 prepend-icon="tabler-building-estate"
               >
                 From Squarely
               </VListItem>
               <VListItem
+                v-if="canAttachInvoiceSource"
                 prepend-icon="tabler-paperclip"
                 @click="openExternalQuotationDialog"
               >
@@ -1271,7 +1283,6 @@ watch(totalQuotations, (value) => {
               {{ externalQuotationSuccess }}
             </VAlert>
           </VCol>
-
         </VRow>
       </VForm>
 
@@ -1400,7 +1411,6 @@ watch(totalQuotations, (value) => {
   display: flex;
   align-items: flex-start;
 }
-
 
 .quotation-form-control {
   inline-size: 100%;

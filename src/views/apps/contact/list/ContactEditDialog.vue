@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
+import { resolveContactRequirement } from "@/utils/crmContactRequirement";
 import { City, Country } from "country-state-city";
 import ctd from "country-telephone-data";
 import "flag-icons/css/flag-icons.min.css";
@@ -304,7 +305,7 @@ const channelOptions = computed(() => {
 
 const categoryOptions = computed(() => {
   const crmConfig = configStore.configurations?.crm;
-  const contactType = localContact.value?.type;
+  const contactType = String(localContact.value?.type ?? "");
 
   let categories: string[] = [];
   if (contactType === "Entity" || contactType === "Organization") {
@@ -345,27 +346,40 @@ const requiredValidator = (v: any) =>
 const emailValidator = (v: any) =>
   !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v)) || "Invalid email";
 
+const activeContactRequirement = computed(() => {
+  const crmConfig = configStore.configurations?.crm;
+  const contactType = String(localContact.value?.type ?? "");
+  const isEntity = contactType === "Entity" || contactType === "Organization";
+
+  return resolveContactRequirement(
+    isEntity ? crmConfig?.organization : crmConfig?.individual,
+  );
+});
+
+const eitherContactValidator = () =>
+  String(localContact.value?.email ?? "").trim() ||
+  String(localContact.value?.number ?? "").trim() ||
+  "Enter phone or email";
+
 // Conditional validators based on contact type and configuration
 const emailRules = computed(() => {
-  const crmConfig = configStore.configurations?.crm;
-  const contactType = localContact.value?.type;
-  const isEntity = contactType === "Entity" || contactType === "Organization";
-  const requireEmail = isEntity
-    ? crmConfig?.organization?.requireEmail
-    : crmConfig?.individual?.requireEmail;
+  const requirement = activeContactRequirement.value;
 
-  return requireEmail ? [requiredValidator, emailValidator] : [emailValidator];
+  if (requirement === "email" || requirement === "both")
+    return [requiredValidator, emailValidator];
+  if (requirement === "either") return [eitherContactValidator, emailValidator];
+
+  return [emailValidator];
 });
 
 const phoneRules = computed(() => {
-  const crmConfig = configStore.configurations?.crm;
-  const contactType = localContact.value?.type;
-  const isEntity = contactType === "Entity" || contactType === "Organization";
-  const requirePhone = isEntity
-    ? crmConfig?.organization?.requirePhone
-    : crmConfig?.individual?.requirePhone;
+  const requirement = activeContactRequirement.value;
 
-  return requirePhone ? [requiredValidator] : [];
+  if (requirement === "phone" || requirement === "both")
+    return [requiredValidator];
+  if (requirement === "either") return [eitherContactValidator];
+
+  return [];
 });
 
 // simple website validator: allow empty or basic URL forms (with or without scheme)

@@ -3,6 +3,8 @@ import { requiredValidator } from "@/@core/utils/validators";
 import EditableChipList from "@/components/EditableChipList.vue";
 import type {
   BankDetailsItem,
+  DocumentSourceMode,
+  DocumentSourceModeSettings,
   DealsConfig,
   FinancialConfig,
   InvoicingSettings,
@@ -10,6 +12,7 @@ import type {
 } from "@/plugins/fake-api/handlers/config/types";
 import { useConfigStore } from "@/stores/config";
 import { useNotificationsStore } from "@/stores/notifications";
+import { normalizeDocumentSourceModes } from "@/utils/documentSourceModes";
 import { normalizeRichText } from "@/utils/richText";
 import { computed, onMounted, ref } from "vue";
 const isAddPaymentMethodsDialogVisible = ref(false);
@@ -30,6 +33,7 @@ type FinancialUiState = Partial<FinancialConfig> & {
     showNotes: boolean;
     termsAndNotes: string;
   };
+  documentSourceModes: DocumentSourceModeSettings;
   invoiceSequence: string;
   paymentReminders: {
     enabled: boolean;
@@ -52,6 +56,11 @@ const fin = ref<FinancialUiState>({
   invoicing: {
     showNotes: true,
     termsAndNotes: "",
+  },
+  documentSourceModes: {
+    quotation: "internal",
+    proforma: "internal",
+    invoice: "internal",
   },
   invoiceSequence: "",
   paymentReminders: {
@@ -78,6 +87,9 @@ const ensureDefaults = () => {
   };
   fin.value.invoicing.showNotes ??= true;
   fin.value.invoicing.termsAndNotes ??= "";
+  fin.value.documentSourceModes = normalizeDocumentSourceModes(
+    fin.value.documentSourceModes,
+  );
   fin.value.invoiceSequence ??= "";
   fin.value.paymentReminders ??= {
     enabled: false,
@@ -116,6 +128,9 @@ const syncFromStore = () => {
       showNotes: cfg.invoicing?.showNotes ?? fin.value.invoicing.showNotes,
       termsAndNotes: normalizeRichText(termsAndNotes),
     },
+    documentSourceModes: normalizeDocumentSourceModes(
+      cfg.documentSourceModes ?? fin.value.documentSourceModes,
+    ),
     paymentReminders: {
       enabled:
         cfg.paymentReminders?.enabled ?? fin.value.paymentReminders.enabled,
@@ -155,6 +170,9 @@ const takeSnapshot = () => {
       noteOnProforma: normalizeRichText(fin.value.invoicing.termsAndNotes),
       notesOnInvoice: normalizeRichText(fin.value.invoicing.termsAndNotes),
     },
+    documentSourceModes: normalizeDocumentSourceModes(
+      fin.value.documentSourceModes,
+    ),
     invoiceSequence: fin.value.invoiceSequence,
     paymentReminders: { ...fin.value.paymentReminders },
     deals: { ...deals.value },
@@ -207,7 +225,53 @@ const isValid = computed(
     isRemindersValid.value,
 );
 
+const documentSourceModeOptions: Array<{
+  title: string;
+  value: DocumentSourceMode;
+}> = [
+  { title: "Internal", value: "internal" },
+  { title: "External", value: "external" },
+];
+
+const lockProformaSourceMode = computed(
+  () => fin.value.documentSourceModes.quotation === "external",
+);
+const lockInvoiceSourceMode = computed(
+  () =>
+    fin.value.documentSourceModes.quotation === "external" ||
+    fin.value.documentSourceModes.proforma === "external",
+);
+
+const proformaSourceModeHint = computed(() =>
+  lockProformaSourceMode.value ? "Locked because quotations are external." : "",
+);
+const invoiceSourceModeHint = computed(() => {
+  if (fin.value.documentSourceModes.quotation === "external")
+    return "Locked because quotations are external.";
+  if (fin.value.documentSourceModes.proforma === "external")
+    return "Locked because proformas are external.";
+
+  return "";
+});
+
+const applyDocumentSourceModeSequence = () => {
+  fin.value.documentSourceModes = normalizeDocumentSourceModes(
+    fin.value.documentSourceModes,
+  );
+};
+
+const updateDocumentSourceMode = (
+  kind: keyof DocumentSourceModeSettings,
+  value: unknown,
+) => {
+  fin.value.documentSourceModes[kind] =
+    value === "external" ? "external" : "internal";
+  applyDocumentSourceModeSequence();
+};
+
 const toServerPayload = (): Partial<FinancialConfig> => {
+  applyDocumentSourceModeSequence();
+
   return {
     currency: fin.value.currency,
     vat: { ...fin.value.vat },
@@ -221,6 +285,9 @@ const toServerPayload = (): Partial<FinancialConfig> => {
       noteOnProforma: normalizeRichText(fin.value.invoicing.termsAndNotes),
       notesOnInvoice: normalizeRichText(fin.value.invoicing.termsAndNotes),
     },
+    documentSourceModes: normalizeDocumentSourceModes(
+      fin.value.documentSourceModes,
+    ),
     invoiceSequence: fin.value.invoiceSequence,
     paymentReminders: { ...fin.value.paymentReminders },
   } as Partial<FinancialConfig>;
@@ -483,6 +550,51 @@ const updateExpenseCategories = (payload: {
                 </template>
               </VSwitch>
             </div>
+          </VCol>
+          <VCol cols="12">
+            <VDivider class="my-2" />
+          </VCol>
+          <VCol cols="12" md="4">
+            <AppSelect
+              :model-value="fin.documentSourceModes.quotation"
+              :items="documentSourceModeOptions"
+              item-title="title"
+              item-value="value"
+              label="Quotation Source"
+              @update:model-value="
+                (value) => updateDocumentSourceMode('quotation', value)
+              "
+            />
+          </VCol>
+          <VCol cols="12" md="4">
+            <AppSelect
+              :model-value="fin.documentSourceModes.proforma"
+              :items="documentSourceModeOptions"
+              item-title="title"
+              item-value="value"
+              label="Proforma Source"
+              :disabled="lockProformaSourceMode"
+              :hint="proformaSourceModeHint"
+              persistent-hint
+              @update:model-value="
+                (value) => updateDocumentSourceMode('proforma', value)
+              "
+            />
+          </VCol>
+          <VCol cols="12" md="4">
+            <AppSelect
+              :model-value="fin.documentSourceModes.invoice"
+              :items="documentSourceModeOptions"
+              item-title="title"
+              item-value="value"
+              label="Invoice Source"
+              :disabled="lockInvoiceSourceMode"
+              :hint="invoiceSourceModeHint"
+              persistent-hint
+              @update:model-value="
+                (value) => updateDocumentSourceMode('invoice', value)
+              "
+            />
           </VCol>
         </VRow>
       </VCardText>

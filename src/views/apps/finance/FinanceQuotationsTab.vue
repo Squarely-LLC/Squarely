@@ -28,6 +28,10 @@ import {
   getLineTotal,
   getQuotationGrandTotal,
 } from "@/utils/quotationPricing";
+import {
+  isDocumentSourceExternal,
+  isDocumentSourceInternal,
+} from "@/utils/documentSourceModes";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
@@ -59,9 +63,7 @@ const router = useRouter();
 const pendingEmailQuotationId = ref<number | null>(null);
 const emailDialogRef = ref<any | null>(null);
 const pendingQuotationConversionId = ref<number | null>(null);
-const pendingQuotationConversionKind = ref<"proforma" | "invoice" | null>(
-  null,
-);
+const pendingQuotationConversionKind = ref<"proforma" | "invoice" | null>(null);
 const selectedQuotationConversionOptionKeys = ref<string[]>([]);
 const selectedQuotationConversionPeriodKeys = ref<Record<string, string[]>>({});
 
@@ -107,6 +109,18 @@ invoicesStore.init();
 
 const configStore = useConfigStore();
 configStore.init();
+const canCreateQuotationSource = computed(() =>
+  isDocumentSourceInternal(configStore.financial, "quotation"),
+);
+const canAttachQuotationSource = computed(() =>
+  isDocumentSourceExternal(configStore.financial, "quotation"),
+);
+const canCreateProformaSource = computed(() =>
+  isDocumentSourceInternal(configStore.financial, "proforma"),
+);
+const canCreateInvoiceSource = computed(() =>
+  isDocumentSourceInternal(configStore.financial, "invoice"),
+);
 
 const contactsStore = useContactsStore();
 contactsStore.init();
@@ -444,9 +458,7 @@ const isOlderQuotationRevision = (quotation: Quotation) => {
   if (family.length <= 1) return false;
 
   const latest = family.reduce((currentLatest, candidate) =>
-    Number(candidate.id) > Number(currentLatest.id)
-      ? candidate
-      : currentLatest,
+    Number(candidate.id) > Number(currentLatest.id) ? candidate : currentLatest,
   );
 
   return String(latest.id) !== String(quotation.id);
@@ -724,7 +736,9 @@ const quotationConversionOptions = computed(() =>
 const initializeQuotationConversionSelection = (
   options: DealQuotationConversionOption[],
 ) => {
-  selectedQuotationConversionOptionKeys.value = options.map((option) => option.key);
+  selectedQuotationConversionOptionKeys.value = options.map(
+    (option) => option.key,
+  );
   selectedQuotationConversionPeriodKeys.value = Object.fromEntries(
     options
       .filter((option) => option.periods.length)
@@ -769,7 +783,8 @@ const hasQuotationPhaseOrPeriodLines = (quotationRecord: QuotationRecord) =>
 const getConversionLineContext = (
   product: QuotationRecord["purchasedProducts"][number],
 ) => {
-  if (product.billingPeriod) return product.billingPeriod.label || "Billing period";
+  if (product.billingPeriod)
+    return product.billingPeriod.label || "Billing period";
 
   const billingPeriodKey = resolveStoredBillingPeriodKey(product);
   if (billingPeriodKey) return billingPeriodKey;
@@ -784,7 +799,8 @@ const getConversionLineContext = (
 
 const getConversionLineDiscount = (
   product: QuotationRecord["purchasedProducts"][number],
-) => formatCurrencyAmount(getLineDiscountAmount(product), configStore.financial);
+) =>
+  formatCurrencyAmount(getLineDiscountAmount(product), configStore.financial);
 
 const getConversionLineTotal = (
   product: QuotationRecord["purchasedProducts"][number],
@@ -1056,6 +1072,18 @@ const performQuotationConversion = (
   kind: "proforma" | "invoice",
   selectedProducts?: QuotationRecord["purchasedProducts"],
 ) => {
+  if (kind === "proforma" && !canCreateProformaSource.value) {
+    pushFinanceWarning("Proformas are configured for external attachments.");
+
+    return null;
+  }
+
+  if (kind === "invoice" && !canCreateInvoiceSource.value) {
+    pushFinanceWarning("Invoices are configured for external attachments.");
+
+    return null;
+  }
+
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return null;
 
@@ -1080,7 +1108,10 @@ const performQuotationConversion = (
     return null;
   }
 
-  const createdProforma = createProformaFromQuotation(quotationRecord, products);
+  const createdProforma = createProformaFromQuotation(
+    quotationRecord,
+    products,
+  );
   const createdInvoice =
     kind === "invoice" ? createInvoiceFromProforma(createdProforma) : null;
 
@@ -1369,18 +1400,26 @@ const computedMoreList = computed(() => {
       prependIcon: "tabler-copy",
       onClick: () => openDuplicateDraft(paramId),
     },
-    {
-      title: "Convert to Proforma",
-      value: "convert-to-proforma",
-      prependIcon: "tabler-file-dollar",
-      onClick: () => convertQuotationToProforma(paramId),
-    },
-    {
-      title: "Convert to Tax invoice",
-      value: "convert-to-tax-invoice",
-      prependIcon: "tabler-file-invoice",
-      onClick: () => convertQuotationToInvoice(paramId),
-    },
+    ...(canCreateProformaSource.value
+      ? [
+          {
+            title: "Convert to Proforma",
+            value: "convert-to-proforma",
+            prependIcon: "tabler-file-dollar",
+            onClick: () => convertQuotationToProforma(paramId),
+          },
+        ]
+      : []),
+    ...(canCreateInvoiceSource.value
+      ? [
+          {
+            title: "Convert to Tax invoice",
+            value: "convert-to-tax-invoice",
+            prependIcon: "tabler-file-invoice",
+            onClick: () => convertQuotationToInvoice(paramId),
+          },
+        ]
+      : []),
     {
       title: "Share",
       value: "share",
@@ -1512,12 +1551,14 @@ watch(totalQuotations, (value) => {
 
             <VList>
               <VListItem
+                v-if="canCreateQuotationSource"
                 :to="{ name: 'apps-quotation-add' }"
                 prepend-icon="tabler-building-estate"
               >
                 From Squarely
               </VListItem>
               <VListItem
+                v-if="canAttachQuotationSource"
                 prepend-icon="tabler-paperclip"
                 @click="openExternalQuotationDialog"
               >
@@ -1887,7 +1928,6 @@ watch(totalQuotations, (value) => {
               {{ externalQuotationSuccess }}
             </VAlert>
           </VCol>
-
         </VRow>
       </VForm>
 
@@ -1953,8 +1993,8 @@ watch(totalQuotations, (value) => {
                 </div>
 
                 <div class="text-caption text-medium-emphasis mb-2">
-                  Discount {{ getConversionLineDiscount(option.product) }}
-                  - {{ getConversionLineTaxStatus(option.product) }}
+                  Discount {{ getConversionLineDiscount(option.product) }} -
+                  {{ getConversionLineTaxStatus(option.product) }}
                 </div>
 
                 <VSelect
@@ -1978,8 +2018,8 @@ watch(totalQuotations, (value) => {
                 />
 
                 <div v-else class="text-caption text-medium-emphasis">
-                  Qty {{ option.product.hours ?? 1 }}
-                  - {{ getConversionLineContext(option.product) }}
+                  Qty {{ option.product.hours ?? 1 }} -
+                  {{ getConversionLineContext(option.product) }}
                 </div>
               </div>
             </div>
@@ -1988,7 +2028,12 @@ watch(totalQuotations, (value) => {
 
         <div class="text-end font-weight-medium mt-4">
           Selected total:
-          {{ formatCurrencyAmount(selectedQuotationConversionTotal, configStore.financial) }}
+          {{
+            formatCurrencyAmount(
+              selectedQuotationConversionTotal,
+              configStore.financial,
+            )
+          }}
         </div>
       </VCardText>
 
@@ -2115,7 +2160,6 @@ watch(totalQuotations, (value) => {
   display: flex;
   align-items: flex-start;
 }
-
 
 .quotation-form-control {
   inline-size: 100%;
