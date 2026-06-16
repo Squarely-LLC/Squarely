@@ -168,7 +168,8 @@ export const canCurrentUser = (
 
   const permission = modulePermission(role, module);
   if (!permission) return false;
-  if (resource?.financial && permission.hideFinancials) return false;
+  if (action !== "read" && resource?.financial && permission.hideFinancials)
+    return false;
   if (!hasRolePermission(role, module, action)) return false;
 
   return hasResourceScope(permission, resource);
@@ -290,47 +291,51 @@ export const mapAuthorizationResource = (
     return collectPrimitiveAliases(value);
   };
 
-  const ownerIds = uniqueValues([
-    nested(
-      "ownerId",
-      "createdBy",
-      "createdById",
-      "createdBy.accountId",
-      "createdBy.employeeId",
-      "createdBy.personId",
-      "author",
-      "author.id",
-      "author.accountId",
-      "requestedBy",
-      "requestedBy.id",
-      "requestedBy.employeeId",
-      "salesman",
-      "salesperson",
-      "quotation.salesperson",
-      "quotation.salesperson.id",
-      "employeeId",
-      "personId",
+  const ownerIds = uniqueValues(
+    collectIds(
+      nested(
+        "ownerId",
+        "createdBy",
+        "createdById",
+        "createdBy.accountId",
+        "createdBy.employeeId",
+        "createdBy.personId",
+        "author",
+        "author.id",
+        "author.accountId",
+        "requestedBy",
+        "requestedBy.id",
+        "requestedBy.employeeId",
+        "salesman",
+        "salesperson",
+        "quotation.salesperson",
+        "quotation.salesperson.id",
+        "employeeId",
+        "personId",
+      ),
     ),
-  ]).flatMap(collectIds).map((entry) => String(entry));
+  );
 
-  const participantIds = uniqueValues([
-    nested(
-      "collaborators",
-      "collaboratorIds",
-      "assignees",
-      "assignedTo",
-      "attendees",
-      "linkedTo",
-      "requestedBy",
-    ),
-    record.milestones?.flatMap((entry: any) => collectIds(entry.collaborators)),
-    record.goals?.flatMap((entry: any) => collectIds(entry.collaborators)),
-    record.steps?.flatMap((entry: any) => collectIds(entry.collaborators)),
-    record.items?.flatMap((entry: any) => [
-      ...collectIds(entry.collaborators),
-      ...collectIds(entry.salesTasks),
+  const participantIds = uniqueValues(
+    collectIds([
+      nested(
+        "collaborators",
+        "collaboratorIds",
+        "assignees",
+        "assignedTo",
+        "attendees",
+        "linkedTo",
+        "requestedBy",
+      ),
+      record.milestones?.flatMap((entry: any) => collectIds(entry.collaborators)),
+      record.goals?.flatMap((entry: any) => collectIds(entry.collaborators)),
+      record.steps?.flatMap((entry: any) => collectIds(entry.collaborators)),
+      record.items?.flatMap((entry: any) => [
+        ...collectIds(entry.collaborators),
+        ...collectIds(entry.salesTasks),
+      ]),
     ]),
-  ]).flatMap(collectIds).map((entry) => String(entry));
+  );
 
   return {
     module,
@@ -408,7 +413,9 @@ export const getCurrentTeamMemberIds = () => {
 const loadPeopleForAuth = () => {
   if (typeof window !== "undefined") {
     try {
-      const parsed = JSON.parse(localStorage.getItem("app.people.v1") || "[]");
+      const parsed =
+        JSON.parse(localStorage.getItem("app.people.v2") || "[]") ||
+        JSON.parse(localStorage.getItem("app.people.v1") || "[]");
       if (Array.isArray(parsed) && parsed.length) return parsed;
     } catch {}
   }
