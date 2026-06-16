@@ -1,6 +1,7 @@
 import { db as seedDb } from "@/plugins/fake-api/handlers/config/db";
 import type AppConfigurations from "@/plugins/fake-api/handlers/config/types";
 import { normalizeDocumentSourceModes } from "@/utils/documentSourceModes";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY = "app.configurations.v1";
@@ -176,6 +177,8 @@ export const useConfigStore = defineStore("appConfigurations", {
     },
 
     updateLocal(patch: Partial<AppConfigurations>) {
+      requireCurrentUserPermission("configuration", "update");
+
       const merged = normalizePatch(this.configurations, patch || {});
       this.configurations = normalizeConfigurations({
         ...this.configurations,

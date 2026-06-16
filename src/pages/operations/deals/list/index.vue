@@ -10,6 +10,11 @@ import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import {
+  canCurrentUser,
+  isPermissionDeniedError,
+  PERMISSION_DENIED_MESSAGE,
+} from "@/utils/authorization";
 import { getDealGrandTotal } from "@/utils/dealValue";
 import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -432,14 +437,33 @@ const isStageDialogVisible = ref(false);
 const stageDialogValue = ref<string | null>(null);
 const stageDialogDealId = ref<number | null>(null);
 const meetingContacts = computed(() => getContactAndEmployeeRefs());
+const canCreateDeals = computed(() => canCurrentUser("deals", "create"));
+const canUpdateDeals = computed(() => canCurrentUser("deals", "update"));
+const canDeleteDeals = computed(() => canCurrentUser("deals", "delete"));
+const canCreateTasks = computed(() => canCurrentUser("tasks", "create"));
+const canCreateMeetings = computed(() => canCurrentUser("calendar", "create"));
+
+const notifyDenied = () => {
+  notifications.push(PERMISSION_DENIED_MESSAGE, "error", 4000);
+};
 
 const openAddDialog = () => {
+  if (!canCreateDeals.value) {
+    notifyDenied();
+    return;
+  }
+
   selectedDeal.value = null;
   dialogError.value = null;
   isDealDialogVisible.value = true;
 };
 
 const openEditDialog = (deal: DealProperties) => {
+  if (!canUpdateDeals.value) {
+    notifyDenied();
+    return;
+  }
+
   selectedDeal.value = cloneDeal(deal);
   dialogError.value = null;
   isDealDialogVisible.value = true;
@@ -505,8 +529,15 @@ const saveDeal = (payload: Partial<DealProperties>) => {
     selectedDeal.value = null;
   } catch (error) {
     console.error("Failed to save deal", error);
-    dialogError.value = "An unexpected error occurred";
-    notifications.push("Failed to save deal", "error", 4000);
+    const message = isPermissionDeniedError(error)
+      ? error.message
+      : "An unexpected error occurred";
+    dialogError.value = message;
+    notifications.push(
+      isPermissionDeniedError(error) ? message : "Failed to save deal",
+      "error",
+      4000,
+    );
   } finally {
     dialogLoading.value = false;
   }
@@ -564,7 +595,16 @@ const cancelDelete = () => {
 const performDelete = () => {
   if (deleteCandidateId.value === null) return;
 
-  dealsStore.removeDeal(deleteCandidateId.value);
+  try {
+    dealsStore.removeDeal(deleteCandidateId.value);
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      notifyDenied();
+      return;
+    }
+
+    throw error;
+  }
 
   const index = selectedRows.value.findIndex(
     (row) => row === deleteCandidateId.value,
@@ -576,6 +616,11 @@ const performDelete = () => {
 };
 
 const toggleImportant = (deal: DealProperties) => {
+  if (!canUpdateDeals.value) {
+    notifyDenied();
+    return;
+  }
+
   dealsStore.updateDeal(deal.id, { important: !deal.important });
   notifications.push(
     deal.important ? "Removed from important deals" : "Marked as important",
@@ -590,6 +635,11 @@ const handleDealAction = (
 ) => {
   switch (action) {
     case "todo":
+      if (!canCreateTasks.value) {
+        notifyDenied();
+        return;
+      }
+
       addTodoInitial.value = {
         title: `Deal: ${deal.code || `#${deal.id}`}`,
         description: deal.note || "",
@@ -625,6 +675,11 @@ const handleDealAction = (
       });
       break;
     case "meeting":
+      if (!canCreateMeetings.value) {
+        notifyDenied();
+        return;
+      }
+
       nextTick(() => {
         try {
           const linkedContacts: Array<{
@@ -679,11 +734,21 @@ const handleDealAction = (
       });
       break;
     case "stage":
+      if (!canUpdateDeals.value) {
+        notifyDenied();
+        return;
+      }
+
       stageDialogDealId.value = Number(deal.id);
       stageDialogValue.value = deal.stage ?? null;
       isStageDialogVisible.value = true;
       break;
     case "delete":
+      if (!canDeleteDeals.value) {
+        notifyDenied();
+        return;
+      }
+
       confirmDelete(Number(deal.id));
       break;
   }
@@ -703,10 +768,19 @@ const saveStageChange = () => {
     return;
   }
 
-  dealsStore.updateDealStageManually(
-    stageDialogDealId.value,
-    stageDialogValue.value,
-  );
+  try {
+    dealsStore.updateDealStageManually(
+      stageDialogDealId.value,
+      stageDialogValue.value,
+    );
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      notifyDenied();
+      return;
+    }
+
+    throw error;
+  }
   notifications.push("Stage updated", "success", 2500);
   isStageDialogVisible.value = false;
   stageDialogDealId.value = null;
@@ -826,7 +900,11 @@ const updateItemsPerPage = (value: number | string) => {
             Export
           </VBtn>
 
-          <VBtn prepend-icon="tabler-plus" @click="openAddDialog">
+          <VBtn
+            v-if="canCreateDeals"
+            prepend-icon="tabler-plus"
+            @click="openAddDialog"
+          >
             Add New Deal
           </VBtn>
         </div>
@@ -848,6 +926,7 @@ const updateItemsPerPage = (value: number | string) => {
         <template #item.deal="{ item }">
           <div class="deal-cell d-flex align-center gap-x-3 py-2">
             <VBtn
+              v-if="canUpdateDeals"
               icon
               variant="text"
               :color="item.important ? 'warning' : 'secondary'"
@@ -1030,6 +1109,7 @@ const updateItemsPerPage = (value: number | string) => {
         <template #item.actions="{ item }">
           <div class="actions-cell d-flex align-center justify-end">
             <VBtn
+              v-if="canUpdateDeals"
               icon
               variant="text"
               color="medium-emphasis"
@@ -1043,13 +1123,19 @@ const updateItemsPerPage = (value: number | string) => {
 
               <VMenu activator="parent">
                 <VList>
-                  <VListItem @click="handleDealAction('todo', item)">
+                  <VListItem
+                    v-if="canCreateTasks"
+                    @click="handleDealAction('todo', item)"
+                  >
                     <template #prepend>
                       <VIcon icon="tabler-list-check" />
                     </template>
                     <VListItemTitle>Todo</VListItemTitle>
                   </VListItem>
-                  <VListItem @click="handleDealAction('meeting', item)">
+                  <VListItem
+                    v-if="canCreateMeetings"
+                    @click="handleDealAction('meeting', item)"
+                  >
                     <template #prepend>
                       <VIcon icon="tabler-calendar" />
                     </template>
@@ -1064,7 +1150,10 @@ const updateItemsPerPage = (value: number | string) => {
 
                   <VDivider />
 
-                  <VListItem @click="handleDealAction('stage', item)">
+                  <VListItem
+                    v-if="canUpdateDeals"
+                    @click="handleDealAction('stage', item)"
+                  >
                     <template #prepend>
                       <VIcon icon="tabler-arrows-exchange-2" />
                     </template>
@@ -1073,7 +1162,10 @@ const updateItemsPerPage = (value: number | string) => {
 
                   <VDivider />
 
-                  <VListItem @click="handleDealAction('delete', item)">
+                  <VListItem
+                    v-if="canDeleteDeals"
+                    @click="handleDealAction('delete', item)"
+                  >
                     <template #prepend>
                       <VIcon color="error" icon="tabler-trash" />
                     </template>

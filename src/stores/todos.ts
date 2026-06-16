@@ -2,6 +2,7 @@ import type { Meeting, Message, ToDo, ToDoAttachment } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { usePeopleStore } from "@/stores/people";
 import { getSignedInAuthorRef, normalizeAuthorRef } from "@/utils/currentAccount";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 import { defineStore } from "pinia";
 
 const STORAGE_KEY_MEETINGS = "app.meetings.v2";
@@ -248,7 +249,9 @@ export const useTodos = defineStore("todos", {
       );
     },
 
-    addTodo(todo: Partial<ToDo>) {
+    addTodo(todo: Partial<ToDo>, options: { system?: boolean } = {}) {
+      if (!options.system) requireCurrentUserPermission("tasks", "create");
+
       const now = new Date().toISOString();
       const maxExistingId = this.items.reduce<number>((max, item) => {
         const numericId = Number(item.id);
@@ -288,7 +291,13 @@ export const useTodos = defineStore("todos", {
       this.items.push(newTodo);
       return newTodo;
     },
-    updateTodo(id: number | string, patch: Partial<ToDo>) {
+    updateTodo(
+      id: number | string,
+      patch: Partial<ToDo>,
+      options: { system?: boolean } = {},
+    ) {
+      if (!options.system) requireCurrentUserPermission("tasks", "update");
+
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx === -1) return;
       const nextPatch = { ...patch } as any;
@@ -321,7 +330,9 @@ export const useTodos = defineStore("todos", {
       this.items.splice(idx, 1, updated);
       return updated;
     },
-    removeTodo(id: number | string) {
+    removeTodo(id: number | string, options: { system?: boolean } = {}) {
+      if (!options.system) requireCurrentUserPermission("tasks", "delete");
+
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx !== -1) this.items.splice(idx, 1);
     },
@@ -395,7 +406,9 @@ export const useTodos = defineStore("todos", {
       this.updateTodo(id, { steps });
     },
     // === Meetings actions ==================================================
-    addMeeting(meeting: Partial<Meeting>) {
+    addMeeting(meeting: Partial<Meeting>, options: { system?: boolean } = {}) {
+      if (!options.system) requireCurrentUserPermission("calendar", "create");
+
       const now = new Date().toISOString();
       const nextId = (this.meetings.at(-1)?.id as number | undefined)
         ? Number(this.meetings.at(-1)!.id) + 1
@@ -432,7 +445,13 @@ export const useTodos = defineStore("todos", {
       return newMeeting;
     },
 
-    updateMeeting(id: number | string, patch: Partial<Meeting>) {
+    updateMeeting(
+      id: number | string,
+      patch: Partial<Meeting>,
+      options: { system?: boolean } = {},
+    ) {
+      if (!options.system) requireCurrentUserPermission("calendar", "update");
+
       const idx = this.meetings.findIndex((m) => String(m.id) === String(id));
       if (idx === -1) return;
       const prev = this.meetings[idx];
@@ -460,7 +479,9 @@ export const useTodos = defineStore("todos", {
       return next;
     },
 
-    removeMeeting(id: number | string) {
+    removeMeeting(id: number | string, options: { system?: boolean } = {}) {
+      if (!options.system) requireCurrentUserPermission("calendar", "delete");
+
       const idx = this.meetings.findIndex((m) => String(m.id) === String(id));
       if (idx !== -1) this.meetings.splice(idx, 1);
     },

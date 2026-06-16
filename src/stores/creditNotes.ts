@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { database as invoiceSeedDatabase } from "@/plugins/fake-api/handlers/apps/invoice/db";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 
 const STORAGE_KEY = "app.credit-notes.v2";
 
@@ -194,6 +195,8 @@ export const useCreditNotesStore = defineStore("creditNotes", {
     },
 
     addNote(payload: CreditNotePayload) {
+      requireCurrentUserPermission("finance", "create");
+
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextId(this.items);
@@ -203,6 +206,8 @@ export const useCreditNotesStore = defineStore("creditNotes", {
     },
 
     updateNote(id: number | string, patch: CreditNotePayload) {
+      requireCurrentUserPermission("finance", "update");
+
       const index = this.items.findIndex(
         (record) => String(record.id) === String(id),
       );
@@ -223,6 +228,8 @@ export const useCreditNotesStore = defineStore("creditNotes", {
     },
 
     removeNote(id: number | string) {
+      requireCurrentUserPermission("finance", "delete");
+
       this.items = this.items.filter((record) => String(record.id) !== String(id));
     },
   },

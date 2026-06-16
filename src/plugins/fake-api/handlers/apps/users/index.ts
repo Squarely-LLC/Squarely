@@ -10,6 +10,10 @@ import {
   saveAccountRoleState,
   type AccountUserRecord,
 } from "@/utils/accountRoles";
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 const normalizeEmail = (email?: string | null) =>
   String(email ?? "")
@@ -96,6 +100,12 @@ export const handlerAppsUsers = [
   }),
 
   http.delete<PathParams>("/api/apps/users/:id", ({ params }) => {
+    try {
+      requireCurrentUserPermission("usersRoles", "delete");
+    } catch {
+      return permissionDeniedResponse("usersRoles", "delete");
+    }
+
     const state = loadAccountRoleState();
     const index = state.users.findIndex(
       (entry) => String(entry.id) === String(params.id),
@@ -114,6 +124,12 @@ export const handlerAppsUsers = [
   }),
 
   http.put<PathParams>("/api/apps/users/:id", async ({ params, request }) => {
+    try {
+      requireCurrentUserPermission("usersRoles", "update");
+    } catch {
+      return permissionDeniedResponse("usersRoles", "update");
+    }
+
     const payload = (await request.json()) as Partial<AccountUserRecord> & {
       role?: string;
     };
@@ -188,6 +204,12 @@ export const handlerAppsUsers = [
   }),
 
   http.post("/api/apps/users", async ({ request }) => {
+    try {
+      requireCurrentUserPermission("usersRoles", "create");
+    } catch {
+      return permissionDeniedResponse("usersRoles", "create");
+    }
+
     const payload = (await request.json()) as Partial<AccountUserRecord> & {
       role?: string;
       password?: string;

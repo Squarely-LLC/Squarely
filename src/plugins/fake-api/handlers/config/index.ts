@@ -1,6 +1,10 @@
 import { HttpResponse, http } from "msw";
 import { db } from "./db";
 import type AppConfigurations from "./types";
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 // Minimal local handler types to avoid depending on shared types in the fake-api loader
 type HandlerArgs = {
@@ -53,6 +57,8 @@ export const getConfigurations = (_args: HandlerArgs): HandlerResult => {
 
 // PUT /api/configurations
 export const updateConfigurations = (args: HandlerArgs): HandlerResult => {
+  requireCurrentUserPermission("configuration", "update");
+
   const body = args?.body as Partial<AppConfigurations> | undefined;
   try {
     // eslint-disable-next-line no-console
@@ -68,6 +74,12 @@ export const handlerConfigurations = [
     HttpResponse.json(db.configurations, { status: 200 })
   ),
   http.put("/api/configurations", async ({ request }) => {
+    try {
+      requireCurrentUserPermission("configuration", "update");
+    } catch {
+      return permissionDeniedResponse("configuration", "update");
+    }
+
     const body = (await request
       .json()
       .catch(() => ({}))) as Partial<AppConfigurations>;

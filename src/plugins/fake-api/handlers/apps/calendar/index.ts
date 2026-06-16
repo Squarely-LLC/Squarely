@@ -3,6 +3,10 @@ import { destr } from 'destr'
 import { HttpResponse, http } from 'msw'
 import { db } from '@db/apps/calendar/db'
 import { genId } from '@api-utils/genId'
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 export const handlerAppsCalendar = [
 
@@ -23,6 +27,12 @@ export const handlerAppsCalendar = [
 
   // 👉 Add Calendar Event
   http.post(('/api/apps/calendar'), async ({ request }) => {
+    try {
+      requireCurrentUserPermission("calendar", "create");
+    } catch {
+      return permissionDeniedResponse("calendar", "create");
+    }
+
     const event = await request.json() as typeof db.events[0]
 
     db.events.push({
@@ -35,6 +45,12 @@ export const handlerAppsCalendar = [
 
   // 👉 Update Calendar Event
   http.put(('/api/apps/calendar/:id'), async ({ request, params }) => {
+    try {
+      requireCurrentUserPermission("calendar", "update");
+    } catch {
+      return permissionDeniedResponse("calendar", "update");
+    }
+
     const updatedEvent = await request.json() as typeof db.events[0]
 
     updatedEvent.id = Number(updatedEvent.id)
@@ -61,6 +77,12 @@ export const handlerAppsCalendar = [
 
   // 👉 Delete Calendar Event
   http.delete(('/api/apps/calendar/:id'), ({ params }) => {
+    try {
+      requireCurrentUserPermission("calendar", "delete");
+    } catch {
+      return permissionDeniedResponse("calendar", "delete");
+    }
+
     const eventId = Number(params.id)
 
     const eventIndex = db.events.findIndex(e => e.id === eventId)

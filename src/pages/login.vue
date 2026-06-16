@@ -10,6 +10,10 @@ import authV2MaskLight from "@images/pages/misc-mask-light.png";
 import { VNodeRenderer } from "@layouts/components/VNodeRenderer";
 import { themeConfig } from "@themeConfig";
 import { VForm } from "vuetify/components/VForm";
+import {
+  emailValidator,
+  requiredValidator,
+} from "@/@core/utils/validators";
 
 const authThemeImg = useGenerateImageVariant(
   authV2LoginIllustrationLight,
@@ -63,6 +67,11 @@ const login = async () => {
     });
 
     const { accessToken, userData, userAbilityRules } = res;
+
+    useCookie("userAbilityRules").value = null;
+    useCookie("userData").value = null;
+    useCookie("accessToken").value = null;
+    ability.update([]);
 
     useCookie("userAbilityRules").value = userAbilityRules;
     ability.update(userAbilityRules);
@@ -223,7 +232,7 @@ const onSubmit = () => {
           <VDialog v-model="isDialogVisible" width="500">
             <!-- Activator -->
             <template #activator="{ props }">
-              <button v-bind="props" type="none" class="gsi-material-button">
+              <button v-bind="props" type="button" class="gsi-material-button">
                 <div class="gsi-material-button-state"></div>
                 <div class="gsi-material-button-content-wrapper">
                   <div class="gsi-material-button-icon">

@@ -5,6 +5,7 @@ import type {
 } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { personToContact, usePeopleStore } from "@/stores/people";
 import { defineStore } from "pinia";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 
 const cloneContact = (contact: ContactProperties): ContactProperties =>
   JSON.parse(JSON.stringify(contact)) as ContactProperties;
@@ -102,6 +103,8 @@ export const useContactsStore = defineStore("contacts", {
     },
 
     addContact(payload: Partial<ContactProperties>) {
+      requireCurrentUserPermission("contacts", "create");
+
       const peopleStore = usePeopleStore();
       peopleStore.init();
       const incomingId =
@@ -113,7 +116,13 @@ export const useContactsStore = defineStore("contacts", {
       return created;
     },
 
-    updateContact(id: number | string, patch: Partial<ContactProperties>) {
+    updateContact(
+      id: number | string,
+      patch: Partial<ContactProperties>,
+      options: { system?: boolean } = {},
+    ) {
+      if (!options.system) requireCurrentUserPermission("contacts", "update");
+
       const peopleStore = usePeopleStore();
       peopleStore.init();
       const updated = peopleStore.patchContact(id, patch);
@@ -156,6 +165,8 @@ export const useContactsStore = defineStore("contacts", {
     },
 
     removeContact(id: number | string) {
+      requireCurrentUserPermission("contacts", "delete");
+
       const peopleStore = usePeopleStore();
       peopleStore.init();
       peopleStore.removeContactProfile(id);

@@ -4,6 +4,10 @@ import is from "@sindresorhus/is";
 import { destr } from "destr";
 import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 export const handlerAppsInvoice = [
   http.get("/api/apps/invoice/clients", () => {
@@ -109,6 +113,12 @@ export const handlerAppsInvoice = [
   }),
 
   http.delete("/api/apps/invoice/:id", ({ params }) => {
+    try {
+      requireCurrentUserPermission("finance", "delete");
+    } catch {
+      return permissionDeniedResponse("finance", "delete");
+    }
+
     const index = database.findIndex(
       (entry) => entry.quotation.id === Number(params.id),
     );

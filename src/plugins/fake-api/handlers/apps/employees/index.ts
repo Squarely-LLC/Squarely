@@ -5,6 +5,10 @@ import { destr } from "destr";
 import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import type { EmployeeProperties } from "./types";
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 db.users = db.users.map((employee) => ({ ...employee }));
 
@@ -151,6 +155,12 @@ export const handlerAppsEmployees = [
   }),
 
   http.delete("/api/apps/employees/:id", ({ params }) => {
+    try {
+      requireCurrentUserPermission("hr", "delete");
+    } catch {
+      return permissionDeniedResponse("hr", "delete");
+    }
+
     const userId = Number(params.id);
 
     const index = db.users.findIndex((entry) => entry.id === userId);
@@ -164,6 +174,12 @@ export const handlerAppsEmployees = [
   }),
 
   http.put("/api/apps/employees/:id", async ({ params, request }) => {
+    try {
+      requireCurrentUserPermission("hr", "update");
+    } catch {
+      return permissionDeniedResponse("hr", "update");
+    }
+
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<EmployeeProperties>;
 
@@ -193,6 +209,12 @@ export const handlerAppsEmployees = [
   }),
 
   http.post("/api/apps/employees/:id/records", async ({ params, request }) => {
+    try {
+      requireCurrentUserPermission("hr", "update");
+    } catch {
+      return permissionDeniedResponse("hr", "update");
+    }
+
     const userId = Number(params.id);
     const payload = (await request.json()) as any;
 
@@ -230,6 +252,12 @@ export const handlerAppsEmployees = [
   http.put(
     "/api/apps/employees/:id/records/:rid",
     async ({ params, request }) => {
+      try {
+        requireCurrentUserPermission("hr", "update");
+      } catch {
+        return permissionDeniedResponse("hr", "update");
+      }
+
       const userId = Number(params.id);
       const recordId = Number(params.rid);
       const payload = (await request.json()) as any;
@@ -270,6 +298,12 @@ export const handlerAppsEmployees = [
   ),
 
   http.delete("/api/apps/employees/:id/records/:rid", ({ params }) => {
+    try {
+      requireCurrentUserPermission("hr", "update");
+    } catch {
+      return permissionDeniedResponse("hr", "update");
+    }
+
     const userId = Number(params.id);
     const recordId = Number(params.rid);
 
@@ -294,6 +328,12 @@ export const handlerAppsEmployees = [
   }),
 
   http.post("/api/apps/employees", async ({ request }) => {
+    try {
+      requireCurrentUserPermission("hr", "create");
+    } catch {
+      return permissionDeniedResponse("hr", "create");
+    }
+
     const payload = (await request.json()) as any;
 
     const { accounting: incomingAccounting, ...restPayload } = payload;

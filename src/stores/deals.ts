@@ -17,6 +17,7 @@ import type {
 import { useConfigStore } from "@/stores/config";
 import { resolveEmployeePersonId } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 
 const STORAGE_KEY = "app.deals.v5";
 const DEFAULT_DEAL_PREFIX = "DL";
@@ -850,7 +851,7 @@ export const useDealsStore = defineStore("deals", {
         const todosStore = useTodos();
         todosStore.init();
         legacyGeneratedTaskIds.forEach((taskId) =>
-          todosStore.removeTodo(taskId),
+          todosStore.removeTodo(taskId, { system: true }),
         );
       }
 
@@ -873,6 +874,8 @@ export const useDealsStore = defineStore("deals", {
     },
 
     addDeal(payload: Partial<DealProperties>) {
+      requireCurrentUserPermission("deals", "create");
+
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextDealId(this.items);
@@ -893,7 +896,13 @@ export const useDealsStore = defineStore("deals", {
       return normalised;
     },
 
-    updateDeal(id: number | string, patch: Partial<DealProperties>) {
+    updateDeal(
+      id: number | string,
+      patch: Partial<DealProperties>,
+      options: { system?: boolean } = {},
+    ) {
+      if (!options.system) requireCurrentUserPermission("deals", "update");
+
       const index = this.items.findIndex(
         (deal) => String(deal.id) === String(id),
       );
@@ -935,25 +944,33 @@ export const useDealsStore = defineStore("deals", {
       if (currentDeal.stageManuallyManaged) {
         if (currentDeal.stage === targetStage) return currentDeal;
 
-        return this.updateDeal(id, {
-          pendingStageTransition: {
-            targetStage,
-            reason,
-            event,
-            requestedAt: new Date().toISOString(),
+        return this.updateDeal(
+          id,
+          {
+            pendingStageTransition: {
+              targetStage,
+              reason,
+              event,
+              requestedAt: new Date().toISOString(),
+            },
           },
-        });
+          { system: true },
+        );
       }
 
       if (!shouldPromoteLifecycleStage(currentDeal.stage, targetStage)) {
         return currentDeal;
       }
 
-      return this.updateDeal(id, {
-        stage: targetStage,
-        stageManuallyManaged: false,
-        pendingStageTransition: null,
-      });
+      return this.updateDeal(
+        id,
+        {
+          stage: targetStage,
+          stageManuallyManaged: false,
+          pendingStageTransition: null,
+        },
+        { system: true },
+      );
     },
 
     async reevaluateDealClosureFromInvoices(
@@ -989,6 +1006,8 @@ export const useDealsStore = defineStore("deals", {
     },
 
     approvePendingStageTransition(id: number | string) {
+      requireCurrentUserPermission("deals", "approve");
+
       const currentDeal = this.byId(id);
       const pendingTransition = currentDeal?.pendingStageTransition;
       if (!currentDeal || !pendingTransition) return null;
@@ -1023,6 +1042,8 @@ export const useDealsStore = defineStore("deals", {
     },
 
     removeDeal(id: number | string) {
+      requireCurrentUserPermission("deals", "delete");
+
       const index = this.items.findIndex(
         (deal) => String(deal.id) === String(id),
       );

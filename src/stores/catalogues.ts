@@ -3,6 +3,7 @@ import { toRaw } from "vue";
 
 import type { ToDoStep } from "@/data/schema";
 import { db } from "@/plugins/fake-api/handlers/catalogues/db";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 import type {
   CatalogueActiveState,
   CatalogueItem,
@@ -883,6 +884,8 @@ export const useCataloguesStore = defineStore("catalogues", {
       }
     },
     addItem(payload: CatalogueRecordInput) {
+      requireCurrentUserPermission("catalogue", "create");
+
       const tableKey = getTableKeyForType(payload.type);
       const itemType =
         (payload.type?.trim() as CatalogueItemType) || DEFAULT_TYPE;
@@ -908,6 +911,8 @@ export const useCataloguesStore = defineStore("catalogues", {
       return this.addItem(payload);
     },
     updateItem(id: string, patch: CatalogueRecordInput) {
+      requireCurrentUserPermission("catalogue", "update");
+
       const target = resolveTarget(this.tables, id, patch.type);
       if (!target) return null;
 
@@ -953,6 +958,8 @@ export const useCataloguesStore = defineStore("catalogues", {
       return this.updateItem(id, patch);
     },
     removeItem(id: string, typeHint?: string | null) {
+      requireCurrentUserPermission("catalogue", "delete");
+
       const target = resolveTarget(this.tables, id, typeHint);
       if (!target) return;
       this.tables[target.tableKey].splice(target.index, 1);

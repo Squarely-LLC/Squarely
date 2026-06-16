@@ -8,6 +8,7 @@ import type {
   ReceiptStatus,
 } from "@/plugins/fake-api/handlers/apps/receipt/types";
 import { normalizeRichText } from "@/utils/richText";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
@@ -300,6 +301,8 @@ export const useReceiptsStore = defineStore("receipts", {
     },
 
     addReceipt(payload: ReceiptPayload) {
+      requireCurrentUserPermission("finance", "create");
+
       const incomingId =
         payload.receipt?.id && Number(payload.receipt.id) > 0
           ? Number(payload.receipt.id)
@@ -352,6 +355,8 @@ export const useReceiptsStore = defineStore("receipts", {
     },
 
     updateReceipt(id: number | string, patch: ReceiptPayload) {
+      requireCurrentUserPermission("finance", "update");
+
       const index = this.items.findIndex(
         (record) => String(record.receipt.id) === String(id),
       );
@@ -364,6 +369,8 @@ export const useReceiptsStore = defineStore("receipts", {
     },
 
     removeReceipt(id: number | string) {
+      requireCurrentUserPermission("finance", "delete");
+
       this.items = this.items.filter(
         (record) => String(record.receipt.id) !== String(id),
       );

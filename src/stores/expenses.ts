@@ -7,6 +7,7 @@ import type {
   ExpenseSupplier,
 } from "@/plugins/fake-api/handlers/apps/expense/types";
 import { useContactsStore } from "@/stores/contacts";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 import { saveFile } from "@/utils/fileStore";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
@@ -582,6 +583,8 @@ export const useExpensesStore = defineStore("expenses", {
     },
 
     addExpense(payload: ExpensePayload) {
+      requireCurrentUserPermission("finance", "create");
+
       const incomingId =
         payload.expense?.id && Number(payload.expense.id) > 0
           ? Number(payload.expense.id)
@@ -595,6 +598,8 @@ export const useExpensesStore = defineStore("expenses", {
     },
 
     updateExpense(id: number | string, patch: ExpensePayload) {
+      requireCurrentUserPermission("finance", "update");
+
       const index = this.items.findIndex(
         (record) => String(record.expense.id) === String(id),
       );
@@ -607,6 +612,8 @@ export const useExpensesStore = defineStore("expenses", {
     },
 
     addPayment(id: number | string, paymentInput: ExpensePaymentInput) {
+      requireCurrentUserPermission("finance", "update");
+
       const index = this.items.findIndex(
         (record) => String(record.expense.id) === String(id),
       );
@@ -618,6 +625,8 @@ export const useExpensesStore = defineStore("expenses", {
     },
 
     updatePayment(id: number | string, paymentInput: ExpensePaymentInput) {
+      requireCurrentUserPermission("finance", "update");
+
       const index = this.items.findIndex(
         (record) => String(record.expense.id) === String(id),
       );
@@ -630,6 +639,8 @@ export const useExpensesStore = defineStore("expenses", {
     },
 
     removeExpense(id: number | string) {
+      requireCurrentUserPermission("finance", "delete");
+
       this.items = this.items.filter(
         (record) => String(record.expense.id) !== String(id),
       );
@@ -663,7 +674,7 @@ export const useExpensesStore = defineStore("expenses", {
       contactsStore.updateContact(supplierId, {
         class: nextClass,
         roles: Array.from(nextRoles),
-      });
+      }, { system: true });
     },
 
     syncSupplierContactFlags() {

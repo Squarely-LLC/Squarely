@@ -1,6 +1,7 @@
 import { database as expenseSeedDatabase } from "@/plugins/fake-api/handlers/apps/expense/db";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 
 const STORAGE_KEY = "app.payment-vouchers.v2";
 
@@ -163,6 +164,8 @@ export const usePaymentVouchersStore = defineStore("paymentVouchers", {
     },
 
     addVoucher(input: PaymentVoucherInput) {
+      requireCurrentUserPermission("finance", "create");
+
       const existing = this.items.find(
         (record) => record.linkedPaymentId === input.linkedPaymentId,
       );

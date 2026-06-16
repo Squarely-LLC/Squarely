@@ -307,6 +307,70 @@ const roleId = (name: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
+const ROLE_TEST_USER_PASSWORD = "SquarelyRoleTest#2026";
+
+const roleTestUserEmail = (role: RoleRecord) =>
+  `${role.id || roleId(role.name)}@squarely.test`;
+
+const roleTestUserName = (role: RoleRecord) => `${role.name} Test User`;
+
+const nextUserId = (users: AccountUserRecord[]) =>
+  Math.max(0, ...users.map((user) => Number(user.id) || 0)) + 1;
+
+const hasUserForRole = (
+  users: AccountUserRecord[],
+  role: RoleRecord,
+) =>
+  users.some(
+    (user) =>
+      user.centerId === role.centerId &&
+      String(user.roleId) === String(role.id),
+  );
+
+const hasUserEmail = (users: AccountUserRecord[], email: string) =>
+  users.some((user) => user.email.toLowerCase() === email.toLowerCase());
+
+const ensureRoleTestUsers = (
+  state: AccountRoleState,
+): AccountRoleState => {
+  const users = [...state.users];
+  const now = new Date().toISOString();
+
+  state.roles.forEach((role) => {
+    if (hasUserForRole(users, role)) return;
+
+    const baseEmail = roleTestUserEmail(role);
+    let email = baseEmail;
+    let suffix = 2;
+    while (hasUserEmail(users, email)) {
+      email = `${role.id || roleId(role.name)}-${suffix}@squarely.test`;
+      suffix += 1;
+    }
+
+    const id = nextUserId(users);
+    users.push({
+      id,
+      centerId: role.centerId,
+      employeeId: null,
+      personId: null,
+      fullName: roleTestUserName(role),
+      username: role.id || roleId(role.name),
+      email,
+      password: ROLE_TEST_USER_PASSWORD,
+      roleId: role.id,
+      status: "active",
+      avatar: null,
+      temporaryPassword: true,
+      createdBy: null,
+      isMaster: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  return { ...state, users };
+};
+
 export const buildAbilityRules = (role?: RoleRecord | null) => {
   if (!role) return [];
   if (role.name === "Account Owner / Super Admin")
@@ -355,7 +419,7 @@ export const seedAccountRoleState = (): AccountRoleState => {
     );
   });
 
-  return {
+  return ensureRoleTestUsers({
     roles,
     users: [
       {
@@ -369,7 +433,7 @@ export const seedAccountRoleState = (): AccountRoleState => {
         password: "TedKarimPamela1",
         roleId: roleId("Account Owner / Super Admin"),
         status: "active",
-        avatar: `${import.meta.env.BASE_URL ?? "/"}images/avatars/avatar-1.png`,
+        avatar: `${import.meta.env?.BASE_URL ?? "/"}images/avatars/avatar-1.png`,
         temporaryPassword: false,
         createdBy: null,
         isMaster: true,
@@ -377,25 +441,29 @@ export const seedAccountRoleState = (): AccountRoleState => {
         updatedAt: now,
       },
     ],
-  };
+  });
 };
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+export const saveAccountRoleState = (state: AccountRoleState) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(clone(state)));
+};
 
 export const loadAccountRoleState = (): AccountRoleState => {
   if (typeof window === "undefined") return seedAccountRoleState();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AccountRoleState;
+    if (raw) {
+      const state = ensureRoleTestUsers(JSON.parse(raw) as AccountRoleState);
+      saveAccountRoleState(state);
+      return state;
+    }
   } catch {}
   const seeded = seedAccountRoleState();
   saveAccountRoleState(seeded);
   return seeded;
-};
-
-export const saveAccountRoleState = (state: AccountRoleState) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(clone(state)));
 };
 
 export const publicUser = (user: AccountUserRecord, role?: RoleRecord) => ({

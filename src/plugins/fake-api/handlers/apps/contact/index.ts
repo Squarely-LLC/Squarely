@@ -5,6 +5,10 @@ import { destr } from "destr";
 import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import type { ContactProperties } from "./types";
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 const normalizeConnections = (
   connections?: ContactProperties["connections"]
@@ -199,6 +203,12 @@ export const handlerAppsContacts = [
   }),
 
   http.delete("/api/apps/contacts/:id", ({ params }) => {
+    try {
+      requireCurrentUserPermission("contacts", "delete");
+    } catch {
+      return permissionDeniedResponse("contacts", "delete");
+    }
+
     const userId = Number(params.id);
 
     const index = db.users.findIndex((entry) => entry.id === userId);
@@ -212,6 +222,12 @@ export const handlerAppsContacts = [
   }),
 
   http.put("/api/apps/contacts/:id", async ({ params, request }) => {
+    try {
+      requireCurrentUserPermission("contacts", "update");
+    } catch {
+      return permissionDeniedResponse("contacts", "update");
+    }
+
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<ContactProperties>;
 
@@ -261,6 +277,12 @@ export const handlerAppsContacts = [
   }),
 
   http.post("/api/apps/contacts/:id/records", async ({ params, request }) => {
+    try {
+      requireCurrentUserPermission("contacts", "update");
+    } catch {
+      return permissionDeniedResponse("contacts", "update");
+    }
+
     const userId = Number(params.id);
     const payload = (await request.json()) as any;
 
@@ -304,6 +326,12 @@ export const handlerAppsContacts = [
   http.put(
     "/api/apps/contacts/:id/records/:rid",
     async ({ params, request }) => {
+      try {
+        requireCurrentUserPermission("contacts", "update");
+      } catch {
+        return permissionDeniedResponse("contacts", "update");
+      }
+
       const userId = Number(params.id);
       const recordId = Number(params.rid);
       const payload = (await request.json()) as any;
@@ -350,6 +378,12 @@ export const handlerAppsContacts = [
   ),
 
   http.delete("/api/apps/contacts/:id/records/:rid", ({ params }) => {
+    try {
+      requireCurrentUserPermission("contacts", "update");
+    } catch {
+      return permissionDeniedResponse("contacts", "update");
+    }
+
     const userId = Number(params.id);
     const recordId = Number(params.rid);
 
@@ -374,6 +408,12 @@ export const handlerAppsContacts = [
   }),
 
   http.post("/api/apps/contacts", async ({ request }) => {
+    try {
+      requireCurrentUserPermission("contacts", "create");
+    } catch {
+      return permissionDeniedResponse("contacts", "create");
+    }
+
     const payload = (await request.json()) as any;
 
     const {

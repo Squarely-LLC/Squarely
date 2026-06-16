@@ -4,6 +4,10 @@ import { destr } from "destr";
 import { HttpResponse, http } from "msw";
 import { db } from "./db";
 import type { JobProperties } from "./types";
+import {
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 db.jobs = db.jobs.map((job) => ({ ...job }));
 
@@ -87,7 +91,11 @@ export const handlerOperationsJobs = [
     const totalJobs = filteredJobs.length;
 
     if (itemsPerPageLocal !== -1) {
-      filteredJobs = paginateArray(filteredJobs, itemsPerPageLocal, pageLocal);
+      filteredJobs = paginateArray(
+        filteredJobs,
+        itemsPerPageLocal,
+        pageLocal,
+      ) as JobProperties[];
     }
 
     return HttpResponse.json(
@@ -114,6 +122,12 @@ export const handlerOperationsJobs = [
   }),
 
   http.post("/api/operations/jobs", async ({ request }) => {
+    try {
+      requireCurrentUserPermission("jobs", "create");
+    } catch {
+      return permissionDeniedResponse("jobs", "create");
+    }
+
     const job = (await request.json()) as Partial<JobProperties>;
 
     const newJob: JobProperties = {
@@ -142,6 +156,12 @@ export const handlerOperationsJobs = [
   }),
 
   http.patch("/api/operations/jobs/:id", async ({ params, request }) => {
+    try {
+      requireCurrentUserPermission("jobs", "update");
+    } catch {
+      return permissionDeniedResponse("jobs", "update");
+    }
+
     const jobId = Number(params.id);
     const updates = (await request.json()) as Partial<JobProperties>;
 
@@ -164,6 +184,12 @@ export const handlerOperationsJobs = [
   }),
 
   http.delete("/api/operations/jobs/:id", ({ params }) => {
+    try {
+      requireCurrentUserPermission("jobs", "delete");
+    } catch {
+      return permissionDeniedResponse("jobs", "delete");
+    }
+
     const jobId = Number(params.id);
     const jobIndex = db.jobs.findIndex((j) => j.id === jobId);
 

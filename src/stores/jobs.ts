@@ -8,6 +8,7 @@ import type {
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 const STORAGE_KEY = "app.jobs.v1";
 function safeClone<T extends object>(value: T, label: string): T {
   const raw = toRaw(value) as T;
@@ -212,6 +213,8 @@ export const useJobsStore = defineStore("jobs", {
       }
     },
     addJob(payload: Partial<JobProperties>) {
+      requireCurrentUserPermission("jobs", "create");
+
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextJobId(this.items);
@@ -220,6 +223,8 @@ export const useJobsStore = defineStore("jobs", {
       return normalised;
     },
     updateJob(id: number | string, patch: Partial<JobProperties>) {
+      requireCurrentUserPermission("jobs", "update");
+
       const index = this.items.findIndex(
         (job) => String(job.id) === String(id),
       );
@@ -229,6 +234,8 @@ export const useJobsStore = defineStore("jobs", {
       return updated;
     },
     removeJob(id: number | string) {
+      requireCurrentUserPermission("jobs", "delete");
+
       const index = this.items.findIndex(
         (job) => String(job.id) === String(id),
       );

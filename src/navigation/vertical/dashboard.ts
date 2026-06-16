@@ -140,7 +140,7 @@ export default [
   },
   {
     title: "Users & Roles",
-    icon: { icon: "tabler-users-cog" },
+    icon: { icon: "tabler-user-cog" },
     to: "settings-users-roles",
     action: "read",
     subject: "usersRoles",

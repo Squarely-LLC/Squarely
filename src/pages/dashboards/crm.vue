@@ -13,7 +13,7 @@ import CrmSalesByCountries from "@/views/dashboards/crm/CrmSalesByCountries.vue"
 definePage({
   meta: {
     action: "read",
-    subject: "AclDemo",
+    subject: "reports",
   },
 });
 

@@ -21,6 +21,7 @@ import {
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
@@ -848,6 +849,8 @@ export const useInvoicesStore = defineStore("invoices", {
     },
 
     addInvoice(payload: InvoicePayload) {
+      requireCurrentUserPermission("finance", "create");
+
       const incomingId =
         payload.quotation?.id && Number(payload.quotation.id) > 0
           ? Number(payload.quotation.id)
@@ -889,6 +892,8 @@ export const useInvoicesStore = defineStore("invoices", {
     },
 
     updateInvoice(id: number | string, patch: InvoicePayload) {
+      requireCurrentUserPermission("finance", "update");
+
       const index = this.items.findIndex(
         (record) => String(record.quotation.id) === String(id),
       );
@@ -923,6 +928,8 @@ export const useInvoicesStore = defineStore("invoices", {
     },
 
     removeInvoice(id: number | string) {
+      requireCurrentUserPermission("finance", "delete");
+
       const target = this.items.find(
         (record) => String(record.quotation.id) === String(id),
       );

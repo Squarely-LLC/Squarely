@@ -7,6 +7,7 @@ import type {
 } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { personToEmployee, usePeopleStore } from "@/stores/people";
 import { defineStore } from "pinia";
+import { requireCurrentUserPermission } from "@/utils/authorization";
 
 const cloneEmployee = (employee: EmployeeProperties): EmployeeProperties =>
   JSON.parse(JSON.stringify(employee)) as EmployeeProperties;
@@ -90,6 +91,8 @@ export const useEmployeesStore = defineStore("employees", {
     },
 
     addEmployee(payload: Partial<EmployeeProperties>) {
+      requireCurrentUserPermission("hr", "create");
+
       const peopleStore = usePeopleStore();
       peopleStore.init();
       const incomingId =
@@ -102,6 +105,8 @@ export const useEmployeesStore = defineStore("employees", {
     },
 
     updateEmployee(id: number | string, patch: Partial<EmployeeProperties>) {
+      requireCurrentUserPermission("hr", "update");
+
       const peopleStore = usePeopleStore();
       peopleStore.init();
       const updated = peopleStore.patchEmployee(id, patch);
@@ -144,6 +149,8 @@ export const useEmployeesStore = defineStore("employees", {
     },
 
     removeEmployee(id: number | string) {
+      requireCurrentUserPermission("hr", "delete");
+
       const peopleStore = usePeopleStore();
       peopleStore.init();
       peopleStore.removeEmployeeProfile(id);
