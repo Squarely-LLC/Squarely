@@ -11,38 +11,45 @@ type BillingMetric = {
 };
 
 const props = defineProps<{
-  paid: number;
-  proformaAmount?: number;
-  proformaCount?: number;
-  unpaid: number;
-  toBeInvoiced: number;
+  hidden?: boolean;
+  paid: number | null;
+  proformaAmount?: number | null;
+  proformaCount?: number | null;
+  unpaid: number | null;
+  toBeInvoiced: number | null;
 }>();
 
 const vuetifyTheme = useTheme();
 
+const finiteNumber = (value: unknown) => {
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
 const total = computed(
   () =>
-    Number(props.paid || 0) +
-    Number(props.unpaid || 0) +
-    Number(props.toBeInvoiced || 0),
+    finiteNumber(props.paid) +
+    finiteNumber(props.unpaid) +
+    finiteNumber(props.toBeInvoiced),
 );
 
 const metrics = computed<BillingMetric[]>(() => [
   {
     label: "Paid",
-    value: Number(props.paid || 0),
+    value: finiteNumber(props.paid),
     icon: "tabler-cash-banknote",
     color: "success",
   },
   {
     label: "Unpaid",
-    value: Number(props.unpaid || 0),
+    value: finiteNumber(props.unpaid),
     icon: "tabler-clock-dollar",
     color: "warning",
   },
   {
     label: "To Be Invoiced",
-    value: Number(props.toBeInvoiced || 0),
+    value: finiteNumber(props.toBeInvoiced),
     icon: "tabler-file-invoice",
     color: "primary",
   },
@@ -57,12 +64,14 @@ const shortLabel = (label: string) => {
 const paidPercent = computed(() => {
   if (total.value <= 0) return 0;
 
-  return Math.round((Number(props.paid || 0) / total.value) * 100);
+  return Math.round((finiteNumber(props.paid) / total.value) * 100);
 });
 
 const proformaHint = computed(() => {
-  const amount = Number(props.proformaAmount || 0);
-  const count = Number(props.proformaCount || 0);
+  if (props.hidden) return "";
+
+  const amount = finiteNumber(props.proformaAmount);
+  const count = finiteNumber(props.proformaCount);
   if (amount <= 0 && count <= 0) return "";
 
   const documentLabel = count === 1 ? "document" : "documents";
@@ -75,6 +84,15 @@ const chartSeries = computed(() => [
     data: metrics.value.map((metric) => metricPercent(metric.value)),
   },
 ]);
+
+const canRenderChart = computed(
+  () =>
+    total.value > 0 &&
+    !props.hidden &&
+    chartSeries.value.every((series) =>
+      series.data.every((value) => Number.isFinite(value)),
+    ),
+);
 
 const chartOptions = computed(() => {
   const currentTheme = vuetifyTheme.current.value.colors;
@@ -134,15 +152,17 @@ const chartOptions = computed(() => {
 });
 
 const formatAmount = (value: number) =>
-  Number(value || 0).toLocaleString(undefined, {
+  finiteNumber(value).toLocaleString(undefined, {
     maximumFractionDigits: 2,
     minimumFractionDigits: 0,
   });
 
+const hiddenAmountLabel = "Hidden";
+
 const metricPercent = (value: number) => {
   if (total.value <= 0) return 0;
 
-  return Math.min(Math.max((Number(value || 0) / total.value) * 100, 0), 100);
+  return Math.min(Math.max((finiteNumber(value) / total.value) * 100, 0), 100);
 };
 </script>
 
@@ -165,9 +185,9 @@ const metricPercent = (value: number) => {
         >
           <div class="d-flex align-center gap-2 mb-3 flex-wrap">
             <h2 class="text-h2 billing-total">
-              {{ formatAmount(total) }}
+              {{ hidden ? hiddenAmountLabel : formatAmount(total) }}
             </h2>
-            <VChip label size="small" color="success">
+            <VChip v-if="!hidden" label size="small" color="success">
               {{ paidPercent }}% paid
             </VChip>
           </div>
@@ -186,10 +206,18 @@ const metricPercent = (value: number) => {
 
         <VCol cols="12" sm="7" lg="6">
           <VueApexCharts
+            v-if="canRenderChart"
             :options="chartOptions"
             :series="chartSeries"
-            height="161"
+            :height="161"
+            :width="'100%'"
           />
+          <div
+            v-else
+            class="billing-chart-placeholder d-flex align-center justify-center text-medium-emphasis"
+          >
+            {{ hidden ? "Financials hidden" : "No billing chart available" }}
+          </div>
         </VCol>
       </VRow>
 
@@ -226,10 +254,13 @@ const metricPercent = (value: number) => {
             </div>
 
             <h6 class="text-h4 my-2">
-              {{ formatAmount(metric.value) }}
+              <span :class="{ 'financial-hidden-text': hidden }">
+                {{ hidden ? hiddenAmountLabel : formatAmount(metric.value) }}
+              </span>
             </h6>
 
             <VProgressLinear
+              v-if="!hidden"
               :model-value="metricPercent(metric.value)"
               :color="metric.color"
               height="4"
@@ -258,6 +289,17 @@ const metricPercent = (value: number) => {
   max-inline-size: 100%;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.billing-chart-placeholder {
+  block-size: 161px;
+  min-inline-size: 100%;
+}
+
+.financial-hidden-text {
+  display: inline-block;
+  filter: blur(3px);
+  user-select: none;
 }
 
 @media (max-width: 1280px) {

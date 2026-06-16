@@ -110,7 +110,9 @@ import {
 import type { VForm } from "vuetify/components/VForm";
 
 const props = defineProps<{
+  canUpdateDeal?: boolean;
   deal: DealProperties;
+  hideFinancials?: boolean;
 }>();
 
 type SalesTaskRelatedTo = NonNullable<ToDo["relatedTo"]>;
@@ -1531,14 +1533,18 @@ const materializeImportedSalesTasks = () => {
     if (!payload) return;
 
     if (existing) {
-      todosStore.updateTodo(existing.id, {
-        source: payload.source,
-        relatedTo: buildDealRelatedTo(),
-      });
+      todosStore.updateTodo(
+        existing.id,
+        {
+          source: payload.source,
+          relatedTo: buildDealRelatedTo(),
+        },
+        { system: true },
+      );
       return;
     }
 
-    todosStore.addTodo(payload);
+    todosStore.addTodo(payload, { system: true });
   });
 };
 
@@ -1662,6 +1668,15 @@ const addDealItemsFromCatalogueItem = (
     unitPrice?: number | null;
   },
 ) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   const baseId = nextItemId();
   const catalogueRecord = cataloguesStore.recordById(catalogueItem.id);
 
@@ -1737,6 +1752,15 @@ const itemTypeLabel = (item: DealItem) => {
 };
 
 const openAddItemDialog = () => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   if (route.query.dealFlow !== "produced-product") {
     selectedCatalogueItemId.value = null;
   }
@@ -1762,6 +1786,15 @@ const openCreateCatalogueItem = async () => {
 };
 
 const saveSelectedCatalogueItem = async () => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   const { valid } = (await addItemFormRef.value?.validate()) ?? { valid: true };
   if (!valid || !selectedCatalogueItem.value) return;
 
@@ -1998,6 +2031,15 @@ const setEditFieldConstraints = (options: {
 };
 
 const openEditItem = (item: DealItemWithPlan) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   if (isDealItemInvoiced(item)) {
     notifyInvoicedItemLocked();
 
@@ -2084,6 +2126,15 @@ const openEditItem = (item: DealItemWithPlan) => {
 };
 
 const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   if (goal.overrideKey.includes("-custom-")) {
     openEditCustomPhase(parentItem, goal);
 
@@ -2118,6 +2169,15 @@ const openEditGoal = (parentItem: DealItemWithPlan, goal: DerivedGoal) => {
 };
 
 const saveEditedLine = async () => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   const { valid } = (await editLineFormRef.value?.validate()) ?? {
     valid: true,
   };
@@ -2225,7 +2285,16 @@ const isProductLike = (type?: string | null) =>
   type === "Related Item";
 
 const formatMoney = (value?: number | null) =>
-  value === null || value === undefined ? "--" : Number(value).toLocaleString();
+  props.hideFinancials
+    ? "Hidden"
+    : value === null || value === undefined
+      ? "--"
+      : Number(value).toLocaleString();
+
+const formatDealMoney = (value?: number | null) =>
+  props.hideFinancials
+    ? "Hidden"
+    : formatCurrencyAmount(value, configStore.financial);
 
 const formatTaxApplicable = (value: boolean | null) => {
   if (value === null) return "--";
@@ -7513,6 +7582,15 @@ const updateSalesTaskTemplate = (
   taskId: number | string,
   patch: Partial<DealSalesTaskTemplate>,
 ) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   const nextSalesTasks = buildEditableSalesTasks().map((task) =>
     String(task.id) === String(taskId)
       ? cloneDealSalesTaskTemplate({
@@ -7532,6 +7610,15 @@ const updateSalesTaskTemplate = (
 };
 
 const updateSalesTaskStatus = (task: DealSalesTaskRow, status: Status) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   if (isManualSalesTodo(task.id)) {
     todosStore.updateTodo(task.id, {
       status,
@@ -7547,6 +7634,15 @@ const updateSalesTaskStatus = (task: DealSalesTaskRow, status: Status) => {
 };
 
 const toggleSalesTaskImportant = (task: DealSalesTaskRow) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   const important = !task.important;
 
   if (isManualSalesTodo(task.id)) {
@@ -7595,6 +7691,15 @@ const formatTaskStart = (
 };
 
 const openAddTask = () => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   emit("open-add-task", {
     initial: {
       relatedTo: buildDealRelatedTo(),
@@ -7604,6 +7709,15 @@ const openAddTask = () => {
 };
 
 const openEditTask = (taskId: number | string) => {
+  if (!props.canUpdateDeal) {
+    notifications.push(
+      "You do not have permission to update this deal.",
+      "warning",
+      3000,
+    );
+    return;
+  }
+
   emit("open-edit-task", taskId);
 };
 </script>
@@ -7622,7 +7736,7 @@ const openEditTask = (taskId: number | string) => {
             </p>
           </div>
 
-          <VMenu>
+          <VMenu v-if="canUpdateDeal">
             <template #activator="{ props: menuProps }">
               <VBtn v-bind="menuProps" prepend-icon="tabler-plus">
                 Add Item
@@ -7670,7 +7784,10 @@ const openEditTask = (taskId: number | string) => {
             :readonly="!item.isExpandable"
           >
             <VExpansionPanelTitle>
-              <div class="item-card-shell" @click.stop="openEditItem(item)">
+              <div
+                class="item-card-shell"
+                @click.stop="canUpdateDeal ? openEditItem(item) : undefined"
+              >
                 <div class="item-card-content flex-grow-1 min-w-0">
                   <div class="item-card-main">
                     <div class="item-card-header">
@@ -7708,10 +7825,7 @@ const openEditTask = (taskId: number | string) => {
                           <span class="item-card-inline-metrics__group">
                             UP:
                             <strong>{{
-                              formatCurrencyAmount(
-                                item.unitPrice,
-                                configStore.financial,
-                              )
+                              formatDealMoney(item.unitPrice)
                             }}</strong>
                           </span>
                         </div>
@@ -7766,16 +7880,13 @@ const openEditTask = (taskId: number | string) => {
                   <div class="item-card-amount">
                     <span>Amount</span>
                     <strong>{{
-                      formatCurrencyAmount(
-                        itemAmount(item),
-                        configStore.financial,
-                      )
+                      formatDealMoney(itemAmount(item))
                     }}</strong>
                   </div>
                 </div>
 
                 <div
-                  v-if="item.actionsEnabled"
+                  v-if="item.actionsEnabled && canUpdateDeal"
                   class="milestone-actions"
                   @click.stop
                 >
@@ -8651,7 +8762,7 @@ const openEditTask = (taskId: number | string) => {
         <template #append>
           <div class="items-overview-card__actions">
             <VBtn
-              v-if="canAttachAnyDocumentSource()"
+              v-if="canUpdateDeal && !hideFinancials && canAttachAnyDocumentSource()"
               icon
               variant="tonal"
               color="secondary"
@@ -8700,7 +8811,7 @@ const openEditTask = (taskId: number | string) => {
               </VMenu>
             </VBtn>
             <VBtn
-              v-if="canCreateAnyDocumentSource()"
+              v-if="canUpdateDeal && !hideFinancials && canCreateAnyDocumentSource()"
               icon
               variant="tonal"
               color="secondary"
@@ -9333,7 +9444,11 @@ const openEditTask = (taskId: number | string) => {
             </p>
           </div>
 
-          <VBtn prepend-icon="tabler-plus" @click="openAddTask">
+          <VBtn
+            v-if="canUpdateDeal"
+            prepend-icon="tabler-plus"
+            @click="openAddTask"
+          >
             Add Task
           </VBtn>
         </div>
@@ -9352,10 +9467,11 @@ const openEditTask = (taskId: number | string) => {
             v-for="task in salesTasks"
             :key="task.id"
             class="sales-task-row"
-            @click="openEditTask(task.id)"
+            @click="canUpdateDeal ? openEditTask(task.id) : undefined"
           >
             <div class="sales-task-row__star">
               <VBtn
+                v-if="canUpdateDeal"
                 icon
                 variant="text"
                 size="small"
@@ -9432,7 +9548,7 @@ const openEditTask = (taskId: number | string) => {
             </div>
 
             <div class="sales-task-row__status">
-              <VMenu location="bottom start">
+              <VMenu v-if="canUpdateDeal" location="bottom start">
                 <template #activator="{ props: menuProps }">
                   <VBtn
                     v-bind="menuProps"
@@ -9474,9 +9590,12 @@ const openEditTask = (taskId: number | string) => {
                   </VListItem>
                 </VList>
               </VMenu>
+              <span v-else class="text-body-2" :class="taskStatusClass(task.status)">
+                {{ todoStatusLabel(task.status) }}
+              </span>
             </div>
 
-            <div class="sales-task-row__actions">
+            <div v-if="canUpdateDeal" class="sales-task-row__actions">
               <IconBtn @click.stop="openEditTask(task.id)">
                 <VIcon icon="tabler-edit" />
               </IconBtn>

@@ -27,6 +27,8 @@ interface Props {
   stageOptions?: string[];
   executionNotice?: string | null;
   hoverMode?: boolean;
+  canEdit?: boolean;
+  hideFinancials?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -73,6 +75,7 @@ const noteExcerpt = computed(() => {
 });
 
 const formatAmount = (value?: number | null) => {
+  if (props.hideFinancials) return "Hidden";
   if (value === null || value === undefined || Number.isNaN(Number(value)))
     return "--";
 
@@ -410,6 +413,7 @@ const stageProgressPercent = computed(() => {
                 <span v-else class="detail-row__value">No collaborators</span>
 
                 <VBtn
+                  v-if="canEdit"
                   icon
                   size="small"
                   color="secondary"
@@ -436,6 +440,7 @@ const stageProgressPercent = computed(() => {
 
       <VCardText class="d-flex flex-column align-center pb-6">
         <VBtn
+          v-if="canEdit"
           aria-label="Edit deal"
           variant="tonal"
           @click="emit('edit')"

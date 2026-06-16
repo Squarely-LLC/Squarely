@@ -50,6 +50,12 @@ import {
   getSignedInAuthorRef,
   getSignedInIdentity,
 } from "@/utils/currentAccount";
+import {
+  canCurrentUser,
+  hasHiddenFinancials,
+  isPermissionDeniedError,
+  mapAuthorizationResource,
+} from "@/utils/authorization";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
@@ -633,14 +639,18 @@ const materializeImportedSalesTasksForDeal = (currentDeal: DealProperties) => {
       };
 
       if (existing) {
-        todosStore.updateTodo(existing.id, {
-          source: payload.source,
-          relatedTo: payload.relatedTo,
-        });
+        todosStore.updateTodo(
+          existing.id,
+          {
+            source: payload.source,
+            relatedTo: payload.relatedTo,
+          },
+          { system: true },
+        );
         return;
       }
 
-      todosStore.addTodo(payload);
+      todosStore.addTodo(payload, { system: true });
     });
 };
 
@@ -1392,6 +1402,20 @@ const dealExecutionNotice = computed(() => {
   return `Already executed into ${linkedJobLabel}.`;
 });
 
+const currentDealResource = computed(() =>
+  deal.value ? mapAuthorizationResource("deals", deal.value) : undefined,
+);
+
+const canUpdateDeal = computed(() =>
+  canCurrentUser("deals", "update", currentDealResource.value),
+);
+
+const hideDealFinancials = computed(() => hasHiddenFinancials("deals"));
+
+const notifyDealUpdateDenied = () => {
+  notifications.push("You do not have permission to update this deal.", "warning", 3000);
+};
+
 const executionTargetSummary = computed(() => {
   if (linkedJob.value) {
     return `Merge into ${linkedJob.value.name}`;
@@ -1472,6 +1496,10 @@ const goalTriggerOptions = computed(
 
 const openEditDialog = () => {
   dialogError.value = null;
+  if (!canUpdateDeal.value) {
+    notifyDealUpdateDenied();
+    return;
+  }
   isDealEditDialogVisible.value = true;
 };
 
@@ -1749,6 +1777,11 @@ const confirmDealExecution = () => {
 
 const saveDeal = (payload: Partial<DealProperties>) => {
   if (!deal.value) return;
+  if (!canUpdateDeal.value) {
+    dialogError.value = "You do not have permission to update this deal.";
+    notifyDealUpdateDenied();
+    return;
+  }
 
   dialogLoading.value = true;
   dialogError.value = null;
@@ -1781,8 +1814,13 @@ const saveDeal = (payload: Partial<DealProperties>) => {
     notifications.push("Deal updated", "success", 3000);
   } catch (updateError) {
     console.error("Failed to update deal", updateError);
-    dialogError.value = "An unexpected error occurred";
-    notifications.push("Failed to update deal", "error", 4000);
+    if (isPermissionDeniedError(updateError)) {
+      dialogError.value = "You do not have permission to update this deal.";
+      notifyDealUpdateDenied();
+    } else {
+      dialogError.value = "An unexpected error occurred";
+      notifications.push("Failed to update deal", "error", 4000);
+    }
   } finally {
     dialogLoading.value = false;
   }
@@ -2314,6 +2352,8 @@ watch(
           :linked-contact="linkedContact"
           :stage-options="dealStageOptions"
           :execution-notice="dealExecutionNotice"
+          :can-edit="canUpdateDeal"
+          :hide-financials="hideDealFinancials"
           @edit="openEditDialog"
           @open-add-task="handleAddTaskFromCommunication"
           @open-add-email="openEmail"
@@ -2330,6 +2370,7 @@ watch(
           :proforma-count="dealProformaBillingCount"
           :unpaid="dealBillingUnpaid"
           :to-be-invoiced="dealBillingToBeInvoiced"
+          :hidden="hideDealFinancials"
         />
       </VCol>
 
@@ -2371,6 +2412,8 @@ watch(
           <VWindowItem>
             <DealItemsTab
               :deal="deal"
+              :can-update-deal="canUpdateDeal"
+              :hide-financials="hideDealFinancials"
               @open-add-task="openAddTask"
               @open-edit-task="openEditTask"
               @delete-task="deleteTask"
