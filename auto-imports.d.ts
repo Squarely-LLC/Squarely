@@ -18,7 +18,10 @@ declare global {
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
   const assertCanMutateResource: typeof import('./src/utils/authorization')['assertCanMutateResource']
+  const assertSeedIntegrity: typeof import('./src/utils/seedIntegrity')['assertSeedIntegrity']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
+  const authChangedAt: typeof import('./src/utils/authSession')['authChangedAt']
+  const authVersion: typeof import('./src/utils/authSession')['authVersion']
   const authorizeRecord: typeof import('./src/utils/authorization')['authorizeRecord']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
@@ -69,6 +72,8 @@ declare global {
   const createTemplatePromise: typeof import('@vueuse/core')['createTemplatePromise']
   const createUnrefFn: typeof import('@vueuse/core')['createUnrefFn']
   const createUrl: typeof import('./src/@core/composable/createUrl')['createUrl']
+  const currentAuthAccountId: typeof import('./src/utils/authSession')['currentAuthAccountId']
+  const currentAuthEmail: typeof import('./src/utils/authSession')['currentAuthEmail']
   const currentCenterId: typeof import('./src/utils/accountRoles')['currentCenterId']
   const currentCenterName: typeof import('./src/utils/accountRoles')['currentCenterName']
   const currentUserData: typeof import('./src/utils/currentAccount')['currentUserData']
@@ -160,6 +165,7 @@ declare global {
   const inject: typeof import('vue')['inject']
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
+  const invalidateAuthSession: typeof import('./src/utils/authSession')['invalidateAuthSession']
   const isAutoBillableDealItem: typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']
   const isBillableRootDealItem: typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']
   const isDealDocumentPhaseOrPeriodLine: typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']
@@ -250,6 +256,7 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const requireCurrentUserPermission: typeof import('./src/utils/authorization')['requireCurrentUserPermission']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
+  const resetAuthSessionState: typeof import('./src/utils/authSession')['resetAuthSessionState']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveContactRequirement: typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']
   const resolveDealDocumentBillingMode: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']
@@ -484,6 +491,7 @@ declare global {
   const useWindowFocus: typeof import('@vueuse/core')['useWindowFocus']
   const useWindowScroll: typeof import('@vueuse/core')['useWindowScroll']
   const useWindowSize: typeof import('@vueuse/core')['useWindowSize']
+  const validateSeedIntegrity: typeof import('./src/utils/seedIntegrity')['validateSeedIntegrity']
   const watch: typeof import('vue')['watch']
   const watchArray: typeof import('@vueuse/core')['watchArray']
   const watchAtMost: typeof import('@vueuse/core')['watchAtMost']
@@ -528,7 +536,10 @@ declare module 'vue' {
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
     readonly assertCanMutateResource: UnwrapRef<typeof import('./src/utils/authorization')['assertCanMutateResource']>
+    readonly assertSeedIntegrity: UnwrapRef<typeof import('./src/utils/seedIntegrity')['assertSeedIntegrity']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
+    readonly authChangedAt: UnwrapRef<typeof import('./src/utils/authSession')['authChangedAt']>
+    readonly authVersion: UnwrapRef<typeof import('./src/utils/authSession')['authVersion']>
     readonly authorizeRecord: UnwrapRef<typeof import('./src/utils/authorization')['authorizeRecord']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
@@ -579,6 +590,8 @@ declare module 'vue' {
     readonly createTemplatePromise: UnwrapRef<typeof import('@vueuse/core')['createTemplatePromise']>
     readonly createUnrefFn: UnwrapRef<typeof import('@vueuse/core')['createUnrefFn']>
     readonly createUrl: UnwrapRef<typeof import('./src/@core/composable/createUrl')['createUrl']>
+    readonly currentAuthAccountId: UnwrapRef<typeof import('./src/utils/authSession')['currentAuthAccountId']>
+    readonly currentAuthEmail: UnwrapRef<typeof import('./src/utils/authSession')['currentAuthEmail']>
     readonly currentCenterId: UnwrapRef<typeof import('./src/utils/accountRoles')['currentCenterId']>
     readonly currentCenterName: UnwrapRef<typeof import('./src/utils/accountRoles')['currentCenterName']>
     readonly currentUserData: UnwrapRef<typeof import('./src/utils/currentAccount')['currentUserData']>
@@ -671,6 +684,7 @@ declare module 'vue' {
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
+    readonly invalidateAuthSession: UnwrapRef<typeof import('./src/utils/authSession')['invalidateAuthSession']>
     readonly isAutoBillableDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']>
     readonly isBillableRootDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']>
     readonly isDealDocumentPhaseOrPeriodLine: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']>
@@ -761,6 +775,7 @@ declare module 'vue' {
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly requireCurrentUserPermission: UnwrapRef<typeof import('./src/utils/authorization')['requireCurrentUserPermission']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
+    readonly resetAuthSessionState: UnwrapRef<typeof import('./src/utils/authSession')['resetAuthSessionState']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveContactRequirement: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']>
     readonly resolveDealDocumentBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']>
@@ -995,6 +1010,7 @@ declare module 'vue' {
     readonly useWindowFocus: UnwrapRef<typeof import('@vueuse/core')['useWindowFocus']>
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
+    readonly validateSeedIntegrity: UnwrapRef<typeof import('./src/utils/seedIntegrity')['validateSeedIntegrity']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>
     readonly watchAtMost: UnwrapRef<typeof import('@vueuse/core')['watchAtMost']>

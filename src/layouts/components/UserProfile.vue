@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useUiStore } from "@core/stores/ui";
+import { resetAuthSessionState } from "@/utils/authSession";
 const router = useRouter();
 const ability = useAbility();
 const ui = useUiStore();
@@ -15,7 +16,6 @@ const logout = async () => {
   userData.value = null;
 
   // Redirect to login page
-  await router.push("/login");
 
   // ℹ️ We had to remove abilities in then block because if we don't nav menu items mutation is visible while redirecting user to login page
   // Remove "userAbilities" from cookie
@@ -23,6 +23,9 @@ const logout = async () => {
 
   // Reset ability to initial ability
   ability.update([]);
+  resetAuthSessionState();
+
+  await router.push("/login");
 };
 
 const userProfileList = [

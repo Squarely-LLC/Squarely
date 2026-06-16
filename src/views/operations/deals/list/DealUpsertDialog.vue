@@ -297,9 +297,10 @@ const findOptionByValue = (
   const raw = String(value ?? "").trim();
   if (!raw) return null;
 
+  const prefixedEmployee = raw.match(/^(employee|person)[:-](.+)$/i);
   const unprefixed = raw.startsWith("contact:")
     ? raw.slice("contact:".length)
-    : raw;
+    : (prefixedEmployee?.[2]?.trim() ?? raw);
   const alias = canonicalEmployeeAliases[unprefixed];
 
   return (
@@ -330,11 +331,12 @@ const normalizeCollaborators = (
     const option = findOptionByValue(value as number | string, options);
     if (!option) return;
 
-    const key = String(option.value);
+    const canonicalValue = option.employeeId ?? option.id ?? option.value;
+    const key = String(canonicalValue);
     if (seen.has(key)) return;
 
     seen.add(key);
-    normalized.push(option.value);
+    normalized.push(canonicalValue);
   });
 
   return normalized;

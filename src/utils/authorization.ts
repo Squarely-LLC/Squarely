@@ -7,6 +7,7 @@ import {
   type RolePermission,
   type RoleRecord,
 } from "@/utils/accountRoles";
+import { authVersion } from "@/utils/authSession";
 import { currentUserData, getSignedInIdentity } from "@/utils/currentAccount";
 import { db as employeesDb } from "@/plugins/fake-api/handlers/apps/employees/db";
 
@@ -47,10 +48,21 @@ export class PermissionDeniedError extends Error {
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
 
+const touchAuthSession = () => authVersion.value;
+
+const prefixedRefPattern = /^(account|employee|person)[:-](.+)$/i;
+
+const normalizeRef = (value: unknown) => {
+  const normalized = normalize(value);
+  const match = normalized.match(prefixedRefPattern);
+
+  return match?.[2]?.trim() || normalized;
+};
+
 const idsMatch = (
   left: number | string | null | undefined,
   right: number | string | null | undefined,
-) => normalize(left) !== "" && normalize(left) === normalize(right);
+) => normalizeRef(left) !== "" && normalizeRef(left) === normalizeRef(right);
 
 const uniqueValues = (values: Array<unknown>) =>
   Array.from(
@@ -64,6 +76,8 @@ const uniqueValues = (values: Array<unknown>) =>
   );
 
 export const getCurrentAccount = (): AccountUserRecord | null => {
+  touchAuthSession();
+
   const userData = currentUserData();
   if (!userData) return null;
 
@@ -96,6 +110,8 @@ const hasResourceScope = (
   permission: RolePermission,
   resource?: AuthorizationResource,
 ) => {
+  touchAuthSession();
+
   if (!resource) return true;
   if (permission.viewScope === "all") return true;
   if (permission.viewScope === "none") return false;
@@ -103,8 +119,14 @@ const hasResourceScope = (
   const identity = getSignedInIdentity();
   const candidates = [
     identity.accountId,
+    identity.accountId ? `account:${identity.accountId}` : null,
+    identity.accountId ? `account-${identity.accountId}` : null,
     identity.employeeId,
+    identity.employeeId ? `employee:${identity.employeeId}` : null,
+    identity.employeeId ? `employee-${identity.employeeId}` : null,
     identity.personId,
+    identity.personId ? `person:${identity.personId}` : null,
+    identity.personId ? `person-${identity.personId}` : null,
     identity.email,
   ];
   const teamCandidates = getCurrentTeamMemberIds();
@@ -243,21 +265,29 @@ export const mapAuthorizationResource = (
     paths.map((path) =>
       path.split(".").reduce((current, segment) => current?.[segment], record),
     );
+  const collectPrimitiveAliases = (value: number | string): unknown[] => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return [];
+
+    const match = raw.match(prefixedRefPattern);
+
+    return match?.[2]?.trim() ? [raw, match[2].trim()] : [raw];
+  };
   const collectIds = (value: any): unknown[] => {
     if (value === undefined || value === null || value === "") return [];
     if (Array.isArray(value)) return value.flatMap((entry) => collectIds(entry));
     if (typeof value === "object")
       return [
+        value.value,
         value.id,
         value.accountId,
         value.employeeId,
         value.personId,
-        value.contactId,
         value.email,
         value.name,
         value.fullName,
-      ].filter((entry) => entry !== undefined && entry !== null && entry !== "");
-    return [value];
+      ].flatMap(collectIds);
+    return collectPrimitiveAliases(value);
   };
 
   const ownerIds = uniqueValues([
@@ -291,13 +321,8 @@ export const mapAuthorizationResource = (
       "assignedTo",
       "attendees",
       "linkedTo",
-      "relatedTo",
       "requestedBy",
-      "client",
-      "quotation.client",
-      "expense.supplier",
     ),
-    record.stakeholders?.map((entry: any) => entry.contactId ?? entry.id),
     record.milestones?.flatMap((entry: any) => collectIds(entry.collaborators)),
     record.goals?.flatMap((entry: any) => collectIds(entry.collaborators)),
     record.steps?.flatMap((entry: any) => collectIds(entry.collaborators)),

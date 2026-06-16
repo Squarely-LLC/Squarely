@@ -14,6 +14,10 @@ import {
   emailValidator,
   requiredValidator,
 } from "@/@core/utils/validators";
+import {
+  invalidateAuthSession,
+  resetAuthSessionState,
+} from "@/utils/authSession";
 
 const authThemeImg = useGenerateImageVariant(
   authV2LoginIllustrationLight,
@@ -72,12 +76,14 @@ const login = async () => {
     useCookie("userData").value = null;
     useCookie("accessToken").value = null;
     ability.update([]);
+    resetAuthSessionState();
 
     useCookie("userAbilityRules").value = userAbilityRules;
     ability.update(userAbilityRules);
 
     useCookie("userData").value = userData;
     useCookie("accessToken").value = accessToken;
+    invalidateAuthSession();
 
     // Redirect to `to` query if exist or redirect to index route
     // ❗ nextTick is required to wait for DOM updates and later redirect

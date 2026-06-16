@@ -289,7 +289,16 @@ function normalizeCollaborators(
       if (typeof value === "string") {
         const trimmed = value.trim();
         if (!trimmed) return null;
-        if (trimmed.startsWith("contact:")) return trimmed;
+        if (trimmed.startsWith("contact:")) return null;
+
+        const prefixedEmployee = trimmed.match(/^(employee|person)[:-](.+)$/i);
+        if (prefixedEmployee) {
+          const numeric = Number(prefixedEmployee[2]);
+
+          return Number.isFinite(numeric)
+            ? resolveEmployeePersonId(numeric)
+            : prefixedEmployee[2].trim();
+        }
 
         const numeric = Number(trimmed);
 
