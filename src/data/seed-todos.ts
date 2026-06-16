@@ -29,13 +29,13 @@ const contactRef = (id: number): ContactRef => {
 
 // Minimal name -> id map only; this file contains NO contact objects/data.
 const nameToId: Record<string, number> = {
-  ted: 11,
-  dana: 12,
-  pierre: 13,
-  alex: 14,
-  nora: 15,
-  omar: 16,
-  lina: 17,
+  ted: 1,
+  dana: 3,
+  pierre: 7,
+  alex: 8,
+  nora: 10,
+  omar: 5,
+  lina: 6,
 };
 
 // `C.<name>` resolves dynamically to a ContactRef from the canonical DB at runtime.
@@ -44,7 +44,7 @@ const C: Record<string, ContactRef> = new Proxy(
   {
     get(_, prop: string) {
       const id = nameToId[prop];
-      return id ? contactRef(id) : undefined;
+      return id ? employeeRef(id) : undefined;
     },
   },
 ) as Record<string, ContactRef>;
@@ -54,6 +54,12 @@ const employeePersonIdByLegacyId: Record<number, number> = {
   2: 2,
   3: 3,
   4: 4,
+  5: 5,
+  6: 6,
+  7: 7,
+  8: 8,
+  9: 9,
+  10: 10,
 };
 
 const employeeRef = (legacyEmployeeId: number): ContactRef => {
@@ -77,6 +83,12 @@ const E = {
   farah: employeeRef(2),
   daniel: employeeRef(3),
   rana: employeeRef(4),
+  salesManager: employeeRef(5),
+  salesExecutive: employeeRef(6),
+  operationManager: employeeRef(7),
+  operationExecutive: employeeRef(8),
+  auditor: employeeRef(9),
+  financeExecutive: employeeRef(10),
 };
 
 // shared meeting time helpers

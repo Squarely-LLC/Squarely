@@ -8,8 +8,13 @@ import type {
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
-import { requireCurrentUserPermission } from "@/utils/authorization";
-const STORAGE_KEY = "app.jobs.v1";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
+const STORAGE_KEY = "app.jobs.v2";
 function safeClone<T extends object>(value: T, label: string): T {
   const raw = toRaw(value) as T;
   const seen = new WeakSet<object>();
@@ -188,9 +193,12 @@ export const useJobsStore = defineStore("jobs", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("jobs", state.items),
     byId: (state) => (id: number | string) =>
-      state.items.find((job) => String(job.id) === String(id)) ?? null,
+      authorizeRecord(
+        "jobs",
+        state.items.find((job) => String(job.id) === String(id)) ?? null,
+      ),
   },
   actions: {
     init(force = false) {
@@ -223,23 +231,29 @@ export const useJobsStore = defineStore("jobs", {
       return normalised;
     },
     updateJob(id: number | string, patch: Partial<JobProperties>) {
-      requireCurrentUserPermission("jobs", "update");
-
       const index = this.items.findIndex(
         (job) => String(job.id) === String(id),
       );
       if (index === -1) return null;
+      requireCurrentUserPermission(
+        "jobs",
+        "update",
+        mapAuthorizationResource("jobs", this.items[index]),
+      );
       const updated = mergeJob(this.items[index], patch);
       this.items.splice(index, 1, updated);
       return updated;
     },
     removeJob(id: number | string) {
-      requireCurrentUserPermission("jobs", "delete");
-
       const index = this.items.findIndex(
         (job) => String(job.id) === String(id),
       );
       if (index === -1) return;
+      requireCurrentUserPermission(
+        "jobs",
+        "delete",
+        mapAuthorizationResource("jobs", this.items[index]),
+      );
       this.items.splice(index, 1);
     },
     nextId() {

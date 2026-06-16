@@ -1,4 +1,10 @@
 import { db as configDb } from "@/plugins/fake-api/handlers/config/db";
+import {
+  ROLE_TEST_USER_PASSWORD,
+  seedIdentityByEmail,
+  seedIdentityByRoleId,
+  seedIdentities,
+} from "@/utils/seedIdentityGraph";
 
 export type AccountStatus = "active" | "pending" | "inactive";
 export type PermissionAction =
@@ -70,7 +76,7 @@ export interface AccountRoleState {
   users: AccountUserRecord[];
 }
 
-const STORAGE_KEY = "app.account-roles.v1";
+const STORAGE_KEY = "app.account-roles.v2";
 
 export const currentCenterId = () => {
   const legal = configDb.configurations.legal;
@@ -307,9 +313,8 @@ const roleId = (name: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-const ROLE_TEST_USER_PASSWORD = "SquarelyRoleTest#2026";
-
 const roleTestUserEmail = (role: RoleRecord) =>
+  seedIdentityByRoleId.get(role.id)?.email ??
   `${role.id || roleId(role.name)}@squarely.test`;
 
 const roleTestUserName = (role: RoleRecord) => `${role.name} Test User`;
@@ -347,19 +352,20 @@ const ensureRoleTestUsers = (
       suffix += 1;
     }
 
-    const id = nextUserId(users);
+    const identity = seedIdentityByRoleId.get(role.id);
+    const id = identity?.id ?? nextUserId(users);
     users.push({
       id,
       centerId: role.centerId,
-      employeeId: null,
-      personId: null,
-      fullName: roleTestUserName(role),
-      username: role.id || roleId(role.name),
+      employeeId: identity?.id ?? id,
+      personId: identity?.id ?? id,
+      fullName: identity?.fullName ?? roleTestUserName(role),
+      username: identity?.username ?? role.id ?? roleId(role.name),
       email,
       password: ROLE_TEST_USER_PASSWORD,
       roleId: role.id,
       status: "active",
-      avatar: null,
+      avatar: identity?.avatar ?? null,
       temporaryPassword: true,
       createdBy: null,
       isMaster: false,
@@ -419,29 +425,29 @@ export const seedAccountRoleState = (): AccountRoleState => {
     );
   });
 
-  return ensureRoleTestUsers({
-    roles,
-    users: [
-      {
-        id: 1,
-        centerId,
-        employeeId: 1,
-        personId: 1,
-        fullName: "Lina Haddad",
-        username: "lina",
-        email: "admin@demo.com",
-        password: "TedKarimPamela1",
-        roleId: roleId("Account Owner / Super Admin"),
-        status: "active",
-        avatar: `${import.meta.env?.BASE_URL ?? "/"}images/avatars/avatar-1.png`,
-        temporaryPassword: false,
-        createdBy: null,
-        isMaster: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-  });
+  const users = seedIdentities.map((identity) => ({
+    id: identity.id,
+    centerId,
+    employeeId: identity.id,
+    personId: identity.id,
+    fullName: identity.fullName,
+    username: identity.username,
+    email: identity.email,
+    password:
+      identity.email === "admin@demo.com"
+        ? "TedKarimPamela1"
+        : ROLE_TEST_USER_PASSWORD,
+    roleId: identity.roleId,
+    status: "active" as const,
+    avatar: identity.avatar,
+    temporaryPassword: identity.email !== "admin@demo.com",
+    createdBy: null,
+    isMaster: identity.email === "admin@demo.com",
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  return ensureRoleTestUsers({ roles, users });
 };
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -456,7 +462,7 @@ export const loadAccountRoleState = (): AccountRoleState => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const state = ensureRoleTestUsers(JSON.parse(raw) as AccountRoleState);
+      const state = ensureLinkedUsers(ensureRoleTestUsers(JSON.parse(raw) as AccountRoleState));
       saveAccountRoleState(state);
       return state;
     }
@@ -465,6 +471,23 @@ export const loadAccountRoleState = (): AccountRoleState => {
   saveAccountRoleState(seeded);
   return seeded;
 };
+
+const ensureLinkedUsers = (state: AccountRoleState): AccountRoleState => ({
+  ...state,
+  users: state.users.map((user) => {
+    const identity =
+      seedIdentityByEmail.get(user.email.toLowerCase()) ??
+      seedIdentityByRoleId.get(user.roleId);
+    if (!identity) return user;
+
+    return {
+      ...user,
+      employeeId: user.employeeId ?? identity.id,
+      personId: user.personId ?? identity.id,
+      avatar: user.avatar || identity.avatar,
+    };
+  }),
+});
 
 export const publicUser = (user: AccountUserRecord, role?: RoleRecord) => ({
   id: user.id,

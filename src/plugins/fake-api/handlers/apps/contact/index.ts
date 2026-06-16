@@ -6,6 +6,8 @@ import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import type { ContactProperties } from "./types";
 import {
+  filterReadableResources,
+  mapAuthorizationResource,
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
@@ -163,7 +165,7 @@ export const handlerAppsContacts = [
 
     const contactLookup = buildContactLookup();
 
-    const hydratedUsers = filteredUsers.map((user) => ({
+    const hydratedUsers = filterReadableResources("contacts", filteredUsers).map((user) => ({
       ...user,
       connections: hydrateConnections(user.connections, contactLookup),
     }));
@@ -185,7 +187,10 @@ export const handlerAppsContacts = [
   http.get<PathParams>("/api/apps/contacts/:id", ({ params }) => {
     const userId = Number(params.id);
 
-    const user = db.users.find((entry) => entry.id === userId);
+    const user =
+      filterReadableResources("contacts", db.users).find(
+        (entry) => entry.id === userId,
+      ) ?? null;
 
     if (!user) {
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
@@ -203,18 +208,21 @@ export const handlerAppsContacts = [
   }),
 
   http.delete("/api/apps/contacts/:id", ({ params }) => {
-    try {
-      requireCurrentUserPermission("contacts", "delete");
-    } catch {
-      return permissionDeniedResponse("contacts", "delete");
-    }
-
     const userId = Number(params.id);
 
     const index = db.users.findIndex((entry) => entry.id === userId);
 
     if (index === -1)
       return HttpResponse.json("User not found", { status: 404 });
+    try {
+      requireCurrentUserPermission(
+        "contacts",
+        "delete",
+        mapAuthorizationResource("contacts", db.users[index]),
+      );
+    } catch {
+      return permissionDeniedResponse("contacts", "delete");
+    }
 
     db.users.splice(index, 1);
 
@@ -222,12 +230,6 @@ export const handlerAppsContacts = [
   }),
 
   http.put("/api/apps/contacts/:id", async ({ params, request }) => {
-    try {
-      requireCurrentUserPermission("contacts", "update");
-    } catch {
-      return permissionDeniedResponse("contacts", "update");
-    }
-
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<ContactProperties>;
 
@@ -240,6 +242,15 @@ export const handlerAppsContacts = [
     const index = db.users.findIndex((entry) => entry.id === userId);
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
+    try {
+      requireCurrentUserPermission(
+        "contacts",
+        "update",
+        mapAuthorizationResource("contacts", db.users[index]),
+      );
+    } catch {
+      return permissionDeniedResponse("contacts", "update");
+    }
 
     const nextAccounting = {
       taxId:

@@ -2,8 +2,8 @@ import type { Meeting } from "@/data/schema";
 import { SeedSiteSurveys } from "@/data/seed-site-surveys";
 import { defineStore } from "pinia";
 
-const STORAGE_KEY = "app.siteSurveys.v1";
-const STORAGE_KEY_SEEDED = "app.siteSurveys.seeded.v1";
+const STORAGE_KEY = "app.siteSurveys.v2";
+const STORAGE_KEY_SEEDED = "app.siteSurveys.seeded.v2";
 
 function loadFromStorage(): Meeting[] | null {
   try {

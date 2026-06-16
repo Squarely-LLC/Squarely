@@ -5,6 +5,8 @@ import { HttpResponse, http } from "msw";
 import { db } from "./db";
 import type { JobProperties } from "./types";
 import {
+  filterReadableResources,
+  mapAuthorizationResource,
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
@@ -88,6 +90,7 @@ export const handlerOperationsJobs = [
       }
     }
 
+    filteredJobs = filterReadableResources("jobs", filteredJobs);
     const totalJobs = filteredJobs.length;
 
     if (itemsPerPageLocal !== -1) {
@@ -156,12 +159,6 @@ export const handlerOperationsJobs = [
   }),
 
   http.patch("/api/operations/jobs/:id", async ({ params, request }) => {
-    try {
-      requireCurrentUserPermission("jobs", "update");
-    } catch {
-      return permissionDeniedResponse("jobs", "update");
-    }
-
     const jobId = Number(params.id);
     const updates = (await request.json()) as Partial<JobProperties>;
 
@@ -172,6 +169,15 @@ export const handlerOperationsJobs = [
         status: 404,
         statusText: "Job Not Found",
       });
+    }
+    try {
+      requireCurrentUserPermission(
+        "jobs",
+        "update",
+        mapAuthorizationResource("jobs", db.jobs[jobIndex]),
+      );
+    } catch {
+      return permissionDeniedResponse("jobs", "update");
     }
 
     db.jobs[jobIndex] = {
@@ -184,12 +190,6 @@ export const handlerOperationsJobs = [
   }),
 
   http.delete("/api/operations/jobs/:id", ({ params }) => {
-    try {
-      requireCurrentUserPermission("jobs", "delete");
-    } catch {
-      return permissionDeniedResponse("jobs", "delete");
-    }
-
     const jobId = Number(params.id);
     const jobIndex = db.jobs.findIndex((j) => j.id === jobId);
 
@@ -198,6 +198,15 @@ export const handlerOperationsJobs = [
         status: 404,
         statusText: "Job Not Found",
       });
+    }
+    try {
+      requireCurrentUserPermission(
+        "jobs",
+        "delete",
+        mapAuthorizationResource("jobs", db.jobs[jobIndex]),
+      );
+    } catch {
+      return permissionDeniedResponse("jobs", "delete");
     }
 
     db.jobs.splice(jobIndex, 1);

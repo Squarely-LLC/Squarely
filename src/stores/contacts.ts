@@ -5,7 +5,12 @@ import type {
 } from "@/plugins/fake-api/handlers/apps/contact/types";
 import { personToContact, usePeopleStore } from "@/stores/people";
 import { defineStore } from "pinia";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 const cloneContact = (contact: ContactProperties): ContactProperties =>
   JSON.parse(JSON.stringify(contact)) as ContactProperties;
@@ -44,16 +49,20 @@ export const useContactsStore = defineStore("contacts", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("contacts", state.items),
     byId: (state) => (id: number | string) =>
-      state.items.find((contact) => String(contact.id) === String(id)) ?? null,
+      authorizeRecord(
+        "contacts",
+        state.items.find((contact) => String(contact.id) === String(id)) ?? null,
+      ),
     search:
       (state) =>
       (query: string): ContactProperties[] => {
+        const readableContacts = filterReadableResources("contacts", state.items);
         const q = query.trim().toLowerCase();
-        if (!q) return state.items;
+        if (!q) return readableContacts;
 
-        return state.items.filter((contact) => {
+        return readableContacts.filter((contact) => {
           const haystacks = [
             contact.fullName,
             contact.email,
@@ -73,7 +82,10 @@ export const useContactsStore = defineStore("contacts", {
       (state) =>
       (id: number | string, role: ContactRole): boolean => {
         const contact =
-          state.items.find((item) => String(item.id) === String(id)) ?? null;
+          authorizeRecord(
+            "contacts",
+            state.items.find((item) => String(item.id) === String(id)) ?? null,
+          ) ?? null;
         if (!contact) return false;
 
         return ensureRoles(contact.roles, contact.class).includes(role);
@@ -121,10 +133,15 @@ export const useContactsStore = defineStore("contacts", {
       patch: Partial<ContactProperties>,
       options: { system?: boolean } = {},
     ) {
-      if (!options.system) requireCurrentUserPermission("contacts", "update");
-
       const peopleStore = usePeopleStore();
       peopleStore.init();
+      const current = this.items.find((contact) => String(contact.id) === String(id));
+      if (!options.system)
+        requireCurrentUserPermission(
+          "contacts",
+          "update",
+          mapAuthorizationResource("contacts", current),
+        );
       const updated = peopleStore.patchContact(id, patch);
       this.refresh();
 
@@ -165,10 +182,14 @@ export const useContactsStore = defineStore("contacts", {
     },
 
     removeContact(id: number | string) {
-      requireCurrentUserPermission("contacts", "delete");
-
       const peopleStore = usePeopleStore();
       peopleStore.init();
+      const current = this.items.find((contact) => String(contact.id) === String(id));
+      requireCurrentUserPermission(
+        "contacts",
+        "delete",
+        mapAuthorizationResource("contacts", current),
+      );
       peopleStore.removeContactProfile(id);
       this.refresh();
     },

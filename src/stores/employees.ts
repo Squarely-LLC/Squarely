@@ -7,7 +7,12 @@ import type {
 } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { personToEmployee, usePeopleStore } from "@/stores/people";
 import { defineStore } from "pinia";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 const cloneEmployee = (employee: EmployeeProperties): EmployeeProperties =>
   JSON.parse(JSON.stringify(employee)) as EmployeeProperties;
@@ -28,12 +33,12 @@ export const useEmployeesStore = defineStore("employees", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("hr", state.items),
     byId: (state) => (id: number | string) => {
       const direct = state.items.find(
         (employee) => String(employee.id) === String(id),
       );
-      if (direct) return direct;
+      if (direct) return authorizeRecord("hr", direct);
 
       const peopleStore = usePeopleStore();
       peopleStore.init();
@@ -42,15 +47,16 @@ export const useEmployeesStore = defineStore("employees", {
         (person) => String(person.legacyEmployeeId) === String(id),
       );
 
-      return legacyMatch ? personToEmployee(legacyMatch) : null;
+      return legacyMatch ? authorizeRecord("hr", personToEmployee(legacyMatch)) : null;
     },
     search:
       (state) =>
       (query: string): EmployeeProperties[] => {
+        const readableEmployees = filterReadableResources("hr", state.items);
         const q = query.trim().toLowerCase();
-        if (!q) return state.items;
+        if (!q) return readableEmployees;
 
-        return state.items.filter((employee) => {
+        return readableEmployees.filter((employee) => {
           const haystacks = [
             employee.fullName,
             employee.email,
@@ -105,10 +111,14 @@ export const useEmployeesStore = defineStore("employees", {
     },
 
     updateEmployee(id: number | string, patch: Partial<EmployeeProperties>) {
-      requireCurrentUserPermission("hr", "update");
-
       const peopleStore = usePeopleStore();
       peopleStore.init();
+      const current = this.items.find((employee) => String(employee.id) === String(id));
+      requireCurrentUserPermission(
+        "hr",
+        "update",
+        mapAuthorizationResource("hr", current),
+      );
       const updated = peopleStore.patchEmployee(id, patch);
       this.refresh();
 
@@ -149,10 +159,14 @@ export const useEmployeesStore = defineStore("employees", {
     },
 
     removeEmployee(id: number | string) {
-      requireCurrentUserPermission("hr", "delete");
-
       const peopleStore = usePeopleStore();
       peopleStore.init();
+      const current = this.items.find((employee) => String(employee.id) === String(id));
+      requireCurrentUserPermission(
+        "hr",
+        "delete",
+        mapAuthorizationResource("hr", current),
+      );
       peopleStore.removeEmployeeProfile(id);
       this.refresh();
     },

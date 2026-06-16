@@ -3,7 +3,11 @@ import { toRaw } from "vue";
 
 import type { ToDoStep } from "@/data/schema";
 import { db } from "@/plugins/fake-api/handlers/catalogues/db";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 import type {
   CatalogueActiveState,
   CatalogueItem,
@@ -17,7 +21,7 @@ import type {
   CatalogueTables,
 } from "@/plugins/fake-api/handlers/catalogues/types";
 
-const STORAGE_KEY = "app.catalogue-tables.v3";
+const STORAGE_KEY = "app.catalogue-tables.v4";
 const DEFAULT_TYPE: CatalogueItemType = "Product";
 const GENERATED_SKU_PATTERN = /^[A-Z]{3}\d{3}$/;
 
@@ -843,20 +847,26 @@ export const useCataloguesStore = defineStore("catalogues", {
     initialized: false,
   }),
   getters: {
-    all: (state) => flattenTables(state.tables),
+    all: (state) => filterReadableResources("catalogue", flattenTables(state.tables)),
     byId: (state) => (id: string, typeHint?: string | null) => {
       const target = resolveTarget(state.tables, id, typeHint);
       if (!target) return null;
-      return toCatalogueItem(
-        target.tableKey,
-        state.tables[target.tableKey][target.index],
+      return authorizeRecord(
+        "catalogue",
+        toCatalogueItem(
+          target.tableKey,
+          state.tables[target.tableKey][target.index],
+        ),
       );
     },
     recordById: (state) => (id: string, typeHint?: string | null) => {
       const target = resolveTarget(state.tables, id, typeHint);
       if (!target) return null;
 
-      return cloneRecord(state.tables[target.tableKey][target.index]);
+      return authorizeRecord(
+        "catalogue",
+        cloneRecord(state.tables[target.tableKey][target.index]),
+      );
     },
   },
   actions: {

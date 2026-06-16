@@ -24,15 +24,20 @@ import {
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
 
-const STORAGE_KEY = "app.quotations.v6";
-const PROFORMA_STORAGE_KEY = "app.proformas.v2";
-const INVOICE_STORAGE_KEY = "app.invoices.v3";
+const STORAGE_KEY = "app.quotations.v7";
+const PROFORMA_STORAGE_KEY = "app.proformas.v3";
+const INVOICE_STORAGE_KEY = "app.invoices.v4";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
   quotation?: Partial<Quotation>;
 };
@@ -790,13 +795,13 @@ export const useQuotationsStore = defineStore("quotations", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("finance", state.items),
     summaries: (state) =>
-      state.items
+      filterReadableResources("finance", state.items)
         .map((record) => record.quotation)
         .filter((quotation) => !quotation.parentQuotationId),
     revisionsByParent: (state) => (parentId: number | string) =>
-      state.items
+      filterReadableResources("finance", state.items)
         .map((record) => record.quotation)
         .filter(
           (quotation) =>
@@ -804,13 +809,16 @@ export const useQuotationsStore = defineStore("quotations", {
             String(quotation.parentQuotationId) === String(parentId),
         ),
     byId: (state) => (id: number | string) =>
-      state.items.find(
-        (record) => String(record.quotation.id) === String(id),
-      ) ?? null,
+      authorizeRecord(
+        "finance",
+        state.items.find(
+          (record) => String(record.quotation.id) === String(id),
+        ) ?? null,
+      ),
     clients: (state) => {
       const seen = new Set<string>();
 
-      return state.items
+      return filterReadableResources("finance", state.items)
         .map((record) => record.quotation.client)
         .filter((client) => {
           const key = `${client.name}|${client.companyEmail}`;
@@ -970,13 +978,16 @@ export const useQuotationsStore = defineStore("quotations", {
     },
 
     updateQuotation(id: number | string, patch: QuotationPayload) {
-      requireCurrentUserPermission("finance", "update");
-
       const index = this.items.findIndex(
         (record) => String(record.quotation.id) === String(id),
       );
 
       if (index === -1) return null;
+      requireCurrentUserPermission(
+        "finance",
+        "update",
+        mapAuthorizationResource("finance", this.items[index]),
+      );
       if (!isLatestRevisionRecord(this.items, this.items[index])) return null;
 
       const updated = mergeQuotationRecord(this.items[index], patch);
@@ -1001,13 +1012,16 @@ export const useQuotationsStore = defineStore("quotations", {
     },
 
     removeQuotation(id: number | string) {
-      requireCurrentUserPermission("finance", "delete");
-
       const target = this.items.find(
         (record) => String(record.quotation.id) === String(id),
       );
 
       if (!target) return;
+      requireCurrentUserPermission(
+        "finance",
+        "delete",
+        mapAuthorizationResource("finance", target),
+      );
       if (!isLatestRevisionRecord(this.items, target)) return;
 
       const numericId = Number(target.quotation.id);

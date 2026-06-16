@@ -4,6 +4,12 @@ import is from '@sindresorhus/is'
 import { destr } from 'destr'
 import type { PathParams } from 'msw'
 import { HttpResponse, http } from 'msw'
+import {
+  filterReadableResources,
+  mapAuthorizationResource,
+  permissionDeniedResponse,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
 const toDateOnlyISOString = (value?: string | null) => {
   const date = value ? new Date(value) : new Date()
@@ -82,6 +88,7 @@ export const handlerAppsTodos = [
       filtered = filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     }
 
+    filtered = filterReadableResources("tasks", filtered)
     const total = filtered.length
     const totalPages = Math.ceil(total / ipp) || 1
 
@@ -96,7 +103,7 @@ export const handlerAppsTodos = [
   // 👉 get one
   http.get<PathParams>('/api/apps/todos/:id', ({ params }) => {
     const id = Number(params.id)
-    const todo = db.todos.find(t => t.id === id)
+    const todo = filterReadableResources("tasks", db.todos).find(t => t.id === id)
     return todo
       ? HttpResponse.json(todo, { status: 200 })
       : HttpResponse.json({ message: 'ToDo not found' }, { status: 404 })
@@ -104,6 +111,12 @@ export const handlerAppsTodos = [
 
   // 👉 create
   http.post('/api/apps/todos', async ({ request }) => {
+    try {
+      requireCurrentUserPermission("tasks", "create");
+    } catch {
+      return permissionDeniedResponse("tasks", "create");
+    }
+
     const payload = await request.json() as any
 
     const providedId = Number(payload.id)
@@ -160,6 +173,15 @@ export const handlerAppsTodos = [
     const idx = db.todos.findIndex(t => Number(t.id) === id)
     if (idx === -1)
       return HttpResponse.json({ message: 'ToDo not found' }, { status: 404 })
+    try {
+      requireCurrentUserPermission(
+        "tasks",
+        "update",
+        mapAuthorizationResource("tasks", db.todos[idx]),
+      );
+    } catch {
+      return permissionDeniedResponse("tasks", "update");
+    }
 
     const patch = await request.json() as any
     const normalizedPatch = { ...patch }
@@ -183,6 +205,15 @@ export const handlerAppsTodos = [
     const idx = db.todos.findIndex(t => t.id === id)
     if (idx === -1)
       return HttpResponse.json({ message: 'ToDo not found' }, { status: 404 })
+    try {
+      requireCurrentUserPermission(
+        "tasks",
+        "delete",
+        mapAuthorizationResource("tasks", db.todos[idx]),
+      );
+    } catch {
+      return permissionDeniedResponse("tasks", "delete");
+    }
 
     db.todos.splice(idx, 1)
     return new HttpResponse(null, { status: 204 })

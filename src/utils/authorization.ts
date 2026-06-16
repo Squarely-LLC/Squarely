@@ -8,13 +8,18 @@ import {
   type RoleRecord,
 } from "@/utils/accountRoles";
 import { currentUserData, getSignedInIdentity } from "@/utils/currentAccount";
+import { db as employeesDb } from "@/plugins/fake-api/handlers/apps/employees/db";
 
 export type AuthorizationAction = PermissionAction;
 export type AuthorizationModule = PermissionModule;
 
 export interface AuthorizationResource {
   ownerId?: number | string | null;
+  ownerIds?: Array<number | string | null | undefined>;
   collaboratorIds?: Array<number | string | null | undefined>;
+  participantIds?: Array<number | string | null | undefined>;
+  teamMemberIds?: Array<number | string | null | undefined>;
+  financialFields?: string[];
   module?: AuthorizationModule;
   financial?: boolean;
 }
@@ -46,6 +51,17 @@ const idsMatch = (
   left: number | string | null | undefined,
   right: number | string | null | undefined,
 ) => normalize(left) !== "" && normalize(left) === normalize(right);
+
+const uniqueValues = (values: Array<unknown>) =>
+  Array.from(
+    new Set(
+      values
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .filter((value) => value !== undefined && value !== null && value !== "")
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+    ),
+  );
 
 export const getCurrentAccount = (): AccountUserRecord | null => {
   const userData = currentUserData();
@@ -91,12 +107,31 @@ const hasResourceScope = (
     identity.personId,
     identity.email,
   ];
+  const teamCandidates = getCurrentTeamMemberIds();
+  const ownerIds = uniqueValues([resource.ownerId, resource.ownerIds]);
+  const participantIds = uniqueValues([
+    resource.collaboratorIds,
+    resource.participantIds,
+  ]);
 
-  if (candidates.some((candidate) => idsMatch(candidate, resource.ownerId)))
+  if (
+    ownerIds.some((ownerId) =>
+      candidates.some((candidate) => idsMatch(candidate, ownerId)),
+    )
+  )
     return true;
 
-  return (resource.collaboratorIds ?? []).some((collaboratorId) =>
-    candidates.some((candidate) => idsMatch(candidate, collaboratorId)),
+  if (
+    participantIds.some((participantId) =>
+      candidates.some((candidate) => idsMatch(candidate, participantId)),
+    )
+  )
+    return true;
+
+  if (permission.viewScope !== "owned_team_collab") return false;
+
+  return [...ownerIds, ...participantIds].some((recordRef) =>
+    teamCandidates.some((teamRef) => idsMatch(teamRef, recordRef)),
   );
 };
 
@@ -117,6 +152,11 @@ export const canCurrentUser = (
   return hasResourceScope(permission, resource);
 };
 
+export const canReadResource = (
+  module: AuthorizationModule,
+  resource?: AuthorizationResource,
+) => canCurrentUser(module, "read", resource);
+
 export const requireCurrentUserPermission = (
   module: AuthorizationModule,
   action: AuthorizationAction = "read",
@@ -125,6 +165,234 @@ export const requireCurrentUserPermission = (
 ) => {
   if (!canCurrentUser(module, action, resource))
     throw new PermissionDeniedError(module, action, message);
+};
+
+export const assertCanMutateResource = (
+  module: AuthorizationModule,
+  action: Exclude<AuthorizationAction, "read">,
+  resource?: AuthorizationResource,
+  message = PERMISSION_DENIED_MESSAGE,
+) => requireCurrentUserPermission(module, action, resource, message);
+
+export const filterReadableResources = <T>(
+  module: AuthorizationModule,
+  records: T[],
+  mapResource: (record: T) => AuthorizationResource = (record) =>
+    mapAuthorizationResource(module, record),
+) =>
+  records
+    .filter((record) => canReadResource(module, mapResource(record)))
+    .map((record) => maskFinancialResource(module, record));
+
+export const authorizeRecord = <T>(
+  module: AuthorizationModule,
+  record: T | null | undefined,
+  mapResource: (record: T) => AuthorizationResource = (entry) =>
+    mapAuthorizationResource(module, entry),
+) => {
+  if (!record || !canReadResource(module, mapResource(record))) return null;
+  return maskFinancialResource(module, record);
+};
+
+export const hasHiddenFinancials = (module: AuthorizationModule) => {
+  const role = getCurrentUserRole();
+  if (!role) return true;
+  if (role.name === "Account Owner / Super Admin") return false;
+
+  const permission = modulePermission(role, module);
+  return !permission || permission.viewScope === "none" || permission.hideFinancials;
+};
+
+const moneyKeyPattern =
+  /(amount|balance|billing|cost|currency|discount|financial|grandtotal|margin|payment|price|profit|rate|subtotal|tax|total|vat)/i;
+
+export const maskFinancialResource = <T>(
+  module: AuthorizationModule,
+  record: T,
+): T => {
+  if (!hasHiddenFinancials(module)) return record;
+  return maskFinancialValue(record);
+};
+
+const maskFinancialValue = <T>(value: T, key = ""): T => {
+  if (value === null || value === undefined) return value;
+  if (moneyKeyPattern.test(key)) {
+    if (Array.isArray(value)) return [] as T;
+    if (typeof value === "object") return null as T;
+    return null as T;
+  }
+  if (Array.isArray(value))
+    return value.map((entry) => maskFinancialValue(entry)) as T;
+  if (typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([entryKey, entryValue]) => [
+      entryKey,
+      maskFinancialValue(entryValue, entryKey),
+    ]),
+  ) as T;
+};
+
+export const mapAuthorizationResource = (
+  module: AuthorizationModule,
+  record: any,
+): AuthorizationResource => {
+  if (!record) return { module, ownerIds: [], participantIds: [] };
+
+  const nested = (...paths: string[]) =>
+    paths.map((path) =>
+      path.split(".").reduce((current, segment) => current?.[segment], record),
+    );
+  const collectIds = (value: any): unknown[] => {
+    if (value === undefined || value === null || value === "") return [];
+    if (Array.isArray(value)) return value.flatMap((entry) => collectIds(entry));
+    if (typeof value === "object")
+      return [
+        value.id,
+        value.accountId,
+        value.employeeId,
+        value.personId,
+        value.contactId,
+        value.email,
+        value.name,
+        value.fullName,
+      ].filter((entry) => entry !== undefined && entry !== null && entry !== "");
+    return [value];
+  };
+
+  const ownerIds = uniqueValues([
+    nested(
+      "ownerId",
+      "createdBy",
+      "createdById",
+      "createdBy.accountId",
+      "createdBy.employeeId",
+      "createdBy.personId",
+      "author",
+      "author.id",
+      "author.accountId",
+      "requestedBy",
+      "requestedBy.id",
+      "requestedBy.employeeId",
+      "salesman",
+      "salesperson",
+      "quotation.salesperson",
+      "quotation.salesperson.id",
+      "employeeId",
+      "personId",
+    ),
+  ]).flatMap(collectIds).map((entry) => String(entry));
+
+  const participantIds = uniqueValues([
+    nested(
+      "collaborators",
+      "collaboratorIds",
+      "assignees",
+      "assignedTo",
+      "attendees",
+      "linkedTo",
+      "relatedTo",
+      "requestedBy",
+      "client",
+      "quotation.client",
+      "expense.supplier",
+    ),
+    record.stakeholders?.map((entry: any) => entry.contactId ?? entry.id),
+    record.milestones?.flatMap((entry: any) => collectIds(entry.collaborators)),
+    record.goals?.flatMap((entry: any) => collectIds(entry.collaborators)),
+    record.steps?.flatMap((entry: any) => collectIds(entry.collaborators)),
+    record.items?.flatMap((entry: any) => [
+      ...collectIds(entry.collaborators),
+      ...collectIds(entry.salesTasks),
+    ]),
+  ]).flatMap(collectIds).map((entry) => String(entry));
+
+  return {
+    module,
+    ownerIds,
+    participantIds,
+    collaboratorIds: participantIds,
+    financial:
+      record.financial === true ||
+      record.financials !== undefined ||
+      record.total !== undefined ||
+      record.amount !== undefined,
+  };
+};
+
+export const getCurrentTeamMemberIds = () => {
+  const identity = getSignedInIdentity();
+  const currentRefs = uniqueValues([
+    identity.accountId,
+    identity.employeeId,
+    identity.personId,
+    identity.email,
+    identity.name,
+  ]);
+  const people = loadPeopleForAuth();
+  const personRefs = (person: any) =>
+    uniqueValues([
+      person.id,
+      person.legacyEmployeeId,
+      person.employeeId,
+      person.email,
+      person.fullName,
+    ]);
+  const reportsTo = (person: any) =>
+    uniqueValues([
+      person.hrProfile?.employment?.reportToIds,
+      person.employment?.reportToIds,
+    ]);
+  const currentPeople = people.filter((person) =>
+    personRefs(person).some((ref) =>
+      currentRefs.some((currentRef) => idsMatch(ref, currentRef)),
+    ),
+  );
+  const included = new Set<string>(currentRefs);
+  const queue = [...currentPeople];
+
+  while (queue.length) {
+    const person = queue.shift();
+    if (!person) continue;
+    personRefs(person).forEach((ref) => included.add(String(ref)));
+
+    const relatedPeople = people.filter((candidate) => {
+      const candidateRefs = personRefs(candidate);
+      const candidateReportsTo = reportsTo(candidate);
+      const personIds = personRefs(person);
+
+      return (
+        reportsTo(person).some((managerRef) =>
+          candidateRefs.some((candidateRef) => idsMatch(managerRef, candidateRef)),
+        ) ||
+        candidateReportsTo.some((managerRef) =>
+          personIds.some((personRef) => idsMatch(managerRef, personRef)),
+        )
+      );
+    });
+
+    relatedPeople.forEach((related) => {
+      const alreadyIncluded = personRefs(related).some((ref) => included.has(String(ref)));
+      if (!alreadyIncluded) queue.push(related);
+    });
+  }
+
+  return Array.from(included);
+};
+
+const loadPeopleForAuth = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("app.people.v1") || "[]");
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch {}
+  }
+
+  return employeesDb.users.map((employee) => ({
+    ...employee,
+    legacyEmployeeId: employee.id,
+    hrProfile: { employment: employee.employment },
+  }));
 };
 
 export const isPermissionDeniedError = (

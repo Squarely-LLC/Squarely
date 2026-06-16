@@ -2,8 +2,8 @@ import type { Meeting } from "@/data/schema";
 import { SeedSnaglists } from "@/data/seed-snaglists";
 import { defineStore } from "pinia";
 
-const STORAGE_KEY = "app.snaglists.v1";
-const STORAGE_KEY_SEEDED = "app.snaglists.seeded.v1";
+const STORAGE_KEY = "app.snaglists.v2";
+const STORAGE_KEY_SEEDED = "app.snaglists.seeded.v2";
 
 function loadFromStorage(): Meeting[] | null {
   try {

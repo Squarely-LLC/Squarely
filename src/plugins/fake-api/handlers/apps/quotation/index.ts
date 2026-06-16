@@ -5,13 +5,17 @@ import { destr } from "destr";
 import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import {
+  filterReadableResources,
+  mapAuthorizationResource,
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
 
 export const handlerAppsQuotation = [
   http.get("/api/apps/quotation/clients", () => {
-    const clients = database.map((record) => record.quotation.client);
+    const clients = filterReadableResources("finance", database).map(
+      (record) => record.quotation.client,
+    );
     return HttpResponse.json(clients.slice(0, 5), { status: 200 });
   }),
 
@@ -85,6 +89,8 @@ export const handlerAppsQuotation = [
       });
     }
 
+    filteredRecords = filterReadableResources("finance", filteredRecords);
+
     return HttpResponse.json(
       {
         quotations: paginateArray(filteredRecords, itemsPerPageLocal, pageLocal),
@@ -95,9 +101,10 @@ export const handlerAppsQuotation = [
   }),
 
   http.get<PathParams>("/api/apps/quotation/:id", ({ params }) => {
-    const record = database.find(
-      (entry) => entry.quotation.id === Number(params.id),
-    );
+    const record =
+      filterReadableResources("finance", database).find(
+        (entry) => entry.quotation.id === Number(params.id),
+      ) ?? null;
 
     if (!record) {
       return HttpResponse.json("No quotation found with this id", {
@@ -109,17 +116,20 @@ export const handlerAppsQuotation = [
   }),
 
   http.delete("/api/apps/quotation/:id", ({ params }) => {
-    try {
-      requireCurrentUserPermission("finance", "delete");
-    } catch {
-      return permissionDeniedResponse("finance", "delete");
-    }
-
     const index = database.findIndex(
       (entry) => entry.quotation.id === Number(params.id),
     );
 
     if (index >= 0) {
+      try {
+        requireCurrentUserPermission(
+          "finance",
+          "delete",
+          mapAuthorizationResource("finance", database[index]),
+        );
+      } catch {
+        return permissionDeniedResponse("finance", "delete");
+      }
       database.splice(index, 1);
       return new HttpResponse(null, { status: 204 });
     }

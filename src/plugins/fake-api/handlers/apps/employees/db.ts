@@ -4,6 +4,7 @@ import avatar3 from "@images/avatars/avatar-3.png";
 import avatar4 from "@images/avatars/avatar-4.png";
 
 import type { EmployeeProperties } from "./types";
+import { seedIdentities } from "@/utils/seedIdentityGraph";
 
 interface DB {
   users: EmployeeProperties[];
@@ -705,3 +706,110 @@ export const db: DB = {
     },
   ],
 };
+
+const canonicalEmployee = (identity: (typeof seedIdentities)[number]): EmployeeProperties => ({
+  id: identity.id,
+  fullName: identity.fullName,
+  email: identity.email,
+  number: `+961 70 900 ${String(identity.id).padStart(3, "0")}`,
+  status: "Active",
+  picture: identity.avatar,
+  accounting: {
+    taxId: `EMP-${String(identity.id).padStart(4, "0")}`,
+    crn: `HR-${String(identity.id).padStart(4, "0")}`,
+    vatNumber: `VAT-HR-${String(identity.id).padStart(4, "0")}`,
+  },
+  documents: [],
+  records: [
+    {
+      id: identity.id,
+      type: "note",
+      title: `${identity.roleName} onboarding`,
+      body: `${identity.fullName} is seeded as the ${identity.roleName} test account.`,
+      author: {
+        id: 1,
+        name: "Lina Haddad",
+      },
+      attachments: [],
+      createdAt: "2026-01-05T09:00:00Z",
+    },
+  ],
+  transactions: [],
+  address: "Squarely Center",
+  country: "Lebanon",
+  city: "Beirut",
+  language: "English",
+  channel: identity.worksInSales ? "Direct Sales" : "Referral",
+  website: "https://squarely.internal",
+  worksInSales: identity.worksInSales,
+  createdAt: "2026-01-01T09:00:00Z",
+  department: identity.department,
+  employment: {
+    department: identity.department,
+    reportToIds: identity.reportToIds,
+    contractStatus: "active",
+    startDate: "2026-01-01",
+    endDate: null,
+    isSalesTeamMember: identity.isSalesTeamMember,
+    salesPercentage: identity.isSalesTeamMember ? 5 : 0,
+    salesAmount: 0,
+    contracts: [
+      {
+        id: identity.id,
+        salaryPaid: "Monthly",
+        employmentType: "Full-time",
+        startDate: "2026-01-01",
+        probationEndDate: "2026-04-01",
+        firstPayroll: "2026-01-31",
+        note: `${identity.roleName} seed contract`,
+        status: "Active",
+        createdAt: "2026-01-01T09:00:00Z",
+      },
+    ],
+    positions: [
+      {
+        id: identity.id,
+        position: identity.roleName,
+        startingDate: "2026-01-01",
+        note: "Canonical ACL seed position",
+        createdAt: "2026-01-01T09:00:00Z",
+      },
+    ],
+  },
+  salary: {
+    currency: "USD",
+    history: [
+      {
+        id: identity.id,
+        basicSalary: 3000 + identity.id * 250,
+        transportation: 250,
+        housing: 250,
+        allowance: 100,
+        date: "01-01-2026",
+        startingPeriod: "January - 2026",
+        note: "Canonical seed salary",
+        createdAt: "2026-01-01T09:00:00Z",
+      },
+    ],
+  },
+  paymentMethods: [],
+  attendance: {
+    vacation: 21,
+    sickLeave: 14,
+    parentalLeave: 60,
+    carryoverDays: 0,
+    workSchedule: {
+      Monday: { active: true, remote: false, from: "09:00", to: "18:00" },
+      Tuesday: { active: true, remote: false, from: "09:00", to: "18:00" },
+      Wednesday: { active: true, remote: false, from: "09:00", to: "18:00" },
+      Thursday: { active: true, remote: false, from: "09:00", to: "18:00" },
+      Friday: { active: true, remote: true, from: "09:00", to: "17:00" },
+      Saturday: { active: false, remote: false, from: "09:00", to: "17:00" },
+      Sunday: { active: false, remote: false, from: "09:00", to: "17:00" },
+    },
+    allowedExtraTime: 12,
+  },
+  requests: [],
+});
+
+db.users = seedIdentities.map(canonicalEmployee);

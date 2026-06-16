@@ -6,6 +6,8 @@ import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import type { EmployeeProperties } from "./types";
 import {
+  filterReadableResources,
+  mapAuthorizationResource,
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
@@ -123,6 +125,7 @@ export const handlerAppsEmployees = [
       }
     }
 
+    filteredUsers = filterReadableResources("hr", filteredUsers);
     const totalUsers = filteredUsers.length;
     const totalPages = Math.ceil(totalUsers / itemsPerPageLocal);
 
@@ -140,7 +143,10 @@ export const handlerAppsEmployees = [
   http.get<PathParams>("/api/apps/employees/:id", ({ params }) => {
     const userId = Number(params.id);
 
-    const user = db.users.find((entry) => entry.id === userId);
+    const user =
+      filterReadableResources("hr", db.users).find(
+        (entry) => entry.id === userId,
+      ) ?? null;
 
     if (!user) {
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
@@ -155,18 +161,21 @@ export const handlerAppsEmployees = [
   }),
 
   http.delete("/api/apps/employees/:id", ({ params }) => {
-    try {
-      requireCurrentUserPermission("hr", "delete");
-    } catch {
-      return permissionDeniedResponse("hr", "delete");
-    }
-
     const userId = Number(params.id);
 
     const index = db.users.findIndex((entry) => entry.id === userId);
 
     if (index === -1)
       return HttpResponse.json("User not found", { status: 404 });
+    try {
+      requireCurrentUserPermission(
+        "hr",
+        "delete",
+        mapAuthorizationResource("hr", db.users[index]),
+      );
+    } catch {
+      return permissionDeniedResponse("hr", "delete");
+    }
 
     db.users.splice(index, 1);
 
@@ -174,12 +183,6 @@ export const handlerAppsEmployees = [
   }),
 
   http.put("/api/apps/employees/:id", async ({ params, request }) => {
-    try {
-      requireCurrentUserPermission("hr", "update");
-    } catch {
-      return permissionDeniedResponse("hr", "update");
-    }
-
     const userId = Number(params.id);
     const body = (await request.json()) as Partial<EmployeeProperties>;
 
@@ -188,6 +191,15 @@ export const handlerAppsEmployees = [
     const index = db.users.findIndex((entry) => entry.id === userId);
     if (index === -1)
       return HttpResponse.json({ message: "User not found" }, { status: 404 });
+    try {
+      requireCurrentUserPermission(
+        "hr",
+        "update",
+        mapAuthorizationResource("hr", db.users[index]),
+      );
+    } catch {
+      return permissionDeniedResponse("hr", "update");
+    }
 
     const nextAccounting = {
       taxId:

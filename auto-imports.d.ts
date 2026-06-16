@@ -11,10 +11,15 @@ declare global {
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const DEFAULT_DOCUMENT_SOURCE_MODES: typeof import('./src/utils/documentSourceModes')['DEFAULT_DOCUMENT_SOURCE_MODES']
   const EffectScope: typeof import('vue')['EffectScope']
+  const PERMISSION_DENIED_MESSAGE: typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']
+  const PermissionDeniedError: typeof import('./src/utils/authorization')['PermissionDeniedError']
+  const ROLE_TEST_USER_PASSWORD: typeof import('./src/utils/seedIdentityGraph')['ROLE_TEST_USER_PASSWORD']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
+  const assertCanMutateResource: typeof import('./src/utils/authorization')['assertCanMutateResource']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
+  const authorizeRecord: typeof import('./src/utils/authorization')['authorizeRecord']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
@@ -33,6 +38,8 @@ declare global {
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
   const buildYearlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']
+  const canCurrentUser: typeof import('./src/utils/authorization')['canCurrentUser']
+  const canReadResource: typeof import('./src/utils/authorization')['canReadResource']
   const clearDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']
   const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
@@ -79,6 +86,7 @@ declare global {
   const ensureAccountEmployeeLink: typeof import('./src/utils/accountEmployeeLink')['ensureAccountEmployeeLink']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterDealDocumentItemsByBillingMode: typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']
+  const filterReadableResources: typeof import('./src/utils/authorization')['filterReadableResources']
   const findCurrentUserOption: typeof import('./src/utils/currentAccount')['findCurrentUserOption']
   const formatCurrencyAmount: typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
@@ -94,8 +102,11 @@ declare global {
   const getContactAndEmployeeRefs: typeof import('./src/utils/peopleOptions')['getContactAndEmployeeRefs']
   const getContactOptions: typeof import('./src/utils/peopleOptions')['getContactOptions']
   const getContactRefs: typeof import('./src/utils/peopleOptions')['getContactRefs']
+  const getCurrentAccount: typeof import('./src/utils/authorization')['getCurrentAccount']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getCurrentTeamMemberIds: typeof import('./src/utils/authorization')['getCurrentTeamMemberIds']
+  const getCurrentUserRole: typeof import('./src/utils/authorization')['getCurrentUserRole']
   const getDealBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodKey']
   const getDealBillingPeriodLabel: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodLabel']
   const getDealBillingPeriodMonthValue: typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodMonthValue']
@@ -141,6 +152,7 @@ declare global {
   const getVatSummary: typeof import('./src/utils/quotationConfig')['getVatSummary']
   const h: typeof import('vue')['h']
   const hasDealDocumentPhaseOrPeriodLines: typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']
+  const hasHiddenFinancials: typeof import('./src/utils/authorization')['hasHiddenFinancials']
   const hasRolePermission: typeof import('./src/utils/accountRoles')['hasRolePermission']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -160,6 +172,7 @@ declare global {
   const isLiteralRelatedDealItem: typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']
   const isNullOrUndefined: typeof import('./src/@core/utils/helpers')['isNullOrUndefined']
   const isObject: typeof import('./src/@core/utils/helpers')['isObject']
+  const isPermissionDeniedError: typeof import('./src/utils/authorization')['isPermissionDeniedError']
   const isProxy: typeof import('vue')['isProxy']
   const isReactive: typeof import('vue')['isReactive']
   const isReadonly: typeof import('vue')['isReadonly']
@@ -179,11 +192,13 @@ declare global {
   const logicOr: typeof import('@vueuse/math')['logicOr']
   const makeDestructurable: typeof import('@vueuse/core')['makeDestructurable']
   const mapActions: typeof import('pinia')['mapActions']
+  const mapAuthorizationResource: typeof import('./src/utils/authorization')['mapAuthorizationResource']
   const mapGetters: typeof import('pinia')['mapGetters']
   const mapState: typeof import('pinia')['mapState']
   const mapStores: typeof import('pinia')['mapStores']
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
+  const maskFinancialResource: typeof import('./src/utils/authorization')['maskFinancialResource']
   const nextTick: typeof import('vue')['nextTick']
   const normalizeAuthorRef: typeof import('./src/utils/currentAccount')['normalizeAuthorRef']
   const normalizeBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']
@@ -213,6 +228,7 @@ declare global {
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
+  const permissionDeniedResponse: typeof import('./src/utils/authorization')['permissionDeniedResponse']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const provide: typeof import('vue')['provide']
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
@@ -232,6 +248,7 @@ declare global {
   const refWithControl: typeof import('@vueuse/core')['refWithControl']
   const regexValidator: typeof import('./src/@core/utils/validators')['regexValidator']
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
+  const requireCurrentUserPermission: typeof import('./src/utils/authorization')['requireCurrentUserPermission']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveContactRequirement: typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']
@@ -252,6 +269,11 @@ declare global {
   const saveProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']
   const saveQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']
   const seedAccountRoleState: typeof import('./src/utils/accountRoles')['seedAccountRoleState']
+  const seedAuthorRef: typeof import('./src/utils/seedIdentityGraph')['seedAuthorRef']
+  const seedEmployeeIds: typeof import('./src/utils/seedIdentityGraph')['seedEmployeeIds']
+  const seedIdentities: typeof import('./src/utils/seedIdentityGraph')['seedIdentities']
+  const seedIdentityByEmail: typeof import('./src/utils/seedIdentityGraph')['seedIdentityByEmail']
+  const seedIdentityByRoleId: typeof import('./src/utils/seedIdentityGraph')['seedIdentityByRoleId']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
   const shallowReactive: typeof import('vue')['shallowReactive']
@@ -484,6 +506,9 @@ declare global {
   // @ts-ignore
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
+  // @ts-ignore
+  export type { PermissionDeniedError } from './src/utils/authorization'
+  import('./src/utils/authorization')
 }
 
 // for vue template auto import
@@ -496,10 +521,15 @@ declare module 'vue' {
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly DEFAULT_DOCUMENT_SOURCE_MODES: UnwrapRef<typeof import('./src/utils/documentSourceModes')['DEFAULT_DOCUMENT_SOURCE_MODES']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly PERMISSION_DENIED_MESSAGE: UnwrapRef<typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']>
+    readonly PermissionDeniedError: UnwrapRef<typeof import('./src/utils/authorization')['PermissionDeniedError']>
+    readonly ROLE_TEST_USER_PASSWORD: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['ROLE_TEST_USER_PASSWORD']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
+    readonly assertCanMutateResource: UnwrapRef<typeof import('./src/utils/authorization')['assertCanMutateResource']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
+    readonly authorizeRecord: UnwrapRef<typeof import('./src/utils/authorization')['authorizeRecord']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
@@ -518,6 +548,8 @@ declare module 'vue' {
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
     readonly buildYearlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']>
+    readonly canCurrentUser: UnwrapRef<typeof import('./src/utils/authorization')['canCurrentUser']>
+    readonly canReadResource: UnwrapRef<typeof import('./src/utils/authorization')['canReadResource']>
     readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
@@ -564,6 +596,7 @@ declare module 'vue' {
     readonly ensureAccountEmployeeLink: UnwrapRef<typeof import('./src/utils/accountEmployeeLink')['ensureAccountEmployeeLink']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterDealDocumentItemsByBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']>
+    readonly filterReadableResources: UnwrapRef<typeof import('./src/utils/authorization')['filterReadableResources']>
     readonly findCurrentUserOption: UnwrapRef<typeof import('./src/utils/currentAccount')['findCurrentUserOption']>
     readonly formatCurrencyAmount: UnwrapRef<typeof import('./src/utils/quotationConfig')['formatCurrencyAmount']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
@@ -579,8 +612,11 @@ declare module 'vue' {
     readonly getContactAndEmployeeRefs: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactAndEmployeeRefs']>
     readonly getContactOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactOptions']>
     readonly getContactRefs: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactRefs']>
+    readonly getCurrentAccount: UnwrapRef<typeof import('./src/utils/authorization')['getCurrentAccount']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getCurrentTeamMemberIds: UnwrapRef<typeof import('./src/utils/authorization')['getCurrentTeamMemberIds']>
+    readonly getCurrentUserRole: UnwrapRef<typeof import('./src/utils/authorization')['getCurrentUserRole']>
     readonly getDealBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodKey']>
     readonly getDealBillingPeriodLabel: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodLabel']>
     readonly getDealBillingPeriodMonthValue: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getDealBillingPeriodMonthValue']>
@@ -627,6 +663,7 @@ declare module 'vue' {
     readonly getVatSummary: UnwrapRef<typeof import('./src/utils/quotationConfig')['getVatSummary']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasDealDocumentPhaseOrPeriodLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']>
+    readonly hasHiddenFinancials: UnwrapRef<typeof import('./src/utils/authorization')['hasHiddenFinancials']>
     readonly hasRolePermission: UnwrapRef<typeof import('./src/utils/accountRoles')['hasRolePermission']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
@@ -646,6 +683,7 @@ declare module 'vue' {
     readonly isLiteralRelatedDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']>
     readonly isNullOrUndefined: UnwrapRef<typeof import('./src/@core/utils/helpers')['isNullOrUndefined']>
     readonly isObject: UnwrapRef<typeof import('./src/@core/utils/helpers')['isObject']>
+    readonly isPermissionDeniedError: UnwrapRef<typeof import('./src/utils/authorization')['isPermissionDeniedError']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
@@ -665,11 +703,13 @@ declare module 'vue' {
     readonly logicOr: UnwrapRef<typeof import('@vueuse/math')['logicOr']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly mapActions: UnwrapRef<typeof import('pinia')['mapActions']>
+    readonly mapAuthorizationResource: UnwrapRef<typeof import('./src/utils/authorization')['mapAuthorizationResource']>
     readonly mapGetters: UnwrapRef<typeof import('pinia')['mapGetters']>
     readonly mapState: UnwrapRef<typeof import('pinia')['mapState']>
     readonly mapStores: UnwrapRef<typeof import('pinia')['mapStores']>
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
+    readonly maskFinancialResource: UnwrapRef<typeof import('./src/utils/authorization')['maskFinancialResource']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly normalizeAuthorRef: UnwrapRef<typeof import('./src/utils/currentAccount')['normalizeAuthorRef']>
     readonly normalizeBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']>
@@ -699,6 +739,7 @@ declare module 'vue' {
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
+    readonly permissionDeniedResponse: UnwrapRef<typeof import('./src/utils/authorization')['permissionDeniedResponse']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
@@ -718,6 +759,7 @@ declare module 'vue' {
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
+    readonly requireCurrentUserPermission: UnwrapRef<typeof import('./src/utils/authorization')['requireCurrentUserPermission']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveContactRequirement: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']>
@@ -738,6 +780,11 @@ declare module 'vue' {
     readonly saveProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['saveProformaPreviewDraft']>
     readonly saveQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']>
     readonly seedAccountRoleState: UnwrapRef<typeof import('./src/utils/accountRoles')['seedAccountRoleState']>
+    readonly seedAuthorRef: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedAuthorRef']>
+    readonly seedEmployeeIds: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedEmployeeIds']>
+    readonly seedIdentities: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedIdentities']>
+    readonly seedIdentityByEmail: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedIdentityByEmail']>
+    readonly seedIdentityByRoleId: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedIdentityByRoleId']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>

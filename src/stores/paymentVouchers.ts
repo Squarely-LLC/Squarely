@@ -1,9 +1,12 @@
 import { database as expenseSeedDatabase } from "@/plugins/fake-api/handlers/apps/expense/db";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  filterReadableResources,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
-const STORAGE_KEY = "app.payment-vouchers.v2";
+const STORAGE_KEY = "app.payment-vouchers.v3";
 
 export type PaymentVoucherRecord = {
   id: string;
@@ -137,9 +140,12 @@ export const usePaymentVouchersStore = defineStore("paymentVouchers", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("finance", state.items),
     byBillNumber: (state) => (billNumber: string) =>
-      state.items.filter((item) => item.billNumber === billNumber),
+      filterReadableResources(
+        "finance",
+        state.items.filter((item) => item.billNumber === billNumber),
+      ),
   },
   actions: {
     init(force = false) {

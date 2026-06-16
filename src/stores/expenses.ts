@@ -7,12 +7,16 @@ import type {
   ExpenseSupplier,
 } from "@/plugins/fake-api/handlers/apps/expense/types";
 import { useContactsStore } from "@/stores/contacts";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 import { saveFile } from "@/utils/fileStore";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.expenses.v2";
+const STORAGE_KEY = "app.expenses.v3";
 
 const SEEDED_ATTACHMENT_FACTORIES: Record<
   number,
@@ -549,10 +553,13 @@ export const useExpensesStore = defineStore("expenses", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("finance", state.items),
     byId: (state) => (id: number | string) =>
-      state.items.find((record) => String(record.expense.id) === String(id)) ??
-      null,
+      authorizeRecord(
+        "finance",
+        state.items.find((record) => String(record.expense.id) === String(id)) ??
+          null,
+      ),
   },
   actions: {
     async init(force = false) {

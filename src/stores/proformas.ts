@@ -21,13 +21,18 @@ import {
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import { normalizeRichText } from "@/utils/richText";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
 
-const STORAGE_KEY = "app.proformas.v2";
+const STORAGE_KEY = "app.proformas.v3";
 type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
   quotation?: Partial<Proforma>;
 };
@@ -775,13 +780,13 @@ export const useProformasStore = defineStore("proformas", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("finance", state.items),
     summaries: (state) =>
-      state.items
+      filterReadableResources("finance", state.items)
         .map((record) => record.quotation)
         .filter((quotation) => !quotation.parentQuotationId),
     revisionsByParent: (state) => (parentId: number | string) =>
-      state.items
+      filterReadableResources("finance", state.items)
         .map((record) => record.quotation)
         .filter(
           (quotation) =>
@@ -789,13 +794,16 @@ export const useProformasStore = defineStore("proformas", {
             String(quotation.parentQuotationId) === String(parentId),
         ),
     byId: (state) => (id: number | string) =>
-      state.items.find(
-        (record) => String(record.quotation.id) === String(id),
-      ) ?? null,
+      authorizeRecord(
+        "finance",
+        state.items.find(
+          (record) => String(record.quotation.id) === String(id),
+        ) ?? null,
+      ),
     clients: (state) => {
       const seen = new Set<string>();
 
-      return state.items
+      return filterReadableResources("finance", state.items)
         .map((record) => record.quotation.client)
         .filter((client) => {
           const key = `${client.name}|${client.companyEmail}`;
@@ -896,13 +904,16 @@ export const useProformasStore = defineStore("proformas", {
     },
 
     updateProforma(id: number | string, patch: ProformaPayload) {
-      requireCurrentUserPermission("finance", "update");
-
       const index = this.items.findIndex(
         (record) => String(record.quotation.id) === String(id),
       );
 
       if (index === -1) return null;
+      requireCurrentUserPermission(
+        "finance",
+        "update",
+        mapAuthorizationResource("finance", this.items[index]),
+      );
       const current = this.items[index];
       const nextConvertedInvoiceId =
         patch.convertedInvoiceId === undefined
@@ -933,13 +944,16 @@ export const useProformasStore = defineStore("proformas", {
     },
 
     removeProforma(id: number | string) {
-      requireCurrentUserPermission("finance", "delete");
-
       const target = this.items.find(
         (record) => String(record.quotation.id) === String(id),
       );
 
       if (!target) return;
+      requireCurrentUserPermission(
+        "finance",
+        "delete",
+        mapAuthorizationResource("finance", target),
+      );
       if (isLockedProforma(this.items, target)) return;
 
       const numericId = Number(target.quotation.id);

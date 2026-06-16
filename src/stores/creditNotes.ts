@@ -1,9 +1,13 @@
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { database as invoiceSeedDatabase } from "@/plugins/fake-api/handlers/apps/invoice/db";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
-const STORAGE_KEY = "app.credit-notes.v2";
+const STORAGE_KEY = "app.credit-notes.v3";
 
 export type CreditNoteStatus = "Draft" | "Issued" | "Voided";
 
@@ -166,9 +170,12 @@ export const useCreditNotesStore = defineStore("creditNotes", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("finance", state.items),
     byId: (state) => (id: number | string) =>
-      state.items.find((record) => String(record.id) === String(id)) ?? null,
+      authorizeRecord(
+        "finance",
+        state.items.find((record) => String(record.id) === String(id)) ?? null,
+      ),
   },
   actions: {
     init(force = false) {

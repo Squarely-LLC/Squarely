@@ -176,7 +176,7 @@ const standaloneRecords: InvoiceRecord[] = [
     total: 4200,
     client: getSeedClient(2),
     service: "Interior fit-out invoice",
-    dealId: 401,
+    dealId: 1,
     linkedRecordType: "deal",
   }, [
     {
@@ -194,7 +194,7 @@ const standaloneRecords: InvoiceRecord[] = [
     total: 7600,
     client: getSeedClient(5),
     service: "Retail branch execution invoice",
-    dealId: 402,
+    dealId: 2,
     linkedRecordType: "deal",
   }, [
     {
@@ -213,7 +213,7 @@ const standaloneRecords: InvoiceRecord[] = [
     total: 7350,
     client: getSeedClient(5),
     service: "Retail branch execution invoice - revision 1",
-    dealId: 402,
+    dealId: 2,
     linkedRecordType: "deal",
     parentQuotationId: 6302,
     isRevision: true,
@@ -234,7 +234,7 @@ const standaloneRecords: InvoiceRecord[] = [
     total: 1800,
     client: getSeedClient(15),
     service: "Landscaping concept and permitting package",
-    dealId: 403,
+    dealId: 3,
     linkedRecordType: "deal",
   }, [
     {

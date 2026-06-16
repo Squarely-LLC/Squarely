@@ -17,9 +17,14 @@ import type {
 import { useConfigStore } from "@/stores/config";
 import { resolveEmployeePersonId } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 
-const STORAGE_KEY = "app.deals.v5";
+const STORAGE_KEY = "app.deals.v6";
 const DEFAULT_DEAL_PREFIX = "DL";
 const DEFAULT_DEAL_STAGES = ["Pre-Sale", "Negotation", "Active", "Closed"];
 
@@ -811,9 +816,12 @@ export const useDealsStore = defineStore("deals", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("deals", state.items),
     byId: (state) => (id: number | string) =>
-      state.items.find((deal) => String(deal.id) === String(id)) ?? null,
+      authorizeRecord(
+        "deals",
+        state.items.find((deal) => String(deal.id) === String(id)) ?? null,
+      ),
     latestPendingStageDeal: (state) => {
       const pendingDeals = state.items
         .filter((deal) => deal.pendingStageTransition)
@@ -901,12 +909,16 @@ export const useDealsStore = defineStore("deals", {
       patch: Partial<DealProperties>,
       options: { system?: boolean } = {},
     ) {
-      if (!options.system) requireCurrentUserPermission("deals", "update");
-
       const index = this.items.findIndex(
         (deal) => String(deal.id) === String(id),
       );
       if (index === -1) return null;
+      if (!options.system)
+        requireCurrentUserPermission(
+          "deals",
+          "update",
+          mapAuthorizationResource("deals", this.items[index]),
+        );
 
       const updated = mergeDeal(this.items[index], patch);
 
@@ -935,7 +947,8 @@ export const useDealsStore = defineStore("deals", {
     ) {
       if (id === null || id === undefined || id === "") return null;
 
-      const currentDeal = this.byId(id);
+      const currentDeal =
+        this.items.find((deal) => String(deal.id) === String(id)) ?? null;
       if (!currentDeal) return null;
 
       const targetStage = resolveCanonicalStage(targetStageName);
@@ -978,7 +991,8 @@ export const useDealsStore = defineStore("deals", {
     ) {
       if (id === null || id === undefined || id === "") return null;
 
-      const currentDeal = this.byId(id);
+      const currentDeal =
+        this.items.find((deal) => String(deal.id) === String(id)) ?? null;
       if (!currentDeal) return null;
 
       const { useInvoicesStore } = await import("@/stores/invoices");
@@ -1006,11 +1020,15 @@ export const useDealsStore = defineStore("deals", {
     },
 
     approvePendingStageTransition(id: number | string) {
-      requireCurrentUserPermission("deals", "approve");
-
-      const currentDeal = this.byId(id);
+      const currentDeal =
+        this.items.find((deal) => String(deal.id) === String(id)) ?? null;
       const pendingTransition = currentDeal?.pendingStageTransition;
       if (!currentDeal || !pendingTransition) return null;
+      requireCurrentUserPermission(
+        "deals",
+        "approve",
+        mapAuthorizationResource("deals", currentDeal),
+      );
 
       return this.updateDeal(id, {
         stage: pendingTransition.targetStage,
@@ -1042,12 +1060,15 @@ export const useDealsStore = defineStore("deals", {
     },
 
     removeDeal(id: number | string) {
-      requireCurrentUserPermission("deals", "delete");
-
       const index = this.items.findIndex(
         (deal) => String(deal.id) === String(id),
       );
       if (index === -1) return;
+      requireCurrentUserPermission(
+        "deals",
+        "delete",
+        mapAuthorizationResource("deals", this.items[index]),
+      );
 
       this.items.splice(index, 1);
       this.persistItems();

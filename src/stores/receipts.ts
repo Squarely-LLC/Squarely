@@ -8,11 +8,15 @@ import type {
   ReceiptStatus,
 } from "@/plugins/fake-api/handlers/apps/receipt/types";
 import { normalizeRichText } from "@/utils/richText";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.receipts.v3";
+const STORAGE_KEY = "app.receipts.v4";
 
 type ReceiptPayload = Omit<Partial<ReceiptRecord>, "receipt"> & {
   receipt?: Partial<Receipt>;
@@ -267,10 +271,13 @@ export const useReceiptsStore = defineStore("receipts", {
     initialized: false,
   }),
   getters: {
-    all: (state) => state.items,
+    all: (state) => filterReadableResources("finance", state.items),
     byId: (state) => (id: number | string) =>
-      state.items.find((record) => String(record.receipt.id) === String(id)) ??
-      null,
+      authorizeRecord(
+        "finance",
+        state.items.find((record) => String(record.receipt.id) === String(id)) ??
+          null,
+      ),
   },
   actions: {
     init(force = false) {

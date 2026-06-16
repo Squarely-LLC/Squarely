@@ -24,7 +24,7 @@ import type {
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.people.v1";
+const STORAGE_KEY = "app.people.v2";
 const LEGACY_CONTACTS_KEY = "app.contacts.v3";
 const LEGACY_EMPLOYEES_KEY = "app.employees.v2";
 

@@ -2,11 +2,16 @@ import type { Meeting, Message, ToDo, ToDoAttachment } from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { usePeopleStore } from "@/stores/people";
 import { getSignedInAuthorRef, normalizeAuthorRef } from "@/utils/currentAccount";
-import { requireCurrentUserPermission } from "@/utils/authorization";
+import {
+  authorizeRecord,
+  filterReadableResources,
+  mapAuthorizationResource,
+  requireCurrentUserPermission,
+} from "@/utils/authorization";
 import { defineStore } from "pinia";
 
-const STORAGE_KEY_MEETINGS = "app.meetings.v2";
-const STORAGE_KEY_MEETINGS_SEEDED = "app.meetings.seeded.v2";
+const STORAGE_KEY_MEETINGS = "app.meetings.v3";
+const STORAGE_KEY_MEETINGS_SEEDED = "app.meetings.seeded.v3";
 
 function loadMeetingsFromStorage(): Meeting[] | null {
   try {
@@ -20,7 +25,7 @@ function saveMeetingsToStorage(items: Meeting[]) {
   localStorage.setItem(STORAGE_KEY_MEETINGS_SEEDED, "1");
 }
 
-const STORAGE_KEY = "app.todos.v2";
+const STORAGE_KEY = "app.todos.v3";
 
 function loadFromStorage(): ToDo[] | null {
   try {
@@ -90,14 +95,18 @@ export const useTodos = defineStore("todos", {
     initialized: false,
   }),
   getters: {
-    all: (s) => s.items,
+    all: (s) => filterReadableResources("tasks", s.items),
     byId: (s) => (id: number | string) =>
-      s.items.find((t) => String(t.id) === String(id)),
+      authorizeRecord(
+        "tasks",
+        s.items.find((t) => String(t.id) === String(id)) ?? null,
+      ),
     byStatus: (s) => (status: ToDo["status"]) =>
-      s.items.filter((t) => t.status === status),
-    important: (s) => s.items.filter((t) => t.important),
+      filterReadableResources("tasks", s.items).filter((t) => t.status === status),
+    important: (s) =>
+      filterReadableResources("tasks", s.items).filter((t) => t.important),
     unreadMessages: (s) =>
-      s.items.flatMap((todo) =>
+      filterReadableResources("tasks", s.items).flatMap((todo) =>
         Array.isArray(todo.messages)
           ? todo.messages
               .filter((message) => !message?.isRead)
@@ -112,21 +121,26 @@ export const useTodos = defineStore("todos", {
       return this.unreadMessages.length;
     },
     search: (s) => (q: string) => {
+      const readableTodos = filterReadableResources("tasks", s.items);
       const ql = q.trim().toLowerCase();
-      if (!ql) return s.items;
-      return s.items.filter(
+      if (!ql) return readableTodos;
+      return readableTodos.filter(
         (t) =>
           t.title.toLowerCase().includes(ql) ||
           (t.notes || "").toLowerCase().includes(ql),
       );
     },
-    meetingsAll: (s) => s.meetings,
+    meetingsAll: (s) => filterReadableResources("calendar", s.meetings),
     meetingById: (s) => (id: number | string) =>
-      s.meetings.find((m) => String(m.id) === String(id)),
+      authorizeRecord(
+        "calendar",
+        s.meetings.find((m) => String(m.id) === String(id)) ?? null,
+      ),
     searchMeetings: (s) => (q: string) => {
+      const readableMeetings = filterReadableResources("calendar", s.meetings);
       const ql = q.trim().toLowerCase();
-      if (!ql) return s.meetings;
-      return s.meetings.filter(
+      if (!ql) return readableMeetings;
+      return readableMeetings.filter(
         (m) =>
           m.subject.toLowerCase().includes(ql) ||
           (m.location || "").toLowerCase().includes(ql) ||
@@ -296,10 +310,14 @@ export const useTodos = defineStore("todos", {
       patch: Partial<ToDo>,
       options: { system?: boolean } = {},
     ) {
-      if (!options.system) requireCurrentUserPermission("tasks", "update");
-
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
       if (idx === -1) return;
+      if (!options.system)
+        requireCurrentUserPermission(
+          "tasks",
+          "update",
+          mapAuthorizationResource("tasks", this.items[idx]),
+        );
       const nextPatch = { ...patch } as any;
       if ("dueAt" in nextPatch)
         nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
@@ -331,9 +349,13 @@ export const useTodos = defineStore("todos", {
       return updated;
     },
     removeTodo(id: number | string, options: { system?: boolean } = {}) {
-      if (!options.system) requireCurrentUserPermission("tasks", "delete");
-
       const idx = this.items.findIndex((t) => String(t.id) === String(id));
+      if (idx !== -1 && !options.system)
+        requireCurrentUserPermission(
+          "tasks",
+          "delete",
+          mapAuthorizationResource("tasks", this.items[idx]),
+        );
       if (idx !== -1) this.items.splice(idx, 1);
     },
     syncDealReferences(
@@ -450,10 +472,14 @@ export const useTodos = defineStore("todos", {
       patch: Partial<Meeting>,
       options: { system?: boolean } = {},
     ) {
-      if (!options.system) requireCurrentUserPermission("calendar", "update");
-
       const idx = this.meetings.findIndex((m) => String(m.id) === String(id));
       if (idx === -1) return;
+      if (!options.system)
+        requireCurrentUserPermission(
+          "calendar",
+          "update",
+          mapAuthorizationResource("calendar", this.meetings[idx]),
+        );
       const prev = this.meetings[idx];
       const startAt = patch.startAt ?? prev.startAt;
       const duration =
@@ -480,9 +506,13 @@ export const useTodos = defineStore("todos", {
     },
 
     removeMeeting(id: number | string, options: { system?: boolean } = {}) {
-      if (!options.system) requireCurrentUserPermission("calendar", "delete");
-
       const idx = this.meetings.findIndex((m) => String(m.id) === String(id));
+      if (idx !== -1 && !options.system)
+        requireCurrentUserPermission(
+          "calendar",
+          "delete",
+          mapAuthorizationResource("calendar", this.meetings[idx]),
+        );
       if (idx !== -1) this.meetings.splice(idx, 1);
     },
     // ======================================================================

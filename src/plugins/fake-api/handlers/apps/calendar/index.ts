@@ -4,6 +4,7 @@ import { HttpResponse, http } from 'msw'
 import { db } from '@db/apps/calendar/db'
 import { genId } from '@api-utils/genId'
 import {
+  filterReadableResources,
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
@@ -20,7 +21,10 @@ export const handlerAppsCalendar = [
 
     const calendars = is.array(parsedCalendars) ? parsedCalendars : undefined
 
-    const events = db.events.filter(event => calendars?.includes(event.extendedProps.calendar))
+    const events = filterReadableResources(
+      "calendar",
+      db.events.filter(event => calendars?.includes(event.extendedProps.calendar)),
+    )
 
     return HttpResponse.json(events, { status: 200 })
   }),

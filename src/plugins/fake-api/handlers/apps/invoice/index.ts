@@ -5,13 +5,17 @@ import { destr } from "destr";
 import type { PathParams } from "msw";
 import { HttpResponse, http } from "msw";
 import {
+  filterReadableResources,
+  mapAuthorizationResource,
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
 
 export const handlerAppsInvoice = [
   http.get("/api/apps/invoice/clients", () => {
-    const clients = database.map((record) => record.quotation.client);
+    const clients = filterReadableResources("finance", database).map(
+      (record) => record.quotation.client,
+    );
     return HttpResponse.json(clients.slice(0, 5), { status: 200 });
   }),
 
@@ -85,6 +89,8 @@ export const handlerAppsInvoice = [
       });
     }
 
+    filteredRecords = filterReadableResources("finance", filteredRecords);
+
     return HttpResponse.json(
       {
         invoices: paginateArray(
@@ -99,9 +105,10 @@ export const handlerAppsInvoice = [
   }),
 
   http.get<PathParams>("/api/apps/invoice/:id", ({ params }) => {
-    const record = database.find(
-      (entry) => entry.quotation.id === Number(params.id),
-    );
+    const record =
+      filterReadableResources("finance", database).find(
+        (entry) => entry.quotation.id === Number(params.id),
+      ) ?? null;
 
     if (!record) {
       return HttpResponse.json("No invoice found with this id", {
@@ -113,17 +120,20 @@ export const handlerAppsInvoice = [
   }),
 
   http.delete("/api/apps/invoice/:id", ({ params }) => {
-    try {
-      requireCurrentUserPermission("finance", "delete");
-    } catch {
-      return permissionDeniedResponse("finance", "delete");
-    }
-
     const index = database.findIndex(
       (entry) => entry.quotation.id === Number(params.id),
     );
 
     if (index >= 0) {
+      try {
+        requireCurrentUserPermission(
+          "finance",
+          "delete",
+          mapAuthorizationResource("finance", database[index]),
+        );
+      } catch {
+        return permissionDeniedResponse("finance", "delete");
+      }
       database.splice(index, 1);
       return new HttpResponse(null, { status: 204 });
     }
