@@ -28,6 +28,17 @@ interface Props {
   executionNotice?: string | null;
   hoverMode?: boolean;
   canEdit?: boolean;
+  editDisabledReason?: string;
+  canAddTask?: boolean;
+  taskDisabledReason?: string;
+  canAddEmail?: boolean;
+  emailDisabledReason?: string;
+  canAddMeeting?: boolean;
+  meetingDisabledReason?: string;
+  canAddCall?: boolean;
+  callDisabledReason?: string;
+  canAddNote?: boolean;
+  noteDisabledReason?: string;
   hideFinancials?: boolean;
 }
 
@@ -81,6 +92,8 @@ const formatAmount = (value?: number | null) => {
 
   return Number(value).toLocaleString();
 };
+
+const defaultDisabledReason = "You do not have permission to perform this action.";
 
 const avatarText = (name?: string | null) =>
   String(name || "")
@@ -222,83 +235,108 @@ const stageProgressPercent = computed(() => {
         </div>
 
         <div class="summary-actions mt-4">
-          <VTooltip text="Task" location="top">
+          <VTooltip
+            :text="canAddTask ? 'Task' : taskDisabledReason || defaultDisabledReason"
+            location="top"
+          >
             <template #activator="{ props: tooltipProps }">
-              <VBtn
-                v-bind="tooltipProps"
-                color="secondary"
-                variant="tonal"
-                rounded="lg"
-                class="summary-action-btn"
-                aria-label="Add task"
-                @click="emit('open-add-task')"
-              >
-                <VIcon icon="tabler-checkbox" />
-              </VBtn>
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  rounded="lg"
+                  class="summary-action-btn"
+                  aria-label="Add task"
+                  :disabled="!canAddTask"
+                  @click="canAddTask ? emit('open-add-task') : undefined"
+                >
+                  <VIcon icon="tabler-checkbox" />
+                </VBtn>
+              </span>
             </template>
           </VTooltip>
 
-          <VTooltip text="Email" location="top">
+          <VTooltip
+            :text="canAddEmail ? 'Email' : emailDisabledReason || defaultDisabledReason"
+            location="top"
+          >
             <template #activator="{ props: tooltipProps }">
-              <VBtn
-                v-bind="tooltipProps"
-                color="secondary"
-                variant="tonal"
-                rounded="lg"
-                class="summary-action-btn"
-                aria-label="Add email"
-                @click="emit('open-add-email')"
-              >
-                <VIcon icon="tabler-mail" />
-              </VBtn>
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  rounded="lg"
+                  class="summary-action-btn"
+                  aria-label="Add email"
+                  :disabled="!canAddEmail"
+                  @click="canAddEmail ? emit('open-add-email') : undefined"
+                >
+                  <VIcon icon="tabler-mail" />
+                </VBtn>
+              </span>
             </template>
           </VTooltip>
 
-          <VTooltip text="Meeting" location="top">
+          <VTooltip
+            :text="canAddMeeting ? 'Meeting' : meetingDisabledReason || defaultDisabledReason"
+            location="top"
+          >
             <template #activator="{ props: tooltipProps }">
-              <VBtn
-                v-bind="tooltipProps"
-                color="secondary"
-                variant="tonal"
-                rounded="lg"
-                class="summary-action-btn"
-                aria-label="Add meeting"
-                @click="emit('open-add-meeting')"
-              >
-                <VIcon icon="tabler-calendar-plus" />
-              </VBtn>
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  rounded="lg"
+                  class="summary-action-btn"
+                  aria-label="Add meeting"
+                  :disabled="!canAddMeeting"
+                  @click="canAddMeeting ? emit('open-add-meeting') : undefined"
+                >
+                  <VIcon icon="tabler-calendar-plus" />
+                </VBtn>
+              </span>
             </template>
           </VTooltip>
 
-          <VTooltip text="Call" location="top">
+          <VTooltip
+            :text="canAddCall ? 'Call' : callDisabledReason || defaultDisabledReason"
+            location="top"
+          >
             <template #activator="{ props: tooltipProps }">
-              <VBtn
-                v-bind="tooltipProps"
-                color="secondary"
-                variant="tonal"
-                rounded="lg"
-                class="summary-action-btn"
-                aria-label="Add call"
-                @click="emit('open-add-call')"
-              >
-                <VIcon icon="tabler-phone-call" />
-              </VBtn>
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  rounded="lg"
+                  class="summary-action-btn"
+                  aria-label="Add call"
+                  :disabled="!canAddCall"
+                  @click="canAddCall ? emit('open-add-call') : undefined"
+                >
+                  <VIcon icon="tabler-phone-call" />
+                </VBtn>
+              </span>
             </template>
           </VTooltip>
 
-          <VTooltip text="Notes" location="top">
+          <VTooltip
+            :text="canAddNote ? 'Notes' : noteDisabledReason || defaultDisabledReason"
+            location="top"
+          >
             <template #activator="{ props: tooltipProps }">
-              <VBtn
-                v-bind="tooltipProps"
-                color="secondary"
-                variant="tonal"
-                rounded="lg"
-                class="summary-action-btn"
-                aria-label="Add note"
-                @click="emit('open-add-note')"
-              >
-                <VIcon icon="tabler-notes" />
-              </VBtn>
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  color="secondary"
+                  variant="tonal"
+                  rounded="lg"
+                  class="summary-action-btn"
+                  aria-label="Add note"
+                  :disabled="!canAddNote"
+                  @click="canAddNote ? emit('open-add-note') : undefined"
+                >
+                  <VIcon icon="tabler-notes" />
+                </VBtn>
+              </span>
             </template>
           </VTooltip>
         </div>
@@ -412,17 +450,26 @@ const stageProgressPercent = computed(() => {
 
                 <span v-else class="detail-row__value">No collaborators</span>
 
-                <VBtn
-                  v-if="canEdit"
-                  icon
-                  size="small"
-                  color="secondary"
-                  variant="tonal"
-                  aria-label="Add collaborators"
-                  @click="emit('open-collaborators')"
+                <VTooltip
+                  :text="canEdit ? 'Add collaborators' : editDisabledReason || defaultDisabledReason"
+                  location="top"
                 >
-                  <VIcon icon="tabler-plus" size="18" />
-                </VBtn>
+                  <template #activator="{ props: tooltipProps }">
+                    <span v-bind="tooltipProps" class="d-inline-flex">
+                      <VBtn
+                        icon
+                        size="small"
+                        color="secondary"
+                        variant="tonal"
+                        aria-label="Add collaborators"
+                        :disabled="!canEdit"
+                        @click="canEdit ? emit('open-collaborators') : undefined"
+                      >
+                        <VIcon icon="tabler-plus" size="18" />
+                      </VBtn>
+                    </span>
+                  </template>
+                </VTooltip>
               </div>
             </VListItemTitle>
           </VListItem>
@@ -439,15 +486,24 @@ const stageProgressPercent = computed(() => {
       </VCardText>
 
       <VCardText class="d-flex flex-column align-center pb-6">
-        <VBtn
-          v-if="canEdit"
-          aria-label="Edit deal"
-          variant="tonal"
-          @click="emit('edit')"
-          class="mb-2"
+        <VTooltip
+          :text="canEdit ? 'Edit deal' : editDisabledReason || defaultDisabledReason"
+          location="top"
         >
-          Edit
-        </VBtn>
+          <template #activator="{ props: tooltipProps }">
+            <span v-bind="tooltipProps" class="d-inline-flex">
+              <VBtn
+                aria-label="Edit deal"
+                variant="tonal"
+                :disabled="!canEdit"
+                @click="canEdit ? emit('edit') : undefined"
+                class="mb-2"
+              >
+                Edit
+              </VBtn>
+            </span>
+          </template>
+        </VTooltip>
       </VCardText>
     </VCard>
 

@@ -56,6 +56,10 @@ import {
   isPermissionDeniedError,
   mapAuthorizationResource,
 } from "@/utils/authorization";
+import {
+  canMutate,
+  permissionDisabledReason,
+} from "@/utils/permissionUi";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
@@ -1412,8 +1416,54 @@ const canUpdateDeal = computed(() =>
 
 const hideDealFinancials = computed(() => hasHiddenFinancials("deals"));
 
+const canCreateTask = computed(() => canMutate("tasks", "create"));
+const canUpdateTask = computed(() => canMutate("tasks", "update"));
+const canDeleteTask = computed(() => canMutate("tasks", "delete"));
+const canCreateCalendar = computed(() => canMutate("calendar", "create"));
+const canCreateJob = computed(() => canMutate("jobs", "create"));
+const canCreateFinance = computed(() => canMutate("finance", "create"));
+const canUpdateFinance = computed(() => canMutate("finance", "update"));
+const canDeleteFinance = computed(() => canMutate("finance", "delete"));
+const canApproveFinance = computed(() => canMutate("finance", "approve"));
+
+const dealUpdateDisabledReason = computed(() =>
+  permissionDisabledReason("deals", "update"),
+);
+const taskCreateDisabledReason = computed(() =>
+  permissionDisabledReason("tasks", "create"),
+);
+const taskUpdateDisabledReason = computed(() =>
+  permissionDisabledReason("tasks", "update"),
+);
+const taskDeleteDisabledReason = computed(() =>
+  permissionDisabledReason("tasks", "delete"),
+);
+const calendarCreateDisabledReason = computed(() =>
+  permissionDisabledReason("calendar", "create"),
+);
+const financeCreateDisabledReason = computed(() =>
+  hideDealFinancials.value
+    ? "Financials are hidden for this role."
+    : permissionDisabledReason("finance", "create"),
+);
+const canExecuteDeal = computed(
+  () => canUpdateDeal.value && canCreateJob.value && canCreateTask.value,
+);
+const executeDealDisabledReason = computed(() => {
+  if (dealExecutionNotice.value) return dealExecutionNotice.value;
+  if (!canUpdateDeal.value) return dealUpdateDisabledReason.value;
+  if (!canCreateJob.value) return permissionDisabledReason("jobs", "create");
+  if (!canCreateTask.value) return taskCreateDisabledReason.value;
+
+  return "";
+});
+
 const notifyDealUpdateDenied = () => {
-  notifications.push("You do not have permission to update this deal.", "warning", 3000);
+  notifications.push(dealUpdateDisabledReason.value, "warning", 3000);
+};
+
+const notifyPermissionDenied = (message: string) => {
+  notifications.push(message, "warning", 3000);
 };
 
 const executionTargetSummary = computed(() => {
@@ -1504,6 +1554,11 @@ const openEditDialog = () => {
 };
 
 const openAddNoteDialog = () => {
+  if (!canUpdateDeal.value) {
+    notifyDealUpdateDenied();
+    return;
+  }
+
   noteDraft.value = "";
   isAddNoteDialogVisible.value = true;
 };
@@ -1515,6 +1570,10 @@ const closeAddNoteDialog = () => {
 
 const saveDealNote = () => {
   if (!deal.value) return;
+  if (!canUpdateDeal.value) {
+    notifyDealUpdateDenied();
+    return;
+  }
 
   const body = noteDraft.value.trim();
   if (!body) return;
@@ -1546,6 +1605,10 @@ const saveDealNote = () => {
 
 const openCollaboratorDialog = () => {
   if (!deal.value) return;
+  if (!canUpdateDeal.value) {
+    notifyDealUpdateDenied();
+    return;
+  }
 
   collaboratorDialogValue.value = [...(deal.value.collaborators || [])];
   isCollaboratorDialogVisible.value = true;
@@ -1558,6 +1621,10 @@ const closeCollaboratorDialog = () => {
 
 const saveDealCollaborators = () => {
   if (!deal.value) return;
+  if (!canUpdateDeal.value) {
+    notifyDealUpdateDenied();
+    return;
+  }
 
   const updated = dealsStore.updateDeal(deal.value.id, {
     collaborators: [...collaboratorDialogValue.value],
@@ -1577,6 +1644,10 @@ const openExecutePreviewDialog = () => {
   const currentDeal = resolveLatestDealState();
   if (!currentDeal) return;
   if (linkedJob.value) return;
+  if (!canExecuteDeal.value) {
+    notifyPermissionDenied(executeDealDisabledReason.value);
+    return;
+  }
 
   const executedAt = new Date().toISOString();
 
@@ -1595,6 +1666,10 @@ const openExecutePreviewDialog = () => {
 const confirmDealExecution = () => {
   const currentDeal = resolveLatestDealState();
   if (!currentDeal || !executePreview.value || isExecutingDeal.value) return;
+  if (!canExecuteDeal.value) {
+    notifyPermissionDenied(executeDealDisabledReason.value);
+    return;
+  }
 
   isExecutingDeal.value = true;
   const currentDealId = currentDeal.id;
@@ -1828,6 +1903,10 @@ const saveDeal = (payload: Partial<DealProperties>) => {
 
 const openAddMeeting = () => {
   if (!deal.value) return;
+  if (!canCreateCalendar.value) {
+    notifyPermissionDenied(calendarCreateDisabledReason.value);
+    return;
+  }
 
   nextTick(() => {
     try {
@@ -1847,6 +1926,11 @@ const openAddMeeting = () => {
 
 const handleAddMeetingFromCommunication = () => {
   if (!deal.value) return;
+  if (!canCreateCalendar.value) {
+    notifyPermissionDenied(calendarCreateDisabledReason.value);
+    return;
+  }
+
   const currentDeal = deal.value;
 
   lockMeetingRelatedTo.value = true;
@@ -1868,6 +1952,11 @@ const handleAddMeetingFromCommunication = () => {
 
 const handleAddTaskFromCommunication = () => {
   if (!deal.value) return;
+  if (!canCreateTask.value) {
+    notifyPermissionDenied(taskCreateDisabledReason.value);
+    return;
+  }
+
   const currentDeal = deal.value;
 
   addTodoInitial.value = {
@@ -1890,6 +1979,11 @@ const handleAddTaskFromCommunication = () => {
 
 const handleAddCallFromCommunication = () => {
   if (!deal.value) return;
+  if (!canCreateCalendar.value) {
+    notifyPermissionDenied(calendarCreateDisabledReason.value);
+    return;
+  }
+
   const currentDeal = deal.value;
 
   nextTick(() => {
@@ -1911,10 +2005,19 @@ const handleAddCallFromCommunication = () => {
 };
 
 const onMeetingCreated = (payload: any) => {
+  if (!canCreateCalendar.value) {
+    notifyPermissionDenied(calendarCreateDisabledReason.value);
+    return;
+  }
+
   try {
     todosStore.addMeeting && todosStore.addMeeting(payload);
     notifications.push("Meeting created", "success", 3500);
   } catch (meetingError) {
+    if (isPermissionDeniedError(meetingError)) {
+      notifyPermissionDenied(calendarCreateDisabledReason.value);
+      return;
+    }
     console.error("onMeetingCreated failed:", meetingError);
     notifications.push("Meeting created", "success", 3500);
   } finally {
@@ -1925,6 +2028,10 @@ const onMeetingCreated = (payload: any) => {
 
 const openEmail = () => {
   if (!deal.value) return;
+  if (!canCreateTask.value) {
+    notifyPermissionDenied(taskCreateDisabledReason.value);
+    return;
+  }
 
   isComposeDialogVisible.value = true;
   nextTick(() => {
@@ -1943,6 +2050,10 @@ const openEmail = () => {
 
 const openAddTask = (payload: { initial: Partial<ToDo> }) => {
   if (!deal.value) return;
+  if (!canCreateTask.value) {
+    notifyPermissionDenied(taskCreateDisabledReason.value);
+    return;
+  }
 
   showImmediateDueOption.value = true;
   addTodoInitial.value = {
@@ -2028,6 +2139,11 @@ const mapSalesTaskTemplateToEditableTodo = (
 };
 
 const openEditTask = (todoId: number | string) => {
+  if (!canUpdateTask.value) {
+    notifyPermissionDenied(taskUpdateDisabledReason.value);
+    return;
+  }
+
   const todo = findDealTodoById(todoId);
   if (todo) {
     editingSalesTaskTemplateId.value = null;
@@ -2061,6 +2177,11 @@ const openEditTask = (todoId: number | string) => {
 };
 
 const deleteTask = (todoId: number | string) => {
+  if (!canDeleteTask.value) {
+    notifyPermissionDenied(taskDeleteDisabledReason.value);
+    return;
+  }
+
   const todo = findDealTodoById(todoId);
   if (todo) {
     todosStore.removeTodo(todoId);
@@ -2077,7 +2198,7 @@ const deleteTask = (todoId: number | string) => {
         ...task,
         relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
       })),
-  });
+  }, { system: true });
   if (updatedDeal) deal.value = cloneDeal(updatedDeal);
   notifications.push("Task deleted", "success", 3000);
 };
@@ -2090,6 +2211,11 @@ const handleDocumentTodoRequest = (payload: {
     avatarUrl?: string | null;
   }>;
 }) => {
+  if (!canCreateTask.value) {
+    notifyPermissionDenied(taskCreateDisabledReason.value);
+    return;
+  }
+
   showImmediateDueOption.value = false;
   addTodoInitial.value = {
     ...(payload?.initial ?? {}),
@@ -2111,6 +2237,11 @@ const handleDocumentTodoRequest = (payload: {
 };
 
 const onTodoCreated = (payload: any) => {
+  if (!canCreateTask.value) {
+    notifyPermissionDenied(taskCreateDisabledReason.value);
+    return;
+  }
+
   try {
     try {
       todosStore.init();
@@ -2123,8 +2254,12 @@ const onTodoCreated = (payload: any) => {
       });
     notifications.push("Task created", "success", 3500);
   } catch (e) {
+    if (isPermissionDeniedError(e)) {
+      notifyPermissionDenied(taskCreateDisabledReason.value);
+      return;
+    }
     console.error("onTodoCreated failed:", e);
-    notifications.push("Task created", "success", 3500);
+    notifications.push("Unable to create task", "error", 3000);
   } finally {
     isAddTodoDrawerVisible.value = false;
     showImmediateDueOption.value = false;
@@ -2136,6 +2271,11 @@ watch(isAddTodoDrawerVisible, (isOpen) => {
 });
 
 const onTodoEdited = (payload: any) => {
+  if (!canUpdateTask.value) {
+    notifyPermissionDenied(taskUpdateDisabledReason.value);
+    return;
+  }
+
   if (editingSalesTaskTemplateId.value !== null && deal.value) {
     const existingTasks = resolveDealSalesTasks(deal.value);
     const editingTask =
@@ -2165,9 +2305,13 @@ const onTodoEdited = (payload: any) => {
             },
       );
 
-      const updatedDeal = dealsStore.updateDeal(deal.value.id, {
-        salesTasks: nextSalesTasks,
-      });
+      const updatedDeal = dealsStore.updateDeal(
+        deal.value.id,
+        {
+          salesTasks: nextSalesTasks,
+        },
+        { system: true },
+      );
       if (updatedDeal) deal.value = cloneDeal(updatedDeal);
     }
 
@@ -2208,21 +2352,29 @@ watch(isEditTodoDrawerVisible, (isOpen) => {
 });
 
 const onTodoStepsEdited = (payload: { id: number | string; steps: any[] }) => {
+  if (!canUpdateTask.value) {
+    notifyPermissionDenied(taskUpdateDisabledReason.value);
+    return;
+  }
   if (editingSalesTaskTemplateId.value !== null && deal.value) {
-    const updatedDeal = dealsStore.updateDeal(deal.value.id, {
-      salesTasks: resolveDealSalesTasks(deal.value).map((task) =>
-        String(task.id) === String(payload.id)
-          ? {
-              ...task,
-              relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
-              steps: payload.steps.map((step) => ({ ...step })),
-            }
-          : {
-              ...task,
-              relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
-            },
-      ),
-    });
+    const updatedDeal = dealsStore.updateDeal(
+      deal.value.id,
+      {
+        salesTasks: resolveDealSalesTasks(deal.value).map((task) =>
+          String(task.id) === String(payload.id)
+            ? {
+                ...task,
+                relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+                steps: payload.steps.map((step) => ({ ...step })),
+              }
+            : {
+                ...task,
+                relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+              },
+        ),
+      },
+      { system: true },
+    );
     if (updatedDeal) deal.value = cloneDeal(updatedDeal);
     return;
   }
@@ -2239,6 +2391,10 @@ const closeMeetingDrawer = () => {
 
 const upsertDealEmailThread = (payload: any) => {
   if (!deal.value) return null;
+  if (!canCreateTask.value) {
+    notifyPermissionDenied(taskCreateDisabledReason.value);
+    return null;
+  }
 
   const existing = todosStore.items.find(
     (todo) =>
@@ -2272,6 +2428,11 @@ const upsertDealEmailThread = (payload: any) => {
   };
 
   if (existing) {
+    if (!canUpdateTask.value) {
+      notifyPermissionDenied(taskUpdateDisabledReason.value);
+      return existing.id;
+    }
+
     todosStore.updateTodo(existing.id, {
       messages: [...(existing.messages || []), newMessage],
     } as any);
@@ -2353,6 +2514,17 @@ watch(
           :stage-options="dealStageOptions"
           :execution-notice="dealExecutionNotice"
           :can-edit="canUpdateDeal"
+          :edit-disabled-reason="dealUpdateDisabledReason"
+          :can-add-task="canCreateTask"
+          :task-disabled-reason="taskCreateDisabledReason"
+          :can-add-email="canCreateTask"
+          :email-disabled-reason="taskCreateDisabledReason"
+          :can-add-meeting="canCreateCalendar"
+          :meeting-disabled-reason="calendarCreateDisabledReason"
+          :can-add-call="canCreateCalendar"
+          :call-disabled-reason="calendarCreateDisabledReason"
+          :can-add-note="canUpdateDeal"
+          :note-disabled-reason="dealUpdateDisabledReason"
           :hide-financials="hideDealFinancials"
           @edit="openEditDialog"
           @open-add-task="handleAddTaskFromCommunication"
@@ -2383,15 +2555,24 @@ watch(
             </VTab>
           </VTabs>
 
-          <VBtn
-            aria-label="Execute deal"
-            variant="tonal"
-            :disabled="Boolean(dealExecutionNotice)"
-            @click="openExecutePreviewDialog"
+          <VTooltip
+            :text="canExecuteDeal && !dealExecutionNotice ? 'Execute deal' : executeDealDisabledReason"
+            location="top"
           >
-            <VIcon start icon="tabler-play" />
-            Execute Deal
-          </VBtn>
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  aria-label="Execute deal"
+                  variant="tonal"
+                  :disabled="!canExecuteDeal || Boolean(dealExecutionNotice)"
+                  @click="openExecutePreviewDialog"
+                >
+                  <VIcon start icon="tabler-play" />
+                  Execute Deal
+                </VBtn>
+              </span>
+            </template>
+          </VTooltip>
         </div>
 
         <VAlert
@@ -2413,6 +2594,18 @@ watch(
             <DealItemsTab
               :deal="deal"
               :can-update-deal="canUpdateDeal"
+              :deal-update-disabled-reason="dealUpdateDisabledReason"
+              :can-create-task="canCreateTask"
+              :can-update-task="canUpdateTask"
+              :can-delete-task="canDeleteTask"
+              :task-create-disabled-reason="taskCreateDisabledReason"
+              :task-update-disabled-reason="taskUpdateDisabledReason"
+              :task-delete-disabled-reason="taskDeleteDisabledReason"
+              :can-create-finance="canCreateFinance"
+              :can-update-finance="canUpdateFinance"
+              :can-delete-finance="canDeleteFinance"
+              :can-approve-finance="canApproveFinance"
+              :finance-create-disabled-reason="financeCreateDisabledReason"
               :hide-financials="hideDealFinancials"
               @open-add-task="openAddTask"
               @open-edit-task="openEditTask"
@@ -2741,7 +2934,8 @@ watch(
       @send="
         (payload) => {
           try {
-            upsertDealEmailThread(payload);
+            const threadId = upsertDealEmailThread(payload);
+            if (!threadId) return;
             const recipients = Array.isArray(payload?.to)
               ? payload.to
               : payload?.to
@@ -2753,7 +2947,15 @@ watch(
               3500,
             );
           } catch (e) {
-            notifications.push('Email sent', 'success', 3500);
+            if (isPermissionDeniedError(e)) {
+              notifications.push(
+                'You do not have permission to create tasks.',
+                'warning',
+                3000,
+              );
+            } else {
+              notifications.push('Unable to send email', 'error', 3000);
+            }
           }
         }
       "
