@@ -1,85 +1,56 @@
 <script lang="ts" setup>
 import type { Notification } from '@layouts/types'
 
-import { useTodos } from '@/stores/todos'
+import {
+  type SystemNotificationTarget,
+  useSystemNotificationsStore,
+} from '@/stores/systemNotifications'
+import { getSignedInIdentity } from '@/utils/currentAccount'
 import { formatSystemDate } from '@core/utils/formatters'
+import { useRouter } from 'vue-router'
 
-type TodoCommentNotification = Notification & {
+type SystemBellNotification = Notification & {
   meta: {
-    todoId: number | string
-    messageId: number | string
+    systemNotificationId: number
   }
 }
 
-const todosStore = useTodos()
-todosStore.init()
+const router = useRouter()
+const systemNotificationsStore = useSystemNotificationsStore()
+systemNotificationsStore.init()
 
-const notificationIdFor = (todoId: number | string, messageId: number | string) =>
-  `${todoId}:${messageId}`
+const currentEmployeeId = computed(() => getSignedInIdentity().employeeId ?? null)
 
-const unreadMessages = computed(() =>
-  Array.isArray(todosStore.items)
-    ? todosStore.items.flatMap(todo =>
-        Array.isArray(todo.messages)
-          ? todo.messages
-              .filter(message => !message?.isRead)
-              .map(message => ({
-                todoId: todo.id,
-                todoTitle: todo.title,
-                message,
-              }))
-          : [],
-      )
-    : [],
-)
-
-const notifications = computed<TodoCommentNotification[]>(() =>
-  unreadMessages.value
+const notifications = computed<SystemBellNotification[]>(() =>
+  systemNotificationsStore
+    .forEmployee(currentEmployeeId.value)
     .slice()
     .sort(
       (a, b) =>
-        new Date(b.message.createdAt).getTime() - new Date(a.message.createdAt).getTime(),
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     )
-    .map(({ todoId, todoTitle, message }) => ({
-      id: Number(
-        notificationIdFor(todoId, message.id)
-          .split('')
-          .reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) >>> 0, 7),
-      ),
-      text: message.author?.name || 'Comment',
-      title: todoTitle,
-      subtitle: message.body,
-      time: formatSystemDate(message.createdAt),
-      isSeen: false,
+    .map(notification => ({
+      id: notification.id,
+      icon: 'tabler-bell',
+      title: notification.title,
+      subtitle: notification.body,
+      time: formatSystemDate(notification.createdAt),
+      isSeen: Boolean(notification.readAt),
       meta: {
-        todoId,
-        messageId: message.id,
+        systemNotificationId: notification.id,
       },
     })),
 )
 
 const updateReadState = (notificationIds: number[], isRead: boolean) => {
-  const targets = notifications.value.filter(notification =>
-    notificationIds.includes(notification.id),
-  )
-
-  targets.forEach(notification => {
-    const todo = todosStore.byId(notification.meta.todoId)
-    if (!todo || !Array.isArray(todo.messages)) return
-
-    todosStore.updateTodo(notification.meta.todoId, {
-      ...todo,
-      messages: todo.messages.map(message =>
-        String(message.id) === String(notification.meta.messageId)
-          ? { ...message, isRead }
-          : message,
-      ),
-    })
-  })
+  if (isRead)
+    systemNotificationsStore.markRead(notificationIds)
+  else
+    systemNotificationsStore.markUnread(notificationIds)
 }
 
 const removeNotification = (notificationId: number) => {
-  updateReadState([notificationId], true)
+  systemNotificationsStore.remove(notificationId)
 }
 
 const markRead = (notificationIds: number[]) => {
@@ -90,9 +61,37 @@ const markUnRead = (notificationIds: number[]) => {
   updateReadState(notificationIds, false)
 }
 
+const routeForTarget = (target: SystemNotificationTarget | null | undefined) => {
+  if (!target) return null
+  if (target.routeName) {
+    const params =
+      target.params ??
+      (target.entityId !== undefined && target.entityId !== null
+        ? { id: target.entityId }
+        : undefined)
+
+    return {
+      name: target.routeName,
+      params,
+      query: target.query,
+    } as any
+  }
+  if (target.path) return { path: target.path, query: target.query } as any
+
+  return null
+}
+
 const handleNotificationClick = (notification: Notification) => {
+  const systemNotification = systemNotificationsStore.items.find(
+    item => Number(item.id) === Number(notification.id),
+  )
+
   if (!notification.isSeen)
     markRead([notification.id])
+
+  const route = routeForTarget(systemNotification?.target)
+  if (route)
+    void router.push(route)
 }
 </script>
 

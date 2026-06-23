@@ -27,6 +27,7 @@ const DEMO_STORAGE_PREFIXES = [
   "app.siteSurveys.seeded.",
   "app.snaglists.",
   "app.snaglists.seeded.",
+  "app.system-notifications.",
   "app.todos.",
 ] as const;
 

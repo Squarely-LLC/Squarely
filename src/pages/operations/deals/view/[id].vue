@@ -33,6 +33,7 @@ import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import { getQuotationTopLevelDealItems } from "@/utils/dealDocumentDraft";
 import {
@@ -83,6 +84,7 @@ const contactsStore = useContactsStore();
 const employeesStore = useEmployeesStore();
 const jobsStore = useJobsStore();
 const notifications = useNotificationsStore();
+const systemNotificationsStore = useSystemNotificationsStore();
 const quotationsStore = useQuotationsStore();
 const proformasStore = useProformasStore();
 const invoicesStore = useInvoicesStore();
@@ -94,6 +96,7 @@ dealsStore.init();
 contactsStore.init();
 employeesStore.init();
 jobsStore.init();
+systemNotificationsStore.init();
 quotationsStore.init();
 proformasStore.init();
 invoicesStore.init();
@@ -1136,19 +1139,6 @@ const normalizeTaskCollaborators = (collaborators: unknown): ContactRef[] =>
     ? collaborators.map(resolveTaskCollaborator)
     : [];
 
-const employeeContactRef = (employeeId: number): ContactRef | null => {
-  const employee = employeesStore.items.find(
-    (entry) => String(entry.id) === String(employeeId),
-  );
-  if (!employee) return null;
-
-  return {
-    id: employee.id,
-    name: employee.fullName,
-    avatarUrl: employee.picture || null,
-  };
-};
-
 const notifyJobConversionRecipients = (
   executionJob: JobProperties,
   projectManagerId: number,
@@ -1167,46 +1157,33 @@ const notifyJobConversionRecipients = (
     ),
   );
   const now = new Date().toISOString();
-  const author = getSignedInAuthorRef();
   const dealLabel =
     deal.value?.code?.trim() || deal.value?.name?.trim() || `Deal #${deal.value?.id}`;
 
   return recipientIds
     .map((recipientId) => {
-      const recipient = employeeContactRef(recipientId);
+      const recipient = employeesStore.items.find(
+        (entry) => String(entry.id) === String(recipientId),
+      );
       if (!recipient) return null;
 
-      const created = todosStore.addTodo(
-        {
-          title: `Job assignment: ${executionJob.name}`,
-          collaborators: [recipient],
-          dueAt: now,
-          important: false,
-          status: "pending",
-          steps: [],
-          notes: "System notification",
-          activities: [],
-          messages: [
-            {
-              id: `job-conversion-${executionJob.id}-${recipientId}-${Date.now()}`,
-              author,
-              body: `${dealLabel} was converted to ${executionJob.name}. Owner: ${selectedJobOwnerName.value}.`,
-              createdAt: now,
-              isRead: false,
-            },
-          ],
-          relatedTo: {
-            id: executionJob.id,
-            name: executionJob.name,
-            type: "job",
-          },
+      const created = systemNotificationsStore.addNotification({
+        recipientEmployeeId: recipient.id,
+        title: `Job assignment: ${executionJob.name}`,
+        body: `${dealLabel} was converted to ${executionJob.name}. Owner: ${selectedJobOwnerName.value}.`,
+        createdAt: now,
+        type: "job-assignment",
+        target: {
+          entityType: "job",
+          entityId: executionJob.id,
+          routeName: "operations-jobs-view-id",
+          query: { tab: "milestones-goals" },
         },
-        { system: true },
-      );
+      });
 
       return created.id;
     })
-    .filter((value): value is number | string => value !== null);
+    .filter((value): value is number => value !== null);
 };
 
 const linkedJob = computed(() => {
@@ -1502,6 +1479,7 @@ const confirmDealExecution = () => {
   isExecutingDeal.value = true;
   const currentDealId = currentDeal.id;
   const createdTodoIds: Array<number | string> = [];
+  const createdNotificationIds: number[] = [];
   let createdJobId: number | string | null = null;
   const targetJob = resolveExecutionTargetJob(currentDeal);
 
@@ -1660,7 +1638,7 @@ const confirmDealExecution = () => {
       } as any);
     });
 
-    createdTodoIds.push(
+    createdNotificationIds.push(
       ...notifyJobConversionRecipients(executionJob, projectManagerId),
     );
     notifications.push(
@@ -1675,6 +1653,7 @@ const confirmDealExecution = () => {
     });
   } catch (executionError) {
     createdTodoIds.forEach((todoId) => todosStore.removeTodo(todoId));
+    systemNotificationsStore.removeMany(createdNotificationIds);
     if (createdJobId !== null) jobsStore.removeJob(createdJobId);
 
     console.error("Failed to convert deal to job", executionError);

@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { Notification } from '@layouts/types'
+import { avatarText } from '@core/utils/formatters'
 
 interface Props {
   notifications: Notification[]
@@ -11,6 +12,7 @@ interface Emit {
   (e: 'unread', value: number[]): void
   (e: 'remove', value: number): void
   (e: 'click:notification', value: Notification): void
+  (e: 'view-all'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -19,6 +21,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emit>()
+const isMenuOpen = ref(false)
 
 const isAllMarkRead = computed(() => {
   return props.notifications.some(item => item.isSeen === false)
@@ -43,6 +46,20 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
   else
     emit('read', [Id])
 }
+
+const handleNotificationClick = (notification: Notification) => {
+  emit('click:notification', notification)
+  isMenuOpen.value = false
+}
+
+const handleRemove = (notificationId: number) => {
+  emit('remove', notificationId)
+}
+
+const handleViewAll = () => {
+  emit('view-all')
+  isMenuOpen.value = false
+}
 </script>
 
 <template>
@@ -59,6 +76,7 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
     </VBadge>
 
     <VMenu
+      v-model="isMenuOpen"
       activator="parent"
       width="380px"
       :location="props.location"
@@ -117,7 +135,7 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
                 lines="one"
                 min-height="66px"
                 class="list-item-hover-class"
-                @click="$emit('click:notification', notification)"
+                @click="handleNotificationClick(notification)"
               >
                 <!-- Slot: Prepend -->
                 <!-- Handles Avatar: Image, Icon, Text -->
@@ -170,7 +188,7 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
                       size="20"
                       icon="tabler-x"
                       class="visible-in-hover"
-                      @click="$emit('remove', notification.id)"
+                      @click.stop="handleRemove(notification.id)"
                     />
                   </div>
                 </div>
@@ -197,6 +215,7 @@ const toggleReadUnread = (isSeen: boolean, Id: number) => {
           <VBtn
             block
             size="small"
+            @click="handleViewAll"
           >
             View All Notifications
           </VBtn>
