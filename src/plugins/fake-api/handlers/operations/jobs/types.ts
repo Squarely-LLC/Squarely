@@ -56,6 +56,7 @@ export interface JobProperties {
   type: JobType;
   flag: JobFlag;
   relatedTo?: number | null;
+  projectManagerId?: number | null;
   collaborators: number[];
   note?: string | null;
   stakeholders: JobStakeholder[];

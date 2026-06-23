@@ -53,6 +53,11 @@ const collaboratorOptions = computed(() => getEmployeeOptions());
 const defaultCollaboratorValue = computed(() =>
   Number(findCurrentUserOption(collaboratorOptions.value)?.value ?? NaN),
 );
+const defaultProjectManagerValue = computed(() =>
+  Number.isFinite(defaultCollaboratorValue.value)
+    ? defaultCollaboratorValue.value
+    : null,
+);
 const defaultCollaborators = () =>
   Number.isFinite(defaultCollaboratorValue.value)
     ? [defaultCollaboratorValue.value]
@@ -79,6 +84,7 @@ const localJob = ref<Partial<JobProperties>>({
   type: "Architecture",
   flag: "Normal",
   relatedTo: null,
+  projectManagerId: defaultProjectManagerValue.value,
   collaborators: defaultCollaborators(),
   note: "",
 });
@@ -99,6 +105,7 @@ const resetForm = () => {
     type: "Architecture",
     flag: "Normal",
     relatedTo: null,
+    projectManagerId: defaultProjectManagerValue.value,
     collaborators: defaultCollaborators(),
     note: "",
   };
@@ -241,6 +248,48 @@ const onCancel = () => {
                         }}</span>
                       </VAvatar>
                     </template>
+                  </VListItem>
+                </template>
+              </AppSelect>
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="localJob.projectManagerId"
+                label="Project Manager"
+                placeholder="Select project manager"
+                :items="collaboratorOptions"
+                item-title="title"
+                item-value="value"
+                :rules="[requiredValidator]"
+              >
+                <template #item="{ item, props }">
+                  <VListItem v-bind="props">
+                    <template #prepend>
+                      <VAvatar
+                        size="28"
+                        :color="item?.raw?.avatar ? undefined : 'primary'"
+                        :class="
+                          item?.raw?.avatar
+                            ? null
+                            : 'text-white font-weight-medium'
+                        "
+                      >
+                        <VImg
+                          v-if="item?.raw?.avatar"
+                          :src="item.raw.avatar"
+                          alt="avatar"
+                        />
+                        <span
+                          v-else
+                          class="text-caption text-white font-weight-bold"
+                          >{{ avatarText(item?.raw?.title) }}</span
+                        >
+                      </VAvatar>
+                    </template>
+
+                    <VListItemSubtitle v-if="item?.raw?.position">
+                      {{ item.raw.position }}
+                    </VListItemSubtitle>
                   </VListItem>
                 </template>
               </AppSelect>

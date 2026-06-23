@@ -16,7 +16,14 @@ import type { PropType } from "vue";
 import { computed, defineComponent, nextTick, reactive, ref, watch } from "vue";
 import { useTheme } from "vuetify";
 
-const props = defineProps<{ dealId: number | string }>();
+const props = defineProps<{
+  canCreateTask?: boolean;
+  canUpdateDeal?: boolean;
+  dealId: number | string;
+  dealUpdateDisabledReason?: string;
+  hideFinancials?: boolean;
+  taskCreateDisabledReason?: string;
+}>();
 const theme = useTheme();
 
 const emit = defineEmits<{
@@ -301,6 +308,30 @@ const linkedFinanceDocs = computed<DealDocumentRow[]>(() => [
 const isReadonlyDocument = (doc: JobDocument | DealDocumentRow) =>
   Boolean((doc as DealDocumentRow).isReadonly);
 
+const defaultDisabledReason =
+  "You do not have permission to perform this action.";
+const dealUpdateReason = computed(
+  () => props.dealUpdateDisabledReason || defaultDisabledReason,
+);
+const taskCreateReason = computed(
+  () => props.taskCreateDisabledReason || defaultDisabledReason,
+);
+const hiddenFinancialReason = "Financials are hidden for this role.";
+const canMutateDocuments = computed(() => Boolean(props.canUpdateDeal));
+const canCreateDocumentTodo = computed(() => Boolean(props.canCreateTask));
+const isLinkedFinanceDocument = (doc: JobDocument | DealDocumentRow) =>
+  Boolean((doc as DealDocumentRow).linkedRecordKind);
+const canShareDocument = (doc: JobDocument | DealDocumentRow) =>
+  !(props.hideFinancials && isLinkedFinanceDocument(doc));
+const shareDisabledReason = (doc: JobDocument | DealDocumentRow) =>
+  props.hideFinancials && isLinkedFinanceDocument(doc)
+    ? hiddenFinancialReason
+    : defaultDisabledReason;
+
+const notifyDenied = (message: string) => {
+  notifications.push(message, "warning", 3000);
+};
+
 const docsList = computed<DealDocumentRow[]>(() => {
   const fromStore = deal.value;
   const docs = localDocs.value ?? fromStore?.documents ?? [];
@@ -385,6 +416,11 @@ const form = reactive<Partial<JobDocument>>({
 });
 
 function openAdd() {
+  if (!canMutateDocuments.value) {
+    notifyDenied(dealUpdateReason.value);
+    return;
+  }
+
   editing.value = null;
   dialogDoc.value = null;
   dialogOpen.value = true;
@@ -399,6 +435,10 @@ const updateItemsPerPage = (value: number | string) => {
 
 function openEdit(d: JobDocument) {
   if (isReadonlyDocument(d)) return;
+  if (!canMutateDocuments.value) {
+    notifyDenied(dealUpdateReason.value);
+    return;
+  }
 
   editing.value = d;
   dialogDoc.value = d;
@@ -407,6 +447,11 @@ function openEdit(d: JobDocument) {
 
 async function openPreview(d: JobDocument) {
   if (!d || !d.fileUrl) return;
+  if (!canShareDocument(d)) {
+    notifyDenied(shareDisabledReason(d));
+    return;
+  }
+
   const raw = String(d.fileUrl || "").trim();
 
   const openUrl = (url: string) => {
@@ -490,6 +535,10 @@ async function openPreview(d: JobDocument) {
 
 function removeDocument(d: JobDocument) {
   if (isReadonlyDocument(d)) return;
+  if (!canMutateDocuments.value) {
+    notifyDenied(dealUpdateReason.value);
+    return;
+  }
 
   const currentDeal = dealsStore.byId(props.dealId);
   if (!currentDeal) return;
@@ -517,6 +566,10 @@ function removeDocument(d: JobDocument) {
 
 function confirmRemoveDocument(d: JobDocument) {
   if (isReadonlyDocument(d)) return;
+  if (!canMutateDocuments.value) {
+    notifyDenied(dealUpdateReason.value);
+    return;
+  }
 
   deleteCandidate.value = d;
   isConfirmDeleteVisible.value = true;
@@ -535,6 +588,11 @@ function cancelRemove() {
 }
 
 function createTodoForDocument(d: JobDocument) {
+  if (!canCreateDocumentTodo.value) {
+    notifyDenied(taskCreateReason.value);
+    return;
+  }
+
   openAddTodoDrawerForDocument(d);
 }
 
@@ -569,6 +627,11 @@ function onAddTodoSaved(payload: any) {
 }
 
 function emailUserForDocument(_d: JobDocument) {
+  if (!canShareDocument(_d)) {
+    notifyDenied(shareDisabledReason(_d));
+    return;
+  }
+
   openEmailForDocument(_d).catch(() => {
     notifications.push("Failed to open email", "error", 2500);
   });
@@ -635,6 +698,11 @@ async function openEmailForDocument(d: JobDocument) {
 }
 
 async function whatsappUserForDocument(d: JobDocument) {
+  if (!canShareDocument(d)) {
+    notifyDenied(shareDisabledReason(d));
+    return;
+  }
+
   const notifications = useNotificationsStore();
 
   let url: string | undefined = undefined;
@@ -678,6 +746,11 @@ async function whatsappUserForDocument(d: JobDocument) {
 }
 
 function onDialogSave(payload: JobDocument) {
+  if (!canMutateDocuments.value) {
+    notifyDenied(dealUpdateReason.value);
+    return;
+  }
+
   const currentDeal = dealsStore.byId(props.dealId);
   if (!currentDeal) return;
 
@@ -776,7 +849,22 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
             class="app-user-search-filter d-flex align-center flex-wrap gap-4"
           >
             <div class="d-flex align-center">
-              <VBtn prepend-icon="tabler-plus" @click="openAdd">Document</VBtn>
+              <VTooltip
+                :text="canMutateDocuments ? 'Add document' : dealUpdateReason"
+                location="top"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <span v-bind="tooltipProps" class="d-inline-flex">
+                    <VBtn
+                      prepend-icon="tabler-plus"
+                      :disabled="!canMutateDocuments"
+                      @click="openAdd"
+                    >
+                      Document
+                    </VBtn>
+                  </span>
+                </template>
+              </VTooltip>
             </div>
           </div>
         </VCardText>
@@ -881,11 +969,26 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           <template #item.actions="{ item }">
             <div class="document-cell document-cell--actions">
               <IconBtn
-                :disabled="isReadonlyDocument(item)"
-                @click="openEdit(item)"
+                :disabled="isReadonlyDocument(item) || !canMutateDocuments"
+                @click="
+                  !isReadonlyDocument(item) && canMutateDocuments
+                    ? openEdit(item)
+                    : undefined
+                "
               >
                 <VIcon icon="tabler-edit" />
               </IconBtn>
+              <VTooltip
+                v-if="isReadonlyDocument(item) || !canMutateDocuments"
+                activator="parent"
+                location="top"
+              >
+                {{
+                  isReadonlyDocument(item)
+                    ? "Linked finance documents are edited from Finance."
+                    : dealUpdateReason
+                }}
+              </VTooltip>
 
               <VBtn icon variant="text" color="medium-emphasis">
                 <VIcon icon="tabler-dots-vertical" />
@@ -894,6 +997,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                     <VListItem
                       @click.prevent="openPreview(item)"
                       v-if="item.fileUrl"
+                      :disabled="!canShareDocument(item)"
                     >
                       <template #prepend>
                         <VIcon icon="tabler-eye" />
@@ -901,14 +1005,20 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                       <VListItemTitle>View</VListItemTitle>
                     </VListItem>
 
-                    <VListItem @click.prevent="emailUserForDocument(item)">
+                    <VListItem
+                      :disabled="!canShareDocument(item)"
+                      @click.prevent="emailUserForDocument(item)"
+                    >
                       <template #prepend>
                         <VIcon icon="tabler-mail" />
                       </template>
                       <VListItemTitle>Email</VListItemTitle>
                     </VListItem>
 
-                    <VListItem @click.prevent="whatsappUserForDocument(item)">
+                    <VListItem
+                      :disabled="!canShareDocument(item)"
+                      @click.prevent="whatsappUserForDocument(item)"
+                    >
                       <template #prepend>
                         <VIcon icon="tabler-brand-whatsapp" />
                       </template>
@@ -917,7 +1027,10 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 
                     <VDivider />
 
-                    <VListItem @click.prevent="createTodoForDocument(item)">
+                    <VListItem
+                      :disabled="!canCreateDocumentTodo"
+                      @click.prevent="createTodoForDocument(item)"
+                    >
                       <template #prepend>
                         <VIcon icon="tabler-list-check" />
                       </template>
@@ -927,7 +1040,10 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                     <template v-if="!isReadonlyDocument(item)">
                       <VDivider />
 
-                      <VListItem @click.prevent="confirmRemoveDocument(item)">
+                      <VListItem
+                        :disabled="!canMutateDocuments"
+                        @click.prevent="confirmRemoveDocument(item)"
+                      >
                         <template #prepend>
                           <VIcon icon="tabler-trash" color="error" />
                         </template>
@@ -980,7 +1096,12 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
           <VBtn variant="tonal" color="secondary" @click="cancelRemove">
             Cancel
           </VBtn>
-          <VBtn variant="tonal" color="error" @click="performRemoveConfirmed">
+          <VBtn
+            variant="tonal"
+            color="error"
+            :disabled="!canMutateDocuments"
+            @click="performRemoveConfirmed"
+          >
             Delete
           </VBtn>
         </VCardActions>

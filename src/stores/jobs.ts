@@ -14,6 +14,7 @@ import {
   mapAuthorizationResource,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
+import { getSignedInIdentity } from "@/utils/currentAccount";
 const STORAGE_KEY = "app.jobs.v2";
 function safeClone<T extends object>(value: T, label: string): T {
   const raw = toRaw(value) as T;
@@ -61,11 +62,24 @@ function cloneDocument(document: JobDocument): JobDocument {
 function cloneJob(job: JobProperties): JobProperties {
   const raw = toRaw(job) as JobProperties;
   try {
-    return safeClone(raw, "job");
+    const cloned = safeClone(raw, "job");
+    const projectManagerId =
+      cloned.projectManagerId ?? resolveProjectManagerId(cloned);
+    return {
+      ...cloned,
+      projectManagerId,
+      collaborators: normalizeCollaborators(
+        cloned.collaborators,
+        projectManagerId,
+      ),
+    };
   } catch (error) {
     console.warn("JSON clone failed while cloning job:", error);
+    const projectManagerId = raw.projectManagerId ?? resolveProjectManagerId(raw);
     return {
       ...raw,
+      projectManagerId,
+      collaborators: normalizeCollaborators(raw.collaborators, projectManagerId),
       stakeholders: ensureStakeholders(raw.stakeholders),
       milestones: ensureMilestones(raw.milestones),
       goals: ensureGoals(raw.goals),
@@ -119,11 +133,50 @@ function saveToStorage(jobs: JobProperties[]) {
     console.warn("Failed to save jobs to storage:", error);
   }
 }
+function toNumberId(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+function currentEmployeePersonId() {
+  const identity = getSignedInIdentity();
+  return (
+    toNumberId(identity.employeeId) ??
+    toNumberId(identity.personId) ??
+    toNumberId(identity.id)
+  );
+}
+function normalizeCollaborators(
+  collaborators: JobProperties["collaborators"] | undefined,
+  projectManagerId: number | null,
+) {
+  const normalized = Array.isArray(collaborators)
+    ? collaborators
+        .map((value) => toNumberId(value))
+        .filter((value): value is number => value !== null)
+    : [];
+
+  if (projectManagerId && !normalized.includes(projectManagerId))
+    normalized.unshift(projectManagerId);
+
+  return Array.from(new Set(normalized));
+}
+function resolveProjectManagerId(payload: Partial<JobProperties>) {
+  return (
+    toNumberId(payload.projectManagerId) ??
+    (Array.isArray(payload.collaborators)
+      ? (payload.collaborators
+          .map((value) => toNumberId(value))
+          .find((value): value is number => value !== null) ?? null)
+      : null) ??
+    currentEmployeePersonId()
+  );
+}
 function normaliseJob(
   payload: Partial<JobProperties>,
   assignedId: number,
 ): JobProperties {
   const now = new Date().toISOString();
+  const projectManagerId = resolveProjectManagerId(payload);
   return {
     id: assignedId,
     name: payload.name?.trim() || "Untitled Job",
@@ -138,9 +191,8 @@ function normaliseJob(
     type: payload.type ?? "Architecture",
     flag: payload.flag ?? "Normal",
     relatedTo: payload.relatedTo ?? null,
-    collaborators: Array.isArray(payload.collaborators)
-      ? payload.collaborators.map((value) => Number(value))
-      : [],
+    projectManagerId,
+    collaborators: normalizeCollaborators(payload.collaborators, projectManagerId),
     note: payload.note?.trim() || undefined,
     stakeholders: ensureStakeholders(payload.stakeholders),
     milestones: ensureMilestones(payload.milestones),
@@ -153,12 +205,24 @@ function mergeJob(
   original: JobProperties,
   patch: Partial<JobProperties>,
 ): JobProperties {
+  const projectManagerId =
+    patch.projectManagerId === undefined
+      ? (original.projectManagerId ?? resolveProjectManagerId(original))
+      : resolveProjectManagerId({
+          ...original,
+          ...patch,
+          projectManagerId: patch.projectManagerId,
+        });
   const merged: JobProperties = {
     ...original,
     ...patch,
-    collaborators: Array.isArray(patch.collaborators)
-      ? patch.collaborators.map((value) => Number(value))
-      : original.collaborators,
+    projectManagerId,
+    collaborators: normalizeCollaborators(
+      Array.isArray(patch.collaborators)
+        ? patch.collaborators
+        : original.collaborators,
+      projectManagerId,
+    ),
     stakeholders: ensureStakeholders(
       patch.stakeholders ?? original.stakeholders,
     ),

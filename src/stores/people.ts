@@ -25,8 +25,6 @@ import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
 const STORAGE_KEY = "app.people.v2";
-const LEGACY_CONTACTS_KEY = "app.contacts.v3";
-const LEGACY_EMPLOYEES_KEY = "app.employees.v2";
 
 export type PersonProfileKind = "crm" | "hr";
 
@@ -579,13 +577,7 @@ const loadInitialPeople = () => {
   const storedPeople = loadJsonArray<PersonProperties>(STORAGE_KEY);
   if (storedPeople?.length) return clonePeopleArray(storedPeople);
 
-  const legacyContacts =
-    loadJsonArray<ContactProperties>(LEGACY_CONTACTS_KEY) ?? contactsDb.users;
-  const legacyEmployees =
-    loadJsonArray<EmployeeProperties>(LEGACY_EMPLOYEES_KEY) ??
-    employeesDb.users;
-
-  return mergePeopleSources(legacyContacts, legacyEmployees).people;
+  return mergePeopleSources(contactsDb.users, employeesDb.users).people;
 };
 
 export const usePeopleStore = defineStore("people", {

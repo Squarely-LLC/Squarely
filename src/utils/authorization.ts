@@ -295,6 +295,7 @@ export const mapAuthorizationResource = (
     collectIds(
       nested(
         "ownerId",
+        "projectManagerId",
         "createdBy",
         "createdById",
         "createdBy.accountId",
@@ -413,9 +414,7 @@ export const getCurrentTeamMemberIds = () => {
 const loadPeopleForAuth = () => {
   if (typeof window !== "undefined") {
     try {
-      const parsed =
-        JSON.parse(localStorage.getItem("app.people.v2") || "[]") ||
-        JSON.parse(localStorage.getItem("app.people.v1") || "[]");
+      const parsed = JSON.parse(localStorage.getItem("app.people.v2") || "[]");
       if (Array.isArray(parsed) && parsed.length) return parsed;
     } catch {}
   }

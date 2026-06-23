@@ -30,7 +30,10 @@ type ActivityItem = {
   }>;
 };
 
-const props = defineProps<{ deal: DealProperties }>();
+const props = defineProps<{
+  deal: DealProperties;
+  hideFinancials?: boolean;
+}>();
 
 const todosStore = useTodos();
 todosStore.init();
@@ -273,7 +276,9 @@ const timelineActivities = computed<ActivityItem[]>(() => {
       title: entry.title || "Financial entry",
       body: (entry as any).note || "",
       date: entry.createdAt || null,
-      meta: `${entry.type} - ${Number(entry.amount || 0).toLocaleString()}`,
+      meta: props.hideFinancials
+        ? `${entry.type} - Hidden`
+        : `${entry.type} - ${Number(entry.amount || 0).toLocaleString()}`,
       linkedTo: [],
     })),
   ];

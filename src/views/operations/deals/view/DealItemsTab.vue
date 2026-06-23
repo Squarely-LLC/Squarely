@@ -181,6 +181,16 @@ const canUseFinanceCreate = computed(
     Boolean(props.canUpdateDeal) &&
     !props.hideFinancials,
 );
+const canUseFinanceUpdate = computed(
+  () => Boolean(props.canUpdateFinance) && !props.hideFinancials,
+);
+const canUseFinanceDelete = computed(
+  () => Boolean(props.canDeleteFinance) && !props.hideFinancials,
+);
+const canUseFinanceApprove = computed(
+  () => Boolean(props.canApproveFinance) && !props.hideFinancials,
+);
+const canUseDocumentShare = computed(() => !props.hideFinancials);
 
 cataloguesStore.init();
 configStore.init();
@@ -215,6 +225,31 @@ const canStartFinanceCreateFlow = () => {
   notifications.push(financeCreateReason.value, "warning", 3000);
 
   return false;
+};
+
+const financeUpdateReason = computed(() =>
+  props.hideFinancials
+    ? "Financials are hidden for this role."
+    : "You do not have permission to update finance.",
+);
+const financeDeleteReason = computed(() =>
+  props.hideFinancials
+    ? "Financials are hidden for this role."
+    : "You do not have permission to delete finance.",
+);
+const financeApproveReason = computed(() =>
+  props.hideFinancials
+    ? "Financials are hidden for this role."
+    : "You do not have permission to approve finance.",
+);
+const financeShareReason = computed(() =>
+  props.hideFinancials
+    ? "Financials are hidden for this role."
+    : defaultDisabledReason,
+);
+
+const notifyFinanceDenied = (reason: string) => {
+  notifications.push(reason, "warning", 3000);
 };
 
 interface DerivedGoal {
@@ -1684,7 +1719,7 @@ const buildImportedSalesTaskTemplates = (
 watch(
   () => props.deal.items,
   () => materializeImportedSalesTasks(),
-  { deep: true, immediate: true },
+  { deep: true },
 );
 
 const nextItemId = () => {
@@ -3461,9 +3496,6 @@ const CONVERTED_LOCK_MESSAGE =
   "This document is converted and locked. Create a revision instead.";
 const REVISION_LOCK_MESSAGE =
   "Older revisions cannot be edited or deleted. Use the latest revision.";
-const APPROVAL_REQUIRED_MESSAGE =
-  "Client approval is required before conversion.";
-
 const getDocumentRecordsByKind = (kind: DealPreviewKind) => {
   if (kind === "quotation") return dealQuotationRecords.value;
   if (kind === "proforma") return dealProformaRecords.value;
@@ -3564,6 +3596,11 @@ const requestApproval = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canUseFinanceApprove.value) {
+    notifyFinanceDenied(financeApproveReason.value);
+    return;
+  }
+
   if (getApprovalAction(kind, record).disabled) return;
 
   const patch = { approvalRequestedAt: new Date().toISOString() } as any;
@@ -3575,19 +3612,8 @@ const requestApproval = (
   notifications.push("Approval requested.", "success", 2500);
 };
 
-const isQuotationClientApproved = (status?: string | null) => {
-  const normalized = normalizeDocumentStatus(status);
-
-  return normalized === "approval" || normalized === "approved";
-};
-
-const isQuotationConversionApprovalBlocked = (
-  record: DealDocumentPanelRecord,
-) => !isQuotationClientApproved(record.status);
-
 const canConvertQuotationRecord = (record: DealDocumentPanelRecord) =>
-  !isDocumentConversionBlocked(record) &&
-  !isQuotationConversionApprovalBlocked(record);
+  !isDocumentConversionBlocked(record);
 
 const resolveCatalogueRecordForDocuments = (
   id: string,
@@ -4060,6 +4086,11 @@ const openDocumentEdit = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canUseFinanceUpdate.value) {
+    notifyFinanceDenied(financeUpdateReason.value);
+    return;
+  }
+
   const lockReason = getDocumentLockReason(kind, record);
   if (lockReason) {
     notifications.push(lockReason, "warning", 3000);
@@ -4084,6 +4115,11 @@ const openDocumentPreviewAction = (
   record: DealDocumentPanelRecord,
   action: "download" | "print",
 ) => {
+  if (!canUseDocumentShare.value) {
+    notifyFinanceDenied(financeShareReason.value);
+    return;
+  }
+
   ensurePreviewActionFrame(kind, record.id);
   pendingPreviewAction.value = { kind, recordId: record.id, action };
 
@@ -4135,6 +4171,11 @@ const openDocumentEmailDialog = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canUseDocumentShare.value) {
+    notifyFinanceDenied(financeShareReason.value);
+    return;
+  }
+
   pendingEmailDocument.value = { kind, recordId: record.id };
   isSendDocumentDialogOpen.value = true;
 
@@ -4175,6 +4216,11 @@ const deleteDocumentRecord = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canUseFinanceDelete.value) {
+    notifyFinanceDenied(financeDeleteReason.value);
+    return;
+  }
+
   const lockReason = getDocumentLockReason(kind, record);
   if (lockReason) {
     notifications.push(lockReason, "warning", 3000);
@@ -4192,6 +4238,8 @@ const openDocumentRevisionDraft = async (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canStartFinanceCreateFlow()) return;
+
   await router.push({
     name: getAddRouteName(kind),
     query: { revisionOf: String(record.id) },
@@ -4208,6 +4256,8 @@ const openDocumentDuplicateDraft = async (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canStartFinanceCreateFlow()) return;
+
   await router.push({
     name: getAddRouteName(kind),
     query: { duplicateOf: String(record.id) },
@@ -4249,13 +4299,7 @@ const convertQuotationToProforma = (
   }
 
   if (!canConvertQuotationRecord(record)) {
-    notifications.push(
-      isQuotationConversionApprovalBlocked(record)
-        ? APPROVAL_REQUIRED_MESSAGE
-        : "Quotation cannot be converted.",
-      "warning",
-      3000,
-    );
+    notifications.push("Quotation cannot be converted.", "warning", 3000);
 
     return null;
   }
@@ -4341,6 +4385,8 @@ const convertDocumentToInvoice = (
   kind: Extract<DealPreviewKind, "quotation" | "proforma">,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canStartFinanceCreateFlow()) return null;
+
   if (kind === "proforma") return convertProformaRecordToInvoice(record);
 
   const createdProforma = convertQuotationToProforma(record);
@@ -4423,12 +4469,6 @@ const openQuotationConversionFlow = (
     return;
   }
 
-  if (isQuotationConversionApprovalBlocked(record)) {
-    notifications.push(APPROVAL_REQUIRED_MESSAGE, "warning", 3000);
-
-    return;
-  }
-
   performQuotationConversion(kind, record, products);
 };
 
@@ -4436,6 +4476,8 @@ const requestQuotationConversion = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   record: DealDocumentPanelRecord,
 ) => {
+  if (!canStartFinanceCreateFlow()) return;
+
   if (isDocumentConversionBlocked(record)) {
     notifications.push("Quotation cannot be converted.", "warning", 3000);
 
@@ -4450,25 +4492,9 @@ const confirmQuotationConversion = () => {
   const kind = pendingQuotationConversionKind.value;
   if (!record || !kind) return;
 
-  if (isQuotationConversionApprovalBlocked(record)) {
-    quotationsStore.updateQuotation(record.id, {
-      quotation: { quotationStatus: "Approval" },
-    } as never);
-  }
-
   performQuotationConversion(
     kind,
-    {
-      ...record,
-      status: "Approval",
-      record: {
-        ...record.record,
-        quotation: {
-          ...record.record.quotation,
-          quotationStatus: "Approval",
-        },
-      },
-    },
+    record,
     selectedQuotationConversionProducts.value,
   );
   closeQuotationConversionDialog();
@@ -4494,6 +4520,10 @@ const openDocumentPayment = (
   record: DealDocumentPanelRecord,
 ) => {
   if (kind !== "invoice") return;
+  if (!canUseFinanceUpdate.value) {
+    notifyFinanceDenied(financeUpdateReason.value);
+    return;
+  }
 
   selectedPaymentDocument.value = { id: record.id, kind };
   invoicePaymentDrawerOpen.value = true;
@@ -4511,6 +4541,10 @@ const openDocumentPaymentFromPanel = (
 const saveInvoicePayment = (payment: InvoicePaymentInput) => {
   const target = selectedPaymentDocument.value;
   if (!target || target.kind !== "invoice") return;
+  if (!canUseFinanceUpdate.value) {
+    notifyFinanceDenied(financeUpdateReason.value);
+    return;
+  }
 
   const updated = invoicesStore.recordPayment(target.id, payment);
   const latestPayment = updated?.payments?.at(-1);
@@ -6094,27 +6128,7 @@ const finishQuotationConversionFromSelection = (
     selectedItems,
   });
 
-  if (isQuotationConversionApprovalBlocked(record)) {
-    quotationsStore.updateQuotation(record.id, {
-      quotation: { quotationStatus: "Approval" },
-    } as never);
-  }
-
-  performQuotationConversion(
-    kind,
-    {
-      ...record,
-      status: "Approval",
-      record: {
-        ...record.record,
-        quotation: {
-          ...record.record.quotation,
-          quotationStatus: "Approval",
-        },
-      },
-    },
-    draft.purchasedProducts,
-  );
+  performQuotationConversion(kind, record, draft.purchasedProducts);
   resetDocumentWorkflowState();
 };
 
@@ -9073,6 +9087,10 @@ const openEditTask = (taskId: number | string) => {
                               <VMenu activator="parent">
                                 <VList density="compact">
                                   <VListItem
+                                    :disabled="
+                                      !canUseFinanceUpdate ||
+                                      Boolean(getDocumentLockReason(panel.key, record))
+                                    "
                                     @click="openDocumentEdit(panel.key, record)"
                                   >
                                     <template #prepend>
@@ -9081,6 +9099,10 @@ const openEditTask = (taskId: number | string) => {
                                     <VListItemTitle>Edit</VListItemTitle>
                                   </VListItem>
                                   <VListItem
+                                    :disabled="
+                                      !canUseFinanceCreate ||
+                                      Boolean(getDocumentLockReason(panel.key, record))
+                                    "
                                     @click="
                                       reviseDocumentRecord(panel.key, record)
                                     "
@@ -9091,6 +9113,7 @@ const openEditTask = (taskId: number | string) => {
                                     <VListItemTitle>Revise</VListItemTitle>
                                   </VListItem>
                                   <VListItem
+                                    :disabled="!canUseFinanceCreate"
                                     @click="
                                       duplicateDocumentRecord(panel.key, record)
                                     "
@@ -9102,8 +9125,8 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     :disabled="
-                                      getApprovalAction(panel.key, record)
-                                        .disabled
+                                      !canUseFinanceApprove ||
+                                      getApprovalAction(panel.key, record).disabled
                                     "
                                     @click="requestApproval(panel.key, record)"
                                   >
@@ -9121,6 +9144,10 @@ const openEditTask = (taskId: number | string) => {
                                     v-if="
                                       panel.key === 'quotation' &&
                                       canCreateDocumentSource('proforma')
+                                    "
+                                    :disabled="
+                                      !canUseFinanceCreate ||
+                                      isDocumentConversionBlocked(record)
                                     "
                                     @click="
                                       requestQuotationConversion(
@@ -9141,6 +9168,10 @@ const openEditTask = (taskId: number | string) => {
                                       panel.key === 'quotation' &&
                                       canCreateDocumentSource('invoice')
                                     "
+                                    :disabled="
+                                      !canUseFinanceCreate ||
+                                      isDocumentConversionBlocked(record)
+                                    "
                                     @click="
                                       requestQuotationConversion(
                                         'invoice',
@@ -9160,7 +9191,10 @@ const openEditTask = (taskId: number | string) => {
                                       panel.key === 'proforma' &&
                                       canCreateDocumentSource('invoice')
                                     "
-                                    :disabled="isDocumentConverted(record)"
+                                    :disabled="
+                                      !canUseFinanceCreate ||
+                                      isDocumentConverted(record)
+                                    "
                                     @click="
                                       convertDocumentToInvoice(
                                         'proforma',
@@ -9177,6 +9211,7 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     v-if="canPayDocument(panel.key, record)"
+                                    :disabled="!canUseFinanceUpdate"
                                     @click="
                                       openDocumentPaymentFromPanel(
                                         panel.key,
@@ -9189,7 +9224,7 @@ const openEditTask = (taskId: number | string) => {
                                     </template>
                                     <VListItemTitle>Pay</VListItemTitle>
                                   </VListItem>
-                                  <VListItem>
+                                  <VListItem :disabled="!canUseDocumentShare">
                                     <template #prepend>
                                       <VIcon icon="tabler-share" />
                                     </template>
@@ -9204,6 +9239,7 @@ const openEditTask = (taskId: number | string) => {
                                       activator="parent"
                                       location="end"
                                       open-on-hover
+                                      :disabled="!canUseDocumentShare"
                                     >
                                       <VList density="compact">
                                         <VListItem
@@ -9254,6 +9290,10 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     class="text-error"
+                                    :disabled="
+                                      !canUseFinanceDelete ||
+                                      Boolean(getDocumentLockReason(panel.key, record))
+                                    "
                                     @click="
                                       deleteDocumentRecord(panel.key, record)
                                     "
@@ -9410,7 +9450,7 @@ const openEditTask = (taskId: number | string) => {
 
           <VCardText>
             <VAlert type="info" variant="tonal" class="mb-4">
-              Select the client-approved items, phases, or periods to convert.
+              Select the items, phases, or periods to convert.
             </VAlert>
 
             <div class="d-flex flex-column gap-3">

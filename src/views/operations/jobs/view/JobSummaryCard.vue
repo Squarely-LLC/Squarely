@@ -70,6 +70,12 @@ const decoratedCollaborators = computed(() => {
     };
   });
 });
+const projectManager = computed(() => {
+  const managerId = Number(props.job.projectManagerId ?? NaN);
+  if (!Number.isFinite(managerId)) return null;
+
+  return props.employeeDirectory.get(managerId) ?? null;
+});
 const noteText = computed(() => props.job.note?.trim() || "No notes available");
 const collaboratorNames = computed(() => {
   if (!decoratedCollaborators.value.length) return "--";
@@ -183,6 +189,17 @@ const collaboratorNames = computed(() => {
               Related To:
               <div class="d-inline-block text-body-1">
                 {{ relatedContact?.name || "--" }}
+              </div>
+            </h6>
+          </VListItemTitle>
+        </VListItem>
+
+        <VListItem>
+          <VListItemTitle>
+            <h6 class="text-h6">
+              Project Manager:
+              <div class="d-inline-block text-body-1">
+                {{ projectManager?.name || "--" }}
               </div>
             </h6>
           </VListItemTitle>

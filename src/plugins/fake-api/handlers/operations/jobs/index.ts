@@ -13,6 +13,11 @@ import {
 
 db.jobs = db.jobs.map((job) => ({ ...job }));
 
+const positiveNumber = (value: unknown) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+};
+
 export const handlerOperationsJobs = [
   http.get("/api/operations/jobs", ({ request }) => {
     const url = new URL(request.url);
@@ -132,6 +137,17 @@ export const handlerOperationsJobs = [
     }
 
     const job = (await request.json()) as Partial<JobProperties>;
+    const projectManagerId = positiveNumber(job.projectManagerId);
+    const collaborators = Array.from(
+      new Set([
+        ...(projectManagerId ? [projectManagerId] : []),
+        ...(Array.isArray(job.collaborators)
+          ? job.collaborators
+              .map((value) => positiveNumber(value))
+              .filter((value): value is number => value !== null)
+          : []),
+      ]),
+    );
 
     const newJob: JobProperties = {
       id: db.jobs.length ? Math.max(...db.jobs.map((j) => j.id)) + 1 : 1,
@@ -145,7 +161,8 @@ export const handlerOperationsJobs = [
       type: job.type || "Architecture",
       flag: job.flag || "Normal",
       relatedTo: job.relatedTo || null,
-      collaborators: job.collaborators || [],
+      projectManagerId: projectManagerId ?? collaborators[0] ?? null,
+      collaborators,
       note: job.note || null,
       stakeholders: job.stakeholders || [],
       milestones: job.milestones || [],
@@ -180,10 +197,27 @@ export const handlerOperationsJobs = [
       return permissionDeniedResponse("jobs", "update");
     }
 
-    db.jobs[jobIndex] = {
+    const merged = {
       ...db.jobs[jobIndex],
       ...updates,
       id: jobId,
+    };
+    const projectManagerId = positiveNumber(merged.projectManagerId);
+    const collaborators = Array.from(
+      new Set([
+        ...(projectManagerId ? [projectManagerId] : []),
+        ...(Array.isArray(merged.collaborators)
+          ? merged.collaborators
+              .map((value) => positiveNumber(value))
+              .filter((value): value is number => value !== null)
+          : []),
+      ]),
+    );
+
+    db.jobs[jobIndex] = {
+      ...merged,
+      projectManagerId: projectManagerId ?? collaborators[0] ?? null,
+      collaborators,
     };
 
     return HttpResponse.json(db.jobs[jobIndex], { status: 200 });

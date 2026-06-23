@@ -155,9 +155,6 @@ const CONVERTED_LOCK_MESSAGE =
   "This document is converted and locked. Create a revision instead.";
 const REVISION_LOCK_MESSAGE =
   "Older revisions cannot be edited or deleted. Use the latest revision.";
-const APPROVAL_REQUIRED_MESSAGE =
-  "Client approval is required before conversion.";
-
 const getQuotationLabel = (quotationId: number) => {
   return (
     quotationsStore.byId(quotationId)?.quotation.quoteNumber ||
@@ -680,15 +677,6 @@ const normalizeQuotationStatus = (status?: string | null) =>
     .trim()
     .toLowerCase();
 
-const isQuotationClientApprovedStatus = (status?: string | null) => {
-  const normalized = normalizeQuotationStatus(status);
-
-  return normalized === "approval" || normalized === "approved";
-};
-
-const isQuotationConversionBlocked = (status?: string | null) =>
-  !isQuotationClientApprovedStatus(status);
-
 const isQuotationClosedForConversion = (status?: string | null) =>
   ["converted", "lost", "canceled", "cancelled"].includes(
     normalizeQuotationStatus(status),
@@ -1094,11 +1082,6 @@ const performQuotationConversion = (
     return null;
   }
 
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
-    return null;
-  }
-
   const products = selectedProducts?.length
     ? selectedProducts
     : quotationRecord.purchasedProducts;
@@ -1145,12 +1128,6 @@ const openQuotationConversionFlow = (
     pendingQuotationConversionKind.value = kind;
     initializeQuotationConversionSelection(options);
     quotationConversionDialogVisible.value = true;
-
-    return;
-  }
-
-  if (isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)) {
-    pushFinanceWarning(APPROVAL_REQUIRED_MESSAGE);
 
     return;
   }
@@ -1203,16 +1180,6 @@ const confirmQuotationConversion = () => {
   const quotationId = pendingQuotationConversionId.value;
   const kind = pendingQuotationConversionKind.value;
   if (quotationId === null || !kind) return;
-
-  const quotationRecord = quotationsStore.byId(quotationId);
-  if (
-    quotationRecord &&
-    isQuotationConversionBlocked(quotationRecord.quotation.quotationStatus)
-  ) {
-    quotationsStore.updateQuotation(quotationId, {
-      quotation: { quotationStatus: "Approval" },
-    });
-  }
 
   performQuotationConversion(
     quotationId,
@@ -1963,7 +1930,7 @@ watch(totalQuotations, (value) => {
 
       <VCardText>
         <VAlert type="info" variant="tonal" class="mb-4">
-          Select the client-approved items, phases, or periods to convert.
+          Select the items, phases, or periods to convert.
         </VAlert>
 
         <div class="d-flex flex-column gap-3">

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ContactRef, ToDo } from "@/data/schema";
 import type { InvoiceRecord } from "@/plugins/fake-api/handlers/apps/invoice/types";
@@ -47,6 +48,7 @@ import {
   getEmployeeRefs,
 } from "@/utils/peopleOptions";
 import {
+  findCurrentUserOption,
   getSignedInAuthorRef,
   getSignedInIdentity,
 } from "@/utils/currentAccount";
@@ -123,6 +125,7 @@ const isExecutePreviewDialogVisible = ref(false);
 const isExecutingDeal = ref(false);
 const executePreviewError = ref<string | null>(null);
 const executePreview = ref<DealExecutionPreview | null>(null);
+const selectedJobOwnerId = ref<number | null>(null);
 const isAddNoteDialogVisible = ref(false);
 const noteDraft = ref("");
 const isCollaboratorDialogVisible = ref(false);
@@ -289,12 +292,6 @@ const resolveJobConfigMilestones = (record: CatalogueRecord | null) => {
     : [];
 };
 
-const resolveSalesTasks = (record: CatalogueRecord | null) => {
-  if (!record || !("salesTasks" in record)) return [];
-
-  return Array.isArray(record.salesTasks) ? record.salesTasks : [];
-};
-
 const cloneDealSalesTaskTemplate = (
   task: DealSalesTaskTemplate,
 ): DealSalesTaskTemplate => ({
@@ -323,112 +320,6 @@ const cloneDealSalesTaskTemplate = (
   sourceItemId: task.sourceItemId ?? null,
   sourceTaskId: task.sourceTaskId ?? null,
 });
-
-const nextDealSalesTaskId = (tasks: DealSalesTaskTemplate[]) => {
-  const ids = tasks
-    .map((task) => Number(task.id))
-    .filter((id) => Number.isFinite(id) && id > 0);
-
-  return ids.length ? Math.max(...ids) + 1 : 1;
-};
-
-const isImportedDealSalesTask = (task: DealSalesTaskTemplate) =>
-  task.sourceItemId !== null && task.sourceItemId !== undefined;
-
-const isManualDealTodo = (todo: ToDo, dealId: number | string) => {
-  if (!todo?.relatedTo) return false;
-  if (String(todo.relatedTo.id) !== String(dealId)) return false;
-  if (todo.relatedTo.type !== "deal") return false;
-
-  return (
-    !String((todo as any).milestoneId ?? "").trim() &&
-    !String((todo as any).goalId ?? "").trim()
-  );
-};
-
-const buildSalesTaskMigrationKey = (task: {
-  title?: string | null;
-  notes?: string | null;
-  afterWhen?: string | null;
-  startTrigger?: CatalogueTaskStartTrigger | ToDo["startTrigger"] | null;
-}) =>
-  [
-    String(task.title || "").trim(),
-    String(task.notes || "").trim(),
-    String(task.afterWhen || "").trim(),
-    String(task.startTrigger?.type || "").trim(),
-    String(task.startTrigger?.goalId ?? "").trim(),
-    String(task.startTrigger?.taskId ?? "").trim(),
-  ].join("::");
-
-const migrateLegacyDealSalesTasksToTodos = (
-  currentDeal: DealProperties,
-): DealProperties => {
-  const storedSalesTasks = Array.isArray(currentDeal.salesTasks)
-    ? currentDeal.salesTasks.map((task) => cloneDealSalesTaskTemplate(task))
-    : [];
-  const legacyManualTasks = storedSalesTasks.filter(
-    (task) => !isImportedDealSalesTask(task),
-  );
-
-  if (!legacyManualTasks.length) return currentDeal;
-
-  const existingManualTodoKeys = new Set(
-    (todosStore.items || [])
-      .filter((todo) => isManualDealTodo(todo, currentDeal.id))
-      .map((todo) => buildSalesTaskMigrationKey(todo as any)),
-  );
-  const relatedTo = {
-    id: currentDeal.id,
-    name: currentDeal.code || `Deal #${currentDeal.id}`,
-    type: "deal",
-  } as const;
-
-  legacyManualTasks.forEach((task) => {
-    const migrationKey = buildSalesTaskMigrationKey(task);
-    if (existingManualTodoKeys.has(migrationKey)) return;
-
-    todosStore.addTodo({
-      title: task.title,
-      collaborators: normalizeTaskCollaborators(task.collaborators),
-      dueAt: new Date().toISOString(),
-      afterWhen: task.afterWhen ?? null,
-      startTrigger: task.startTrigger
-        ? {
-            type: task.startTrigger.type,
-            goalId: task.startTrigger.goalId ?? null,
-            taskId: task.startTrigger.taskId ?? null,
-          }
-        : null,
-      status:
-        task.status === "in_progress" ||
-        task.status === "for_review" ||
-        task.status === "completed"
-          ? task.status
-          : "pending",
-      notes: task.notes || "",
-      important: Boolean(task.important),
-      attachment: task.attachment ? { ...task.attachment } : null,
-      relatedTo,
-      steps: Array.isArray(task.steps)
-        ? task.steps.map((step) => ({ ...step }))
-        : [],
-    } as any);
-    existingManualTodoKeys.add(migrationKey);
-  });
-
-  const retainedSalesTasks = storedSalesTasks.filter(isImportedDealSalesTask);
-  const updatedDeal = dealsStore.updateDeal(currentDeal.id, {
-    salesTasks: retainedSalesTasks,
-  });
-
-  return (
-    updatedDeal ?? {
-      ...currentDeal,
-      salesTasks: retainedSalesTasks,
-    }
-  );
-};
 
 const resolveDealSalesTasks = (
   currentDeal: DealProperties,
@@ -470,7 +361,7 @@ const resolveDealSalesTasks = (
       : currentDealRelatedTo;
   };
 
-  const storedSalesTasks = Array.isArray(currentDeal.salesTasks)
+  return Array.isArray(currentDeal.salesTasks)
     ? currentDeal.salesTasks.map((task) =>
         cloneDealSalesTaskTemplate({
           ...task,
@@ -479,183 +370,6 @@ const resolveDealSalesTasks = (
         }),
       )
     : [];
-  let nextId = nextDealSalesTaskId(storedSalesTasks);
-  const importedFallbackTasks = (currentDeal.items || [])
-    .filter((item) => !item.parentItemId)
-    .flatMap((item) => {
-      const record = item.catalogueItemId
-        ? cataloguesStore.recordById(
-            item.catalogueItemId,
-            item.catalogueType || undefined,
-          )
-        : null;
-
-      return resolveSalesTasks(record).map((task, index) =>
-        cloneDealSalesTaskTemplate({
-          ...task,
-          id: nextId++,
-          relatedTo: currentDealRelatedTo,
-          sourceItemId: item.id,
-          sourceTaskId: task.id ?? index + 1,
-        }),
-      );
-    });
-  const missingImportedTasks = importedFallbackTasks.filter(
-    (task) =>
-      !storedSalesTasks.some(
-        (existingTask) =>
-          Number(existingTask.sourceItemId ?? 0) ===
-            Number(task.sourceItemId ?? 0) &&
-          Number(existingTask.sourceTaskId ?? 0) ===
-            Number(task.sourceTaskId ?? 0),
-      ),
-  );
-  const legacyManualTasks = (todosStore.items || [])
-    .filter((todo) => {
-      if (!todo?.relatedTo) return false;
-      const matchesDeal =
-        todo.relatedTo.type === "deal" &&
-        String(todo.relatedTo.id) === String(currentDeal.id);
-      const matchesLinkedJob =
-        Boolean(currentLinkedJobRelatedTo) &&
-        todo.relatedTo.type === "job" &&
-        String(todo.relatedTo.id) === String(currentLinkedJobRelatedTo?.id);
-
-      if (!matchesDeal && !matchesLinkedJob) return false;
-
-      return (
-        !String(todo.milestoneId ?? "").trim() &&
-        !String(todo.goalId ?? "").trim()
-      );
-    })
-    .map((todo, index) =>
-      cloneDealSalesTaskTemplate({
-        id: nextId + index,
-        title: todo.title,
-        collaborators: normalizeTaskCollaborators(todo.collaborators),
-        afterWhen: todo.afterWhen ?? null,
-        startTrigger: (todo.startTrigger as
-          | CatalogueTaskStartTrigger
-          | null
-          | undefined) ?? {
-          type: "time",
-          goalId: null,
-          taskId: null,
-        },
-        manhours: null,
-        notes: todo.notes || "",
-        status: todo.status || "pending",
-        important: Boolean(todo.important),
-        attachment: todo.attachment ?? null,
-        relatedTo: normalizeCurrentTaskRelation(todo.relatedTo),
-        steps: Array.isArray(todo.steps)
-          ? todo.steps.map((step) => ({ ...step }))
-          : [],
-        sourceItemId: null,
-        sourceTaskId: null,
-      }),
-    )
-    .filter(
-      (task) =>
-        !storedSalesTasks.some(
-          (existingTask) =>
-            Number(existingTask.sourceItemId ?? 0) === 0 &&
-            existingTask.title === task.title &&
-            existingTask.notes === task.notes,
-        ),
-    );
-
-  return [...storedSalesTasks, ...missingImportedTasks, ...legacyManualTasks];
-};
-
-const buildSalesTaskSource = (
-  currentDeal: DealProperties,
-  itemId: number | string,
-  taskId: number | string,
-): NonNullable<ToDo["source"]> => ({
-  type: "deal-sales-task",
-  dealId: currentDeal.id,
-  itemId,
-  taskId,
-});
-
-const isGeneratedSalesTaskForSource = (
-  todo: ToDo,
-  currentDeal: DealProperties,
-  itemId: number | string,
-  taskId?: number | string | null,
-) =>
-  todo.source?.type === "deal-sales-task" &&
-  String(todo.source.dealId) === String(currentDeal.id) &&
-  String(todo.source.itemId) === String(itemId) &&
-  (taskId === null ||
-    taskId === undefined ||
-    String(todo.source.taskId) === String(taskId));
-
-const materializeImportedSalesTasksForDeal = (currentDeal: DealProperties) => {
-  resolveDealSalesTasks(currentDeal)
-    .filter(
-      (task) =>
-        task.sourceItemId !== null &&
-        task.sourceItemId !== undefined &&
-        task.sourceTaskId !== null &&
-        task.sourceTaskId !== undefined,
-    )
-    .forEach((task) => {
-      const sourceItemId = task.sourceItemId as number | string;
-      const sourceTaskId = task.sourceTaskId as number | string;
-      const existing = todosStore.items.find((todo) =>
-        isGeneratedSalesTaskForSource(
-          todo,
-          currentDeal,
-          sourceItemId,
-          sourceTaskId,
-        ),
-      );
-      const payload: Partial<ToDo> = {
-        title: task.title,
-        collaborators: normalizeTaskCollaborators(task.collaborators),
-        dueAt: task.afterWhen
-          ? resolveTaskDueAt(task.afterWhen, new Date().toISOString())
-          : new Date().toISOString(),
-        afterWhen: task.afterWhen ?? null,
-        startTrigger: task.startTrigger ?? {
-          type: "time",
-          goalId: null,
-          taskId: null,
-        },
-        status: task.status || "pending",
-        notes: task.notes || "",
-        important: Boolean(task.important),
-        attachment: task.attachment ?? null,
-        relatedTo: {
-          id: currentDeal.id,
-          name: currentDeal.code || `Deal #${currentDeal.id}`,
-          type: "deal",
-        },
-        steps: Array.isArray(task.steps)
-          ? task.steps.map((step) => ({
-              ...step,
-              collaborators: normalizeTaskCollaborators(step.collaborators),
-            }))
-          : [],
-        source: buildSalesTaskSource(currentDeal, sourceItemId, sourceTaskId),
-      };
-
-      if (existing) {
-        todosStore.updateTodo(
-          existing.id,
-          {
-            source: payload.source,
-            relatedTo: payload.relatedTo,
-          },
-          { system: true },
-        );
-        return;
-      }
-
-      todosStore.addTodo(payload, { system: true });
-    });
 };
 
 const isDraftDealItem = (item: DealItem, record: CatalogueRecord | null) => {
@@ -1079,6 +793,7 @@ const closeExecutePreviewDialog = () => {
   isExecutingDeal.value = false;
   executePreview.value = null;
   executePreviewError.value = null;
+  selectedJobOwnerId.value = null;
 };
 
 const cloneDeal = (value: DealProperties | null) => {
@@ -1092,10 +807,8 @@ const resolveLatestDealState = () => {
   const latest = dealsStore.byId(currentId);
 
   if (latest) {
-    const migrated = migrateLegacyDealSalesTasksToTodos(latest);
-    materializeImportedSalesTasksForDeal(migrated);
-    deal.value = cloneDeal(migrated);
-    return migrated;
+    deal.value = cloneDeal(latest);
+    return latest;
   }
 
   return deal.value;
@@ -1106,9 +819,7 @@ const resolveDeal = () => {
   const found = dealsStore.byId(route.params.id);
 
   if (found) {
-    const migrated = migrateLegacyDealSalesTasksToTodos(found);
-    materializeImportedSalesTasksForDeal(migrated);
-    deal.value = cloneDeal(migrated);
+    deal.value = cloneDeal(found);
     error.value = null;
   } else {
     deal.value = null;
@@ -1307,6 +1018,43 @@ const dealBillingToBeInvoiced = computed(() =>
 );
 
 const dealCollaboratorOptions = computed(() => getEmployeeOptions());
+const jobOwnerOptions = computed(() => getEmployeeOptions());
+
+const numericEmployeeId = (value: unknown) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+};
+
+const resolveDefaultJobOwnerId = (currentDeal: DealProperties) => {
+  const currentUserOption = findCurrentUserOption(jobOwnerOptions.value);
+  const currentUserId = numericEmployeeId(currentUserOption?.value);
+  if (currentUserId) return currentUserId;
+
+  const optionIds = new Set(
+    jobOwnerOptions.value
+      .map((option) => numericEmployeeId(option.value))
+      .filter((value): value is number => value !== null),
+  );
+  const dealCollaboratorId = (currentDeal.collaborators || [])
+    .map((value) => {
+      const collaborator = resolveDealCollaborator(value);
+      return numericEmployeeId(collaborator?.employeeId ?? value);
+    })
+    .find((value): value is number => value !== null && optionIds.has(value));
+
+  return dealCollaboratorId ?? null;
+};
+
+const selectedJobOwnerName = computed(() => {
+  const ownerId = selectedJobOwnerId.value;
+  if (!ownerId) return "--";
+
+  return (
+    jobOwnerOptions.value.find(
+      (option) => String(option.value) === String(ownerId),
+    )?.title ?? `Employee #${ownerId}`
+  );
+});
 
 const dealLinkedEntities = computed(() => {
   const entries: Array<any> = [];
@@ -1388,6 +1136,79 @@ const normalizeTaskCollaborators = (collaborators: unknown): ContactRef[] =>
     ? collaborators.map(resolveTaskCollaborator)
     : [];
 
+const employeeContactRef = (employeeId: number): ContactRef | null => {
+  const employee = employeesStore.items.find(
+    (entry) => String(entry.id) === String(employeeId),
+  );
+  if (!employee) return null;
+
+  return {
+    id: employee.id,
+    name: employee.fullName,
+    avatarUrl: employee.picture || null,
+  };
+};
+
+const notifyJobConversionRecipients = (
+  executionJob: JobProperties,
+  projectManagerId: number,
+) => {
+  const owner = employeesStore.items.find(
+    (entry) => String(entry.id) === String(projectManagerId),
+  );
+  const managerIds = Array.isArray(owner?.employment?.reportToIds)
+    ? owner.employment.reportToIds
+    : [];
+  const recipientIds = Array.from(
+    new Set(
+      [projectManagerId, ...managerIds]
+        .map((value) => numericEmployeeId(value))
+        .filter((value): value is number => value !== null),
+    ),
+  );
+  const now = new Date().toISOString();
+  const author = getSignedInAuthorRef();
+  const dealLabel =
+    deal.value?.code?.trim() || deal.value?.name?.trim() || `Deal #${deal.value?.id}`;
+
+  return recipientIds
+    .map((recipientId) => {
+      const recipient = employeeContactRef(recipientId);
+      if (!recipient) return null;
+
+      const created = todosStore.addTodo(
+        {
+          title: `Job assignment: ${executionJob.name}`,
+          collaborators: [recipient],
+          dueAt: now,
+          important: false,
+          status: "pending",
+          steps: [],
+          notes: "System notification",
+          activities: [],
+          messages: [
+            {
+              id: `job-conversion-${executionJob.id}-${recipientId}-${Date.now()}`,
+              author,
+              body: `${dealLabel} was converted to ${executionJob.name}. Owner: ${selectedJobOwnerName.value}.`,
+              createdAt: now,
+              isRead: false,
+            },
+          ],
+          relatedTo: {
+            id: executionJob.id,
+            name: executionJob.name,
+            type: "job",
+          },
+        },
+        { system: true },
+      );
+
+      return created.id;
+    })
+    .filter((value): value is number | string => value !== null);
+};
+
 const linkedJob = computed(() => {
   const linkedJobId = Number(deal.value?.linkedJobId ?? NaN);
   if (!Number.isFinite(linkedJobId)) return null;
@@ -1403,7 +1224,7 @@ const dealExecutionNotice = computed(() => {
     linkedJob.value.name?.trim() ||
     "linked job";
 
-  return `Already executed into ${linkedJobLabel}.`;
+  return `Already converted to ${linkedJobLabel}.`;
 });
 
 const currentDealResource = computed(() =>
@@ -1654,10 +1475,12 @@ const openExecutePreviewDialog = () => {
   try {
     executePreview.value = buildExecutionPreview(currentDeal, executedAt);
     executePreviewError.value = null;
+    selectedJobOwnerId.value = resolveDefaultJobOwnerId(currentDeal);
   } catch (previewError) {
-    console.error("Failed to build deal execution preview", previewError);
+    console.error("Failed to build deal conversion preview", previewError);
     executePreview.value = null;
-    executePreviewError.value = "Unable to build execution preview.";
+    executePreviewError.value = "Unable to build conversion preview.";
+    selectedJobOwnerId.value = null;
   }
 
   isExecutePreviewDialogVisible.value = true;
@@ -1670,6 +1493,11 @@ const confirmDealExecution = () => {
     notifyPermissionDenied(executeDealDisabledReason.value);
     return;
   }
+  const projectManagerId = numericEmployeeId(selectedJobOwnerId.value);
+  if (!projectManagerId) {
+    notifications.push("Select a job owner before converting.", "warning", 3000);
+    return;
+  }
 
   isExecutingDeal.value = true;
   const currentDealId = currentDeal.id;
@@ -1679,6 +1507,9 @@ const confirmDealExecution = () => {
 
   try {
     const preview = executePreview.value;
+    const jobCollaborators = Array.from(
+      new Set([projectManagerId, ...preview.job.collaborators]),
+    );
     const stakeholderContactId = Number(preview.job.relatedTo ?? NaN);
     const stakeholders = Number.isFinite(stakeholderContactId)
       ? [
@@ -1700,7 +1531,8 @@ const confirmDealExecution = () => {
         type: preview.job.type,
         flag: preview.job.flag,
         relatedTo: preview.job.relatedTo,
-        collaborators: [...preview.job.collaborators],
+        projectManagerId,
+        collaborators: jobCollaborators,
         note: preview.job.note,
         milestones: [],
         goals: [],
@@ -1828,8 +1660,11 @@ const confirmDealExecution = () => {
       } as any);
     });
 
+    createdTodoIds.push(
+      ...notifyJobConversionRecipients(executionJob, projectManagerId),
+    );
     notifications.push(
-      `Deal executed into ${executionJob.name} with ${preview.summary.jobTaskCount} tasks`,
+      `Deal converted to job ${executionJob.name} with ${preview.summary.jobTaskCount} tasks`,
       "success",
       4000,
     );
@@ -1842,10 +1677,10 @@ const confirmDealExecution = () => {
     createdTodoIds.forEach((todoId) => todosStore.removeTodo(todoId));
     if (createdJobId !== null) jobsStore.removeJob(createdJobId);
 
-    console.error("Failed to execute deal", executionError);
+    console.error("Failed to convert deal to job", executionError);
     executePreviewError.value =
-      "Execution failed. Created changes were rolled back.";
-    notifications.push("Failed to execute deal", "error", 4000);
+      "Conversion failed. Created changes were rolled back.";
+    notifications.push("Failed to convert deal to job", "error", 4000);
     isExecutingDeal.value = false;
   }
 };
@@ -2556,19 +2391,19 @@ watch(
           </VTabs>
 
           <VTooltip
-            :text="canExecuteDeal && !dealExecutionNotice ? 'Execute deal' : executeDealDisabledReason"
+            :text="canExecuteDeal && !dealExecutionNotice ? 'Convert to job' : executeDealDisabledReason"
             location="top"
           >
             <template #activator="{ props: tooltipProps }">
               <span v-bind="tooltipProps" class="d-inline-flex">
                 <VBtn
-                  aria-label="Execute deal"
+                  aria-label="Convert to job"
                   variant="tonal"
                   :disabled="!canExecuteDeal || Boolean(dealExecutionNotice)"
                   @click="openExecutePreviewDialog"
                 >
                   <VIcon start icon="tabler-play" />
-                  Execute Deal
+                  Convert to Job
                 </VBtn>
               </span>
             </template>
@@ -2614,12 +2449,20 @@ watch(
           </VWindowItem>
 
           <VWindowItem>
-            <DealCommunicationTab :deal="deal" />
+            <DealCommunicationTab
+              :deal="deal"
+              :hide-financials="hideDealFinancials"
+            />
           </VWindowItem>
 
           <VWindowItem>
             <DealDocumentsTab
               :deal-id="deal.id"
+              :can-update-deal="canUpdateDeal"
+              :can-create-task="canCreateTask"
+              :hide-financials="hideDealFinancials"
+              :deal-update-disabled-reason="dealUpdateDisabledReason"
+              :task-create-disabled-reason="taskCreateDisabledReason"
               @open-add-todo="handleDocumentTodoRequest"
             />
           </VWindowItem>
@@ -2661,12 +2504,12 @@ watch(
     />
 
     <VDialog v-model="isExecutePreviewDialogVisible" max-width="840">
-      <DialogCloseBtn @click="isExecutePreviewDialogVisible = false" />
+      <DialogCloseBtn @click="closeExecutePreviewDialog" />
       <VCard>
         <VCardItem>
-          <VCardTitle>Confirm Deal Execution</VCardTitle>
+          <VCardTitle>Convert to Job</VCardTitle>
           <VCardSubtitle>
-            Review job creation, milestones, goals, and tasks before confirming.
+            Select the job owner and review job creation, milestones, goals, and tasks before confirming.
           </VCardSubtitle>
         </VCardItem>
 
@@ -2681,6 +2524,17 @@ watch(
           </VAlert>
 
           <template v-else-if="executePreview">
+            <AppSelect
+              v-model="selectedJobOwnerId"
+              class="mb-4"
+              :items="jobOwnerOptions"
+              item-title="title"
+              item-value="value"
+              label="Job Owner"
+              placeholder="Select job owner"
+              :rules="[requiredValidator]"
+            />
+
             <VRow class="mb-2">
               <VCol cols="12" md="6">
                 <VCard variant="tonal" class="pa-4 h-100">
@@ -2701,9 +2555,10 @@ watch(
 
               <VCol cols="12" md="6">
                 <VCard variant="tonal" class="pa-4 h-100">
-                  <div class="text-overline mb-2">Execution Summary</div>
+                  <div class="text-overline mb-2">Conversion Summary</div>
                   <div class="d-flex flex-column gap-1 text-body-2">
                     <span>{{ executionTargetSummary }}</span>
+                    <span>Owner: {{ selectedJobOwnerName }}</span>
                     <span>
                       {{ executePreview.summary.milestoneCount }} milestones
                     </span>
@@ -2830,10 +2685,10 @@ watch(
           <VBtn
             color="primary"
             :loading="isExecutingDeal"
-            :disabled="!executePreview || Boolean(executePreviewError)"
+            :disabled="!executePreview || Boolean(executePreviewError) || !selectedJobOwnerId"
             @click="confirmDealExecution"
           >
-            Confirm Execution
+            Convert to Job
           </VBtn>
         </VCardActions>
       </VCard>

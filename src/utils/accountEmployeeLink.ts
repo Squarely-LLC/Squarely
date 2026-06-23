@@ -2,7 +2,7 @@ import { db as employeesDb } from "@/plugins/fake-api/handlers/apps/employees/db
 import type { EmployeeProperties } from "@/plugins/fake-api/handlers/apps/employees/types";
 import { employeeToPerson, type PersonProperties } from "@/stores/people";
 
-const PEOPLE_STORAGE_KEY = "app.people.v1";
+const PEOPLE_STORAGE_KEY = "app.people.v2";
 
 const normalizeEmail = (email?: string | null) =>
   String(email ?? "")

@@ -10,6 +10,8 @@ declare global {
   const CONTACT_REQUIREMENT_OPTIONS: typeof import('./src/utils/crmContactRequirement')['CONTACT_REQUIREMENT_OPTIONS']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const DEFAULT_DOCUMENT_SOURCE_MODES: typeof import('./src/utils/documentSourceModes')['DEFAULT_DOCUMENT_SOURCE_MODES']
+  const DEMO_DATA_VERSION: typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION']
+  const DEMO_DATA_VERSION_KEY: typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION_KEY']
   const EffectScope: typeof import('vue')['EffectScope']
   const PERMISSION_DENIED_MESSAGE: typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']
   const PermissionDeniedError: typeof import('./src/utils/authorization')['PermissionDeniedError']
@@ -90,6 +92,7 @@ declare global {
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
   const ensureAccountEmployeeLink: typeof import('./src/utils/accountEmployeeLink')['ensureAccountEmployeeLink']
+  const ensureCleanDemoDataVersion: typeof import('./src/utils/demoDataReset')['ensureCleanDemoDataVersion']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterDealDocumentItemsByBillingMode: typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']
   const filterReadableResources: typeof import('./src/utils/authorization')['filterReadableResources']
@@ -530,6 +533,8 @@ declare module 'vue' {
     readonly CONTACT_REQUIREMENT_OPTIONS: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['CONTACT_REQUIREMENT_OPTIONS']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly DEFAULT_DOCUMENT_SOURCE_MODES: UnwrapRef<typeof import('./src/utils/documentSourceModes')['DEFAULT_DOCUMENT_SOURCE_MODES']>
+    readonly DEMO_DATA_VERSION: UnwrapRef<typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION']>
+    readonly DEMO_DATA_VERSION_KEY: UnwrapRef<typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION_KEY']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly PERMISSION_DENIED_MESSAGE: UnwrapRef<typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']>
     readonly PermissionDeniedError: UnwrapRef<typeof import('./src/utils/authorization')['PermissionDeniedError']>
@@ -562,6 +567,7 @@ declare module 'vue' {
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
     readonly buildYearlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']>
     readonly canCurrentUser: UnwrapRef<typeof import('./src/utils/authorization')['canCurrentUser']>
+    readonly canMutate: UnwrapRef<typeof import('./src/utils/permissionUi')['canMutate']>
     readonly canReadResource: UnwrapRef<typeof import('./src/utils/authorization')['canReadResource']>
     readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
@@ -609,6 +615,7 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
     readonly ensureAccountEmployeeLink: UnwrapRef<typeof import('./src/utils/accountEmployeeLink')['ensureAccountEmployeeLink']>
+    readonly ensureCleanDemoDataVersion: UnwrapRef<typeof import('./src/utils/demoDataReset')['ensureCleanDemoDataVersion']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterDealDocumentItemsByBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['filterDealDocumentItemsByBillingMode']>
     readonly filterReadableResources: UnwrapRef<typeof import('./src/utils/authorization')['filterReadableResources']>
@@ -756,6 +763,7 @@ declare module 'vue' {
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly permissionDeniedResponse: UnwrapRef<typeof import('./src/utils/authorization')['permissionDeniedResponse']>
+    readonly permissionDisabledReason: UnwrapRef<typeof import('./src/utils/permissionUi')['permissionDisabledReason']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>

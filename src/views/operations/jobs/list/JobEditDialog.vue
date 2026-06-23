@@ -197,6 +197,19 @@ const onCancel = () => {
             </VCol>
             <VCol cols="12" md="6">
               <AppSelect
+                v-model="localJob.projectManagerId"
+                label="Project Manager"
+                placeholder="Select project manager"
+                :items="collaboratorOptions"
+                item-title="title"
+                item-value="value"
+                :rules="[requiredValidator]"
+                clearable
+                clear-icon="tabler-x"
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <AppSelect
                 v-model="localJob.collaborators"
                 label="Collaborators"
                 placeholder="Select collaborators"

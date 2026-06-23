@@ -2,6 +2,7 @@ import { createApp } from "vue";
 
 import App from "@/App.vue";
 import { store } from "@/plugins/2.pinia";
+import { ensureCleanDemoDataVersion } from "@/utils/demoDataReset";
 import { registerPlugins } from "@core/utils/plugins";
 
 // Styles
@@ -11,6 +12,8 @@ import "@styles/styles.scss";
 import { router } from "@/plugins/1.router/index";
 
 async function bootstrap() {
+  ensureCleanDemoDataVersion();
+
   // Create vue app
   const app = createApp(App);
 
