@@ -4,7 +4,7 @@ import { requiredValidator } from "@/@core/utils/validators";
 import type {
   JobFlag,
   JobProperties,
-  JobStage,
+  JobStatus,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
@@ -29,13 +29,15 @@ const isFormValid = ref(false);
 const configStore = useConfigStore();
 configStore.init();
 
-const stageOptions = computed(() => {
-  return (configStore.configurations?.crm?.jobStages || [
-    "PRPSL",
-    "In Review",
-    "Project | In Progress",
-    "RFI",
-  ]) as JobStage[];
+const statusOptions = computed(() => {
+  return (configStore.configurations?.crm?.jobStatuses || [
+    "New",
+    "Pending",
+    "In Progress",
+    "On Hold",
+    "Completed",
+    "Closed",
+  ]) as JobStatus[];
 });
 const typeOptions: JobType[] = [
   "Architecture",
@@ -47,7 +49,7 @@ const typeOptions: JobType[] = [
   "Internal",
   "Other",
 ];
-const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
+const flagOptions: JobFlag[] = ["Normal", "High"];
 const relatedContactOptions = computed(() => getSalesContactOptions());
 const collaboratorOptions = computed(() => getEmployeeOptions());
 const defaultCollaboratorValue = computed(() =>
@@ -80,7 +82,8 @@ const localJob = ref<Partial<JobProperties>>({
   startDate: null,
   endDate: null,
   location: "",
-  stage: "PRPSL",
+  stage: "New",
+  status: "New",
   type: "Architecture",
   flag: "Normal",
   relatedTo: null,
@@ -101,7 +104,8 @@ const resetForm = () => {
     startDate: null,
     endDate: null,
     location: "",
-    stage: "PRPSL",
+    stage: "New",
+    status: "New",
     type: "Architecture",
     flag: "Normal",
     relatedTo: null,
@@ -125,7 +129,10 @@ watch(
 const onSubmit = async () => {
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
-  emit("submit", { ...localJob.value });
+  emit("submit", {
+    ...localJob.value,
+    stage: localJob.value.status ?? localJob.value.stage,
+  });
   emit("update:isDialogVisible", false);
   nextTick(() => resetForm());
 };
@@ -190,10 +197,10 @@ const onCancel = () => {
             </VCol>
             <VCol cols="12" md="6">
               <AppSelect
-                v-model="localJob.stage"
-                label="Stage"
-                placeholder="Select Stage"
-                :items="stageOptions"
+                v-model="localJob.status"
+                label="Status"
+                placeholder="Select Status"
+                :items="statusOptions"
                 :rules="[requiredValidator]"
               />
             </VCol>

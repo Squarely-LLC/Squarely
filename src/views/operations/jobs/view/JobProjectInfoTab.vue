@@ -3,7 +3,7 @@ import { requiredValidator } from "@/@core/utils/validators";
 import type {
   JobFlag,
   JobProperties,
-  JobStage,
+  JobStatus,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
@@ -24,13 +24,15 @@ const notifications = useNotificationsStore();
 const configStore = useConfigStore();
 configStore.init();
 
-const stageOptions = computed(() => {
-  return (configStore.configurations?.crm?.jobStages || [
-    "PRPSL",
-    "In Review",
-    "Project | In Progress",
-    "RFI",
-  ]) as JobStage[];
+const statusOptions = computed(() => {
+  return (configStore.configurations?.crm?.jobStatuses || [
+    "New",
+    "Pending",
+    "In Progress",
+    "On Hold",
+    "Completed",
+    "Closed",
+  ]) as JobStatus[];
 });
 const typeOptions: JobType[] = [
   "Architecture",
@@ -42,7 +44,7 @@ const typeOptions: JobType[] = [
   "Internal",
   "Other",
 ];
-const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
+const flagOptions: JobFlag[] = ["Normal", "High"];
 const job = computed(() => jobsStore.byId(props.jobId));
 const relatedContactOptions = computed(() => getSalesContactOptions());
 const collaboratorOptions = computed(() => getEmployeeOptions());
@@ -64,7 +66,8 @@ const hydrateLocalJob = (target: JobProperties | null) => {
     startDate: target.startDate,
     endDate: target.endDate,
     location: target.location ?? "",
-    stage: target.stage,
+    stage: target.status ?? target.stage,
+    status: target.status ?? (target.stage as JobStatus),
     type: target.type,
     flag: target.flag,
     relatedTo: target.relatedTo ?? null,
@@ -92,6 +95,7 @@ const onSubmit = async () => {
   try {
     const updated = jobsStore.updateJob(localJob.value.id, {
       ...localJob.value,
+      stage: localJob.value.status ?? localJob.value.stage,
       collaborators: localJob.value.collaborators ?? [],
     });
     if (!updated) {
@@ -177,10 +181,10 @@ const onReset = () => {
           </VCol>
           <VCol cols="12" md="6">
             <AppSelect
-              v-model="localJob.stage"
-              label="Stage"
-              placeholder="Select Stage"
-              :items="stageOptions"
+              v-model="localJob.status"
+              label="Status"
+              placeholder="Select Status"
+              :items="statusOptions"
               :rules="[requiredValidator]"
             />
           </VCol>

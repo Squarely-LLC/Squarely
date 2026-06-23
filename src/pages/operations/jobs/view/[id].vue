@@ -4,12 +4,17 @@ import { useRouter } from "vue-router";
 
 import AddStakeholderDialog from "@/components/dialogs/AddStakeholderDialog.vue";
 import type { ToDo, ToDoStep } from "@/data/schema";
-import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import type {
+  JobProperties,
+  JobStatus,
+} from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
+import { getSignedInIdentity } from "@/utils/currentAccount";
 import {
   getContactAndEmployeeRefs,
   getEmployeeRefs,
@@ -40,7 +45,10 @@ const employeesStore = useEmployeesStore();
 employeesStore.init();
 
 const notifications = useNotificationsStore();
+const systemNotificationsStore = useSystemNotificationsStore();
+systemNotificationsStore.init();
 const todosStore = useTodos();
+todosStore.init();
 
 const cloneJob = (job: JobProperties | null) => {
   if (!job) return null;
@@ -75,6 +83,112 @@ const cloneJob = (job: JobProperties | null) => {
 const job = ref<JobProperties | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const isStatusPromptVisible = ref(false);
+const statusPromptAction = ref("");
+const statusPromptTarget = ref<JobStatus | null>(null);
+const statusPromptNeverAgain = ref(false);
+
+const jobTodos = computed(() => {
+  const currentJob = job.value;
+  if (!currentJob) return [] as ToDo[];
+  return todosStore.items.filter(
+    (todo) =>
+      todo.relatedTo &&
+      String(todo.relatedTo.id) === String(currentJob.id) &&
+      (todo.relatedTo.type ? todo.relatedTo.type === "job" : true),
+  );
+});
+
+const suggestedStatus = computed<JobStatus>(() => {
+  const currentJob = job.value;
+  if (!currentJob) return "New";
+  if ((currentJob.status ?? currentJob.stage) === "Closed") return "Closed";
+
+  const tasks = jobTodos.value;
+  const hasWork =
+    tasks.length > 0 ||
+    (currentJob.milestones?.length ?? 0) > 0 ||
+    (currentJob.goals?.length ?? 0) > 0;
+  if (!hasWork) return "New";
+  if (tasks.some((task) => task.status === "in_progress"))
+    return "In Progress";
+
+  const allTasksCompleted =
+    tasks.length > 0 && tasks.every((task) => task.status === "completed");
+  if (
+    allTasksCompleted &&
+    (currentJob.milestones?.length || currentJob.goals?.length || tasks.length)
+  )
+    return "Completed";
+  if (tasks.some((task) => task.status === "completed")) return "On Hold";
+
+  return "Pending";
+});
+
+const queueStatusSuggestion = (action: string) => {
+  const currentJob = job.value;
+  if (!currentJob || currentJob.statusAutomation?.neverPrompt) return;
+
+  const targetStatus = suggestedStatus.value;
+  const currentStatus = (currentJob.status ?? currentJob.stage) as JobStatus;
+  if (!targetStatus || targetStatus === currentStatus) return;
+
+  const identity = getSignedInIdentity();
+  const ownerId = currentJob.projectManagerId;
+  if (ownerId && String(identity.employeeId ?? "") !== String(ownerId)) {
+    systemNotificationsStore.addNotification({
+      recipientEmployeeId: ownerId,
+      title: `Status suggestion: ${currentJob.name}`,
+      body: `${action}. Suggested status: ${targetStatus}.`,
+      type: "job-status",
+      target: {
+        entityType: "job",
+        entityId: currentJob.id,
+        routeName: "operations-jobs-view-id",
+        query: { tab: "milestones-goals" },
+      },
+    });
+    return;
+  }
+
+  statusPromptAction.value = action;
+  statusPromptTarget.value = targetStatus;
+  statusPromptNeverAgain.value = false;
+  isStatusPromptVisible.value = true;
+};
+
+const closeStatusPrompt = (mode: "yes" | "no" | "ignore") => {
+  const currentJob = job.value;
+  if (!currentJob) {
+    isStatusPromptVisible.value = false;
+    return;
+  }
+
+  const automation = {
+    ...(currentJob.statusAutomation ?? {}),
+    neverPrompt:
+      statusPromptNeverAgain.value ||
+      Boolean(currentJob.statusAutomation?.neverPrompt),
+  };
+
+  if (mode === "yes" && statusPromptTarget.value) {
+    const updated = jobsStore.updateJob(currentJob.id, {
+      ...currentJob,
+      status: statusPromptTarget.value,
+      stage: statusPromptTarget.value,
+      statusAutomation: automation,
+    });
+    if (updated) job.value = cloneJob(updated);
+  } else if (statusPromptNeverAgain.value) {
+    const updated = jobsStore.updateJob(currentJob.id, {
+      ...currentJob,
+      statusAutomation: automation,
+    });
+    if (updated) job.value = cloneJob(updated);
+  }
+
+  isStatusPromptVisible.value = false;
+};
 
 const contactDirectory = computed(() => {
   const map = new Map<number, { name: string; picture: string | null }>();
@@ -687,6 +801,7 @@ const onTodoEdited = (payload: any) => {
 
   todosStore.updateTodo(payload.id, partial);
   isEditTodoDrawerVisible.value = false;
+  nextTick(() => queueStatusSuggestion("Task updated"));
 };
 
 const onTodoStepsEdited = (payload: {
@@ -705,6 +820,7 @@ const onTodoCreated = (payload: any) => {
     } catch {}
     todosStore.addTodo && todosStore.addTodo(payload);
     notifications.push("Task created", "success", 3500);
+    nextTick(() => queueStatusSuggestion("Task created"));
   } catch (e) {
     console.error("onTodoCreated failed:", e);
     notifications.push("Task created", "success", 3500);
@@ -788,6 +904,7 @@ const closeSnagDrawer = () => {
               :job-id="job.id"
               @open-add-todo="handleMilestoneGoalTodoRequest"
               @open-edit-todo="handleMilestoneGoalTodoEditRequest"
+              @status-automation-trigger="queueStatusSuggestion"
             />
           </VWindowItem>
 
@@ -813,6 +930,34 @@ const closeSnagDrawer = () => {
     <VAlert v-else-if="error" type="error" variant="tonal">
       {{ error }}
     </VAlert>
+
+    <VDialog v-model="isStatusPromptVisible" max-width="560">
+      <DialogCloseBtn @click="closeStatusPrompt('no')" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Status suggestion</VCardTitle>
+        <VCardText>
+          {{ statusPromptAction }} has happened. Do you want to change the
+          status to {{ statusPromptTarget }}?
+          <VCheckbox
+            v-model="statusPromptNeverAgain"
+            class="mt-4"
+            density="compact"
+            label="Never show again for this project"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn variant="tonal" color="secondary" @click="closeStatusPrompt('no')">
+            No
+          </VBtn>
+          <VBtn variant="tonal" color="warning" @click="closeStatusPrompt('ignore')">
+            Ignore
+          </VBtn>
+          <VBtn color="primary" @click="closeStatusPrompt('yes')">
+            Yes
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <!-- Todo Drawer -->
     <AddNewToDoDrawer

@@ -63,6 +63,28 @@ const normalizeConfigurations = (
     "Completed",
   ];
   const defaultDealStages = ["Pre-Sale", "Negotation", "Active", "Closed"];
+  const defaultJobStatuses = [
+    "New",
+    "Pending",
+    "In Progress",
+    "On Hold",
+    "Completed",
+    "Closed",
+  ];
+  const legacyJobStages = ["PRPSL", "In Review", "Project | In Progress", "RFI"];
+  const configuredJobStatuses = next.crm?.jobStatuses || [];
+  const configuredJobStages = next.crm?.jobStages || [];
+  const jobStatuses = configuredJobStatuses.length
+    ? configuredJobStatuses
+    : configuredJobStages.length &&
+        !(
+          configuredJobStages.length === legacyJobStages.length &&
+          configuredJobStages.every(
+            (stage, index) => stage === legacyJobStages[index],
+          )
+        )
+      ? configuredJobStages
+      : defaultJobStatuses;
   const configuredDealStages = next.deals?.dealStages || [];
   const dealStages =
     (configuredDealStages.length === legacyDealStages.length &&
@@ -85,6 +107,11 @@ const normalizeConfigurations = (
       documentSourceModes: normalizeDocumentSourceModes(
         next.financial?.documentSourceModes,
       ),
+    },
+    crm: {
+      ...(next.crm || {}),
+      jobStatuses,
+      jobStages: next.crm?.jobStages || legacyJobStages,
     },
     deals: {
       ...(next.deals || {}),

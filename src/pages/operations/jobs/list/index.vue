@@ -1,24 +1,32 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, toRaw, watch } from "vue";
 
+import type { ToDo } from "@/data/schema";
 import type {
   JobFlag,
   JobProperties,
-  JobStage,
+  JobStatus,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
 import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
+import { getContactAndEmployeeRefs, getEmployeeOptions } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import AddJobDialog from "@/views/operations/jobs/list/AddJobDialog.vue";
 import JobEditDialog from "@/views/operations/jobs/list/JobEditDialog.vue";
 
-type SortKey = "name" | "createdAt" | "stage" | "type" | "flag";
+type SortKey =
+  | "jobOrderNumber"
+  | "code"
+  | "name"
+  | "createdAt"
+  | "status"
+  | "type"
+  | "flag";
 type SortOrder = "asc" | "desc";
 
 type DecoratedStakeholder = {
@@ -36,6 +44,8 @@ const contactsStore = useContactsStore();
 contactsStore.init();
 
 const notifications = useNotificationsStore();
+const todosStore = useTodos();
+todosStore.init();
 const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
   null,
 );
@@ -47,7 +57,7 @@ const composeDialogRef = ref<any | null>(null);
 const isComposeDialogVisible = ref(false);
 
 const searchQuery = ref("");
-const selectedStage = ref<string | undefined>();
+const selectedStatus = ref<string | undefined>();
 const selectedType = ref<string | undefined>();
 const selectedFlag = ref<string | undefined>();
 
@@ -55,8 +65,9 @@ const sortOptions: {
   title: string;
   value: { key: SortKey; order: SortOrder };
 }[] = [
+  { title: "Job Order (A-Z)", value: { key: "jobOrderNumber", order: "asc" } },
+  { title: "Project Code (A-Z)", value: { key: "code", order: "asc" } },
   { title: "Name (A-Z)", value: { key: "name", order: "asc" } },
-  { title: "Name (Z-A)", value: { key: "name", order: "desc" } },
   { title: "Recently Added", value: { key: "createdAt", order: "desc" } },
   { title: "Oldest", value: { key: "createdAt", order: "asc" } },
 ];
@@ -69,25 +80,29 @@ const orderBy = ref<SortOrder | undefined>(selectedSort.value?.order);
 const selectedRows = ref<number[]>([]);
 
 const headers = [
-  { title: "Project", key: "project" },
-  { title: "Stage", key: "stage" },
-  { title: "Type", key: "type" },
-  { title: "Flag", key: "flag" },
-  { title: "Stakeholders", key: "stakeholders", sortable: false },
+  { title: "Job Order Number", key: "jobOrderNumber" },
+  { title: "Project Code", key: "code" },
+  { title: "Description", key: "description", sortable: false },
+  { title: "Delivery Date", key: "deliveryDate", sortable: false },
+  { title: "Progress", key: "progress", sortable: false },
+  { title: "Collaborators", key: "collaborators", sortable: false },
+  { title: "Status", key: "status" },
   { title: "Actions", key: "actions", sortable: false },
 ];
 
 const configStore = useConfigStore();
 configStore.init();
 
-const stageOptions = computed(() => {
-  const stages = configStore.configurations?.crm?.jobStages || [
-    "PRPSL",
-    "In Review",
-    "Project | In Progress",
-    "RFI",
+const statusOptions = computed(() => {
+  const statuses = configStore.configurations?.crm?.jobStatuses || [
+    "New",
+    "Pending",
+    "In Progress",
+    "On Hold",
+    "Completed",
+    "Closed",
   ];
-  return stages.map((s) => ({ title: s, value: s }));
+  return statuses.map((s) => ({ title: s, value: s }));
 });
 
 const typeOptions = [
@@ -102,7 +117,6 @@ const typeOptions = [
 ];
 
 const flagOptions = [
-  { title: "Low", value: "Low" },
   { title: "Normal", value: "Normal" },
   { title: "High", value: "High" },
 ];
@@ -113,7 +127,7 @@ watch(selectedSort, (value) => {
   page.value = 1;
 });
 
-watch([selectedStage, selectedType, selectedFlag, searchQuery], () => {
+watch([selectedStatus, selectedType, selectedFlag, searchQuery], () => {
   page.value = 1;
 });
 
@@ -176,6 +190,23 @@ const contactDirectory = computed(() => {
   });
   return map;
 });
+const collaboratorOptions = computed(() => getEmployeeOptions());
+const employeeDirectory = computed(() => {
+  const map = new Map<
+    string,
+    { id: number | string; name: string; avatar: string | null }
+  >();
+  collaboratorOptions.value.forEach((employee) => {
+    const id = employee.employeeId ?? employee.value ?? employee.id;
+    if (id === undefined || id === null) return;
+    map.set(String(id), {
+      id,
+      name: employee.title,
+      avatar: employee.avatar ?? employee.avatarUrl ?? null,
+    });
+  });
+  return map;
+});
 
 const getContactEntry = (id: number | string | null | undefined) => {
   if (id === null || id === undefined) return null;
@@ -183,13 +214,24 @@ const getContactEntry = (id: number | string | null | undefined) => {
   if (!Number.isFinite(numericId)) return null;
   return contactDirectory.value.get(numericId) ?? null;
 };
+const getEmployeeEntry = (id: number | string | null | undefined) => {
+  if (id === null || id === undefined) return null;
+  return employeeDirectory.value.get(String(id)) ?? null;
+};
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
 const matchesFilters = (job: JobProperties) => {
   const query = normalizedSearch.value;
   if (query) {
-    const haystack = [job.name, job.code, job.location]
+    const clientName = relatedContactName(job);
+    const haystack = [
+      job.jobOrderNumber,
+      job.name,
+      job.code,
+      job.location,
+      clientName,
+    ]
       .filter(Boolean)
       .map((value) => value!.toString().toLowerCase());
 
@@ -197,7 +239,7 @@ const matchesFilters = (job: JobProperties) => {
     if (!hasMatch) return false;
   }
 
-  if (selectedStage.value && job.stage !== selectedStage.value) return false;
+  if (selectedStatus.value && job.status !== selectedStatus.value) return false;
   if (selectedType.value && job.type !== selectedType.value) return false;
   if (selectedFlag.value && job.flag !== selectedFlag.value) return false;
 
@@ -206,10 +248,14 @@ const matchesFilters = (job: JobProperties) => {
 
 const normalizeSortValue = (job: JobProperties, key?: SortKey) => {
   switch (key) {
+    case "jobOrderNumber":
+      return job.jobOrderNumber ?? "";
+    case "code":
+      return job.code?.toLowerCase() ?? "";
     case "name":
       return job.name?.toLowerCase() ?? "";
-    case "stage":
-      return job.stage ?? "";
+    case "status":
+      return job.status ?? "";
     case "type":
       return job.type ?? "";
     case "flag":
@@ -259,6 +305,110 @@ const displayedJobs = computed<JobProperties[]>(() => {
 
 const totalJobs = computed(() => sortedJobs.value.length);
 
+const tasksByJobId = computed(() => {
+  const map = new Map<string, ToDo[]>();
+  todosStore.items.forEach((task) => {
+    if (!task.relatedTo || task.relatedTo.type !== "job") return;
+    const key = String(task.relatedTo.id);
+    const tasks = map.get(key) ?? [];
+    tasks.push(task);
+    map.set(key, tasks);
+  });
+  return map;
+});
+
+const jobTasks = (job: JobProperties) => tasksByJobId.value.get(String(job.id)) ?? [];
+const isTaskCompleted = (task: any) => task?.status === "completed";
+const isGoalCompleted = (job: JobProperties, goalId: number | string) => {
+  const tasks = jobTasks(job).filter(
+    (task: any) => String(task.goalId ?? "") === String(goalId),
+  );
+  return tasks.length > 0 && tasks.every(isTaskCompleted);
+};
+const isMilestoneCompleted = (
+  job: JobProperties,
+  milestoneId: number | string,
+) => {
+  const directTasks = jobTasks(job).filter(
+    (task: any) =>
+      String(task.milestoneId ?? "") === String(milestoneId) &&
+      (task.goalId === null ||
+        task.goalId === undefined ||
+        String(task.goalId).trim() === ""),
+  );
+  const goals = job.goals.filter(
+    (goal) => String(goal.milestoneId) === String(milestoneId),
+  );
+  const directComplete =
+    !directTasks.length || directTasks.every(isTaskCompleted);
+  const goalsComplete = !goals.length || goals.every((goal) => isGoalCompleted(job, goal.id));
+
+  return (directTasks.length > 0 || goals.length > 0) && directComplete && goalsComplete;
+};
+const deliveryDateByJobId = computed(() => {
+  const map = new Map<string, string | null>();
+  const now = Date.now();
+  sortedJobs.value.forEach((job) => {
+    const candidates: string[] = [];
+    job.goals.forEach((goal) => {
+      if (goal.dueDate && !isGoalCompleted(job, goal.id)) candidates.push(goal.dueDate);
+    });
+    job.milestones.forEach((milestone) => {
+      if (milestone.dueDate && !isMilestoneCompleted(job, milestone.id))
+        candidates.push(milestone.dueDate);
+    });
+
+    const datedCandidates = candidates
+      .map((value) => ({ value, time: new Date(value).getTime() }))
+      .filter((entry) => Number.isFinite(entry.time));
+    const upcoming = datedCandidates
+      .filter((entry) => entry.time >= now)
+      .sort((a, b) => a.time - b.time)[0];
+    const overdue = datedCandidates
+      .filter((entry) => entry.time < now)
+      .sort((a, b) => b.time - a.time)[0];
+
+    map.set(String(job.id), upcoming?.value ?? overdue?.value ?? job.endDate ?? null);
+  });
+  return map;
+});
+const progressByJobId = computed(() => {
+  const map = new Map<string, number>();
+  sortedJobs.value.forEach((job) => {
+    const entities: boolean[] = [
+      ...jobTasks(job).map(isTaskCompleted),
+      ...job.goals.map((goal) => isGoalCompleted(job, goal.id)),
+      ...job.milestones.map((milestone) =>
+        isMilestoneCompleted(job, milestone.id),
+      ),
+    ];
+    const progress = entities.length
+      ? Math.round((entities.filter(Boolean).length / entities.length) * 100)
+      : 0;
+    map.set(String(job.id), progress);
+  });
+  return map;
+});
+const deliveryDateForJob = (job: JobProperties) =>
+  deliveryDateByJobId.value.get(String(job.id)) ?? null;
+const progressForJob = (job: JobProperties) =>
+  progressByJobId.value.get(String(job.id)) ?? 0;
+const isOverdue = (value?: string | null) => {
+  if (!value) return false;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp < Date.now();
+};
+const formatDate = (value?: string | null) => {
+  if (!value) return "";
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return value;
+  return timestamp.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
+  });
+};
+
 const decorateStakeholders = (job: JobProperties): DecoratedStakeholder[] => {
   if (!Array.isArray(job.stakeholders)) return [];
 
@@ -282,8 +432,6 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
   switch (flag) {
     case "High":
       return "error";
-    case "Low":
-      return "secondary";
     case "Normal":
     default:
       return "primary";
@@ -291,6 +439,23 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
 };
 
 const jobAvatarColor = (flag: JobProperties["flag"]) => resolveFlagColor(flag);
+const statusColor = (status?: string | null) => {
+  switch (status) {
+    case "New":
+      return "teal";
+    case "Pending":
+    case "On Hold":
+      return "purple";
+    case "In Progress":
+      return "info";
+    case "Completed":
+      return "success";
+    case "Closed":
+      return "secondary";
+    default:
+      return "primary";
+  }
+};
 
 const relatedContactName = (job: JobProperties) => {
   const entry = getContactEntry(job.relatedTo);
@@ -347,25 +512,18 @@ const updateJob = (payload: JobProperties) => {
   }
 };
 
-const isConfirmDeleteVisible = ref(false);
-const deleteCandidateId = ref<number | null>(null);
-const isFlagDialogVisible = ref(false);
 const isStageDialogVisible = ref(false);
-const flagDialogValue = ref<JobFlag | null>(null);
-const stageDialogValue = ref<JobStage | null>(null);
-const flagDialogJobId = ref<number | null>(null);
+const statusDialogValue = ref<JobStatus | null>(null);
 const stageDialogJobId = ref<number | null>(null);
+const collaboratorDialogJob = ref<JobProperties | null>(null);
+const collaboratorDialogValue = ref<number[]>([]);
+const isCollaboratorDialogVisible = ref(false);
+const noteDialogJob = ref<JobProperties | null>(null);
+const noteDialogValue = ref("");
+const isNoteDialogVisible = ref(false);
+const callDialogJob = ref<JobProperties | null>(null);
+const isCallDialogVisible = ref(false);
 const meetingContacts = computed(() => getContactAndEmployeeRefs());
-
-const confirmDelete = (id: number) => {
-  deleteCandidateId.value = id;
-  isConfirmDeleteVisible.value = true;
-};
-
-const cancelDelete = () => {
-  isConfirmDeleteVisible.value = false;
-  deleteCandidateId.value = null;
-};
 
 const onTodoCreated = (payload: any) => {
   try {
@@ -405,6 +563,11 @@ const closeMeetingDrawer = () => {
 
 const handleJobAction = (action: string, job: JobProperties) => {
   switch (action) {
+    case "note":
+      noteDialogJob.value = cloneJob(job);
+      noteDialogValue.value = job.note ?? "";
+      isNoteDialogVisible.value = true;
+      break;
     case "todo":
       addTodoInitial.value = {
         title: `Job: ${job.name}`,
@@ -512,73 +675,73 @@ const handleJobAction = (action: string, job: JobProperties) => {
       });
       break;
     case "call":
-      notifications.push(`Call for ${job.name}`, "info", 2500);
-      break;
-    case "flag":
-      flagDialogJobId.value = job.id as number;
-      flagDialogValue.value = job.flag as JobFlag;
-      isFlagDialogVisible.value = true;
+      callDialogJob.value = cloneJob(job);
+      isCallDialogVisible.value = true;
       break;
     case "stage":
       stageDialogJobId.value = job.id as number;
-      stageDialogValue.value = job.stage as JobStage;
+      statusDialogValue.value = (job.status ?? job.stage) as JobStatus;
       isStageDialogVisible.value = true;
-      break;
-    case "delete":
-      confirmDelete(job.id as number);
       break;
     default:
       break;
   }
 };
 
-const performDelete = () => {
-  if (deleteCandidateId.value === null) return;
-
-  jobsStore.removeJob(deleteCandidateId.value);
-
-  const index = selectedRows.value.findIndex(
-    (row) => row === deleteCandidateId.value,
+const togglePriority = (job: JobProperties) => {
+  const nextFlag: JobFlag = job.flag === "High" ? "Normal" : "High";
+  jobsStore.updateJob(job.id, {
+    ...job,
+    flag: nextFlag,
+  });
+  notifications.push(
+    nextFlag === "High" ? "Job marked high priority" : "Job priority cleared",
+    "success",
+    2500,
   );
-  if (index !== -1) selectedRows.value.splice(index, 1);
-
-  notifications.push("Job deleted", "success", 3000);
-  deleteCandidateId.value = null;
-  isConfirmDeleteVisible.value = false;
 };
 
-const deleteCandidateName = computed(() => {
-  if (deleteCandidateId.value === null) return "";
-  const job =
-    (jobsStore as any).byId?.(deleteCandidateId.value) ||
-    jobsStore.all.find((j) => j.id === deleteCandidateId.value);
-  return job?.name ?? String(deleteCandidateId.value);
-});
+const openCollaboratorDialog = (job: JobProperties) => {
+  collaboratorDialogJob.value = cloneJob(job);
+  collaboratorDialogValue.value = Array.isArray(job.collaborators)
+    ? [...job.collaborators]
+    : [];
+  isCollaboratorDialogVisible.value = true;
+};
 
-const saveFlagChange = () => {
-  if (flagDialogJobId.value === null || !flagDialogValue.value) {
-    isFlagDialogVisible.value = false;
-    return;
-  }
-  jobsStore.updateJob(flagDialogJobId.value, {
-    ...(jobsStore.byId(flagDialogJobId.value) as any),
-    flag: flagDialogValue.value,
-  } as any);
-  notifications.push("Flag updated", "success", 2500);
-  isFlagDialogVisible.value = false;
-  flagDialogJobId.value = null;
+const saveCollaborators = () => {
+  if (!collaboratorDialogJob.value) return;
+  jobsStore.updateJob(collaboratorDialogJob.value.id, {
+    ...collaboratorDialogJob.value,
+    collaborators: collaboratorDialogValue.value,
+  });
+  notifications.push("Collaborators updated", "success", 2500);
+  isCollaboratorDialogVisible.value = false;
+  collaboratorDialogJob.value = null;
+};
+
+const saveNote = () => {
+  if (!noteDialogJob.value) return;
+  jobsStore.updateJob(noteDialogJob.value.id, {
+    ...noteDialogJob.value,
+    note: noteDialogValue.value,
+  });
+  notifications.push("Note saved", "success", 2500);
+  isNoteDialogVisible.value = false;
+  noteDialogJob.value = null;
 };
 
 const saveStageChange = () => {
-  if (stageDialogJobId.value === null || !stageDialogValue.value) {
+  if (stageDialogJobId.value === null || !statusDialogValue.value) {
     isStageDialogVisible.value = false;
     return;
   }
   jobsStore.updateJob(stageDialogJobId.value, {
     ...(jobsStore.byId(stageDialogJobId.value) as any),
-    stage: stageDialogValue.value,
+    stage: statusDialogValue.value,
+    status: statusDialogValue.value,
   } as any);
-  notifications.push("Stage updated", "success", 2500);
+  notifications.push("Status updated", "success", 2500);
   isStageDialogVisible.value = false;
   stageDialogJobId.value = null;
 };
@@ -620,9 +783,9 @@ const updateItemsPerPage = (value: number | string) => {
         <VRow>
           <VCol cols="12" md="3">
             <AppSelect
-              v-model="selectedStage"
-              placeholder="Select Stage"
-              :items="stageOptions"
+              v-model="selectedStatus"
+              placeholder="Select Status"
+              :items="statusOptions"
               clearable
               clear-icon="tabler-x"
             />
@@ -641,7 +804,7 @@ const updateItemsPerPage = (value: number | string) => {
           <VCol cols="12" md="3">
             <AppSelect
               v-model="selectedFlag"
-              placeholder="Select Flag"
+              placeholder="Select Priority"
               :items="flagOptions"
               clearable
               clear-icon="tabler-x"
@@ -711,125 +874,146 @@ const updateItemsPerPage = (value: number | string) => {
         class="text-no-wrap"
         @update:options="updateOptions"
       >
-        <template #item.project="{ item }">
-          <div class="d-flex align-center gap-x-4 py-2">
-            <VAvatar
-              size="40"
-              :variant="!item.avatar ? 'tonal' : undefined"
-              :color="!item.avatar ? jobAvatarColor(item.flag) : undefined"
+        <template #item.jobOrderNumber="{ item }">
+          <div class="d-flex align-center gap-2">
+            <VBtn
+              icon
+              variant="text"
+              size="small"
+              :color="item.flag === 'High' ? 'warning' : 'secondary'"
+              @click.stop="togglePriority(item)"
             >
-              <VImg v-if="item.avatar" :src="item.avatar" />
-              <span v-else>{{ avatarText(item.name) }}</span>
-            </VAvatar>
-
-            <div class="d-flex flex-column gap-1">
-              <h6 class="text-base d-flex align-center gap-1 mb-0">
-                <RouterLink
-                  :to="{
-                    name: 'operations-jobs-view-id',
-                    params: { id: item.id },
-                  }"
-                  class="font-weight-medium text-link"
-                >
-                  {{ item.name }}
-                </RouterLink>
-              </h6>
-
-              <div class="text-sm text-medium-emphasis">
-                <span v-if="item.code">{{ item.code }}</span>
-              </div>
-
-              <div class="text-sm text-medium-emphasis">
-                <VIcon
-                  v-if="item.code && item.location"
-                  icon="tabler-map-pin"
-                  size="14"
-                />
-                <span v-if="item.location">{{ item.location }}</span>
-              </div>
-            </div>
+              <VIcon
+                :icon="item.flag === 'High' ? 'tabler-star-filled' : 'tabler-star'"
+              />
+              <VTooltip activator="parent" location="top">
+                {{ item.flag === "High" ? "High priority" : "Normal priority" }}
+              </VTooltip>
+            </VBtn>
+            <RouterLink
+              :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
+              class="font-weight-medium text-link"
+            >
+              {{ item.jobOrderNumber || "--" }}
+            </RouterLink>
           </div>
         </template>
 
-        <template #item.stage="{ item }">
-          <VChip color="info" label size="small">{{ item.stage }}</VChip>
+        <template #item.code="{ item }">
+          <RouterLink
+            :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
+            class="font-weight-medium text-link"
+          >
+            {{ item.code || "--" }}
+          </RouterLink>
         </template>
 
-        <template #item.type="{ item }">
-          <span class="text-high-emphasis text-body-1">{{ item.type }}</span>
+        <template #item.description="{ item }">
+          <div class="d-flex flex-column gap-1 py-2">
+            <RouterLink
+              :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
+              class="text-body-2 font-weight-medium text-link"
+            >
+              {{ relatedContactName(item) }}
+            </RouterLink>
+            <span class="text-high-emphasis">
+              {{ item.name }} | {{ item.type }} | Created:
+              {{ formatDate(item.createdAt) }}
+            </span>
+          </div>
         </template>
 
-        <template #item.flag="{ item }">
-          <VChip :color="resolveFlagColor(item.flag)" size="small" label>
-            {{ item.flag }}
+        <template #item.deliveryDate="{ item }">
+          <span
+            :class="{
+              'text-warning font-weight-medium': isOverdue(deliveryDateForJob(item)),
+              'text-medium-emphasis': !deliveryDateForJob(item),
+            }"
+          >
+            {{ formatDate(deliveryDateForJob(item)) || "" }}
+          </span>
+        </template>
+
+        <template #item.progress="{ item }">
+          <div class="d-flex align-center gap-2" style="min-inline-size: 120px">
+            <VProgressLinear
+              :model-value="progressForJob(item)"
+              color="primary"
+              height="8"
+              rounded
+            />
+            <span class="text-caption text-medium-emphasis">
+              {{ progressForJob(item) }}%
+            </span>
+          </div>
+        </template>
+
+        <template #item.collaborators="{ item }">
+          <div class="d-flex align-center gap-2">
+            <div class="v-avatar-group demo-avatar-group">
+              <VAvatar
+                v-for="collaboratorId in (item.collaborators || []).slice(0, 4)"
+                :key="`${item.id}-${collaboratorId}`"
+                :size="32"
+                :color="!getEmployeeEntry(collaboratorId)?.avatar ? 'primary' : undefined"
+                class="text-white font-weight-medium"
+              >
+                <VImg
+                  v-if="getEmployeeEntry(collaboratorId)?.avatar"
+                  :src="getEmployeeEntry(collaboratorId)?.avatar || ''"
+                />
+                <span v-else>
+                  {{ avatarText(getEmployeeEntry(collaboratorId)?.name) }}
+                </span>
+                <VTooltip activator="parent" location="top">
+                  {{ getEmployeeEntry(collaboratorId)?.name || "Unknown" }}
+                </VTooltip>
+              </VAvatar>
+              <VAvatar
+                v-if="(item.collaborators || []).length > 4"
+                color="secondary"
+                :size="32"
+                class="text-white font-weight-medium"
+              >
+                +{{ (item.collaborators || []).length - 4 }}
+              </VAvatar>
+            </div>
+            <IconBtn size="32" @click.stop="openCollaboratorDialog(item)">
+              <VIcon icon="tabler-plus" />
+              <VTooltip activator="parent" location="top">
+                Add or remove collaborators
+              </VTooltip>
+            </IconBtn>
+          </div>
+        </template>
+
+        <template #item.status="{ item }">
+          <VChip
+            :color="statusColor(item.status || item.stage)"
+            label
+            size="small"
+            class="cursor-pointer"
+            @click="handleJobAction('stage', item)"
+          >
+            {{ item.status || item.stage }}
           </VChip>
         </template>
 
-        <template #item.stakeholders="{ item }">
-          <div class="d-flex align-center gap-2">
-            <div
-              v-if="decorateStakeholders(item).length"
-              class="v-avatar-group demo-avatar-group"
-            >
-              <VAvatar
-                v-for="stakeholder in decorateStakeholders(item).slice(0, 3)"
-                :key="`${item.id}-${stakeholder.id}`"
-                :size="40"
-                :color="!stakeholder.avatar ? 'primary' : undefined"
-                :class="[
-                  !stakeholder.avatar ? 'text-white font-weight-medium' : null,
-                  stakeholder.isPrimary ? 'job-primary-border' : null,
-                ]"
-              >
-                <template v-if="stakeholder.avatar">
-                  <VImg :src="stakeholder.avatar" />
-                </template>
-                <template v-else>
-                  <span>{{ avatarText(stakeholder.name) }}</span>
-                </template>
-
-                <VTooltip activator="parent" location="top">
-                  <div class="d-flex flex-column gap-1">
-                    <span class="font-weight-medium">{{
-                      stakeholder.name
-                    }}</span>
-
-                    <span
-                      v-if="stakeholder.isPrimary"
-                      class="text-body-2 text-primary"
-                    >
-                      Primary
-                    </span>
-                  </div>
-                </VTooltip>
-              </VAvatar>
-
-              <VAvatar
-                v-if="decorateStakeholders(item).length > 3"
-                color="secondary"
-                :size="40"
-                class="font-weight-medium text-white"
-              >
-                +{{ decorateStakeholders(item).length - 3 }}
-                <VTooltip activator="parent" location="top">
-                  {{
-                    decorateStakeholders(item)
-                      .slice(3)
-                      .map((entry) => entry.name)
-                      .join(", ")
-                  }}
-                </VTooltip>
-              </VAvatar>
-            </div>
-            <span v-else class="text-medium-emphasis">No stakeholders</span>
-          </div>
-        </template>
-
         <template #item.actions="{ item }">
+          <IconBtn @click="openEditDialog(item)">
+            <VIcon icon="tabler-edit" />
+            <VTooltip activator="parent" location="top">Edit</VTooltip>
+          </IconBtn>
           <VBtn icon variant="text" color="medium-emphasis">
             <VIcon icon="tabler-dots-vertical" />
             <VMenu activator="parent">
               <VList>
+                <VListItem @click="handleJobAction('note', item)">
+                  <template #prepend>
+                    <VIcon icon="tabler-note" />
+                  </template>
+                  <VListItemTitle>Note</VListItemTitle>
+                </VListItem>
                 <VListItem @click="handleJobAction('todo', item)">
                   <template #prepend>
                     <VIcon icon="tabler-list-check" />
@@ -853,30 +1037,6 @@ const updateItemsPerPage = (value: number | string) => {
                     <VIcon icon="tabler-phone" />
                   </template>
                   <VListItemTitle>Call</VListItemTitle>
-                </VListItem>
-
-                <VDivider />
-
-                <VListItem @click="handleJobAction('flag', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-flag" />
-                  </template>
-                  <VListItemTitle>Change Flag</VListItemTitle>
-                </VListItem>
-                <VListItem @click="handleJobAction('stage', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-arrows-exchange-2" />
-                  </template>
-                  <VListItemTitle>Change Stage</VListItemTitle>
-                </VListItem>
-
-                <VDivider />
-
-                <VListItem @click="handleJobAction('delete', item)">
-                  <template #prepend>
-                    <VIcon color="error" icon="tabler-trash" />
-                  </template>
-                  <VListItemTitle class="text-error">Delete</VListItemTitle>
                 </VListItem>
               </VList>
             </VMenu>
@@ -926,49 +1086,79 @@ const updateItemsPerPage = (value: number | string) => {
       "
     />
 
-    <VDialog v-model="isConfirmDeleteVisible" max-width="540">
-      <DialogCloseBtn @click="isConfirmDeleteVisible = false" />
+    <VDialog v-model="isCollaboratorDialogVisible" max-width="560">
+      <DialogCloseBtn @click="isCollaboratorDialogVisible = false" />
       <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Delete Job</VCardTitle>
-        <VCardText>
-          Are you sure you want to permanently delete
-          <strong>{{ deleteCandidateName }}</strong
-          >?
-        </VCardText>
-        <VCardActions>
-          <VSpacer />
-          <VBtn variant="text" color="secondary" @click="cancelDelete">
-            Cancel
-          </VBtn>
-          <VBtn color="error" variant="tonal" @click="performDelete">
-            Delete
-          </VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
-
-    <VDialog v-model="isFlagDialogVisible" max-width="480">
-      <DialogCloseBtn @click="isFlagDialogVisible = false" />
-      <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Change Flag</VCardTitle>
+        <VCardTitle>Collaborators</VCardTitle>
         <VCardText>
           <AppSelect
-            v-model="flagDialogValue"
-            placeholder="Select Flag"
-            :items="flagOptions"
+            v-model="collaboratorDialogValue"
+            label="Assigned collaborators"
+            placeholder="Select collaborators"
+            :items="collaboratorOptions"
+            item-title="title"
+            item-value="value"
+            multiple
+            chips
+            closable-chips
             clearable
-            clear-icon="tabler-x"
           />
         </VCardText>
         <VCardActions class="justify-end">
           <VBtn
             variant="tonal"
             color="secondary"
-            @click="isFlagDialogVisible = false"
+            @click="isCollaboratorDialogVisible = false"
           >
             Close
           </VBtn>
-          <VBtn color="primary" @click="saveFlagChange">Save</VBtn>
+          <VBtn color="primary" @click="saveCollaborators">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isNoteDialogVisible" max-width="560">
+      <DialogCloseBtn @click="isNoteDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Note</VCardTitle>
+        <VCardText>
+          <AppTextarea
+            v-model="noteDialogValue"
+            label="Performance Note"
+            placeholder="Add note"
+            auto-grow
+            rows="4"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isNoteDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn color="primary" @click="saveNote">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isCallDialogVisible" max-width="520">
+      <DialogCloseBtn @click="isCallDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Call</VCardTitle>
+        <VCardText>
+          <div class="text-body-1">
+            Call for {{ callDialogJob?.name || "job" }}.
+          </div>
+          <div class="text-body-2 text-medium-emphasis mt-2">
+            Client: {{ callDialogJob ? relatedContactName(callDialogJob) : "--" }}
+          </div>
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn color="primary" @click="isCallDialogVisible = false">
+            Done
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>
@@ -976,12 +1166,12 @@ const updateItemsPerPage = (value: number | string) => {
     <VDialog v-model="isStageDialogVisible" max-width="480">
       <DialogCloseBtn @click="isStageDialogVisible = false" />
       <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Change Stage</VCardTitle>
+        <VCardTitle>Change Status</VCardTitle>
         <VCardText>
           <AppSelect
-            v-model="stageDialogValue"
-            placeholder="Select Stage"
-            :items="stageOptions"
+            v-model="statusDialogValue"
+            placeholder="Select Status"
+            :items="statusOptions"
             clearable
             clear-icon="tabler-x"
           />

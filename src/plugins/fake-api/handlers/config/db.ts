@@ -220,6 +220,7 @@ export const db: ConfigDB = {
       notes: ['General', 'Ideas', 'Blod Articles', 'Meeting Notes'],
       meetings: ['Sales', 'Brief', 'Site Visit', 'Other'],
       jobStages: ['PRPSL', 'In Review', 'Project | In Progress', 'RFI'],
+      jobStatuses: ['New', 'Pending', 'In Progress', 'On Hold', 'Completed', 'Closed'],
       jobAlert: { enabled: true, days: 3 },
     },
     deals: {

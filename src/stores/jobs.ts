@@ -4,6 +4,7 @@ import type {
   JobGoal,
   JobMilestone,
   JobProperties,
+  JobStatus,
   JobStakeholder,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { defineStore } from "pinia";
@@ -16,6 +17,20 @@ import {
 } from "@/utils/authorization";
 import { getSignedInIdentity } from "@/utils/currentAccount";
 const STORAGE_KEY = "app.jobs.v2";
+const JOB_STATUS_VALUES: JobStatus[] = [
+  "New",
+  "Pending",
+  "In Progress",
+  "On Hold",
+  "Completed",
+  "Closed",
+];
+const LEGACY_STAGE_STATUS_MAP: Record<string, JobStatus> = {
+  PRPSL: "New",
+  "In Review": "Pending",
+  "Project | In Progress": "In Progress",
+  RFI: "On Hold",
+};
 function safeClone<T extends object>(value: T, label: string): T {
   const raw = toRaw(value) as T;
   const seen = new WeakSet<object>();
@@ -65,25 +80,37 @@ function cloneJob(job: JobProperties): JobProperties {
     const cloned = safeClone(raw, "job");
     const projectManagerId =
       cloned.projectManagerId ?? resolveProjectManagerId(cloned);
+    const status = normalizeJobStatus(cloned.status, cloned.stage);
     return {
       ...cloned,
       projectManagerId,
+      jobOrderNumber: cloned.jobOrderNumber ?? null,
+      status,
+      stage: status,
+      flag: normalizeJobFlag(cloned.flag),
       collaborators: normalizeCollaborators(
         cloned.collaborators,
         projectManagerId,
       ),
+      statusAutomation: cloned.statusAutomation ?? null,
     };
   } catch (error) {
     console.warn("JSON clone failed while cloning job:", error);
     const projectManagerId = raw.projectManagerId ?? resolveProjectManagerId(raw);
+    const status = normalizeJobStatus(raw.status, raw.stage);
     return {
       ...raw,
       projectManagerId,
+      jobOrderNumber: raw.jobOrderNumber ?? null,
+      status,
+      stage: status,
+      flag: normalizeJobFlag(raw.flag),
       collaborators: normalizeCollaborators(raw.collaborators, projectManagerId),
       stakeholders: ensureStakeholders(raw.stakeholders),
       milestones: ensureMilestones(raw.milestones),
       goals: ensureGoals(raw.goals),
       documents: ensureDocuments(raw.documents),
+      statusAutomation: raw.statusAutomation ?? null,
     };
   }
 }
@@ -160,6 +187,53 @@ function normalizeCollaborators(
 
   return Array.from(new Set(normalized));
 }
+function normalizeJobFlag(value: unknown) {
+  return value === "High" ? "High" : "Normal";
+}
+function normalizeJobStatus(value: unknown, fallback?: unknown): JobStatus {
+  const candidate = String(value ?? "").trim();
+  if ((JOB_STATUS_VALUES as string[]).includes(candidate))
+    return candidate as JobStatus;
+
+  const legacy = LEGACY_STAGE_STATUS_MAP[candidate];
+  if (legacy) return legacy;
+
+  const fallbackCandidate = String(fallback ?? "").trim();
+  if ((JOB_STATUS_VALUES as string[]).includes(fallbackCandidate))
+    return fallbackCandidate as JobStatus;
+
+  return LEGACY_STAGE_STATUS_MAP[fallbackCandidate] ?? "New";
+}
+function parseJobOrderSequence(value: unknown) {
+  const match = String(value ?? "").match(/^JO\d{2}\/(\d+)$/i);
+  if (!match) return null;
+  const sequence = Number(match[1]);
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+}
+function nextJobOrderNumber(items: JobProperties[], createdAt = new Date()) {
+  const maxSequence = items
+    .map((job) => parseJobOrderSequence(job.jobOrderNumber))
+    .filter((value): value is number => value !== null)
+    .reduce((max, value) => Math.max(max, value), 0);
+  const year = String(createdAt.getFullYear()).slice(-2);
+  const sequence = String(maxSequence + 1).padStart(3, "0");
+
+  return `JO${year}/${sequence}`;
+}
+function ensureJobOrderNumbers(items: JobProperties[]) {
+  const normalized = [...items];
+  normalized.forEach((job, index) => {
+    if (job.jobOrderNumber) return;
+    normalized[index] = {
+      ...job,
+      jobOrderNumber: nextJobOrderNumber(
+        normalized,
+        new Date(job.createdAt || new Date()),
+      ),
+    };
+  });
+  return normalized;
+}
 function resolveProjectManagerId(payload: Partial<JobProperties>) {
   return (
     toNumberId(payload.projectManagerId) ??
@@ -174,11 +248,17 @@ function resolveProjectManagerId(payload: Partial<JobProperties>) {
 function normaliseJob(
   payload: Partial<JobProperties>,
   assignedId: number,
+  existingJobs: JobProperties[] = [],
 ): JobProperties {
   const now = new Date().toISOString();
+  const createdAt = payload.createdAt ?? now;
   const projectManagerId = resolveProjectManagerId(payload);
+  const status = normalizeJobStatus(payload.status, payload.stage);
   return {
     id: assignedId,
+    jobOrderNumber:
+      payload.jobOrderNumber?.trim() ||
+      nextJobOrderNumber(existingJobs, new Date(createdAt)),
     name: payload.name?.trim() || "Untitled Job",
     code: payload.code?.trim() || undefined,
     avatar:
@@ -187,9 +267,10 @@ function normaliseJob(
         : (payload.avatar ?? null),
     startDate: payload.startDate || undefined,
     location: payload.location?.trim() || undefined,
-    stage: payload.stage ?? "PRPSL",
+    stage: status,
+    status,
     type: payload.type ?? "Architecture",
-    flag: payload.flag ?? "Normal",
+    flag: normalizeJobFlag(payload.flag),
     relatedTo: payload.relatedTo ?? null,
     projectManagerId,
     collaborators: normalizeCollaborators(payload.collaborators, projectManagerId),
@@ -198,7 +279,8 @@ function normaliseJob(
     milestones: ensureMilestones(payload.milestones),
     goals: ensureGoals(payload.goals),
     documents: ensureDocuments(payload.documents),
-    createdAt: payload.createdAt ?? now,
+    statusAutomation: payload.statusAutomation ?? null,
+    createdAt,
   };
 }
 function mergeJob(
@@ -217,6 +299,13 @@ function mergeJob(
     ...original,
     ...patch,
     projectManagerId,
+    jobOrderNumber:
+      patch.jobOrderNumber === undefined
+        ? original.jobOrderNumber
+        : patch.jobOrderNumber?.trim() || original.jobOrderNumber,
+    status: normalizeJobStatus(patch.status, patch.stage ?? original.status),
+    stage: normalizeJobStatus(patch.status, patch.stage ?? original.status),
+    flag: normalizeJobFlag(patch.flag ?? original.flag),
     collaborators: normalizeCollaborators(
       Array.isArray(patch.collaborators)
         ? patch.collaborators
@@ -229,6 +318,10 @@ function mergeJob(
     milestones: ensureMilestones(patch.milestones ?? original.milestones),
     goals: ensureGoals(patch.goals ?? original.goals),
     documents: ensureDocuments(patch.documents ?? original.documents),
+    statusAutomation:
+      patch.statusAutomation === undefined
+        ? (original.statusAutomation ?? null)
+        : (patch.statusAutomation ?? null),
   };
   if (typeof merged.avatar === "string") {
     merged.avatar = merged.avatar.trim() || null;
@@ -269,9 +362,9 @@ export const useJobsStore = defineStore("jobs", {
       if (this.initialized && !force) return;
       const stored = loadFromStorage();
       if (stored && stored.length) {
-        this.items = cloneJobsArray(stored);
+        this.items = ensureJobOrderNumbers(cloneJobsArray(stored));
       } else {
-        this.items = seedJobs();
+        this.items = ensureJobOrderNumbers(seedJobs());
         saveToStorage(this.items);
       }
       this.initialized = true;
@@ -290,7 +383,7 @@ export const useJobsStore = defineStore("jobs", {
       const incomingId =
         payload.id && Number(payload.id) > 0 ? Number(payload.id) : undefined;
       const id = incomingId ?? nextJobId(this.items);
-      const normalised = normaliseJob(payload, id);
+      const normalised = normaliseJob(payload, id, this.items);
       this.items.unshift(normalised);
       return normalised;
     },

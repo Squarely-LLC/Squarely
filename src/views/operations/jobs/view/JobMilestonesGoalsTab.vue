@@ -20,6 +20,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: "open-add-todo", payload: { initial: Record<string, any> }): void;
   (e: "open-edit-todo", todoId: number | string): void;
+  (e: "status-automation-trigger", action: string): void;
 }>();
 const jobsStore = useJobsStore();
 const notifications = useNotificationsStore();
@@ -428,6 +429,7 @@ const toggleTaskCompleted = (taskId: number | string) => {
   todosStore.updateTodo(taskId, {
     status: task.status === "completed" ? "pending" : "completed",
   });
+  emit("status-automation-trigger", "Task status changed");
 };
 const priorityColor = (priority: "Low" | "Normal" | "High") => {
   return priority === "High"

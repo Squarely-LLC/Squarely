@@ -4,7 +4,7 @@ import DialogActionBar from "@/components/DialogActionBar.vue";
 import type {
   JobFlag,
   JobProperties,
-  JobStage,
+  JobStatus,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
@@ -36,13 +36,15 @@ configStore.init();
 const relatedContactOptions = computed(() => getSalesContactOptions());
 const collaboratorOptions = computed(() => getEmployeeOptions());
 
-const stageOptions = computed(() => {
-  return (configStore.configurations?.crm?.jobStages || [
-    "PRPSL",
-    "In Review",
-    "Project | In Progress",
-    "RFI",
-  ]) as JobStage[];
+const statusOptions = computed(() => {
+  return (configStore.configurations?.crm?.jobStatuses || [
+    "New",
+    "Pending",
+    "In Progress",
+    "On Hold",
+    "Completed",
+    "Closed",
+  ]) as JobStatus[];
 });
 const typeOptions: JobType[] = [
   "Architecture",
@@ -54,7 +56,7 @@ const typeOptions: JobType[] = [
   "Internal",
   "Other",
 ];
-const flagOptions: JobFlag[] = ["Low", "Normal", "High"];
+const flagOptions: JobFlag[] = ["Normal", "High"];
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
 const sanitiseJob = (job: JobProperties | null) => {
@@ -84,7 +86,10 @@ const onSubmit = async () => {
   if (!localJob.value) return;
   const { valid } = (await refForm.value?.validate()) ?? { valid: true };
   if (!valid) return;
-  emit("submit", { ...localJob.value });
+  emit("submit", {
+    ...localJob.value,
+    stage: localJob.value.status ?? localJob.value.stage,
+  });
 };
 const onCancel = () => {
   localJob.value = sanitiseJob(props.job ?? null);
@@ -160,10 +165,10 @@ const onCancel = () => {
             </VCol>
             <VCol cols="12" md="6">
               <AppSelect
-                v-model="localJob.stage"
-                label="Stage"
-                placeholder="Select Stage"
-                :items="stageOptions"
+                v-model="localJob.status"
+                label="Status"
+                placeholder="Select Status"
+                :items="statusOptions"
                 :rules="[requiredValidator]"
               />
             </VCol>

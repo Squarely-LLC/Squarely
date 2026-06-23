@@ -106,6 +106,7 @@ export interface CrmConfig {
   notes?: string[]
   meetings?: string[]
   jobStages?: string[]
+  jobStatuses?: string[]
   jobAlert?: { enabled: boolean; days: number }
 }
 

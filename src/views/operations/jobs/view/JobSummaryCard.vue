@@ -28,8 +28,6 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
   switch (flag) {
     case "High":
       return "error";
-    case "Low":
-      return "secondary";
     case "Normal":
     default:
       return "primary";
@@ -105,7 +103,7 @@ const collaboratorNames = computed(() => {
 
       <div class="d-flex justify-center gap-2 mt-2">
         <VChip label size="small" color="info" variant="text">
-          {{ job.stage }}
+          {{ job.status || job.stage }}
         </VChip>
 
         <VChip label size="small" color="primary" variant="text">

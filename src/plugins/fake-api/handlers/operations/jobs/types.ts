@@ -1,5 +1,17 @@
 export type JobFlag = "Low" | "Normal" | "High";
-export type JobStage = "PRPSL" | "In Review" | "Project | In Progress" | "RFI";
+export type JobStatus =
+  | "New"
+  | "Pending"
+  | "In Progress"
+  | "On Hold"
+  | "Completed"
+  | "Closed";
+export type JobStage =
+  | "PRPSL"
+  | "In Review"
+  | "Project | In Progress"
+  | "RFI"
+  | JobStatus;
 export type JobType =
   | "Architecture"
   | "Interior"
@@ -46,6 +58,7 @@ export interface JobDocument {
 
 export interface JobProperties {
   id: number;
+  jobOrderNumber?: string | null;
   name: string;
   code?: string | null;
   avatar?: string | null;
@@ -53,6 +66,7 @@ export interface JobProperties {
   endDate?: string | null;
   location?: string | null;
   stage: JobStage;
+  status?: JobStatus;
   type: JobType;
   flag: JobFlag;
   relatedTo?: number | null;
@@ -63,5 +77,9 @@ export interface JobProperties {
   milestones: JobMilestone[];
   goals: JobGoal[];
   documents?: JobDocument[];
+  statusAutomation?: {
+    neverPrompt?: boolean;
+    ignoredSuggestionKeys?: string[];
+  } | null;
   createdAt: string;
 }

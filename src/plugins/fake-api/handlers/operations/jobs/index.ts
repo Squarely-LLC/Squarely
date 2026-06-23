@@ -3,7 +3,7 @@ import is from "@sindresorhus/is";
 import { destr } from "destr";
 import { HttpResponse, http } from "msw";
 import { db } from "./db";
-import type { JobProperties } from "./types";
+import type { JobProperties, JobStatus } from "./types";
 import {
   filterReadableResources,
   mapAuthorizationResource,
@@ -12,10 +12,56 @@ import {
 } from "@/utils/authorization";
 
 db.jobs = db.jobs.map((job) => ({ ...job }));
+const JOB_STATUS_VALUES: JobStatus[] = [
+  "New",
+  "Pending",
+  "In Progress",
+  "On Hold",
+  "Completed",
+  "Closed",
+];
+const LEGACY_STAGE_STATUS_MAP: Record<string, JobStatus> = {
+  PRPSL: "New",
+  "In Review": "Pending",
+  "Project | In Progress": "In Progress",
+  RFI: "On Hold",
+};
 
 const positiveNumber = (value: unknown) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+};
+const normalizeJobFlag = (value: unknown) =>
+  value === "High" ? "High" : "Normal";
+const normalizeJobStatus = (value: unknown, fallback?: unknown): JobStatus => {
+  const candidate = String(value ?? "").trim();
+  if ((JOB_STATUS_VALUES as string[]).includes(candidate))
+    return candidate as JobStatus;
+
+  const fallbackCandidate = String(fallback ?? "").trim();
+  if ((JOB_STATUS_VALUES as string[]).includes(fallbackCandidate))
+    return fallbackCandidate as JobStatus;
+
+  return (
+    LEGACY_STAGE_STATUS_MAP[candidate] ??
+    LEGACY_STAGE_STATUS_MAP[fallbackCandidate] ??
+    "New"
+  );
+};
+const parseJobOrderSequence = (value: unknown) => {
+  const match = String(value ?? "").match(/^JO\d{2}\/(\d+)$/i);
+  if (!match) return null;
+  const sequence = Number(match[1]);
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+};
+const nextJobOrderNumber = (createdAt = new Date()) => {
+  const maxSequence = db.jobs
+    .map((job) => parseJobOrderSequence(job.jobOrderNumber))
+    .filter((value): value is number => value !== null)
+    .reduce((max, value) => Math.max(max, value), 0);
+  const year = String(createdAt.getFullYear()).slice(-2);
+
+  return `JO${year}/${String(maxSequence + 1).padStart(3, "0")}`;
 };
 
 export const handlerOperationsJobs = [
@@ -24,6 +70,7 @@ export const handlerOperationsJobs = [
 
     const q = url.searchParams.get("q");
     const stage = url.searchParams.get("stage");
+    const status = url.searchParams.get("status");
     const type = url.searchParams.get("type");
     const flag = url.searchParams.get("flag");
     const sortBy = url.searchParams.get("sortBy");
@@ -49,15 +96,24 @@ export const handlerOperationsJobs = [
     let filteredJobs = db.jobs.filter((job) => {
       const matchesQuery =
         !queryLower ||
+        (job.jobOrderNumber &&
+          job.jobOrderNumber.toLowerCase().includes(queryLower)) ||
         job.name.toLowerCase().includes(queryLower) ||
         (job.code && job.code.toLowerCase().includes(queryLower)) ||
         (job.location && job.location.toLowerCase().includes(queryLower));
 
       const matchesStage = stage ? job.stage === stage : true;
+      const matchesStatus = status ? job.status === status : true;
       const matchesType = type ? job.type === type : true;
       const matchesFlag = flag ? job.flag === flag : true;
 
-      return matchesQuery && matchesStage && matchesType && matchesFlag;
+      return (
+        matchesQuery &&
+        matchesStage &&
+        matchesStatus &&
+        matchesType &&
+        matchesFlag
+      );
     });
 
     if (sortByLocal) {
@@ -67,10 +123,35 @@ export const handlerOperationsJobs = [
           return b.name.localeCompare(a.name);
         });
       }
+      if (sortByLocal === "jobOrderNumber") {
+        filteredJobs = filteredJobs.sort((a, b) => {
+          if (orderByLocal === "asc")
+            return String(a.jobOrderNumber ?? "").localeCompare(
+              String(b.jobOrderNumber ?? ""),
+            );
+          return String(b.jobOrderNumber ?? "").localeCompare(
+            String(a.jobOrderNumber ?? ""),
+          );
+        });
+      }
+      if (sortByLocal === "code") {
+        filteredJobs = filteredJobs.sort((a, b) => {
+          if (orderByLocal === "asc")
+            return String(a.code ?? "").localeCompare(String(b.code ?? ""));
+          return String(b.code ?? "").localeCompare(String(a.code ?? ""));
+        });
+      }
       if (sortByLocal === "stage") {
         filteredJobs = filteredJobs.sort((a, b) => {
           if (orderByLocal === "asc") return a.stage.localeCompare(b.stage);
           return b.stage.localeCompare(a.stage);
+        });
+      }
+      if (sortByLocal === "status") {
+        filteredJobs = filteredJobs.sort((a, b) => {
+          if (orderByLocal === "asc")
+            return String(a.status ?? "").localeCompare(String(b.status ?? ""));
+          return String(b.status ?? "").localeCompare(String(a.status ?? ""));
         });
       }
       if (sortByLocal === "type") {
@@ -149,17 +230,21 @@ export const handlerOperationsJobs = [
       ]),
     );
 
+    const createdAt = new Date().toISOString();
+    const status = normalizeJobStatus(job.status, job.stage);
     const newJob: JobProperties = {
       id: db.jobs.length ? Math.max(...db.jobs.map((j) => j.id)) + 1 : 1,
+      jobOrderNumber: job.jobOrderNumber || nextJobOrderNumber(new Date(createdAt)),
       name: job.name || "New Job",
       code: job.code || null,
       avatar: job.avatar || null,
       startDate: job.startDate || null,
       endDate: job.endDate || null,
       location: job.location || null,
-      stage: job.stage || "PRPSL",
+      stage: status,
+      status,
       type: job.type || "Architecture",
-      flag: job.flag || "Normal",
+      flag: normalizeJobFlag(job.flag),
       relatedTo: job.relatedTo || null,
       projectManagerId: projectManagerId ?? collaborators[0] ?? null,
       collaborators,
@@ -167,7 +252,8 @@ export const handlerOperationsJobs = [
       stakeholders: job.stakeholders || [],
       milestones: job.milestones || [],
       goals: job.goals || [],
-      createdAt: new Date().toISOString(),
+      statusAutomation: job.statusAutomation ?? null,
+      createdAt,
     };
 
     db.jobs.push(newJob);
@@ -202,6 +288,7 @@ export const handlerOperationsJobs = [
       ...updates,
       id: jobId,
     };
+    const status = normalizeJobStatus(merged.status, merged.stage);
     const projectManagerId = positiveNumber(merged.projectManagerId);
     const collaborators = Array.from(
       new Set([
@@ -216,8 +303,15 @@ export const handlerOperationsJobs = [
 
     db.jobs[jobIndex] = {
       ...merged,
+      jobOrderNumber:
+        merged.jobOrderNumber ||
+        nextJobOrderNumber(new Date(merged.createdAt || new Date())),
+      status,
+      stage: status,
+      flag: normalizeJobFlag(merged.flag),
       projectManagerId: projectManagerId ?? collaborators[0] ?? null,
       collaborators,
+      statusAutomation: merged.statusAutomation ?? null,
     };
 
     return HttpResponse.json(db.jobs[jobIndex], { status: 200 });

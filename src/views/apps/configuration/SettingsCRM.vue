@@ -31,7 +31,7 @@ const callPurposes = ref<string[]>([]);
 const sentiments = ref<string[]>([]);
 const notes = ref<string[]>([]);
 const meetings = ref<string[]>([]);
-const jobStages = ref<string[]>([]);
+const jobStatuses = ref<string[]>([]);
 const showContactRecord = ref(false);
 const jobAlertEnabled = ref(false);
 const jobAlertDays = ref(0);
@@ -48,7 +48,7 @@ const isSavingCallPurposes = ref(false);
 const isSavingSentiments = ref(false);
 const isSavingNotes = ref(false);
 const isSavingMeetings = ref(false);
-const isSavingJobStages = ref(false);
+const isSavingJobStatuses = ref(false);
 const isSavingActivitySettings = ref(false);
 const isSavingFlags = ref(false);
 const isSavingIndFlags = ref(false);
@@ -105,7 +105,9 @@ const loadData = () => {
   sentiments.value = cleanEntries((org as any)?.sentiment || []);
   notes.value = cleanEntries((org as any)?.notes || []);
   meetings.value = cleanEntries((org as any)?.meetings || []);
-  jobStages.value = cleanEntries((org as any)?.jobStages || []);
+  jobStatuses.value = cleanEntries(
+    (org as any)?.jobStatuses || (org as any)?.jobStages || [],
+  );
   showContactRecord.value = !!(org as any)?.showContactRecord;
   const jobAlert = ((org as any)?.jobAlert || {}) as {
     enabled?: boolean;
@@ -259,13 +261,13 @@ const saveMeetings = makeListSaver({
   }),
 });
 
-const saveJobStages = makeListSaver({
-  state: jobStages,
-  loading: isSavingJobStages,
-  successMessage: "Job stages saved",
-  failureMessage: "Failed to save job stages",
+const saveJobStatuses = makeListSaver({
+  state: jobStatuses,
+  loading: isSavingJobStatuses,
+  successMessage: "Job statuses saved",
+  failureMessage: "Failed to save job statuses",
   payloadBuilder: (cleaned) => ({
-    crm: { ...(store.configurations.crm || {}), jobStages: cleaned },
+    crm: { ...(store.configurations.crm || {}), jobStatuses: cleaned },
   }),
 });
 
@@ -768,11 +770,11 @@ onUnmounted(() => {
 
       <div class="mt-4">
         <EditableChipList
-          label="Job stage"
-          :items="jobStages"
-          :loading="isSavingJobStages"
-          placeholder="Add job stages"
-          @save="saveJobStages"
+          label="Job status"
+          :items="jobStatuses"
+          :loading="isSavingJobStatuses"
+          placeholder="Add job statuses"
+          @save="saveJobStatuses"
           @warn="notifyWarn"
           @error="notifyError"
         />
