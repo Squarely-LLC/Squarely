@@ -871,15 +871,15 @@ const updateItemsPerPage = (value: number | string) => {
         item-value="id"
         :items-length="totalJobs"
         :headers="headers"
-        class="text-no-wrap"
+        class="jobs-table"
         @update:options="updateOptions"
       >
         <template #item.jobOrderNumber="{ item }">
-          <div class="d-flex align-center gap-2">
+          <div class="job-order-cell d-flex align-center gap-1">
             <VBtn
               icon
               variant="text"
-              size="small"
+              size="x-small"
               :color="item.flag === 'High' ? 'warning' : 'secondary'"
               @click.stop="togglePriority(item)"
             >
@@ -892,7 +892,7 @@ const updateItemsPerPage = (value: number | string) => {
             </VBtn>
             <RouterLink
               :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-              class="font-weight-medium text-link"
+              class="job-link font-weight-medium text-link"
             >
               {{ item.jobOrderNumber || "--" }}
             </RouterLink>
@@ -902,23 +902,33 @@ const updateItemsPerPage = (value: number | string) => {
         <template #item.code="{ item }">
           <RouterLink
             :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-            class="font-weight-medium text-link"
+            class="job-code-link font-weight-medium text-link"
           >
             {{ item.code || "--" }}
+            <VTooltip activator="parent" location="top">
+              {{ item.code || "--" }}
+            </VTooltip>
           </RouterLink>
         </template>
 
         <template #item.description="{ item }">
-          <div class="d-flex flex-column gap-1 py-2">
+          <div class="job-description-cell d-flex flex-column gap-1 py-2">
             <RouterLink
               :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-              class="text-body-2 font-weight-medium text-link"
+              class="job-client-link text-body-2 font-weight-medium text-link"
             >
               {{ relatedContactName(item) }}
+              <VTooltip activator="parent" location="top">
+                {{ relatedContactName(item) }}
+              </VTooltip>
             </RouterLink>
-            <span class="text-high-emphasis">
+            <span class="job-description-text text-high-emphasis">
               {{ item.name }} | {{ item.type }} | Created:
               {{ formatDate(item.createdAt) }}
+              <VTooltip activator="parent" location="top">
+                {{ item.name }} | {{ item.type }} | Created:
+                {{ formatDate(item.createdAt) }}
+              </VTooltip>
             </span>
           </div>
         </template>
@@ -935,7 +945,7 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.progress="{ item }">
-          <div class="d-flex align-center gap-2" style="min-inline-size: 120px">
+          <div class="job-progress-cell d-flex align-center gap-1">
             <VProgressLinear
               :model-value="progressForJob(item)"
               color="primary"
@@ -949,12 +959,12 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.collaborators="{ item }">
-          <div class="d-flex align-center gap-2">
+          <div class="job-collaborators-cell d-flex align-center gap-1">
             <div class="v-avatar-group demo-avatar-group">
               <VAvatar
-                v-for="collaboratorId in (item.collaborators || []).slice(0, 4)"
+                v-for="collaboratorId in (item.collaborators || []).slice(0, 3)"
                 :key="`${item.id}-${collaboratorId}`"
-                :size="32"
+                :size="28"
                 :color="!getEmployeeEntry(collaboratorId)?.avatar ? 'primary' : undefined"
                 class="text-white font-weight-medium"
               >
@@ -970,15 +980,15 @@ const updateItemsPerPage = (value: number | string) => {
                 </VTooltip>
               </VAvatar>
               <VAvatar
-                v-if="(item.collaborators || []).length > 4"
+                v-if="(item.collaborators || []).length > 3"
                 color="secondary"
-                :size="32"
+                :size="28"
                 class="text-white font-weight-medium"
               >
-                +{{ (item.collaborators || []).length - 4 }}
+                +{{ (item.collaborators || []).length - 3 }}
               </VAvatar>
             </div>
-            <IconBtn size="32" @click.stop="openCollaboratorDialog(item)">
+            <IconBtn size="28" @click.stop="openCollaboratorDialog(item)">
               <VIcon icon="tabler-plus" />
               <VTooltip activator="parent" location="top">
                 Add or remove collaborators
@@ -992,7 +1002,7 @@ const updateItemsPerPage = (value: number | string) => {
             :color="statusColor(item.status || item.stage)"
             label
             size="small"
-            class="cursor-pointer"
+            class="job-status-chip cursor-pointer"
             @click="handleJobAction('stage', item)"
           >
             {{ item.status || item.stage }}
@@ -1000,47 +1010,49 @@ const updateItemsPerPage = (value: number | string) => {
         </template>
 
         <template #item.actions="{ item }">
-          <IconBtn @click="openEditDialog(item)">
-            <VIcon icon="tabler-edit" />
-            <VTooltip activator="parent" location="top">Edit</VTooltip>
-          </IconBtn>
-          <VBtn icon variant="text" color="medium-emphasis">
-            <VIcon icon="tabler-dots-vertical" />
-            <VMenu activator="parent">
-              <VList>
-                <VListItem @click="handleJobAction('note', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-note" />
-                  </template>
-                  <VListItemTitle>Note</VListItemTitle>
-                </VListItem>
-                <VListItem @click="handleJobAction('todo', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-list-check" />
-                  </template>
-                  <VListItemTitle>Todo</VListItemTitle>
-                </VListItem>
-                <VListItem @click="handleJobAction('meeting', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-calendar" />
-                  </template>
-                  <VListItemTitle>Meeting</VListItemTitle>
-                </VListItem>
-                <VListItem @click="handleJobAction('email', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-mail" />
-                  </template>
-                  <VListItemTitle>Email</VListItemTitle>
-                </VListItem>
-                <VListItem @click="handleJobAction('call', item)">
-                  <template #prepend>
-                    <VIcon icon="tabler-phone" />
-                  </template>
-                  <VListItemTitle>Call</VListItemTitle>
-                </VListItem>
-              </VList>
-            </VMenu>
-          </VBtn>
+          <div class="job-actions-cell d-flex align-center">
+            <IconBtn size="30" @click="openEditDialog(item)">
+              <VIcon icon="tabler-edit" />
+              <VTooltip activator="parent" location="top">Edit</VTooltip>
+            </IconBtn>
+            <VBtn icon variant="text" color="medium-emphasis" size="30">
+              <VIcon icon="tabler-dots-vertical" />
+              <VMenu activator="parent">
+                <VList>
+                  <VListItem @click="handleJobAction('note', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-note" />
+                    </template>
+                    <VListItemTitle>Note</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleJobAction('todo', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-list-check" />
+                    </template>
+                    <VListItemTitle>Todo</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleJobAction('meeting', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-calendar" />
+                    </template>
+                    <VListItemTitle>Meeting</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleJobAction('email', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-mail" />
+                    </template>
+                    <VListItemTitle>Email</VListItemTitle>
+                  </VListItem>
+                  <VListItem @click="handleJobAction('call', item)">
+                    <template #prepend>
+                      <VIcon icon="tabler-phone" />
+                    </template>
+                    <VListItemTitle>Call</VListItemTitle>
+                  </VListItem>
+                </VList>
+              </VMenu>
+            </VBtn>
+          </div>
         </template>
       </VDataTableServer>
     </VCard>
@@ -1205,6 +1217,170 @@ const updateItemsPerPage = (value: number | string) => {
 </template>
 
 <style scoped>
+.jobs-table {
+  inline-size: 100%;
+  table-layout: fixed;
+}
+
+.jobs-table :deep(.v-table__wrapper) {
+  overflow-x: hidden;
+}
+
+.jobs-table :deep(table) {
+  inline-size: 100% !important;
+  min-inline-size: 0 !important;
+  table-layout: fixed;
+}
+
+.jobs-table :deep(th),
+.jobs-table :deep(td) {
+  overflow: hidden;
+  padding-block: 0.55rem !important;
+  padding-inline: 0.38rem !important;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.jobs-table :deep(th:nth-child(1)),
+.jobs-table :deep(td:nth-child(1)) {
+  inline-size: 12.5%;
+}
+
+.jobs-table :deep(th:nth-child(2)),
+.jobs-table :deep(td:nth-child(2)) {
+  inline-size: 9.5%;
+}
+
+.jobs-table :deep(th:nth-child(3)),
+.jobs-table :deep(td:nth-child(3)) {
+  inline-size: 29%;
+}
+
+.jobs-table :deep(th:nth-child(4)),
+.jobs-table :deep(td:nth-child(4)) {
+  inline-size: 9%;
+}
+
+.jobs-table :deep(th:nth-child(5)),
+.jobs-table :deep(td:nth-child(5)) {
+  inline-size: 10%;
+}
+
+.jobs-table :deep(th:nth-child(6)),
+.jobs-table :deep(td:nth-child(6)) {
+  inline-size: 12.5%;
+}
+
+.jobs-table :deep(th:nth-child(7)),
+.jobs-table :deep(td:nth-child(7)) {
+  inline-size: 8.5%;
+}
+
+.jobs-table :deep(th:nth-child(8)),
+.jobs-table :deep(td:nth-child(8)) {
+  inline-size: 9%;
+  overflow: visible;
+  text-align: end;
+}
+
+.jobs-table :deep(th) {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  white-space: normal;
+}
+
+.job-order-cell,
+.job-progress-cell,
+.job-collaborators-cell,
+.job-actions-cell {
+  min-inline-size: 0;
+}
+
+.job-link,
+.job-code-link,
+.job-client-link {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.job-description-cell {
+  min-inline-size: 0;
+  white-space: normal;
+}
+
+.job-description-text {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+.job-progress-cell :deep(.v-progress-linear) {
+  flex: 1 1 auto;
+  min-inline-size: 42px;
+  max-inline-size: 76px;
+}
+
+.job-collaborators-cell :deep(.v-avatar) {
+  flex: 0 0 auto;
+}
+
+.job-status-chip {
+  max-inline-size: 100%;
+}
+
+.job-status-chip :deep(.v-chip__content) {
+  overflow: hidden;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-actions-cell {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  min-inline-size: 58px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1400px) {
+  .jobs-table :deep(th),
+  .jobs-table :deep(td) {
+    padding-inline: 0.32rem !important;
+  }
+
+  .job-order-cell {
+    gap: 0.1rem !important;
+  }
+
+  .job-link,
+  .job-code-link,
+  .job-client-link,
+  .job-description-text {
+    font-size: 0.76rem;
+  }
+
+  .job-progress-cell :deep(.v-progress-linear) {
+    max-inline-size: 52px;
+  }
+
+  .job-collaborators-cell :deep(.v-avatar) {
+    block-size: 24px !important;
+    inline-size: 24px !important;
+  }
+
+  .job-actions-cell :deep(.v-btn) {
+    block-size: 26px !important;
+    inline-size: 26px !important;
+  }
+}
+
 .job-primary-border {
   --job-primary-color: rgb(var(--v-theme-primary));
 
