@@ -365,6 +365,11 @@ export const useTodos = defineStore("todos", {
         nextPatch.actualMinutes = toNullablePositiveNumber(
           nextPatch.actualMinutes,
         );
+      if ("status" in nextPatch && nextPatch.status !== "completed") {
+        nextPatch.completed = false;
+        nextPatch.isCompleted = false;
+        nextPatch.doneAt = null;
+      }
       if (Array.isArray(nextPatch.steps)) {
         nextPatch.steps = nextPatch.steps.map((step: any) => {
           const nextStep = { ...step, dueAt: toDateOnlyISOString(step?.dueAt) };
@@ -463,7 +468,22 @@ export const useTodos = defineStore("todos", {
       if (todo) this.updateTodo(id, { important: !todo.important });
     },
     setStatus(id: number | string, status: ToDo["status"]) {
-      this.updateTodo(id, { status });
+      this.updateTodo(
+        id,
+        (status === "completed"
+          ? {
+              status,
+              completed: true,
+              isCompleted: true,
+              doneAt: new Date().toISOString(),
+            }
+          : {
+              status,
+              completed: false,
+              isCompleted: false,
+              doneAt: null,
+            }) as unknown as Partial<ToDo>,
+      );
     },
     addStep(id: number | string, step: any) {
       const todo = this.byId(id);

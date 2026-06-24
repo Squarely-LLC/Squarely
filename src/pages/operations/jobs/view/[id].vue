@@ -16,12 +16,20 @@ import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
-import { getSignedInIdentity } from "@/utils/currentAccount";
 import {
   getContactAndEmployeeRefs,
   getEmployeeOptions,
   getEmployeeRefs,
 } from "@/utils/peopleOptions";
+import {
+  buildCompletedTaskPatch,
+  createJobStatusSuggestionNotification,
+  deriveSuggestedJobStatus,
+  getCompletionMinutesDraft,
+  isCurrentProjectOwner,
+  isFutureJobTaskStart,
+  isJobTask,
+} from "@/utils/jobTaskRules";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
@@ -110,48 +118,12 @@ const jobTodos = computed(() => {
 
 const suggestedStatus = computed<JobStatus>(() => {
   const currentJob = job.value;
-  if (!currentJob) return "New";
-  if ((currentJob.status ?? currentJob.stage) === "Closed") return "Closed";
-
-  const tasks = jobTodos.value;
-  const hasWork =
-    tasks.length > 0 ||
-    (currentJob.milestones?.length ?? 0) > 0 ||
-    (currentJob.goals?.length ?? 0) > 0;
-  if (!hasWork) return "New";
-  if (tasks.some((task) => task.status === "in_progress"))
-    return "In Progress";
-
-  const executableTasks = tasks.filter((task) => task.status !== "for_review");
-  const allTasksCompleted =
-    executableTasks.length > 0 &&
-    executableTasks.every((task) => task.status === "completed");
-  if (
-    allTasksCompleted &&
-    (currentJob.milestones?.length || currentJob.goals?.length || tasks.length)
-  )
-    return "Completed";
-  if (tasks.some((task) => task.status === "completed")) return "On Hold";
-
-  return "Pending";
+  return deriveSuggestedJobStatus(currentJob, jobTodos.value);
 });
 
 const jobTaskTimeCaptureEnabled = computed(() =>
   Boolean(configStore.configurations?.crm?.jobTaskTimeCaptureEnabled),
 );
-
-const isProjectTask = (todo: Partial<ToDo> | null | undefined) =>
-  todo?.relatedTo?.type === "job";
-
-const isFutureTaskStart = (value?: string | null) => {
-  if (!value) return false;
-  const start = new Date(value);
-  if (Number.isNaN(start.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  start.setHours(0, 0, 0, 0);
-  return start.getTime() > today.getTime();
-};
 
 const buildTodoPatch = (payload: any) => {
   const partial: any = {
@@ -182,21 +154,13 @@ const queueStatusSuggestion = (action: string) => {
   const currentStatus = (currentJob.status ?? currentJob.stage) as JobStatus;
   if (!targetStatus || targetStatus === currentStatus) return;
 
-  const identity = getSignedInIdentity();
-  const ownerId = currentJob.projectManagerId;
-  if (ownerId && String(identity.employeeId ?? "") !== String(ownerId)) {
-    systemNotificationsStore.addNotification({
-      recipientEmployeeId: ownerId,
-      title: `Status suggestion: ${currentJob.name}`,
-      body: `${action}. Suggested status: ${targetStatus}.`,
-      type: "job-status",
-      target: {
-        entityType: "job",
-        entityId: currentJob.id,
-        routeName: "operations-jobs-view-id",
-        query: { tab: "milestones-goals" },
-      },
-    });
+  if (!isCurrentProjectOwner(currentJob)) {
+    createJobStatusSuggestionNotification(
+      systemNotificationsStore,
+      currentJob,
+      action,
+      targetStatus,
+    );
     return;
   }
 
@@ -1084,9 +1048,9 @@ const onTodoEdited = (payload: any) => {
   const previousTodo = todosStore.byId(payload.id);
   if (
     previousTodo &&
-    isProjectTask(previousTodo) &&
+    isJobTask(previousTodo) &&
     payload.status !== "pending" &&
-    isFutureTaskStart(partial.startAt ?? (previousTodo as any).startAt)
+    isFutureJobTaskStart(partial.startAt ?? (previousTodo as any).startAt)
   ) {
     notifications.push("Task is locked until its start date", "warning", 3000);
     return;
@@ -1094,19 +1058,15 @@ const onTodoEdited = (payload: any) => {
   if (
     jobTaskTimeCaptureEnabled.value &&
     previousTodo &&
-    isProjectTask(previousTodo) &&
+    isJobTask(previousTodo) &&
     payload.status === "completed" &&
     previousTodo.status !== "completed"
   ) {
     pendingCompletionTodo.value = { ...previousTodo, ...partial } as ToDo;
-    completionMinutesDraft.value =
-      Number(
-        partial.completionMinutes ??
-          (previousTodo as any).completionMinutes ??
-          (previousTodo as any).actualMinutes ??
-          (previousTodo as any).estimatedMinutes ??
-          0,
-      ) || null;
+    completionMinutesDraft.value = getCompletionMinutesDraft(
+      previousTodo,
+      partial.completionMinutes,
+    );
     isCompletionTimeDialogVisible.value = true;
     return;
   }
@@ -1129,7 +1089,7 @@ const onTodoCreated = (payload: any) => {
     try {
       todosStore.init();
     } catch {}
-    if (isProjectTask(payload) && isFutureTaskStart(payload.startAt)) {
+    if (isJobTask(payload) && isFutureJobTaskStart(payload.startAt)) {
       payload.status = "pending";
     }
     todosStore.addTodo && todosStore.addTodo(payload);
@@ -1152,11 +1112,7 @@ const saveCompletionTime = () => {
 
   todosStore.updateTodo(todo.id, {
     ...todo,
-    completionMinutes: completionMinutesDraft.value,
-    status: "completed",
-    doneAt: new Date().toISOString(),
-    completed: true,
-    isCompleted: true,
+    ...buildCompletedTaskPatch(completionMinutesDraft.value),
   } as any);
   pendingCompletionTodo.value = null;
   completionMinutesDraft.value = null;

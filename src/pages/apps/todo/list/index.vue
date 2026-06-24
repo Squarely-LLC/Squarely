@@ -9,11 +9,28 @@ import type {
 } from "@/data/schema";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import { useConfigStore } from "@/stores/config";
+import { useJobsStore } from "@/stores/jobs";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import {
   getSignedInAuthorRef,
   normalizeAuthorRef,
 } from "@/utils/currentAccount";
+import {
+  buildCompletedTaskPatch,
+  createJobStatusSuggestionNotification,
+  deriveSuggestedJobStatus,
+  getCompletionMinutesDraft,
+  isCurrentProjectOwner,
+  isFutureJobTaskStart,
+  isJobTask,
+  shouldHideJobTaskFromTasksPage,
+} from "@/utils/jobTaskRules";
 import { getEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
+import type {
+  JobProperties,
+  JobStatus,
+} from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { formatSystemDate } from "@core/utils/formatters";
 import { storeToRefs } from "pinia";
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
@@ -36,6 +53,13 @@ const isMsgDialogOpen = ref(false);
 const msgTodo: any = ref(null);
 const todosStore = useTodos();
 todosStore.init(); // load from localStorage or seeds
+const jobsStore = useJobsStore();
+jobsStore.init();
+const configStore = useConfigStore();
+configStore.init();
+const systemNotificationsStore = useSystemNotificationsStore();
+systemNotificationsStore.init();
+const notifications = useNotificationsStore();
 
 // Task assignment is internal: employees only.
 const contactsOptions = computed(() => getEmployeeRefs());
@@ -93,6 +117,18 @@ const statusTextClass = (status: Status) =>
       : status === "pending"
         ? "text-medium-emphasis"
         : "text-success";
+
+const isCompletionTimeDialogVisible = ref(false);
+const pendingCompletionTodo = ref<ToDo | null>(null);
+const completionMinutesDraft = ref<number | null>(null);
+const isStatusPromptVisible = ref(false);
+const statusPromptJob = ref<JobProperties | null>(null);
+const statusPromptAction = ref("");
+const statusPromptTarget = ref<JobStatus | null>(null);
+const statusPromptNeverAgain = ref(false);
+const jobTaskTimeCaptureEnabled = computed(() =>
+  Boolean(configStore.configurations?.crm?.jobTaskTimeCaptureEnabled),
+);
 
 /* people */
 const C: Record<string, ContactRef> = {
@@ -286,15 +322,6 @@ function isCompletedRecord(t: any): boolean {
   );
 }
 
-const isFutureProjectTask = (task: ToDo) => {
-  if (task.relatedTo?.type !== "job" || !task.startAt) return false;
-  const start = new Date(task.startAt);
-  if (Number.isNaN(start.getTime())) return false;
-  const today = startOfDay(new Date()).getTime();
-  start.setHours(0, 0, 0, 0);
-  return start.getTime() > today;
-};
-
 const scopePredicate = (dueISO: string) => {
   const due = new Date(dueISO);
   if (selectedScope.value === "all") return true;
@@ -315,7 +342,7 @@ const scopePredicate = (dueISO: string) => {
 };
 
 const filtered = computed<ToDo[]>(() => {
-  let rows = all.value.filter((task) => !isFutureProjectTask(task));
+  let rows = all.value.filter((task) => !shouldHideJobTaskFromTasksPage(task));
 
   if (selectedStatus.value === "completed")
     rows = rows.filter((t: any) => isCompletedRecord(t));
@@ -429,14 +456,150 @@ const onRowDblClick = ({ item }: { item: ToDo }) => {
   if (isRowExpandable(item)) toggleRow(item);
 };
 
-const togglePendingProgress = (t: ToDo) => {
-  const next = t.status === "in_progress" ? "pending" : "in_progress";
-  todosStore.setStatus(t.id, next);
+const jobTasksFor = (jobId: number | string) =>
+  todosStore.items.filter(
+    (todo) =>
+      todo.relatedTo &&
+      String(todo.relatedTo.id) === String(jobId) &&
+      (todo.relatedTo.type ? todo.relatedTo.type === "job" : true),
+  );
+
+const jobForTask = (todo: Partial<ToDo> | null | undefined) => {
+  if (!isJobTask(todo) || todo?.relatedTo?.id === undefined) return null;
+  return jobsStore.byId(todo.relatedTo.id) ?? null;
 };
 
-const markForReview = (t: ToDo) => todosStore.setStatus(t.id, "for_review");
+const queueJobStatusSuggestion = (job: JobProperties, action: string) => {
+  if (!job || job.statusAutomation?.neverPrompt) return;
+
+  const targetStatus = deriveSuggestedJobStatus(job, jobTasksFor(job.id));
+  const currentStatus = (job.status ?? job.stage) as JobStatus;
+  if (!targetStatus || targetStatus === currentStatus) return;
+
+  if (!isCurrentProjectOwner(job)) {
+    createJobStatusSuggestionNotification(
+      systemNotificationsStore,
+      job,
+      action,
+      targetStatus,
+    );
+    return;
+  }
+
+  statusPromptJob.value = job;
+  statusPromptAction.value = action;
+  statusPromptTarget.value = targetStatus;
+  statusPromptNeverAgain.value = false;
+  isStatusPromptVisible.value = true;
+};
+
+const applyJobTaskAwarePatch = (
+  todo: ToDo,
+  patch: Partial<ToDo> & Record<string, any>,
+  action: string,
+) => {
+  const job = jobForTask(todo);
+  if (!job) {
+    todosStore.updateTodo(todo.id, patch);
+    return;
+  }
+
+  const nextStatus = (patch.status ?? todo.status) as Status;
+  if (
+    nextStatus !== "pending" &&
+    isFutureJobTaskStart({ ...todo, ...patch })
+  ) {
+    notifications.push("Task is locked until its start date", "warning", 3000);
+    return;
+  }
+
+  if (
+    jobTaskTimeCaptureEnabled.value &&
+    nextStatus === "completed" &&
+    todo.status !== "completed"
+  ) {
+    pendingCompletionTodo.value = { ...todo, ...patch } as ToDo;
+    completionMinutesDraft.value = getCompletionMinutesDraft(
+      todo,
+      patch.completionMinutes,
+    );
+    isCompletionTimeDialogVisible.value = true;
+    return;
+  }
+
+  todosStore.updateTodo(todo.id, patch);
+  nextTick(() => queueJobStatusSuggestion(job, action));
+};
+
+const closeStatusPrompt = (mode: "yes" | "no" | "ignore") => {
+  const promptJob = statusPromptJob.value;
+  if (!promptJob) {
+    isStatusPromptVisible.value = false;
+    return;
+  }
+
+  const automation = {
+    ...(promptJob.statusAutomation ?? {}),
+    neverPrompt:
+      statusPromptNeverAgain.value ||
+      Boolean(promptJob.statusAutomation?.neverPrompt),
+  };
+
+  if (mode === "yes" && statusPromptTarget.value) {
+    jobsStore.updateJob(promptJob.id, {
+      ...promptJob,
+      status: statusPromptTarget.value,
+      stage: statusPromptTarget.value,
+      statusAutomation: automation,
+    });
+  } else if (statusPromptNeverAgain.value) {
+    jobsStore.updateJob(promptJob.id, {
+      ...promptJob,
+      statusAutomation: automation,
+    });
+  }
+
+  isStatusPromptVisible.value = false;
+  statusPromptJob.value = null;
+  statusPromptTarget.value = null;
+};
+
+const saveCompletionTime = () => {
+  const todo = pendingCompletionTodo.value;
+  if (!todo) {
+    isCompletionTimeDialogVisible.value = false;
+    return;
+  }
+
+  const job = jobForTask(todo);
+  todosStore.updateTodo(todo.id, {
+    ...todo,
+    ...buildCompletedTaskPatch(completionMinutesDraft.value),
+  } as any);
+
+  pendingCompletionTodo.value = null;
+  completionMinutesDraft.value = null;
+  isCompletionTimeDialogVisible.value = false;
+  isEditDrawerOpen.value = false;
+
+  if (job) nextTick(() => queueJobStatusSuggestion(job, "Task completed"));
+};
+
+const cancelCompletionTime = () => {
+  pendingCompletionTodo.value = null;
+  completionMinutesDraft.value = null;
+  isCompletionTimeDialogVisible.value = false;
+};
+
+const togglePendingProgress = (t: ToDo) => {
+  const next = t.status === "in_progress" ? "pending" : "in_progress";
+  applyJobTaskAwarePatch(t, { status: next }, "Task status changed");
+};
+
+const markForReview = (t: ToDo) =>
+  applyJobTaskAwarePatch(t, { status: "for_review" }, "Task status changed");
 const updateStatus = (t: ToDo, status: Status) =>
-  todosStore.setStatus(t.id, status);
+  applyJobTaskAwarePatch(t, { status }, "Task status changed");
 
 const openAssignDialog = (t: ToDo) => {
   assignDialogTodoId.value = t.id;
@@ -509,13 +672,14 @@ const addNewToDo = (payload: Partial<ToDo>) => {
 
 // REPLACE the whole function with:
 const markCompleted = (id: number | string) => {
-  todosStore.setStatus(id, "completed"); // keep legacy path
-  // ALSO persist flags so other views (and future) agree
-  todosStore.updateTodo(id, {
-    completed: true,
-    isCompleted: true,
-    doneAt: new Date().toISOString(),
-  } as any);
+  const todo = todosStore.byId(id);
+  if (!todo) return;
+
+  applyJobTaskAwarePatch(
+    todo,
+    buildCompletedTaskPatch(getCompletionMinutesDraft(todo)) as any,
+    "Task completed",
+  );
 };
 
 function toggleStepCompleted(todoId: number | string, stepId: number | string) {
@@ -527,6 +691,8 @@ function toggleStepCompleted(todoId: number | string, stepId: number | string) {
       : s,
   );
   todosStore.updateTodo(todoId, { steps });
+  const job = jobForTask(t);
+  if (job) nextTick(() => queueJobStatusSuggestion(job, "Task status changed"));
 }
 
 function updateStepStatus(
@@ -540,6 +706,8 @@ function updateStepStatus(
     s.id === stepId ? { ...s, status } : s,
   );
   todosStore.updateTodo(todoId, { steps });
+  const job = jobForTask(t);
+  if (job) nextTick(() => queueJobStatusSuggestion(job, "Task status changed"));
   openStepStatusMenuKey.value = null;
 }
 const deleteRow = (id: number | string) => {
@@ -633,6 +801,8 @@ function applyEdit(payload: any) {
     title: payload.title,
     collaborators: payload.collaborators,
     dueAt: payload.dueAt,
+    startAt: payload.startAt,
+    completionMinutes: payload.completionMinutes,
     status: payload.status,
     notes: payload.notes,
     important: payload.important,
@@ -644,13 +814,19 @@ function applyEdit(payload: any) {
   if ("isCompleted" in payload) partial.isCompleted = payload.isCompleted;
   if ("doneAt" in payload) partial.doneAt = payload.doneAt;
 
-  todosStore.updateTodo(payload.id, partial);
+  const todo = todosStore.byId(payload.id);
+  if (!todo) return;
+
+  applyJobTaskAwarePatch(todo, partial, "Task updated");
 }
 
 function saveStepsForTodo(payload: { id: number | string; steps: ToDoStep[] }) {
+  const todo = todosStore.byId(payload.id);
   todosStore.updateTodo(payload.id, {
     steps: payload.steps.map((s) => ({ ...s })),
   });
+  const job = jobForTask(todo);
+  if (job) nextTick(() => queueJobStatusSuggestion(job, "Task status changed"));
 }
 
 function addActivityToTodo(payload: {
@@ -1320,11 +1496,72 @@ function onRowClick(e: MouseEvent, payload: any) {
       :is-drawer-open="isEditDrawerOpen"
       :todo="editingToDo"
       :collaborators-options="contactsOptions"
+      :job-task-mode="editingToDo?.relatedTo?.type === 'job'"
       @update:isDrawerOpen="isEditDrawerOpen = $event"
       @save="applyEdit"
       @saveSteps="saveStepsForTodo"
       @addActivity="addActivityToTodo"
     />
+
+    <VDialog
+      v-model="isStatusPromptVisible"
+      max-width="560"
+      persistent
+      no-click-animation
+    >
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Status suggestion</VCardTitle>
+        <VCardText>
+          {{ statusPromptAction }} has happened. Do you want to change the
+          status to {{ statusPromptTarget }}?
+          <VCheckbox
+            v-model="statusPromptNeverAgain"
+            class="mt-4"
+            density="compact"
+            label="Never show again for this project"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn variant="tonal" color="secondary" @click="closeStatusPrompt('no')">
+            No
+          </VBtn>
+          <VBtn variant="tonal" color="warning" @click="closeStatusPrompt('ignore')">
+            Ignore
+          </VBtn>
+          <VBtn color="primary" @click="closeStatusPrompt('yes')">
+            Yes
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog
+      v-model="isCompletionTimeDialogVisible"
+      max-width="420"
+      persistent
+      no-click-animation
+    >
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Time for Completion</VCardTitle>
+        <VCardText>
+          <AppTextField
+            v-model.number="completionMinutesDraft"
+            type="number"
+            min="0"
+            label="Time for Completion (min)"
+            placeholder="Minutes"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn variant="tonal" color="secondary" @click="cancelCompletionTime">
+            Cancel
+          </VBtn>
+          <VBtn color="primary" @click="saveCompletionTime">
+            Save
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <StepEditDialog
       v-model="isEditStepDialogOpen"
