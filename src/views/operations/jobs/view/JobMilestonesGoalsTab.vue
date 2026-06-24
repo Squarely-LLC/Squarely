@@ -91,6 +91,26 @@ type JobTodo = ToDo & {
 };
 
 type WorkStatus = "Not Started" | "In Progress" | "On Hold" | "Completed";
+type GoalWithTasks = JobGoal & { tasks: JobTodo[] };
+type MilestoneWithChildren = JobMilestone & {
+  tasks: JobTodo[];
+  goals: GoalWithTasks[];
+};
+type PeriodSection = {
+  key: string;
+  periodNumber: number;
+  label: string;
+  source: NonNullable<JobGoal["source"]>;
+  goals: GoalWithTasks[];
+};
+type PeriodGroup = {
+  key: string;
+  kind: "recurrent" | "retainer";
+  title: string;
+  milestoneId: number;
+  totalPeriods: number;
+  sections: PeriodSection[];
+};
 
 const jobTodos = computed<JobTodo[]>(() => {
   const jobId = String(props.jobId);
@@ -336,6 +356,111 @@ const periodGoalDateRange = (goal: JobGoal) =>
 
 const periodGoalKindLabel = (goal: JobGoal) =>
   goal.source?.periodKind === "retainer" ? "Retainer period" : "Recurrent period";
+
+const selectedPeriodByGroup = reactive<Record<string, number>>({});
+
+const normalGoalsForMilestone = (milestone: MilestoneWithChildren) =>
+  milestone.goals.filter((goal) => !isPeriodGoal(goal));
+
+const periodGroupKey = (goal: JobGoal) =>
+  [
+    goal.source?.periodKind ?? "period",
+    goal.source?.dealItemId ?? goal.source?.itemName ?? "item",
+    goal.milestoneId ?? "milestone",
+  ].join(":");
+
+const periodGroupsForMilestone = (milestone: MilestoneWithChildren): PeriodGroup[] => {
+  const groupMap = new Map<string, PeriodGroup>();
+
+  milestone.goals.filter(isPeriodGoal).forEach((goal) => {
+    const source = goal.source;
+    if (!source?.periodKind) return;
+
+    const groupKey = periodGroupKey(goal);
+    const periodNumber = Math.max(1, Number(source.periodNumber ?? 1) || 1);
+    const totalPeriods = Math.max(
+      periodNumber,
+      Number(source.totalPeriods ?? periodNumber) || periodNumber,
+    );
+    const group =
+      groupMap.get(groupKey) ??
+      ({
+        key: groupKey,
+        kind: source.periodKind,
+        title: source.itemName || goal.name,
+        milestoneId: milestone.id,
+        totalPeriods,
+        sections: [],
+      } satisfies PeriodGroup);
+
+    group.totalPeriods = Math.max(group.totalPeriods, totalPeriods);
+
+    let section = group.sections.find(
+      (entry) => entry.periodNumber === periodNumber,
+    );
+    if (!section) {
+      section = {
+        key: `${groupKey}:${periodNumber}`,
+        periodNumber,
+        label: source.periodLabel || `Period ${periodNumber}`,
+        source,
+        goals: [],
+      };
+      group.sections.push(section);
+    }
+
+    section.goals.push(goal as GoalWithTasks);
+    groupMap.set(groupKey, group);
+  });
+
+  return [...groupMap.values()].map((group) => ({
+    ...group,
+    sections: group.sections.sort((a, b) => a.periodNumber - b.periodNumber),
+  }));
+};
+
+const periodSectionTasks = (section: PeriodSection) =>
+  section.goals.flatMap((goal) => goal.tasks);
+
+const periodSectionStatus = (section: PeriodSection): WorkStatus =>
+  deriveStatusFromTasks(
+    section.source.periodStartDate,
+    periodSectionTasks(section),
+  );
+
+const periodSectionStatusClass = (section: PeriodSection) =>
+  `job-period-timeline__step--${periodSectionStatus(section)
+    .toLowerCase()
+    .replace(/\s+/g, "-")}`;
+
+const periodSectionDateRange = (section: PeriodSection) =>
+  `${formatDate(section.source.periodStartDate)} - ${formatDate(
+    section.source.periodEndDate,
+  )}`;
+
+const selectedPeriodNumber = (group: PeriodGroup) =>
+  selectedPeriodByGroup[group.key] ?? group.sections[0]?.periodNumber ?? 1;
+
+const selectedPeriodSection = (group: PeriodGroup) =>
+  group.sections.find(
+    (section) => section.periodNumber === selectedPeriodNumber(group),
+  ) ?? group.sections[0] ?? null;
+
+const selectPeriodSection = (group: PeriodGroup, section: PeriodSection) => {
+  selectedPeriodByGroup[group.key] = section.periodNumber;
+};
+
+const periodTimelineProgressWidth = (group: PeriodGroup) => {
+  if (!group.sections.length) return "0%";
+  const completed = group.sections.filter(
+    (section) => periodSectionStatus(section) === "Completed",
+  ).length;
+
+  return `${Math.round((completed / group.sections.length) * 100)}%`;
+};
+
+const periodGroupTypeLabel = (group: PeriodGroup) =>
+  group.kind === "retainer" ? "Retainer Periods" : "Recurrent Periods";
 
 const notifyRetainerOverageManagers = (source: JobGoal["source"]) => {
   if (!job.value || source?.periodKind !== "retainer") return;
@@ -1285,19 +1410,407 @@ const taskNotesPreview = (task: JobTodo) => {
                   </template>
                 </div>
 
+                <div
+                  v-if="periodGroupsForMilestone(milestone).length"
+                  class="job-period-groups"
+                >
+                  <div
+                    v-for="periodGroup in periodGroupsForMilestone(milestone)"
+                    :key="periodGroup.key"
+                    class="job-period-timeline"
+                  >
+                    <div class="job-period-timeline__services">
+                      <div class="job-period-timeline__services-title">
+                        {{ periodGroupTypeLabel(periodGroup) }}
+                      </div>
+                      <div class="job-period-timeline__services-list">
+                        <VCard
+                          v-for="goal in selectedPeriodSection(periodGroup)?.goals || []"
+                          :key="goal.id"
+                          variant="flat"
+                          class="job-period-service-row"
+                        >
+                          <div class="job-period-service-shell">
+                            <div class="flex-grow-1 min-w-0">
+                              <div class="d-flex align-center gap-2 flex-wrap">
+                                <VTooltip :text="goal.name" location="top">
+                                  <template #activator="{ props: tooltipProps }">
+                                    <div
+                                      v-bind="tooltipProps"
+                                      class="job-period-service-title truncate-title"
+                                    >
+                                      {{ goal.name }}
+                                    </div>
+                                  </template>
+                                </VTooltip>
+                                <VChip
+                                  color="primary"
+                                  size="x-small"
+                                  variant="plain"
+                                  class="job-period-service-chip"
+                                >
+                                  {{ periodGoalKindLabel(goal) }}
+                                </VChip>
+                                <VChip
+                                  :color="workStatusColor(goalStatus(goal))"
+                                  :style="jobWorkStatusChipStyle(goalStatus(goal))"
+                                  size="x-small"
+                                  label
+                                >
+                                  {{ goalStatus(goal) }}
+                                </VChip>
+                              </div>
+                              <div class="text-caption text-medium-emphasis mt-1">
+                                {{ periodGoalDateRange(goal) }} |
+                                {{ completedTaskCount(goal.tasks) }}/{{ goal.tasks.length }}
+                                tasks completed
+                              </div>
+                              <div
+                                v-if="goal.note"
+                                class="text-body-2 text-medium-emphasis mt-1"
+                              >
+                                {{ goal.note }}
+                              </div>
+                            </div>
+
+                            <div
+                              class="d-flex align-center gap-3 goal-actions"
+                              @click.stop
+                            >
+                              <VTooltip text="Add Task" location="top">
+                                <template #activator="{ props: tooltipProps }">
+                                  <VBtn
+                                    v-bind="tooltipProps"
+                                    class="goal-add-task-btn"
+                                    size="x-small"
+                                    variant="text"
+                                    icon="tabler-checkbox"
+                                    @click="openCreateTodoForGoal(goal)"
+                                  />
+                                </template>
+                              </VTooltip>
+                              <VTooltip
+                                v-if="goal.source?.periodKind === 'retainer'"
+                                text="Add Goal to Period"
+                                location="top"
+                              >
+                                <template #activator="{ props: tooltipProps }">
+                                  <VBtn
+                                    v-bind="tooltipProps"
+                                    class="goal-add-goal-btn"
+                                    size="x-small"
+                                    variant="text"
+                                    icon="tabler-target-arrow"
+                                    @click="openCreateGoal(goal.milestoneId ?? undefined, goal.source)"
+                                  />
+                                </template>
+                              </VTooltip>
+                              <VBtn icon variant="text" size="x-small">
+                                <VIcon icon="tabler-dots-vertical" size="18" />
+                                <VTooltip activator="parent" location="top">
+                                  Show more
+                                </VTooltip>
+                                <VMenu activator="parent">
+                                  <VList>
+                                    <VListItem @click="openEditGoal(goal)">
+                                      <template #prepend>
+                                        <VIcon icon="tabler-edit" />
+                                      </template>
+                                      <VListItemTitle>Edit</VListItemTitle>
+                                    </VListItem>
+                                    <VListItem @click="deleteGoal(goal)">
+                                      <template #prepend>
+                                        <VIcon icon="tabler-trash" color="error" />
+                                      </template>
+                                      <VListItemTitle>Delete</VListItemTitle>
+                                    </VListItem>
+                                  </VList>
+                                </VMenu>
+                              </VBtn>
+                            </div>
+                          </div>
+                        </VCard>
+                      </div>
+                    </div>
+
+                    <div class="job-period-timeline__track">
+                      <div
+                        class="job-period-timeline__progress"
+                        :style="{ inlineSize: periodTimelineProgressWidth(periodGroup) }"
+                      />
+                    </div>
+
+                    <div
+                      class="job-period-timeline__steps"
+                      :style="{ '--period-count': periodGroup.sections.length }"
+                    >
+                      <div
+                        v-for="section in periodGroup.sections"
+                        :key="section.key"
+                        class="job-period-timeline__step"
+                        :class="[
+                          periodSectionStatusClass(section),
+                          {
+                            'job-period-timeline__step--active':
+                              selectedPeriodNumber(periodGroup) === section.periodNumber,
+                          },
+                        ]"
+                      >
+                        <VMenu location="bottom">
+                          <template #activator="{ props: menuProps }">
+                            <button
+                              v-bind="menuProps"
+                              type="button"
+                              class="job-period-timeline__button"
+                              @click="selectPeriodSection(periodGroup, section)"
+                            >
+                              <span>
+                                <span class="job-period-timeline__dot" />
+                                <span class="job-period-timeline__label">
+                                  P{{ section.periodNumber }}
+                                </span>
+                              </span>
+                            </button>
+                          </template>
+
+                          <VList class="job-period-action-menu">
+                            <div class="job-period-action-menu__info">
+                              <VIcon
+                                icon="tabler-info-circle"
+                                size="16"
+                                class="job-period-action-menu__info-icon"
+                              />
+                              <div class="job-period-action-menu__info-copy">
+                                <div class="job-period-action-menu__info-title">
+                                  {{ section.label }}
+                                </div>
+                                <div class="job-period-action-menu__dates">
+                                  <span>
+                                    Start Date:
+                                    <strong>{{ formatDate(section.source.periodStartDate) }}</strong>
+                                  </span>
+                                  <span class="job-period-action-menu__date-separator">
+                                    |
+                                  </span>
+                                  <span>
+                                    End Date:
+                                    <strong>{{ formatDate(section.source.periodEndDate) }}</strong>
+                                  </span>
+                                </div>
+                                <div class="job-period-action-menu__info-status">
+                                  {{ periodSectionStatus(section) }}
+                                </div>
+                              </div>
+                            </div>
+                            <template v-if="periodGroup.kind === 'retainer'">
+                              <VDivider class="my-1" />
+                              <VListItem
+                                @click="openCreateGoal(periodGroup.milestoneId, section.source)"
+                              >
+                                <template #prepend>
+                                  <VIcon icon="tabler-target-arrow" />
+                                </template>
+                                <VListItemTitle>Add Goal to Period</VListItemTitle>
+                              </VListItem>
+                            </template>
+                          </VList>
+                        </VMenu>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="selectedPeriodSection(periodGroup)"
+                      class="job-period-selected"
+                    >
+                      <div class="job-period-selected__header">
+                        <div>
+                          <div class="job-period-selected__title">
+                            {{ selectedPeriodSection(periodGroup)?.label }}
+                          </div>
+                          <div class="text-caption text-medium-emphasis">
+                            {{ selectedPeriodSection(periodGroup) ? periodSectionDateRange(selectedPeriodSection(periodGroup)!) : "--" }}
+                          </div>
+                        </div>
+                        <VChip
+                          v-if="selectedPeriodSection(periodGroup)"
+                          :color="workStatusColor(periodSectionStatus(selectedPeriodSection(periodGroup)!))"
+                          :style="jobWorkStatusChipStyle(periodSectionStatus(selectedPeriodSection(periodGroup)!))"
+                          size="x-small"
+                          label
+                        >
+                          {{ periodSectionStatus(selectedPeriodSection(periodGroup)!) }}
+                        </VChip>
+                      </div>
+
+                      <template
+                        v-for="goal in selectedPeriodSection(periodGroup)?.goals || []"
+                        :key="`period-goal-tasks-${goal.id}`"
+                      >
+                        <div
+                          v-if="goal.tasks.length"
+                          class="d-flex flex-column gap-2"
+                        >
+                          <template
+                            v-for="task in goal.tasks"
+                            :key="task.id"
+                          >
+                            <div
+                              class="job-task-row"
+                              @click="emit('open-edit-todo', task.id)"
+                            >
+                              <div class="job-task-check">
+                                <VCheckboxBtn
+                                  :model-value="task.status === 'completed'"
+                                  density="compact"
+                                  @click.stop
+                                  @update:model-value="(value) => toggleTaskComplete(task, Boolean(value))"
+                                />
+                              </div>
+                              <div class="job-task-priority">
+                                <VBtn
+                                  icon
+                                  variant="text"
+                                  size="small"
+                                  class="job-task-star-btn"
+                                  @click.stop="toggleTaskImportant(task)"
+                                >
+                                  <VIcon
+                                    :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                                    size="20"
+                                    color="warning"
+                                  />
+                                  <VTooltip activator="parent" location="top">
+                                    {{ task.important ? "Clear priority" : "Mark priority" }}
+                                  </VTooltip>
+                                </VBtn>
+                              </div>
+
+                              <div class="job-task-main">
+                                <div class="job-task-chevron-slot">
+                                  <VBtn
+                                    v-if="hasTaskSteps(task)"
+                                    icon
+                                    variant="text"
+                                    size="small"
+                                    class="job-task-chevron-btn"
+                                    @click.stop="toggleTaskSteps(task)"
+                                  >
+                                    <VIcon
+                                      :icon="isTaskExpanded(task) ? 'tabler-chevron-up' : 'tabler-chevron-down'"
+                                      size="18"
+                                    />
+                                    <VTooltip activator="parent" location="top">
+                                      {{ isTaskExpanded(task) ? "Hide subtasks" : "Show subtasks" }}
+                                    </VTooltip>
+                                  </VBtn>
+                                  <div v-else class="job-task-chevron-placeholder" />
+                                </div>
+                                <div class="job-task-copy">
+                                  <h6 class="text-base mb-0">{{ task.title }}</h6>
+                                  <div class="text-sm text-medium-emphasis">
+                                    {{ taskNotesPreview(task) }}
+                                  </div>
+                                  <div
+                                    v-if="hasTaskSteps(task)"
+                                    class="text-xs text-medium-emphasis mt-1"
+                                  >
+                                    <VIcon icon="tabler-subtask" size="18" class="mr-2" />
+                                    Subtasks: {{ completedStepCount(task) }}/{{ task.steps.length }}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div class="job-task-date">
+                                {{ formatDate(task.dueAt) }}
+                              </div>
+
+                              <div class="job-task-assigned">
+                                <div
+                                  v-if="task.collaborators?.length"
+                                  class="v-avatar-group demo-avatar-group"
+                                >
+                                  <VAvatar
+                                    v-for="collaborator in task.collaborators.slice(0, 3)"
+                                    :key="collaborator.id"
+                                    :size="40"
+                                    color="primary"
+                                  >
+                                    <template v-if="collaborator.avatarUrl">
+                                      <VImg :src="collaborator.avatarUrl" />
+                                    </template>
+                                    <template v-else>
+                                      <span class="task-mono">
+                                        {{ collaboratorInitials(collaborator.name) }}
+                                      </span>
+                                    </template>
+                                    <VTooltip activator="parent" location="top">
+                                      {{ collaborator.name }}
+                                    </VTooltip>
+                                  </VAvatar>
+                                  <VAvatar
+                                    v-if="task.collaborators.length > 3"
+                                    :size="40"
+                                    color="secondary"
+                                  >
+                                    +{{ task.collaborators.length - 3 }}
+                                  </VAvatar>
+                                </div>
+                                <span v-else>-</span>
+                              </div>
+
+                              <div class="job-task-status">
+                                <span
+                                  class="text-body-1"
+                                  :class="todoStatusTextClass(task.status)"
+                                >
+                                  {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
+                                </span>
+                              </div>
+                            </div>
+                            <div v-if="isTaskExpanded(task)" class="job-subtasks-row">
+                              <div
+                                v-for="step in task.steps"
+                                :key="step.id"
+                                class="job-subtask-row"
+                              >
+                                <VIcon
+                                  :icon="step.status === 'completed' ? 'tabler-check' : 'tabler-subtask'"
+                                  size="16"
+                                  :color="step.status === 'completed' ? 'success' : undefined"
+                                />
+                                <div class="job-subtask-copy">
+                                  <span class="font-weight-medium">{{ step.title }}</span>
+                                  <span class="text-caption text-medium-emphasis">
+                                    {{ formatDate(step.dueAt) }} | {{ todoStatusLabel(step.status) }}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                        <div
+                          v-else
+                          class="text-body-2 text-medium-emphasis empty-tasks"
+                        >
+                          No tasks linked to this period goal yet.
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+
                 <VExpansionPanels
-                  v-if="milestone.goals.length"
+                  v-if="normalGoalsForMilestone(milestone).length"
                   v-model="expandedGoals"
                   variant="accordion"
                   multiple
                   class="expansion-panels-width-border goal-panels"
                 >
                   <VExpansionPanel
-                    v-for="goal in milestone.goals"
+                    v-for="goal in normalGoalsForMilestone(milestone)"
                     :key="goal.id"
                     :value="goal.id"
                     class="goal-panel"
-                    :class="{ 'goal-panel--period': isPeriodGoal(goal) }"
                   >
                     <VExpansionPanelTitle>
                       <div class="d-flex align-center gap-3 w-100">
@@ -1584,7 +2097,7 @@ const taskNotesPreview = (task: JobTodo) => {
                 </VExpansionPanels>
 
                 <div
-                  v-else-if="!milestone.tasks.length"
+                  v-else-if="!milestone.tasks.length && !milestone.goals.length"
                   class="text-body-2 text-medium-emphasis"
                 >
                   No goals or tasks under this milestone yet.
@@ -2008,6 +2521,253 @@ const taskNotesPreview = (task: JobTodo) => {
 
 .goal-panels {
   margin-block-start: 0;
+}
+
+.job-period-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.job-period-timeline {
+  border: 1px solid rgba(var(--v-theme-primary), 0.14);
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), 0.05);
+  padding-block: 0.8rem;
+  padding-inline: 0.85rem;
+}
+
+.job-period-timeline__services {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-block-end: 0.9rem;
+}
+
+.job-period-timeline__services-title {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.job-period-timeline__services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.job-period-service-row {
+  inline-size: 100%;
+  padding-block: 0.65rem;
+  padding-inline: 0.75rem;
+}
+
+.job-period-service-shell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.job-period-service-title {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.job-period-service-chip {
+  font-weight: 700;
+}
+
+.job-period-timeline__track {
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.1);
+  block-size: 4px;
+}
+
+.job-period-timeline__progress {
+  border-radius: inherit;
+  background: rgb(var(--v-theme-primary));
+  block-size: 100%;
+  transition: inline-size 0.2s ease;
+}
+
+.job-period-timeline__steps {
+  display: grid;
+  gap: 0.15rem;
+  grid-template-columns: repeat(var(--period-count), minmax(0, 1fr));
+  margin-block-start: 0.55rem;
+}
+
+.job-period-timeline__step {
+  min-inline-size: 0;
+}
+
+.job-period-timeline__button {
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  cursor: pointer;
+  font: inherit;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.job-period-timeline__button > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.job-period-timeline__dot {
+  border: 2px solid rgba(var(--v-theme-on-surface), 0.18);
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface));
+  block-size: 0.68rem;
+  inline-size: 0.68rem;
+}
+
+.job-period-timeline__label {
+  overflow: hidden;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  max-inline-size: 100%;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-period-timeline__step--active .job-period-timeline__label {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+}
+
+.job-period-timeline__step--not-started .job-period-timeline__button {
+  color: rgb(var(--v-theme-secondary));
+}
+
+.job-period-timeline__step--in-progress .job-period-timeline__button,
+.job-period-timeline__step--active .job-period-timeline__button {
+  color: rgb(var(--v-theme-primary));
+}
+
+.job-period-timeline__step--on-hold .job-period-timeline__button {
+  color: #d59bea;
+}
+
+.job-period-timeline__step--completed .job-period-timeline__button {
+  color: rgb(var(--v-theme-success));
+}
+
+.job-period-timeline__step--not-started .job-period-timeline__dot {
+  border-color: rgb(var(--v-theme-secondary));
+}
+
+.job-period-timeline__step--in-progress .job-period-timeline__dot,
+.job-period-timeline__step--active .job-period-timeline__dot {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary));
+}
+
+.job-period-timeline__step--on-hold .job-period-timeline__dot {
+  border-color: #d59bea;
+  background: #d59bea;
+}
+
+.job-period-timeline__step--completed .job-period-timeline__dot {
+  border-color: rgb(var(--v-theme-success));
+  background: rgb(var(--v-theme-success));
+}
+
+.job-period-action-menu__info {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  max-inline-size: 16rem;
+  padding-block: 0.55rem 0.45rem;
+  padding-inline: 1rem;
+}
+
+.job-period-action-menu__info-icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+  margin-block-start: 0.1rem;
+}
+
+.job-period-action-menu__info-copy {
+  min-inline-size: 0;
+}
+
+.job-period-action-menu__info-title {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-period-action-menu__dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.75rem;
+  gap: 0.35rem;
+  line-height: 1.35;
+  margin-block-start: 0.2rem;
+}
+
+.job-period-action-menu__dates span {
+  white-space: nowrap;
+}
+
+.job-period-action-menu__dates strong {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+}
+
+.job-period-action-menu__date-separator {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 700;
+}
+
+.job-period-action-menu__info-status {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-block-start: 0.2rem;
+}
+
+.job-period-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-block-start: 0.9rem;
+}
+
+.job-period-selected__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.job-period-selected__title {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-weight: 700;
 }
 
 .milestone-direct-tasks {
