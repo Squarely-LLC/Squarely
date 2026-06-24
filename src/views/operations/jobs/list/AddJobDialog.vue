@@ -9,6 +9,7 @@ import type {
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
 import { findCurrentUserOption } from "@/utils/currentAccount";
+import { jobStatusChipStyle, jobStatusColor } from "@/utils/jobStatusColors";
 import {
   getEmployeeOptions,
   getSalesContactOptions,
@@ -202,7 +203,18 @@ const onCancel = () => {
                 placeholder="Select Status"
                 :items="statusOptions"
                 :rules="[requiredValidator]"
-              />
+              >
+                <template #selection="{ item }">
+                  <VChip
+                    :color="jobStatusColor(String(item?.value ?? item?.title ?? ''))"
+                    :style="jobStatusChipStyle(String(item?.value ?? item?.title ?? ''))"
+                    label
+                    size="small"
+                  >
+                    {{ item?.title }}
+                  </VChip>
+                </template>
+              </AppSelect>
             </VCol>
             <VCol cols="12" md="6">
               <AppSelect

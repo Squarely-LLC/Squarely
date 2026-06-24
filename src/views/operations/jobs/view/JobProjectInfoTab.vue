@@ -9,6 +9,7 @@ import type {
 import { useConfigStore } from "@/stores/config";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { jobStatusChipStyle, jobStatusColor } from "@/utils/jobStatusColors";
 import {
   getEmployeeOptions,
   getSalesContactOptions,
@@ -186,7 +187,18 @@ const onReset = () => {
               placeholder="Select Status"
               :items="statusOptions"
               :rules="[requiredValidator]"
-            />
+            >
+              <template #selection="{ item }">
+                <VChip
+                  :color="jobStatusColor(String(item?.value ?? item?.title ?? ''))"
+                  :style="jobStatusChipStyle(String(item?.value ?? item?.title ?? ''))"
+                  label
+                  size="small"
+                >
+                  {{ item?.title }}
+                </VChip>
+              </template>
+            </AppSelect>
           </VCol>
           <VCol cols="12" md="6">
             <AppSelect

@@ -21,6 +21,7 @@ import {
   getEmployeeOptions,
   getEmployeeRefs,
 } from "@/utils/peopleOptions";
+import { formatSystemDate } from "@core/utils/formatters";
 import {
   buildCompletedTaskPatch,
   createJobStatusSuggestionNotification,
@@ -104,6 +105,9 @@ const statusPromptNeverAgain = ref(false);
 const isCompletionTimeDialogVisible = ref(false);
 const pendingCompletionTodo = ref<ToDo | null>(null);
 const completionMinutesDraft = ref<number | null>(null);
+const isStartEarlyDialogVisible = ref(false);
+const pendingStartEarlyPayload = ref<any | null>(null);
+const pendingStartEarlyDate = ref<string | null>(null);
 
 const jobTodos = computed(() => {
   const currentJob = job.value;
@@ -144,6 +148,46 @@ const buildTodoPatch = (payload: any) => {
   if ("doneAt" in payload) partial.doneAt = payload.doneAt;
 
   return partial;
+};
+
+const isExecutableJobTaskStatus = (status?: string | null) =>
+  status === "in_progress" || status === "for_review" || status === "completed";
+
+const applyTodoEdit = (payload: any, options: { allowEarlyStart?: boolean } = {}) => {
+  const partial = buildTodoPatch(payload);
+  const previousTodo = todosStore.byId(payload.id);
+  if (
+    !options.allowEarlyStart &&
+    previousTodo &&
+    isJobTask(previousTodo) &&
+    isExecutableJobTaskStatus(payload.status) &&
+    isFutureJobTaskStart(partial.startAt ?? (previousTodo as any).startAt)
+  ) {
+    pendingStartEarlyPayload.value = payload;
+    pendingStartEarlyDate.value = String(
+      partial.startAt ?? (previousTodo as any).startAt ?? "",
+    );
+    isStartEarlyDialogVisible.value = true;
+    return;
+  }
+  if (
+    jobTaskTimeCaptureEnabled.value &&
+    previousTodo &&
+    isJobTask(previousTodo) &&
+    payload.status === "completed" &&
+    previousTodo.status !== "completed"
+  ) {
+    pendingCompletionTodo.value = { ...previousTodo, ...partial } as ToDo;
+    completionMinutesDraft.value = getCompletionMinutesDraft(
+      previousTodo,
+      partial.completionMinutes,
+    );
+    isCompletionTimeDialogVisible.value = true;
+    return;
+  }
+  todosStore.updateTodo(payload.id, partial);
+  isEditTodoDrawerVisible.value = false;
+  nextTick(() => queueStatusSuggestion("Task updated"));
 };
 
 const queueStatusSuggestion = (action: string) => {
@@ -1044,35 +1088,7 @@ const handleMilestoneGoalTodoEditRequest = (todoId: number | string) => {
 };
 
 const onTodoEdited = (payload: any) => {
-  const partial = buildTodoPatch(payload);
-  const previousTodo = todosStore.byId(payload.id);
-  if (
-    previousTodo &&
-    isJobTask(previousTodo) &&
-    payload.status !== "pending" &&
-    isFutureJobTaskStart(partial.startAt ?? (previousTodo as any).startAt)
-  ) {
-    notifications.push("Task is locked until its start date", "warning", 3000);
-    return;
-  }
-  if (
-    jobTaskTimeCaptureEnabled.value &&
-    previousTodo &&
-    isJobTask(previousTodo) &&
-    payload.status === "completed" &&
-    previousTodo.status !== "completed"
-  ) {
-    pendingCompletionTodo.value = { ...previousTodo, ...partial } as ToDo;
-    completionMinutesDraft.value = getCompletionMinutesDraft(
-      previousTodo,
-      partial.completionMinutes,
-    );
-    isCompletionTimeDialogVisible.value = true;
-    return;
-  }
-  todosStore.updateTodo(payload.id, partial);
-  isEditTodoDrawerVisible.value = false;
-  nextTick(() => queueStatusSuggestion("Task updated"));
+  applyTodoEdit(payload);
 };
 
 const onTodoStepsEdited = (payload: {
@@ -1125,6 +1141,20 @@ const cancelCompletionTime = () => {
   pendingCompletionTodo.value = null;
   completionMinutesDraft.value = null;
   isCompletionTimeDialogVisible.value = false;
+};
+
+const confirmStartEarly = () => {
+  const payload = pendingStartEarlyPayload.value;
+  pendingStartEarlyPayload.value = null;
+  pendingStartEarlyDate.value = null;
+  isStartEarlyDialogVisible.value = false;
+  if (payload) applyTodoEdit(payload, { allowEarlyStart: true });
+};
+
+const cancelStartEarly = () => {
+  pendingStartEarlyPayload.value = null;
+  pendingStartEarlyDate.value = null;
+  isStartEarlyDialogVisible.value = false;
 };
 
 const onMeetingCreated = (payload: any) => {
@@ -1209,6 +1239,7 @@ const closeSnagDrawer = () => {
               :job-id="job.id"
               @open-add-todo="handleMilestoneGoalTodoRequest"
               @open-edit-todo="handleMilestoneGoalTodoEditRequest"
+              @update-todo="onTodoEdited"
               @status-automation-trigger="queueStatusSuggestion"
             />
           </VWindowItem>
@@ -1286,6 +1317,28 @@ const closeSnagDrawer = () => {
       @save="onTodoEdited"
       @saveSteps="onTodoStepsEdited"
     />
+
+    <VDialog
+      v-model="isStartEarlyDialogVisible"
+      max-width="440"
+      persistent
+      no-click-animation
+    >
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Start Early?</VCardTitle>
+        <VCardText>
+          This task is scheduled to start on
+          {{ pendingStartEarlyDate ? formatSystemDate(pendingStartEarlyDate) : "--" }}.
+          Start early?
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn variant="tonal" color="secondary" @click="cancelStartEarly">
+            Cancel
+          </VBtn>
+          <VBtn color="primary" @click="confirmStartEarly">Start Early</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <VDialog
       v-model="isCompletionTimeDialogVisible"

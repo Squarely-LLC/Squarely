@@ -16,6 +16,7 @@ import {
   generateJobProjectCode,
   normalizeProjectCode,
 } from "@/utils/jobProjectCode";
+import { jobStatusChipStyle, jobStatusColor } from "@/utils/jobStatusColors";
 import { getContactAndEmployeeRefs, getEmployeeOptions } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
@@ -443,23 +444,6 @@ const resolveFlagColor = (flag: JobProperties["flag"]) => {
 };
 
 const jobAvatarColor = (flag: JobProperties["flag"]) => resolveFlagColor(flag);
-const statusColor = (status?: string | null) => {
-  switch (status) {
-    case "New":
-      return "teal";
-    case "Pending":
-    case "On Hold":
-      return "purple";
-    case "In Progress":
-      return "info";
-    case "Completed":
-      return "success";
-    case "Closed":
-      return "secondary";
-    default:
-      return "primary";
-  }
-};
 
 const relatedContactName = (job: JobProperties) => {
   const entry = getContactEntry(job.relatedTo);
@@ -800,7 +784,18 @@ const updateItemsPerPage = (value: number | string) => {
               :items="statusOptions"
               clearable
               clear-icon="tabler-x"
-            />
+            >
+              <template #selection="{ item }">
+                <VChip
+                  :color="jobStatusColor(String(item?.value ?? item?.title ?? ''))"
+                  :style="jobStatusChipStyle(String(item?.value ?? item?.title ?? ''))"
+                  label
+                  size="small"
+                >
+                  {{ item?.title }}
+                </VChip>
+              </template>
+            </AppSelect>
           </VCol>
 
           <VCol cols="12" md="3">
@@ -1011,7 +1006,8 @@ const updateItemsPerPage = (value: number | string) => {
 
         <template #item.status="{ item }">
           <VChip
-            :color="statusColor(item.status || item.stage)"
+            :color="jobStatusColor(item.status || item.stage)"
+            :style="jobStatusChipStyle(item.status || item.stage)"
             label
             size="small"
             class="job-status-chip cursor-pointer"
@@ -1199,7 +1195,18 @@ const updateItemsPerPage = (value: number | string) => {
             :items="statusOptions"
             clearable
             clear-icon="tabler-x"
-          />
+          >
+            <template #selection="{ item }">
+              <VChip
+                :color="jobStatusColor(String(item?.value ?? item?.title ?? ''))"
+                :style="jobStatusChipStyle(String(item?.value ?? item?.title ?? ''))"
+                label
+                size="small"
+              >
+                {{ item?.title }}
+              </VChip>
+            </template>
+          </AppSelect>
         </VCardText>
         <VCardActions class="justify-end">
           <VBtn

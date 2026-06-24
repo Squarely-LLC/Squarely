@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { jobStatusColorClass } from "@/utils/jobStatusColors";
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed } from "vue";
 
@@ -246,6 +247,7 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
         <div class="status-timeline__track">
           <div
             class="status-timeline__progress"
+            :class="jobStatusColorClass(job.status || job.stage)"
             :style="{ inlineSize: `${statusProgressPercent}%` }"
           />
         </div>
@@ -262,6 +264,8 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
               'status-timeline__step--complete':
                 currentStatusIndex >= 0 && index < currentStatusIndex,
               'status-timeline__step--current': index === currentStatusIndex,
+              [jobStatusColorClass(job.status || job.stage)]:
+                currentStatusIndex >= 0 && index <= currentStatusIndex,
             }"
           >
             <span class="status-timeline__dot" />
@@ -429,7 +433,7 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
 
 .status-timeline__progress {
   border-radius: inherit;
-  background: rgb(var(--v-theme-primary));
+  background: var(--job-status-color, rgb(var(--v-theme-primary)));
   block-size: 100%;
   transition: inline-size 0.2s ease;
 }
@@ -471,13 +475,33 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
 
 .status-timeline__step--complete,
 .status-timeline__step--current {
-  color: rgb(var(--v-theme-primary));
+  color: var(--job-status-color, rgb(var(--v-theme-primary)));
 }
 
 .status-timeline__step--complete .status-timeline__dot,
 .status-timeline__step--current .status-timeline__dot {
-  border-color: rgb(var(--v-theme-primary));
-  background: rgb(var(--v-theme-primary));
+  border-color: var(--job-status-color, rgb(var(--v-theme-primary)));
+  background: var(--job-status-color, rgb(var(--v-theme-primary)));
+}
+
+.job-status-color--teal {
+  --job-status-color: #009688;
+}
+
+.job-status-color--purple {
+  --job-status-color: #9c27b0;
+}
+
+.job-status-color--success {
+  --job-status-color: rgb(var(--v-theme-success));
+}
+
+.job-status-color--secondary {
+  --job-status-color: rgb(var(--v-theme-secondary));
+}
+
+.job-status-color--default {
+  --job-status-color: rgb(var(--v-theme-primary));
 }
 
 .summary-collaborators {

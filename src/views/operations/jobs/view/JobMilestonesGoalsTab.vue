@@ -11,6 +11,10 @@ import { useConfigStore } from "@/stores/config";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import {
+  jobWorkStatusChipStyle,
+  jobWorkStatusColor,
+} from "@/utils/jobStatusColors";
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
@@ -21,6 +25,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: "open-add-todo", payload: { initial: Record<string, any> }): void;
   (e: "open-edit-todo", todoId: number | string): void;
+  (e: "update-todo", payload: Record<string, any>): void;
   (e: "status-automation-trigger", action: string): void;
 }>();
 const jobsStore = useJobsStore();
@@ -292,19 +297,7 @@ const milestoneStatus = (milestone: JobMilestone & {
   return "Not Started";
 };
 
-const workStatusColor = (status: WorkStatus) => {
-  switch (status) {
-    case "Completed":
-      return "success";
-    case "In Progress":
-      return "primary";
-    case "On Hold":
-      return "secondary";
-    case "Not Started":
-    default:
-      return "secondary";
-  }
-};
+const workStatusColor = (status: WorkStatus) => jobWorkStatusColor(status);
 
 const shouldExpandGoal = (goalId: number) => {
   const tasks = jobTodos.value.filter(
@@ -830,6 +823,21 @@ const toggleTaskSteps = (task: JobTodo) => {
     ? expandedTaskIds.value.filter((id) => String(id) !== String(task.id))
     : [...expandedTaskIds.value, task.id];
 };
+const toggleTaskImportant = (task: JobTodo) => {
+  emit("update-todo", {
+    ...task,
+    important: !task.important,
+  });
+};
+const toggleTaskComplete = (task: JobTodo, checked: boolean) => {
+  emit("update-todo", {
+    ...task,
+    status: checked ? "completed" : "pending",
+    completed: checked,
+    isCompleted: checked,
+    doneAt: checked ? new Date().toISOString() : null,
+  });
+};
 const priorityColor = (priority: "Low" | "Normal" | "High") => {
   return priority === "High"
     ? "error"
@@ -943,6 +951,7 @@ const taskNotesPreview = (task: JobTodo) => {
                     </VTooltip>
                     <VChip
                       :color="workStatusColor(milestoneStatus(milestone))"
+                      :style="jobWorkStatusChipStyle(milestoneStatus(milestone))"
                       size="small"
                       label
                     >
@@ -1061,12 +1070,31 @@ const taskNotesPreview = (task: JobTodo) => {
                       class="job-task-row"
                       @click="emit('open-edit-todo', task.id)"
                     >
-                      <div class="job-task-priority">
-                        <VIcon
-                          :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
-                          size="20"
-                          color="warning"
+                      <div class="job-task-check">
+                        <VCheckboxBtn
+                          :model-value="task.status === 'completed'"
+                          density="compact"
+                          @click.stop
+                          @update:model-value="(value) => toggleTaskComplete(task, Boolean(value))"
                         />
+                      </div>
+                      <div class="job-task-priority">
+                        <VBtn
+                          icon
+                          variant="text"
+                          size="small"
+                          class="job-task-star-btn"
+                          @click.stop="toggleTaskImportant(task)"
+                        >
+                          <VIcon
+                            :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                            size="20"
+                            color="warning"
+                          />
+                          <VTooltip activator="parent" location="top">
+                            {{ task.important ? "Clear priority" : "Mark priority" }}
+                          </VTooltip>
+                        </VBtn>
                       </div>
 
                       <div class="job-task-main">
@@ -1208,6 +1236,7 @@ const taskNotesPreview = (task: JobTodo) => {
                             </VTooltip>
                             <VChip
                               :color="workStatusColor(goalStatus(goal))"
+                              :style="jobWorkStatusChipStyle(goalStatus(goal))"
                               size="x-small"
                               label
                             >
@@ -1306,12 +1335,31 @@ const taskNotesPreview = (task: JobTodo) => {
                                 class="job-task-row"
                                 @click="emit('open-edit-todo', task.id)"
                               >
-                                <div class="job-task-priority">
-                                  <VIcon
-                                    :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
-                                    size="20"
-                                    color="warning"
+                                <div class="job-task-check">
+                                  <VCheckboxBtn
+                                    :model-value="task.status === 'completed'"
+                                    density="compact"
+                                    @click.stop
+                                    @update:model-value="(value) => toggleTaskComplete(task, Boolean(value))"
                                   />
+                                </div>
+                                <div class="job-task-priority">
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    size="small"
+                                    class="job-task-star-btn"
+                                    @click.stop="toggleTaskImportant(task)"
+                                  >
+                                    <VIcon
+                                      :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                                      size="20"
+                                      color="warning"
+                                    />
+                                    <VTooltip activator="parent" location="top">
+                                      {{ task.important ? "Clear priority" : "Mark priority" }}
+                                    </VTooltip>
+                                  </VBtn>
                                 </div>
                               <div class="job-task-main">
                                 <div class="job-task-chevron-slot">
@@ -1457,12 +1505,31 @@ const taskNotesPreview = (task: JobTodo) => {
               class="job-task-row"
               @click="emit('open-edit-todo', task.id)"
             >
-              <div class="job-task-priority">
-                <VIcon
-                  :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
-                  size="20"
-                  color="warning"
+              <div class="job-task-check">
+                <VCheckboxBtn
+                  :model-value="task.status === 'completed'"
+                  density="compact"
+                  @click.stop
+                  @update:model-value="(value) => toggleTaskComplete(task, Boolean(value))"
                 />
+              </div>
+              <div class="job-task-priority">
+                <VBtn
+                  icon
+                  variant="text"
+                  size="small"
+                  class="job-task-star-btn"
+                  @click.stop="toggleTaskImportant(task)"
+                >
+                  <VIcon
+                    :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                    size="20"
+                    color="warning"
+                  />
+                  <VTooltip activator="parent" location="top">
+                    {{ task.important ? "Clear priority" : "Mark priority" }}
+                  </VTooltip>
+                </VBtn>
               </div>
             <div class="job-task-main">
               <div class="job-task-chevron-slot">
@@ -1864,7 +1931,7 @@ const taskNotesPreview = (task: JobTodo) => {
   column-gap: 1rem;
   cursor: pointer;
   grid-template-columns:
-    2rem minmax(16rem, 1fr) minmax(5.25rem, 0.45fr)
+    1.75rem 2rem minmax(16rem, 1fr) minmax(5.25rem, 0.45fr)
     minmax(8.75rem, 0.7fr) minmax(7rem, 0.48fr);
   min-block-size: 4.5rem;
   padding-block: 0.625rem;
@@ -1879,11 +1946,28 @@ const taskNotesPreview = (task: JobTodo) => {
   background: rgba(255, 255, 255, 4%);
 }
 
+.job-task-check,
 .job-task-priority {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   justify-self: center;
+}
+
+.job-task-check :deep(.v-selection-control) {
+  min-block-size: 1.625rem;
+}
+
+.job-task-check :deep(.v-selection-control__wrapper) {
+  block-size: 1.625rem;
+  inline-size: 1.625rem;
+}
+
+.job-task-star-btn {
+  block-size: 1.625rem !important;
+  inline-size: 1.625rem !important;
+  min-block-size: 1.625rem !important;
+  min-inline-size: 1.625rem !important;
 }
 
 .job-task-main {
@@ -1973,7 +2057,7 @@ const taskNotesPreview = (task: JobTodo) => {
   border-block-end: 1px solid rgba(255, 255, 255, 6%);
   background: rgba(255, 255, 255, 2.5%);
   padding-block: 0.5rem 0.75rem;
-  padding-inline: calc(0.75rem + 3rem) 0.75rem;
+  padding-inline: calc(0.75rem + 4.75rem) 0.75rem;
 }
 
 .job-subtask-row {
@@ -2044,14 +2128,14 @@ const taskNotesPreview = (task: JobTodo) => {
 
   .job-task-row {
     align-items: flex-start;
-    grid-template-columns: 2rem minmax(0, 1fr);
+    grid-template-columns: 1.75rem 2rem minmax(0, 1fr);
     row-gap: 0.5rem;
   }
 
   .job-task-date,
   .job-task-assigned,
   .job-task-status {
-    grid-column: 2 / 3;
+    grid-column: 3 / 4;
   }
 
   .job-task-assigned {
@@ -2059,7 +2143,7 @@ const taskNotesPreview = (task: JobTodo) => {
   }
 
   .job-subtasks-row {
-    padding-inline: calc(0.75rem + 2rem) 0.75rem;
+    padding-inline: calc(0.75rem + 3.75rem) 0.75rem;
   }
 
   .empty-tasks {
