@@ -35,6 +35,7 @@ const emit = defineEmits<{
   (e: "openAddMeeting"): void;
   (e: "openAddCall"): void;
   (e: "openAddNote"): void;
+  (e: "openCollaborators"): void;
 }>();
 
 const avatarText = (name?: string | null) => {
@@ -345,6 +346,22 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
               </div>
 
               <span v-else class="detail-row__value">No collaborators</span>
+
+              <VTooltip text="Add collaborators" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    icon
+                    size="small"
+                    color="secondary"
+                    variant="tonal"
+                    aria-label="Add collaborators"
+                    @click="emit('openCollaborators')"
+                  >
+                    <VIcon icon="tabler-plus" size="18" />
+                  </VBtn>
+                </template>
+              </VTooltip>
             </div>
           </VListItemTitle>
         </VListItem>

@@ -252,6 +252,11 @@ export const handlerOperationsJobs = [
       stakeholders: job.stakeholders || [],
       milestones: job.milestones || [],
       goals: job.goals || [],
+      stakeholderConnectionImportIds: Array.isArray(
+        job.stakeholderConnectionImportIds,
+      )
+        ? job.stakeholderConnectionImportIds
+        : [],
       statusAutomation: job.statusAutomation ?? null,
       createdAt,
     };
@@ -311,6 +316,11 @@ export const handlerOperationsJobs = [
       flag: normalizeJobFlag(merged.flag),
       projectManagerId: projectManagerId ?? collaborators[0] ?? null,
       collaborators,
+      stakeholderConnectionImportIds: Array.isArray(
+        merged.stakeholderConnectionImportIds,
+      )
+        ? merged.stakeholderConnectionImportIds
+        : [],
       statusAutomation: merged.statusAutomation ?? null,
     };
 

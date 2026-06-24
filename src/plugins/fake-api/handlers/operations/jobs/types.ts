@@ -77,6 +77,7 @@ export interface JobProperties {
   milestones: JobMilestone[];
   goals: JobGoal[];
   documents?: JobDocument[];
+  stakeholderConnectionImportIds?: number[];
   statusAutomation?: {
     neverPrompt?: boolean;
     ignoredSuggestionKeys?: string[];

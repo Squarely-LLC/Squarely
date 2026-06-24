@@ -92,6 +92,9 @@ function cloneJob(job: JobProperties): JobProperties {
         cloned.collaborators,
         projectManagerId,
       ),
+      stakeholderConnectionImportIds: normalizeStakeholderConnectionImportIds(
+        cloned.stakeholderConnectionImportIds,
+      ),
       statusAutomation: cloned.statusAutomation ?? null,
     };
   } catch (error) {
@@ -110,6 +113,9 @@ function cloneJob(job: JobProperties): JobProperties {
       milestones: ensureMilestones(raw.milestones),
       goals: ensureGoals(raw.goals),
       documents: ensureDocuments(raw.documents),
+      stakeholderConnectionImportIds: normalizeStakeholderConnectionImportIds(
+        raw.stakeholderConnectionImportIds,
+      ),
       statusAutomation: raw.statusAutomation ?? null,
     };
   }
@@ -186,6 +192,16 @@ function normalizeCollaborators(
     normalized.unshift(projectManagerId);
 
   return Array.from(new Set(normalized));
+}
+function normalizeStakeholderConnectionImportIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => toNumberId(entry))
+        .filter((entry): entry is number => entry !== null),
+    ),
+  );
 }
 function normalizeJobFlag(value: unknown) {
   return value === "High" ? "High" : "Normal";
@@ -279,6 +295,9 @@ function normaliseJob(
     milestones: ensureMilestones(payload.milestones),
     goals: ensureGoals(payload.goals),
     documents: ensureDocuments(payload.documents),
+    stakeholderConnectionImportIds: normalizeStakeholderConnectionImportIds(
+      payload.stakeholderConnectionImportIds,
+    ),
     statusAutomation: payload.statusAutomation ?? null,
     createdAt,
   };
@@ -318,6 +337,10 @@ function mergeJob(
     milestones: ensureMilestones(patch.milestones ?? original.milestones),
     goals: ensureGoals(patch.goals ?? original.goals),
     documents: ensureDocuments(patch.documents ?? original.documents),
+    stakeholderConnectionImportIds: normalizeStakeholderConnectionImportIds(
+      patch.stakeholderConnectionImportIds ??
+        original.stakeholderConnectionImportIds,
+    ),
     statusAutomation:
       patch.statusAutomation === undefined
         ? (original.statusAutomation ?? null)

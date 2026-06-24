@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, toRaw, watch } from "vue";
 import { useRouter } from "vue-router";
 
+import DialogActionBar from "@/components/DialogActionBar.vue";
 import AddStakeholderDialog from "@/components/dialogs/AddStakeholderDialog.vue";
 import type { ToDo, ToDoStep } from "@/data/schema";
 import type {
@@ -18,6 +19,7 @@ import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
 import {
   getContactAndEmployeeRefs,
+  getEmployeeOptions,
   getEmployeeRefs,
 } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
@@ -249,12 +251,92 @@ const employeeDirectory = computed(() => {
   return map;
 });
 
+const importEntityConnections = (
+  sourceJob: JobProperties,
+  entityIds: Array<number | string | null | undefined>,
+  options: { force?: boolean } = {},
+) => {
+  const stakeholders = Array.isArray(sourceJob.stakeholders)
+    ? sourceJob.stakeholders.map((stakeholder) => ({ ...stakeholder }))
+    : [];
+  const importedEntityIds = new Set(
+    (sourceJob.stakeholderConnectionImportIds || [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
+  const existingContactIds = new Set(
+    stakeholders
+      .map((stakeholder) => Number(stakeholder.contactId))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .map((value) => String(value)),
+  );
+  let maxId = stakeholders.length
+    ? Math.max(...stakeholders.map((stakeholder) => Number(stakeholder.id) || 0))
+    : 0;
+  let changed = false;
+
+  entityIds.forEach((entityIdValue) => {
+    const entityId = Number(entityIdValue);
+    if (!Number.isFinite(entityId) || entityId <= 0) return;
+    if (!options.force && importedEntityIds.has(entityId)) return;
+
+    const entity = contactsStore.byId(entityId);
+    if (!entity || entity.type !== "Entity") return;
+
+    if (!importedEntityIds.has(entityId)) {
+      importedEntityIds.add(entityId);
+      changed = true;
+    }
+
+    (entity.connections || []).forEach((connection) => {
+      const contactId = Number(connection.contactId);
+      if (!Number.isFinite(contactId) || contactId <= 0) return;
+      if (existingContactIds.has(String(contactId))) return;
+
+      const contact = contactsStore.byId(contactId);
+      if (!contact) return;
+
+      maxId += 1;
+      existingContactIds.add(String(contactId));
+      stakeholders.push({
+        id: maxId,
+        contactId,
+        role: connection.relation || "Related Contact",
+      });
+      changed = true;
+    });
+  });
+
+  if (!changed) return null;
+
+  return {
+    stakeholders,
+    stakeholderConnectionImportIds: Array.from(importedEntityIds),
+  };
+};
+
+const syncJobEntityConnections = (sourceJob: JobProperties) => {
+  const importPatch = importEntityConnections(sourceJob, [sourceJob.relatedTo]);
+  if (!importPatch) return sourceJob;
+
+  try {
+    const updated = jobsStore.updateJob(sourceJob.id, {
+      ...sourceJob,
+      ...importPatch,
+    });
+    return updated ?? sourceJob;
+  } catch (error) {
+    console.warn("Failed to import job entity connections", error);
+    return sourceJob;
+  }
+};
+
 const resolveJob = () => {
   loading.value = true;
   const found = jobsStore.byId(route.params.id);
 
   if (found) {
-    job.value = cloneJob(found);
+    job.value = cloneJob(syncJobEntityConnections(found));
     error.value = null;
   } else {
     job.value = null;
@@ -308,7 +390,7 @@ watch(
       error.value = "Job not found.";
       return;
     }
-    job.value = cloneJob(value);
+    job.value = cloneJob(syncJobEntityConnections(value));
     error.value = null;
   },
 );
@@ -367,6 +449,8 @@ const jobSaveError = ref<string | null>(null);
 const isNoteDialogVisible = ref(false);
 const noteDialogValue = ref("");
 const isCallDialogVisible = ref(false);
+const isCollaboratorDialogVisible = ref(false);
+const collaboratorDialogValue = ref<number[]>([]);
 
 // Stakeholder dialogs
 const isAddStakeholderDialogVisible = ref(false);
@@ -383,6 +467,7 @@ const contactOptions = computed(() =>
 );
 const taskCollaboratorOptions = computed(() => getEmployeeRefs());
 const meetingContacts = computed(() => getContactAndEmployeeRefs());
+const collaboratorOptions = computed(() => getEmployeeOptions());
 
 const relatedJobContact = computed(() => {
   if (!job.value?.relatedTo) return null;
@@ -468,6 +553,36 @@ const saveSummaryNote = () => {
   } catch (error) {
     console.error("Failed to save job note", error);
     notifications.push("Failed to save note", "error", 3000);
+  }
+};
+
+const openCollaboratorDialog = () => {
+  if (!job.value) return;
+  collaboratorDialogValue.value = Array.isArray(job.value.collaborators)
+    ? [...job.value.collaborators]
+    : [];
+  isCollaboratorDialogVisible.value = true;
+};
+
+const closeCollaboratorDialog = () => {
+  collaboratorDialogValue.value = [];
+  isCollaboratorDialogVisible.value = false;
+};
+
+const saveJobCollaborators = () => {
+  if (!job.value) return;
+
+  try {
+    const updated = jobsStore.updateJob(job.value.id, {
+      ...job.value,
+      collaborators: [...collaboratorDialogValue.value],
+    });
+    if (updated) job.value = cloneJob(updated);
+    closeCollaboratorDialog();
+    notifications.push("Collaborators updated", "success", 2500);
+  } catch (error) {
+    console.error("Failed to update collaborators", error);
+    notifications.push("Unable to update collaborators", "error", 3000);
   }
 };
 
@@ -810,9 +925,12 @@ const onAddStakeholder = (payload: {
 }) => {
   if (!job.value) return;
 
+  const currentStakeholders = Array.isArray(job.value.stakeholders)
+    ? job.value.stakeholders
+    : [];
   const maxId =
-    job.value.stakeholders.length > 0
-      ? Math.max(...job.value.stakeholders.map((s) => s.id))
+    currentStakeholders.length > 0
+      ? Math.max(...currentStakeholders.map((s) => s.id))
       : 0;
 
   const newStakeholder = {
@@ -821,13 +939,23 @@ const onAddStakeholder = (payload: {
     role: payload.role || "",
   };
 
-  const updatedStakeholders = [...job.value.stakeholders, newStakeholder];
+  const draftJob = {
+    ...job.value,
+    stakeholders: [...currentStakeholders, newStakeholder],
+  };
+  const importPatch = importEntityConnections(
+    draftJob,
+    [payload.contactId],
+    { force: true },
+  );
 
   try {
-    jobsStore.updateJob(job.value.id, {
-      ...job.value,
-      stakeholders: updatedStakeholders,
+    const updated = jobsStore.updateJob(job.value.id, {
+      ...draftJob,
+      ...(importPatch ?? {}),
     });
+    if (updated) job.value = cloneJob(updated);
+    notifications.push("Stakeholder added", "success", 3000);
   } catch (err) {
     console.error("Failed to add stakeholder:", err);
     notifications.push("Failed to add stakeholder", "error", 3000);
@@ -1006,6 +1134,7 @@ const closeSnagDrawer = () => {
           @open-add-meeting="openSummaryMeeting"
           @open-add-call="openSummaryCall"
           @open-add-note="openSummaryNote"
+          @open-collaborators="openCollaboratorDialog"
         />
 
         <JobStakeholdersCard
@@ -1217,6 +1346,71 @@ const closeSnagDrawer = () => {
           <VBtn color="primary" @click="isCallDialogVisible = false">
             Done
           </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isCollaboratorDialogVisible" max-width="560">
+      <DialogCloseBtn @click="closeCollaboratorDialog" />
+      <VCard class="pa-sm-6 pa-4">
+        <VCardItem>
+          <VCardTitle>Collaborators</VCardTitle>
+          <VCardSubtitle>
+            Add employees assigned to this job.
+          </VCardSubtitle>
+        </VCardItem>
+
+        <VCardText>
+          <AppSelect
+            v-model="collaboratorDialogValue"
+            :items="collaboratorOptions"
+            item-title="title"
+            item-value="value"
+            label="Collaborators"
+            placeholder="Select collaborators"
+            multiple
+            chips
+            clearable
+            clear-icon="tabler-x"
+          >
+            <template #selection="{ item }">
+              <VChip size="small" class="me-1">
+                <VAvatar start size="20" color="primary" variant="tonal">
+                  <VImg
+                    v-if="item.raw.avatarUrl || item.raw.avatar"
+                    :src="item.raw.avatarUrl || item.raw.avatar"
+                  />
+                  <span v-else class="text-xxs font-weight-bold">
+                    {{ item.raw.title?.slice(0, 2).toUpperCase() }}
+                  </span>
+                </VAvatar>
+                {{ item.raw.title }}
+              </VChip>
+            </template>
+
+            <template #item="{ item, props: itemProps }">
+              <VListItem v-bind="itemProps">
+                <template #prepend>
+                  <VAvatar size="28" color="primary" variant="tonal">
+                    <VImg
+                      v-if="item.raw.avatarUrl || item.raw.avatar"
+                      :src="item.raw.avatarUrl || item.raw.avatar"
+                    />
+                    <span v-else class="text-xs font-weight-bold">
+                      {{ item.raw.title?.slice(0, 2).toUpperCase() }}
+                    </span>
+                  </VAvatar>
+                </template>
+              </VListItem>
+            </template>
+          </AppSelect>
+        </VCardText>
+
+        <VCardActions>
+          <DialogActionBar
+            @save="saveJobCollaborators"
+            @cancel="closeCollaboratorDialog"
+          />
         </VCardActions>
       </VCard>
     </VDialog>
