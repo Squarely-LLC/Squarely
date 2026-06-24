@@ -76,6 +76,7 @@ export type ToDo = {
   collaborators: ContactRef[];
   dueAt: string;
   startAt?: string | null;
+  startedEarlyAt?: string | null;
   completionMinutes?: number | null;
   estimatedMinutes?: number | null;
   actualMinutes?: number | null;

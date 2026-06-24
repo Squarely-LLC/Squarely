@@ -257,12 +257,18 @@ const deriveStatusFromTasks = (
   startDate: string | null | undefined,
   tasks: JobTodo[],
 ): WorkStatus => {
-  if (isFutureDate(startDate)) return "Not Started";
   if (!tasks.length) return "Not Started";
+  if (tasks.every((task) => task.status === "completed")) return "Completed";
   if (tasks.some((task) => task.status === "in_progress"))
     return "In Progress";
-  if (tasks.every((task) => task.status === "completed")) return "Completed";
+  if (
+    tasks.some(
+      (task) => task.status === "for_review" || Boolean((task as any).startedEarlyAt),
+    )
+  )
+    return "In Progress";
   if (tasks.some((task) => task.status === "completed")) return "On Hold";
+  if (isFutureDate(startDate)) return "Not Started";
   return "Not Started";
 };
 
@@ -280,20 +286,25 @@ const milestoneStatus = (milestone: JobMilestone & {
     ...milestone.tasks,
     ...milestone.goals.flatMap((goal) => goal.tasks),
   ];
-  if (isFutureDate(milestoneEffectiveStartDate(milestone)))
-    return "Not Started";
   if (!allTasks.length) return "Not Started";
+  if (allTasks.every((task) => task.status === "completed")) return "Completed";
   if (
     milestone.goals.some((goal) => goalStatus(goal) === "In Progress") ||
-    allTasks.some((task) => task.status === "in_progress")
+    allTasks.some(
+      (task) =>
+        task.status === "in_progress" ||
+        task.status === "for_review" ||
+        Boolean((task as any).startedEarlyAt),
+    )
   )
     return "In Progress";
-  if (allTasks.every((task) => task.status === "completed")) return "Completed";
   if (
     milestone.goals.some((goal) => goalStatus(goal) === "On Hold") ||
     allTasks.some((task) => task.status === "completed")
   )
     return "On Hold";
+  if (isFutureDate(milestoneEffectiveStartDate(milestone)))
+    return "Not Started";
   return "Not Started";
 };
 

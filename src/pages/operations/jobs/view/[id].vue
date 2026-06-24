@@ -28,6 +28,7 @@ import {
   deriveSuggestedJobStatus,
   getCompletionMinutesDraft,
   isCurrentProjectOwner,
+  isExecutableJobTaskStatus,
   isFutureJobTaskStart,
   isJobTask,
 } from "@/utils/jobTaskRules";
@@ -146,12 +147,10 @@ const buildTodoPatch = (payload: any) => {
   if ("completed" in payload) partial.completed = payload.completed;
   if ("isCompleted" in payload) partial.isCompleted = payload.isCompleted;
   if ("doneAt" in payload) partial.doneAt = payload.doneAt;
+  if ("startedEarlyAt" in payload) partial.startedEarlyAt = payload.startedEarlyAt;
 
   return partial;
 };
-
-const isExecutableJobTaskStatus = (status?: string | null) =>
-  status === "in_progress" || status === "for_review" || status === "completed";
 
 const applyTodoEdit = (payload: any, options: { allowEarlyStart?: boolean } = {}) => {
   const partial = buildTodoPatch(payload);
@@ -1145,10 +1144,18 @@ const cancelCompletionTime = () => {
 
 const confirmStartEarly = () => {
   const payload = pendingStartEarlyPayload.value;
+  const startedEarlyAt = new Date().toISOString();
   pendingStartEarlyPayload.value = null;
   pendingStartEarlyDate.value = null;
   isStartEarlyDialogVisible.value = false;
-  if (payload) applyTodoEdit(payload, { allowEarlyStart: true });
+  if (payload)
+    applyTodoEdit(
+      {
+        ...payload,
+        startedEarlyAt,
+      },
+      { allowEarlyStart: true },
+    );
 };
 
 const cancelStartEarly = () => {

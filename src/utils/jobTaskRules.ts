@@ -31,8 +31,18 @@ export const isFutureJobTaskStart = (
   return start.getTime() > today.getTime();
 };
 
+export const isExecutableJobTaskStatus = (status?: string | null) =>
+  status === "in_progress" || status === "for_review" || status === "completed";
+
+export const hasJobTaskStartedEarly = (
+  todo: Partial<ToDo> | null | undefined,
+) => Boolean((todo as any)?.startedEarlyAt);
+
 export const shouldHideJobTaskFromTasksPage = (todo: ToDo) =>
-  isJobTask(todo) && isFutureJobTaskStart(todo);
+  isJobTask(todo) &&
+  isFutureJobTaskStart(todo) &&
+  !hasJobTaskStartedEarly(todo) &&
+  !isExecutableJobTaskStatus(todo.status);
 
 export const getCompletionMinutesDraft = (
   todo: Partial<ToDo> | null | undefined,

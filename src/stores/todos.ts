@@ -248,6 +248,7 @@ export const useTodos = defineStore("todos", {
         copy.relatedTo = t.relatedTo ?? null;
         copy.source = t.source ?? null;
         copy.startAt = toNullableDateISOString(t.startAt);
+        copy.startedEarlyAt = toNullableDateISOString((t as any).startedEarlyAt);
         copy.completionMinutes =
           toNullablePositiveNumber((t as any).completionMinutes) ??
           toNullablePositiveNumber((t as any).actualMinutes) ??
@@ -299,6 +300,7 @@ export const useTodos = defineStore("todos", {
         collaborators: todo.collaborators || [],
         dueAt: toDateOnlyISOString(todo.dueAt),
         startAt: toNullableDateISOString((todo as any).startAt),
+        startedEarlyAt: toNullableDateISOString((todo as any).startedEarlyAt),
         completionMinutes:
           toNullablePositiveNumber((todo as any).completionMinutes) ??
           toNullablePositiveNumber((todo as any).actualMinutes) ??
@@ -353,6 +355,10 @@ export const useTodos = defineStore("todos", {
         nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
       if ("startAt" in nextPatch)
         nextPatch.startAt = toNullableDateISOString(nextPatch.startAt);
+      if ("startedEarlyAt" in nextPatch)
+        nextPatch.startedEarlyAt = toNullableDateISOString(
+          nextPatch.startedEarlyAt,
+        );
       if ("completionMinutes" in nextPatch)
         nextPatch.completionMinutes = toNullablePositiveNumber(
           nextPatch.completionMinutes,
