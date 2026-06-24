@@ -289,6 +289,22 @@ const resolveTaskDueAt = (
   baselineIso: string,
 ) => resolveScheduledDate(raw, baselineIso) || baselineIso;
 
+const resolveConvertedTaskSchedule = (
+  task: Partial<CatalogueJobConfigTask>,
+  baselineIso: string,
+) => {
+  const startAt = resolveScheduledDate(task.afterWhen, baselineIso) || baselineIso;
+  const explicitDue =
+    (task as any).dueAt ?? (task as any).dueDate ?? null;
+
+  return {
+    startAt,
+    dueAt: explicitDue
+      ? resolveScheduledDate(explicitDue, baselineIso) || startAt
+      : startAt,
+  };
+};
+
 const resolveJobConfigMilestones = (record: CatalogueRecord | null) => {
   if (!record || !("jobConfiguration" in record)) return [];
 
@@ -612,9 +628,13 @@ const buildExecutionPreview = (
         sourceLabel: string;
         milestoneKey?: string | null;
         goalKey?: string | null;
-        startAt?: string | null;
+        baselineAt?: string | null;
       },
     ): ExecutionPreviewTask => {
+      const taskSchedule = resolveConvertedTaskSchedule(
+        rawTask,
+        options.baselineAt || executedAt,
+      );
       const triggerGoalKey =
         rawTask.startTrigger?.type === "goal" ||
         rawTask.startTrigger?.type === "task"
@@ -629,8 +649,8 @@ const buildExecutionPreview = (
       const previewTask: ExecutionPreviewTask = {
         key: options.key,
         title: String(rawTask.title || "").trim() || "Untitled Task",
-        dueAt: resolveTaskDueAt(rawTask.afterWhen, executedAt),
-        startAt: options.startAt ?? executedAt,
+        dueAt: taskSchedule.dueAt,
+        startAt: taskSchedule.startAt,
         completionMinutes: Number.isFinite(
           Number(
             (rawTask as any).completionMinutes ??
@@ -734,7 +754,7 @@ const buildExecutionPreview = (
           kind: "milestone",
           sourceLabel: `${item.name} / ${previewMilestone.name}`,
           milestoneKey,
-          startAt: previewMilestone.startDate,
+          baselineAt: previewMilestone.startDate,
         }),
       );
 
@@ -747,7 +767,7 @@ const buildExecutionPreview = (
             sourceLabel: `${item.name} / ${goalPreview.name}`,
             milestoneKey,
             goalKey: goalPreview.key,
-            startAt: goalPreview.startDate || previewMilestone.startDate,
+            baselineAt: goalPreview.startDate || previewMilestone.startDate,
           }),
         );
       });
@@ -1952,6 +1972,7 @@ const mapSalesTaskTemplateToEditableTodo = (
       ? normalizeTaskCollaborators(task.collaborators)
       : [],
     dueAt,
+    startAt: dueAt,
     status:
       task.status === "in_progress" ||
       task.status === "for_review" ||
