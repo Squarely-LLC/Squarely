@@ -16,6 +16,11 @@ import {
   requireCurrentUserPermission,
 } from "@/utils/authorization";
 import { getSignedInIdentity } from "@/utils/currentAccount";
+import {
+  generateJobProjectCode,
+  normalizeProjectCode,
+  parseJobOrderSequence,
+} from "@/utils/jobProjectCode";
 const STORAGE_KEY = "app.jobs.v2";
 const JOB_STATUS_VALUES: JobStatus[] = [
   "New",
@@ -220,12 +225,6 @@ function normalizeJobStatus(value: unknown, fallback?: unknown): JobStatus {
 
   return LEGACY_STAGE_STATUS_MAP[fallbackCandidate] ?? "New";
 }
-function parseJobOrderSequence(value: unknown) {
-  const match = String(value ?? "").match(/^JO\d{2}\/(\d+)$/i);
-  if (!match) return null;
-  const sequence = Number(match[1]);
-  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
-}
 function nextJobOrderNumber(items: JobProperties[], createdAt = new Date()) {
   const maxSequence = items
     .map((job) => parseJobOrderSequence(job.jobOrderNumber))
@@ -270,13 +269,20 @@ function normaliseJob(
   const createdAt = payload.createdAt ?? now;
   const projectManagerId = resolveProjectManagerId(payload);
   const status = normalizeJobStatus(payload.status, payload.stage);
+  const name = payload.name?.trim() || "Untitled Job";
+  const jobOrderNumber =
+    payload.jobOrderNumber?.trim() ||
+    nextJobOrderNumber(existingJobs, new Date(createdAt));
+  const jobOrderSequence = parseJobOrderSequence(jobOrderNumber);
+  const projectCode =
+    normalizeProjectCode(payload.code) ||
+    generateJobProjectCode(name, existingJobs, jobOrderSequence ?? undefined);
+
   return {
     id: assignedId,
-    jobOrderNumber:
-      payload.jobOrderNumber?.trim() ||
-      nextJobOrderNumber(existingJobs, new Date(createdAt)),
-    name: payload.name?.trim() || "Untitled Job",
-    code: payload.code?.trim() || undefined,
+    jobOrderNumber,
+    name,
+    code: projectCode,
     avatar:
       typeof payload.avatar === "string"
         ? payload.avatar.trim() || null

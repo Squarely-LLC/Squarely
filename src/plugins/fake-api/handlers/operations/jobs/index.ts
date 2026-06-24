@@ -10,6 +10,11 @@ import {
   permissionDeniedResponse,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
+import {
+  generateJobProjectCode,
+  normalizeProjectCode,
+  parseJobOrderSequence,
+} from "@/utils/jobProjectCode";
 
 db.jobs = db.jobs.map((job) => ({ ...job }));
 const JOB_STATUS_VALUES: JobStatus[] = [
@@ -47,12 +52,6 @@ const normalizeJobStatus = (value: unknown, fallback?: unknown): JobStatus => {
     LEGACY_STAGE_STATUS_MAP[fallbackCandidate] ??
     "New"
   );
-};
-const parseJobOrderSequence = (value: unknown) => {
-  const match = String(value ?? "").match(/^JO\d{2}\/(\d+)$/i);
-  if (!match) return null;
-  const sequence = Number(match[1]);
-  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
 };
 const nextJobOrderNumber = (createdAt = new Date()) => {
   const maxSequence = db.jobs
@@ -232,11 +231,21 @@ export const handlerOperationsJobs = [
 
     const createdAt = new Date().toISOString();
     const status = normalizeJobStatus(job.status, job.stage);
+    const jobOrderNumber =
+      job.jobOrderNumber || nextJobOrderNumber(new Date(createdAt));
+    const name = String(job.name ?? "").trim() || "New Job";
+    const code =
+      normalizeProjectCode(job.code) ||
+      generateJobProjectCode(
+        name,
+        db.jobs,
+        parseJobOrderSequence(jobOrderNumber) ?? undefined,
+      );
     const newJob: JobProperties = {
       id: db.jobs.length ? Math.max(...db.jobs.map((j) => j.id)) + 1 : 1,
-      jobOrderNumber: job.jobOrderNumber || nextJobOrderNumber(new Date(createdAt)),
-      name: job.name || "New Job",
-      code: job.code || null,
+      jobOrderNumber,
+      name,
+      code,
       avatar: job.avatar || null,
       startDate: job.startDate || null,
       endDate: job.endDate || null,

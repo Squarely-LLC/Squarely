@@ -167,8 +167,8 @@ const onCancel = () => {
             <VCol cols="12" md="6">
               <AppTextField
                 v-model="localJob.code"
-                label="Code"
-                placeholder="P-1234"
+                label="Project Code"
+                placeholder="Auto-generated if blank"
               />
             </VCol>
 

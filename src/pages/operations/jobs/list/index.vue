@@ -12,6 +12,10 @@ import { useContactsStore } from "@/stores/contacts";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
+import {
+  generateJobProjectCode,
+  normalizeProjectCode,
+} from "@/utils/jobProjectCode";
 import { getContactAndEmployeeRefs, getEmployeeOptions } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
@@ -477,7 +481,15 @@ const openEditDialog = (job: JobProperties) => {
 const addJob = (payload: Partial<JobProperties>) => {
   dialogLoading.value = true;
   try {
-    jobsStore.addJob(payload);
+    const clientName = getContactEntry(payload.relatedTo)?.name;
+    const projectCode =
+      normalizeProjectCode(payload.code) ||
+      generateJobProjectCode(clientName || payload.name, jobsStore.items);
+
+    jobsStore.addJob({
+      ...payload,
+      code: projectCode,
+    });
     notifications.push("Job created", "success", 3000);
   } catch (error) {
     console.error("Failed to create job", error);
@@ -1280,7 +1292,11 @@ const updateItemsPerPage = (value: number | string) => {
 .jobs-table :deep(td:nth-child(8)) {
   inline-size: 9%;
   overflow: visible;
-  text-align: end;
+  text-align: center;
+}
+
+.jobs-table :deep(th:nth-child(8) .v-data-table-header__content) {
+  justify-content: center;
 }
 
 .jobs-table :deep(th) {
@@ -1344,8 +1360,10 @@ const updateItemsPerPage = (value: number | string) => {
 
 .job-actions-cell {
   flex-wrap: nowrap;
-  justify-content: flex-end;
+  gap: 0.1rem;
+  justify-content: center;
   min-inline-size: 58px;
+  inline-size: 100%;
   white-space: nowrap;
 }
 
