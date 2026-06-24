@@ -1,4 +1,9 @@
-export type JobLifecycleColor = "teal" | "purple" | "success" | "secondary";
+export type JobLifecycleColor =
+  | "teal"
+  | "purple"
+  | "primary"
+  | "success"
+  | "secondary";
 
 const normalizeStatus = (status?: string | null) =>
   String(status ?? "")
@@ -19,6 +24,7 @@ export const jobStatusColor = (
     case "closed":
       return "secondary";
     case "in progress":
+      return "primary";
     default:
       return undefined;
   }
@@ -52,6 +58,10 @@ const chipStyles: Record<JobLifecycleColor, Record<string, string>> = {
   purple: {
     backgroundColor: "rgba(156, 39, 176, 0.2)",
     color: "#d59bea",
+  },
+  primary: {
+    backgroundColor: "rgba(var(--v-theme-primary), 0.18)",
+    color: "rgb(var(--v-theme-primary))",
   },
   success: {
     backgroundColor: "rgba(var(--v-theme-success), 0.18)",

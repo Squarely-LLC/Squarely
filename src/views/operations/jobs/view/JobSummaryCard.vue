@@ -492,6 +492,10 @@ const noteText = computed(() => props.job.note?.trim() || "No notes available");
   --job-status-color: #9c27b0;
 }
 
+.job-status-color--primary {
+  --job-status-color: rgb(var(--v-theme-primary));
+}
+
 .job-status-color--success {
   --job-status-color: rgb(var(--v-theme-success));
 }
