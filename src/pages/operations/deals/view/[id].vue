@@ -764,17 +764,30 @@ const buildExecutionPreview = (
 
     configMilestones.forEach((milestone, milestoneIndex) => {
       const milestoneKey = `milestone:${item.id}:${milestone.id}:${milestoneIndex}`;
+      const milestoneHasChildren = Boolean(
+        milestone.tasks?.length || milestone.goals?.length,
+      );
+      const milestoneHasOverride = Boolean((milestone as any).dateOverride);
+      const configuredMilestoneDue = resolveScheduledDate(
+        milestone.afterWhen ?? milestone.dueDate,
+        executedAt,
+      );
+      const configuredMilestoneStart =
+        resolveScheduledDate(milestone.afterWhen, executedAt) ??
+        configuredMilestoneDue ??
+        executedAt;
       const previewMilestone: ExecutionPreviewMilestone = {
         key: milestoneKey,
         name: String(milestone.name || item.name).trim() || item.name,
         startDate:
-          resolveScheduledDate(milestone.afterWhen, executedAt) ?? executedAt,
+          milestoneHasOverride || !milestoneHasChildren
+            ? configuredMilestoneStart
+            : executedAt,
         dueDate:
-          resolveScheduledDate(
-            milestone.afterWhen ?? milestone.dueDate,
-            executedAt,
-          ) ?? null,
-        dateOverride: Boolean((milestone as any).dateOverride),
+          milestoneHasOverride || !milestoneHasChildren
+            ? configuredMilestoneDue
+            : null,
+        dateOverride: milestoneHasOverride,
         priority: milestone.priority ?? "Normal",
         note: String(milestone.note || "").trim() || null,
         sourceLabel: item.name,
@@ -786,6 +799,16 @@ const buildExecutionPreview = (
       previewMilestone.goals = (milestone.goals || []).map(
         (goal, goalIndex) => {
           const goalKey = `goal:${item.id}:${milestone.id}:${goal.id}:${goalIndex}`;
+          const goalHasTasks = Boolean(goal.tasks?.length);
+          const goalHasOverride = Boolean((goal as any).dateOverride);
+          const configuredGoalDue = resolveScheduledDate(
+            goal.afterWhen ?? goal.dueDate,
+            executedAt,
+          );
+          const configuredGoalStart =
+            resolveScheduledDate(goal.afterWhen, executedAt) ??
+            configuredGoalDue ??
+            previewMilestone.startDate;
 
           goalTemplateMap.set(String(goal.id), goalKey);
           goalMilestoneMap.set(goalKey, milestoneKey);
@@ -795,14 +818,12 @@ const buildExecutionPreview = (
             milestoneKey,
             name: String(goal.name || "").trim() || "Untitled Goal",
             startDate:
-              resolveScheduledDate(goal.afterWhen, executedAt) ??
-              previewMilestone.startDate,
+              goalHasOverride || !goalHasTasks
+                ? configuredGoalStart
+                : previewMilestone.startDate,
             dueDate:
-              resolveScheduledDate(
-                goal.afterWhen ?? goal.dueDate,
-                executedAt,
-              ) ?? null,
-            dateOverride: Boolean((goal as any).dateOverride),
+              goalHasOverride || !goalHasTasks ? configuredGoalDue : null,
+            dateOverride: goalHasOverride,
             priority: goal.priority ?? "Normal",
             note: String(goal.note || "").trim() || null,
             sourceLabel: item.name,
