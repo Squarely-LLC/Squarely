@@ -302,6 +302,9 @@ const deriveStatusFromTasks = (
 const completedTaskCount = (tasks: JobTodo[]) =>
   tasks.filter((task) => task.status === "completed").length;
 
+const hasCompletedTasksOnly = (tasks: JobTodo[]) =>
+  tasks.length > 0 && tasks.every((task) => task.status === "completed");
+
 const goalStatus = (goal: JobGoal & { tasks: JobTodo[] }) =>
   deriveStatusFromTasks(goalEffectiveStartDate(goal), goal.tasks);
 
@@ -313,8 +316,14 @@ const milestoneStatus = (milestone: JobMilestone & {
     ...milestone.tasks,
     ...milestone.goals.flatMap((goal) => goal.tasks),
   ];
-  if (!allTasks.length) return "Not Started";
-  if (allTasks.every((task) => task.status === "completed")) return "Completed";
+  const hasChildWork = milestone.tasks.length > 0 || milestone.goals.length > 0;
+  if (!hasChildWork) return "Not Started";
+  const directTasksComplete =
+    !milestone.tasks.length || hasCompletedTasksOnly(milestone.tasks);
+  const childGoalsComplete =
+    !milestone.goals.length ||
+    milestone.goals.every((goal) => goalStatus(goal) === "Completed");
+  if (directTasksComplete && childGoalsComplete) return "Completed";
   if (
     milestone.goals.some((goal) => goalStatus(goal) === "In Progress") ||
     allTasks.some(
@@ -327,6 +336,7 @@ const milestoneStatus = (milestone: JobMilestone & {
     return "In Progress";
   if (
     milestone.goals.some((goal) => goalStatus(goal) === "On Hold") ||
+    milestone.goals.some((goal) => goalStatus(goal) === "Not Started") ||
     allTasks.some((task) => task.status === "completed")
   )
     return "On Hold";
@@ -422,11 +432,21 @@ const periodGroupsForMilestone = (milestone: MilestoneWithChildren): PeriodGroup
 const periodSectionTasks = (section: PeriodSection) =>
   section.goals.flatMap((goal) => goal.tasks);
 
-const periodSectionStatus = (section: PeriodSection): WorkStatus =>
-  deriveStatusFromTasks(
-    section.source.periodStartDate,
-    periodSectionTasks(section),
-  );
+const periodSectionStatus = (section: PeriodSection): WorkStatus => {
+  const tasks = periodSectionTasks(section);
+  if (!section.goals.length || !tasks.length) return "Not Started";
+  const goalStatuses = section.goals.map((goal) => goalStatus(goal));
+  if (goalStatuses.every((status) => status === "Completed")) return "Completed";
+  if (goalStatuses.some((status) => status === "In Progress"))
+    return "In Progress";
+  if (
+    goalStatuses.some((status) => status === "On Hold") ||
+    tasks.some((task) => task.status === "completed")
+  )
+    return "On Hold";
+  if (isFutureDate(section.source.periodStartDate)) return "Not Started";
+  return "Not Started";
+};
 
 const periodSectionStatusClass = (section: PeriodSection) =>
   `job-period-timeline__step--${periodSectionStatus(section)
