@@ -9,6 +9,7 @@ import type {
   JobStatus,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useContactsStore } from "@/stores/contacts";
+import { useConfigStore } from "@/stores/config";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -40,6 +41,9 @@ jobsStore.init();
 
 const contactsStore = useContactsStore();
 contactsStore.init();
+
+const configStore = useConfigStore();
+configStore.init();
 
 const employeesStore = useEmployeesStore();
 employeesStore.init();
@@ -191,16 +195,47 @@ const closeStatusPrompt = (mode: "yes" | "no" | "ignore") => {
 };
 
 const contactDirectory = computed(() => {
-  const map = new Map<number, { name: string; picture: string | null }>();
+  const map = new Map<
+    number,
+    {
+      name: string;
+      picture: string | null;
+      email: string | null;
+      type: string | null;
+      connections: Array<{
+        contactId: number;
+        contactName: string;
+        isPrimary: boolean;
+        relation: string;
+        picture?: string;
+      }>;
+    }
+  >();
   contactsStore.all.forEach((contact) => {
     if (contact?.id === null || contact?.id === undefined) return;
     map.set(Number(contact.id), {
       name: contact.fullName,
       picture: contact.picture || null,
+      email: contact.email || null,
+      type: contact.type || null,
+      connections: Array.isArray(contact.connections)
+        ? contact.connections.map((connection) => ({ ...connection }))
+        : [],
     });
   });
   return map;
 });
+
+const jobStatusOptions = computed(() =>
+  (configStore.configurations?.crm?.jobStatuses || [
+    "New",
+    "Pending",
+    "In Progress",
+    "On Hold",
+    "Completed",
+    "Closed",
+  ]).map((status) => String(status)),
+);
 
 const employeeDirectory = computed(() => {
   const map = new Map<number, { name: string; picture: string | null }>();
@@ -329,6 +364,9 @@ const isComposeDialogVisible = ref(false);
 const isJobEditDialogVisible = ref(false);
 const isJobSaving = ref(false);
 const jobSaveError = ref<string | null>(null);
+const isNoteDialogVisible = ref(false);
+const noteDialogValue = ref("");
+const isCallDialogVisible = ref(false);
 
 // Stakeholder dialogs
 const isAddStakeholderDialogVisible = ref(false);
@@ -345,6 +383,93 @@ const contactOptions = computed(() =>
 );
 const taskCollaboratorOptions = computed(() => getEmployeeRefs());
 const meetingContacts = computed(() => getContactAndEmployeeRefs());
+
+const relatedJobContact = computed(() => {
+  if (!job.value?.relatedTo) return null;
+  return contactsStore.byId(job.value.relatedTo);
+});
+
+const openSummaryTask = () => {
+  if (!job.value) return;
+
+  addTodoInitial.value = {
+    title: `Job: ${job.value.name}`,
+    description: job.value.note || "",
+    relatedTo: {
+      id: job.value.id,
+      name: job.value.name,
+      type: "job",
+    },
+    linkedTo: [
+      {
+        id: job.value.id,
+        name: job.value.name,
+        avatarUrl: job.value.avatar || null,
+        type: "job",
+      },
+    ],
+    collaborators: [],
+  };
+  isAddTodoDrawerVisible.value = true;
+  nextTick(() => {
+    try {
+      addTodoDrawerRef.value?.openWith?.(addTodoInitial.value);
+    } catch {}
+    addTodoInitial.value = null;
+  });
+};
+
+const openSummaryMeeting = () => {
+  handleAddMeetingFromCommunication();
+};
+
+const openSummaryEmail = () => {
+  if (!job.value) return;
+  const contact = relatedJobContact.value;
+
+  isComposeDialogVisible.value = true;
+  nextTick(() => {
+    try {
+      composeDialogRef.value?.openWith?.({
+        to: contact?.email ? [contact.email] : [],
+        subject: `Regarding ${job.value?.name || "project"}`,
+        message: `Hello${
+          contact?.fullName ? ` ${contact.fullName}` : ""
+        },\n\nI'd like to discuss ${
+          job.value?.name || "the project"
+        }.\n\nThanks,`,
+      });
+    } catch {}
+  });
+};
+
+const openSummaryCall = () => {
+  if (!job.value) return;
+  isCallDialogVisible.value = true;
+};
+
+const openSummaryNote = () => {
+  if (!job.value) return;
+  noteDialogValue.value = job.value.note || "";
+  isNoteDialogVisible.value = true;
+};
+
+const saveSummaryNote = () => {
+  if (!job.value) return;
+
+  try {
+    const updated = jobsStore.updateJob(job.value.id, {
+      ...job.value,
+      note: noteDialogValue.value,
+    });
+    if (updated) job.value = cloneJob(updated);
+    notifications.push("Note saved", "success", 2500);
+    isNoteDialogVisible.value = false;
+  } catch (error) {
+    console.error("Failed to save job note", error);
+    notifications.push("Failed to save note", "error", 3000);
+  }
+};
 
 // Stakeholder action handlers
 const handleStakeholderTodo = (contact: {
@@ -874,7 +999,13 @@ const closeSnagDrawer = () => {
           :job="job"
           :contact-directory="contactDirectory"
           :employee-directory="employeeDirectory"
+          :status-options="jobStatusOptions"
           @edit="handleEditJob"
+          @open-add-task="openSummaryTask"
+          @open-add-email="openSummaryEmail"
+          @open-add-meeting="openSummaryMeeting"
+          @open-add-call="openSummaryCall"
+          @open-add-note="openSummaryNote"
         />
 
         <JobStakeholdersCard
@@ -1037,6 +1168,58 @@ const closeSnagDrawer = () => {
       :error="jobSaveError"
       @submit="onEditJobSubmit"
     />
+
+    <VDialog v-model="isNoteDialogVisible" max-width="560">
+      <DialogCloseBtn @click="isNoteDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Note</VCardTitle>
+        <VCardText>
+          <AppTextarea
+            v-model="noteDialogValue"
+            label="Project note"
+            placeholder="Add note"
+            auto-grow
+            rows="4"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isNoteDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn color="primary" @click="saveSummaryNote">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="isCallDialogVisible" max-width="520">
+      <DialogCloseBtn @click="isCallDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Call</VCardTitle>
+        <VCardText>
+          <div class="text-body-1">
+            Call for {{ job?.name || "project" }}.
+          </div>
+          <div class="text-body-2 text-medium-emphasis mt-2">
+            Client: {{ relatedJobContact?.fullName || "Internal project" }}
+          </div>
+          <div
+            v-if="relatedJobContact?.number"
+            class="text-body-2 text-medium-emphasis mt-1"
+          >
+            Number: {{ relatedJobContact.number }}
+          </div>
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn color="primary" @click="isCallDialogVisible = false">
+            Done
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <!-- Add Stakeholder Dialog -->
     <AddStakeholderDialog

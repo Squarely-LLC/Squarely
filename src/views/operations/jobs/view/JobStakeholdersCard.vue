@@ -2,9 +2,22 @@
 import type { JobProperties } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { computed } from "vue";
 
+type ContactDirectoryEntry = {
+  name: string;
+  picture: string | null;
+  type?: string | null;
+  connections?: Array<{
+    contactId: number;
+    contactName: string;
+    isPrimary: boolean;
+    relation: string;
+    picture?: string;
+  }>;
+};
+
 interface Props {
   job: JobProperties;
-  contactDirectory: Map<number, { name: string; picture: string | null }>;
+  contactDirectory: Map<number, ContactDirectoryEntry>;
 }
 
 const props = defineProps<Props>();
@@ -44,26 +57,68 @@ const avatarText = (name?: string | null) => {
 };
 
 const decoratedStakeholders = computed(() => {
-  if (!Array.isArray(props.job.stakeholders)) return [];
+  const rows: Array<{
+    id: number | string;
+    contactId: number | null;
+    name: string;
+    role: string;
+    avatar: string | null;
+    derived: boolean;
+  }> = [];
+  const explicitContactIds = new Set<string>();
 
-  return props.job.stakeholders.map((stakeholder) => {
-    const contact = stakeholder.contactId
-      ? props.contactDirectory.get(Number(stakeholder.contactId))
-      : null;
-    const name = contact?.name || "Unassigned";
+  if (Array.isArray(props.job.stakeholders)) {
+    props.job.stakeholders.forEach((stakeholder) => {
+      if (stakeholder.contactId !== null && stakeholder.contactId !== undefined)
+        explicitContactIds.add(String(stakeholder.contactId));
 
-    return {
-      id: stakeholder.id,
-      contactId: stakeholder.contactId,
-      name,
-      role: stakeholder.role || "--",
-      avatar: contact?.picture || null,
-    };
-  });
+      const contact = stakeholder.contactId
+        ? props.contactDirectory.get(Number(stakeholder.contactId))
+        : null;
+      const name = contact?.name || "Unassigned";
+
+      rows.push({
+        id: stakeholder.id,
+        contactId: stakeholder.contactId,
+        name,
+        role: stakeholder.role || "--",
+        avatar: contact?.picture || null,
+        derived: false,
+      });
+    });
+  }
+
+  const relatedContact = props.job.relatedTo
+    ? props.contactDirectory.get(Number(props.job.relatedTo))
+    : null;
+
+  if (relatedContact?.type === "Entity") {
+    (relatedContact.connections || []).forEach((connection) => {
+      const contactId = Number(connection.contactId);
+      if (!Number.isFinite(contactId)) return;
+      if (explicitContactIds.has(String(contactId))) return;
+
+      const contact = props.contactDirectory.get(contactId);
+      if (!contact) return;
+
+      explicitContactIds.add(String(contactId));
+      rows.push({
+        id: `derived-${contactId}`,
+        contactId,
+        name: contact.name || connection.contactName || "Unassigned",
+        role: connection.relation || "Related Contact",
+        avatar: contact.picture || connection.picture || null,
+        derived: true,
+      });
+    });
+  }
+
+  return rows;
 });
 
-const handleRemove = (stakeholderId: number) => {
-  emit("removeStakeholder", stakeholderId);
+const handleRemove = (stakeholder: (typeof decoratedStakeholders.value)[0]) => {
+  if (stakeholder.derived || typeof stakeholder.id !== "number") return;
+  emit("removeStakeholder", stakeholder.id);
 };
 
 const handleTodo = (stakeholder: (typeof decoratedStakeholders.value)[0]) => {
@@ -103,6 +158,7 @@ const handleCall = (stakeholder: (typeof decoratedStakeholders.value)[0]) => {
     avatar: stakeholder.avatar,
   });
 };
+
 </script>
 
 <template>
@@ -140,16 +196,27 @@ const handleCall = (stakeholder: (typeof decoratedStakeholders.value)[0]) => {
 
             <VListItemTitle class="font-weight-medium d-flex align-center">
               <span>{{ stakeholder.name }}</span>
+              <VChip
+                v-if="stakeholder.derived"
+                class="ms-2"
+                color="secondary"
+                label
+                size="x-small"
+                variant="tonal"
+              >
+                Related
+              </VChip>
             </VListItemTitle>
             <VListItemSubtitle>{{ stakeholder.role }}</VListItemSubtitle>
 
             <template #append>
               <div class="d-flex align-center">
                 <VBtn
+                  v-if="!stakeholder.derived"
                   icon
                   variant="text"
                   color="medium-emphasis"
-                  @click="handleRemove(stakeholder.id)"
+                  @click="handleRemove(stakeholder)"
                 >
                   <VIcon icon="tabler-trash" />
                   <VTooltip activator="parent" location="top">
