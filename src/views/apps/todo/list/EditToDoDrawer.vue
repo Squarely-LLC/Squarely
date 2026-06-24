@@ -145,13 +145,86 @@ const fmtShort = (iso?: string) => {
 /* ===== Steps state ===== */
 const steps = ref<ToDoStep[]>([]);
 
+const isSafeObject = (value: unknown): value is Record<string, any> =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  (typeof Window === "undefined" || !(value instanceof Window)) &&
+  (typeof Event === "undefined" || !(value instanceof Event)) &&
+  (typeof Node === "undefined" || !(value instanceof Node));
+
+const isContactRef = (value: ContactRef | null): value is ContactRef =>
+  value !== null;
+
+const isToDoStep = (value: ToDoStep | null): value is ToDoStep =>
+  value !== null;
+
+const sanitizeContactRef = (value: unknown): ContactRef | null => {
+  if (!isSafeObject(value)) return null;
+
+  const id = value.id;
+  if (
+    id === null ||
+    id === undefined ||
+    (typeof id !== "string" && typeof id !== "number")
+  )
+    return null;
+
+  return {
+    id,
+    name: String(value.name ?? "").trim(),
+    avatarUrl:
+      typeof value.avatarUrl === "string" || value.avatarUrl === null
+        ? value.avatarUrl
+        : null,
+  };
+};
+
+const sanitizeStep = (value: unknown, index = 0): ToDoStep | null => {
+  if (!isSafeObject(value)) return null;
+
+  const id = value.id;
+  const status = value.status;
+  const priority = value.priority;
+  const now = new Date().toISOString();
+
+  return {
+    id:
+      typeof id === "string" || typeof id === "number"
+        ? id
+        : `${Date.now()}-${index}`,
+    title: String(value.title ?? "").trim(),
+    collaborators: Array.isArray(value.collaborators)
+      ? value.collaborators.map(sanitizeContactRef).filter(isContactRef)
+      : [],
+    dueAt: String(value.dueAt || now),
+    priority:
+      priority === "low" || priority === "normal" || priority === "high"
+        ? priority
+        : undefined,
+    status:
+      status === "in_progress" ||
+      status === "for_review" ||
+      status === "completed"
+        ? status
+        : "pending",
+    notes: String(value.notes ?? "").trim(),
+    createdAt: String(value.createdAt || now),
+    updatedAt: String(value.updatedAt || now),
+  };
+};
+
+const sanitizeSteps = (value: unknown): ToDoStep[] =>
+  Array.isArray(value)
+    ? value.map((step, index) => sanitizeStep(step, index)).filter(isToDoStep)
+    : [];
+
 /* Debounced autosave for steps (existing items) */
 let saveTimer: number | null = null;
 function scheduleSaveSteps() {
   if (!props.todo) return;
   if (saveTimer) window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
-    emit("saveSteps", { id: props.todo!.id, steps: steps.value });
+    emit("saveSteps", { id: props.todo!.id, steps: sanitizeSteps(steps.value) });
   }, 300);
 }
 
@@ -185,7 +258,9 @@ function addStep() {
 }
 function saveNewDraft() {
   if (!newDraft.title.trim()) return;
-  steps.value.push(structuredClone(toRaw(newDraft)));
+  const step = sanitizeStep(toRaw(newDraft));
+  if (!step) return;
+  steps.value.push(step);
   showNewDraft.value = false;
   scheduleSaveSteps();
 }
@@ -214,13 +289,15 @@ const StepEditDialogModel = ref<DialogStep | null>(null);
 
 function openStepEditDialog(idx: number) {
   StepEditDialogIdx.value = idx;
-  StepEditDialogModel.value = structuredClone(toRaw(steps.value[idx]));
+  StepEditDialogModel.value = sanitizeStep(toRaw(steps.value[idx]), idx);
   StepEditDialogOpen.value = true;
 }
 
 function onStepEditDialogSave(edited: DialogStep) {
   if (StepEditDialogIdx.value == null) return;
-  steps.value[StepEditDialogIdx.value] = structuredClone(toRaw(edited));
+  const step = sanitizeStep(toRaw(edited), StepEditDialogIdx.value);
+  if (!step) return;
+  steps.value[StepEditDialogIdx.value] = step;
   scheduleSaveSteps();
 }
 function onStepEditDialogClose() {
@@ -262,7 +339,7 @@ function loadFromToDo(t: ToDo) {
         : null;
   selectedStatus.value = (t.status ?? "pending") as Status;
 
-  steps.value = structuredClone(toRaw(t.steps ?? [])) as ToDoStep[];
+  steps.value = sanitizeSteps(toRaw(t.steps ?? []));
 
   // ✅ Initialize local completed toggle from any possible flags/shape
   nextTick(() => {
