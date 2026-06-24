@@ -157,20 +157,6 @@ const isDueSoon = (value?: string | null) => {
 
 const isTaskLocked = (task: JobTodo) => isFutureDate((task as any).startAt);
 const taskStartAt = (task: JobTodo) => (task as any).startAt ?? null;
-const taskCompletionMinutes = (task: JobTodo) =>
-  Number.isFinite(
-    Number(
-      (task as any).completionMinutes ??
-        (task as any).actualMinutes ??
-        (task as any).estimatedMinutes,
-    ),
-  )
-    ? Number(
-        (task as any).completionMinutes ??
-          (task as any).actualMinutes ??
-          (task as any).estimatedMinutes,
-      )
-    : null;
 
 const validDateValue = (value?: string | null) => {
   if (!value) return null;
@@ -349,9 +335,6 @@ const goalFormRef = ref<VForm>();
 const isCreatingGoal = computed(() => goalDialog.mode === "create");
 const expandedMilestones = ref<Array<number>>([]);
 const expandedGoals = ref<Array<number>>([]);
-const isCompletionTimeDialogVisible = ref(false);
-const completionMinutesDraft = ref<number | null>(null);
-const pendingCompletionTask = ref<JobTodo | null>(null);
 const dateOverrideDialog = reactive({
   visible: false,
   kind: "milestone" as "milestone" | "goal",
@@ -838,56 +821,14 @@ const openCreateTodoForGoal = (goal: JobGoal) => {
   });
 };
 
-const toggleTaskCompleted = (taskId: number | string) => {
-  const task = todosStore.byId(taskId);
-  if (!task) return;
-  if (isTaskLocked(task as JobTodo)) {
-    notifications.push("Task is locked until its start date", "warning", 3000);
-    return;
-  }
-
-  if (
-    configStore.configurations?.crm?.jobTaskTimeCaptureEnabled &&
-    task.status !== "completed"
-  ) {
-    pendingCompletionTask.value = task as JobTodo;
-    completionMinutesDraft.value =
-      Number(
-        (task as any).completionMinutes ??
-          (task as any).actualMinutes ??
-          (task as any).estimatedMinutes ??
-          0,
-      ) || null;
-    isCompletionTimeDialogVisible.value = true;
-    return;
-  }
-
-  todosStore.updateTodo(taskId, {
-    status: task.status === "completed" ? "pending" : "completed",
-  });
-  emit("status-automation-trigger", "Task status changed");
-};
-
-const saveCompletionTime = () => {
-  const task = pendingCompletionTask.value;
-  if (!task) return;
-  todosStore.updateTodo(task.id, {
-    status: "completed",
-    completionMinutes: completionMinutesDraft.value,
-    doneAt: new Date().toISOString(),
-    completed: true,
-    isCompleted: true,
-  } as any);
-  pendingCompletionTask.value = null;
-  completionMinutesDraft.value = null;
-  isCompletionTimeDialogVisible.value = false;
-  emit("status-automation-trigger", "Task completed");
-};
-
-const cancelCompletionTime = () => {
-  pendingCompletionTask.value = null;
-  completionMinutesDraft.value = null;
-  isCompletionTimeDialogVisible.value = false;
+const expandedTaskIds = ref<Array<number | string>>([]);
+const isTaskExpanded = (task: JobTodo) =>
+  expandedTaskIds.value.some((id) => String(id) === String(task.id));
+const toggleTaskSteps = (task: JobTodo) => {
+  if (!hasTaskSteps(task)) return;
+  expandedTaskIds.value = isTaskExpanded(task)
+    ? expandedTaskIds.value.filter((id) => String(id) !== String(task.id))
+    : [...expandedTaskIds.value, task.id];
 };
 const priorityColor = (priority: "Low" | "Normal" | "High") => {
   return priority === "High"
@@ -909,6 +850,14 @@ const todoStatusLabel = (status?: string) => {
       return "Pending";
   }
 };
+const todoStatusTextClass = (status?: string) =>
+  status === "in_progress"
+    ? "text-primary"
+    : status === "for_review"
+      ? "text-warning"
+      : status === "completed"
+        ? "text-success"
+        : "text-medium-emphasis";
 const collaboratorInitials = (name?: string | null) => {
   if (!name) return "?";
   const matches = name.trim().match(/\b\w/g) || [];
@@ -925,13 +874,13 @@ const formatDate = (value?: string | null) => {
     return value;
   }
 };
-const formatMinutes = (value?: number | null) => {
-  const minutes = Number(value);
-  if (!Number.isFinite(minutes) || minutes <= 0) return null;
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+const completedStepCount = (task: JobTodo) =>
+  (task.steps || []).filter((step) => step.status === "completed").length;
+const hasTaskSteps = (task: JobTodo) => Boolean(task.steps?.length);
+const taskNotesPreview = (task: JobTodo) => {
+  const value = String(task.notes ?? "").trim();
+  if (!value) return "-";
+  return value.length > 36 ? `${value.slice(0, 36)}...` : value;
 };
 </script>
 <template>
@@ -1104,63 +1053,70 @@ const formatMinutes = (value?: number | null) => {
                   v-if="milestone.tasks.length"
                   class="d-flex flex-column gap-2 milestone-direct-tasks"
                 >
-                  <VCard
+                  <template
                     v-for="task in milestone.tasks"
                     :key="task.id"
-                    class="task-row"
-                    variant="tonal"
-                    @click="emit('open-edit-todo', task.id)"
                   >
-                    <div class="task-row-main">
-                      <div class="task-row-left">
-                        <VCheckbox
-                          hide-details
-                          density="compact"
-                          :model-value="task.status === 'completed'"
-                          :disabled="isTaskLocked(task)"
-                          @click.stop="toggleTaskCompleted(task.id)"
+                    <div
+                      class="job-task-row"
+                      @click="emit('open-edit-todo', task.id)"
+                    >
+                      <div class="job-task-priority">
+                        <VIcon
+                          :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                          size="20"
+                          color="warning"
                         />
+                      </div>
 
-                        <div class="task-copy">
-                          <VTooltip :text="task.title" location="top">
-                            <template #activator="{ props: tooltipProps }">
-                              <strong
-                                v-bind="tooltipProps"
-                                class="text-body-1 truncate-title"
-                              >
-                                {{ task.title }}
-                              </strong>
-                            </template>
-                          </VTooltip>
-                          <span class="text-sm">
-                            Start {{ formatDate(taskStartAt(task)) }} |
-                            Due {{ formatDate(task.dueAt) }}
-                            <template v-if="formatMinutes(taskCompletionMinutes(task))">
-                              | Time
-                              {{ formatMinutes(taskCompletionMinutes(task)) }}
-                            </template>
-                          </span>
-                          <span
-                            v-if="task.notes"
-                            class="text-sm text-medium-emphasis"
+                      <div class="job-task-main">
+                        <div class="job-task-chevron-slot">
+                          <VBtn
+                            v-if="hasTaskSteps(task)"
+                            icon
+                            variant="text"
+                            size="small"
+                            class="job-task-chevron-btn"
+                            @click.stop="toggleTaskSteps(task)"
                           >
-                            {{ task.notes }}
-                          </span>
+                            <VIcon
+                              :icon="isTaskExpanded(task) ? 'tabler-chevron-up' : 'tabler-chevron-down'"
+                              size="18"
+                            />
+                            <VTooltip activator="parent" location="top">
+                              {{ isTaskExpanded(task) ? "Hide subtasks" : "Show subtasks" }}
+                            </VTooltip>
+                          </VBtn>
+                          <div v-else class="job-task-chevron-placeholder" />
+                        </div>
+                        <div class="job-task-copy">
+                          <h6 class="text-base mb-0">{{ task.title }}</h6>
+                          <div class="text-sm text-medium-emphasis">
+                            {{ taskNotesPreview(task) }}
+                          </div>
+                          <div
+                            v-if="hasTaskSteps(task)"
+                            class="text-xs text-medium-emphasis mt-1"
+                          >
+                            <VIcon icon="tabler-subtask" size="18" class="mr-2" />
+                            Subtasks: {{ completedStepCount(task) }}/{{ task.steps.length }}
+                          </div>
                         </div>
                       </div>
 
-                      <div class="task-row-side">
+                      <div class="job-task-date">
+                        {{ formatDate(task.dueAt) }}
+                      </div>
+
+                      <div class="job-task-assigned">
                         <div
                           v-if="task.collaborators?.length"
                           class="v-avatar-group demo-avatar-group"
                         >
                           <VAvatar
-                            v-for="collaborator in task.collaborators.slice(
-                              0,
-                              2,
-                            )"
+                            v-for="collaborator in task.collaborators.slice(0, 3)"
                             :key="collaborator.id"
-                            :size="28"
+                            :size="40"
                             color="primary"
                           >
                             <template v-if="collaborator.avatarUrl">
@@ -1176,34 +1132,45 @@ const formatMinutes = (value?: number | null) => {
                             </VTooltip>
                           </VAvatar>
                           <VAvatar
-                            v-if="task.collaborators.length > 2"
-                            :size="28"
+                            v-if="task.collaborators.length > 3"
+                            :size="40"
                             color="secondary"
                           >
-                            +{{ task.collaborators.length - 2 }}
+                            +{{ task.collaborators.length - 3 }}
                           </VAvatar>
                         </div>
+                        <span v-else>-</span>
+                      </div>
 
-                        <VIcon
-                          v-if="task.important"
-                          icon="tabler-star-filled"
-                          color="warning"
-                          size="18"
-                        />
+                      <div class="job-task-status">
                         <span
-                          class="text-sm"
-                          :class="{
-                            'text-primary': task.status === 'in_progress',
-                            'text-warning': task.status === 'for_review',
-                            'text-medium-emphasis': task.status === 'pending',
-                            'text-success': task.status === 'completed',
-                          }"
+                          class="text-body-1"
+                          :class="todoStatusTextClass(task.status)"
                         >
                           {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
                         </span>
                       </div>
                     </div>
-                  </VCard>
+                    <div v-if="isTaskExpanded(task)" class="job-subtasks-row">
+                      <div
+                        v-for="step in task.steps"
+                        :key="step.id"
+                        class="job-subtask-row"
+                      >
+                        <VIcon
+                          :icon="step.status === 'completed' ? 'tabler-check' : 'tabler-subtask'"
+                          size="16"
+                          :color="step.status === 'completed' ? 'success' : undefined"
+                        />
+                        <div class="job-subtask-copy">
+                          <span class="font-weight-medium">{{ step.title }}</span>
+                          <span class="text-caption text-medium-emphasis">
+                            {{ formatDate(step.dueAt) }} | {{ todoStatusLabel(step.status) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
                 </div>
 
                 <VExpansionPanels
@@ -1331,125 +1298,120 @@ const formatMinutes = (value?: number | null) => {
                             v-if="goal.tasks.length"
                             class="d-flex flex-column gap-2"
                           >
-                            <VCard
+                            <template
                               v-for="task in goal.tasks"
                               :key="task.id"
-                              class="task-row"
-                              variant="tonal"
-                              @click="emit('open-edit-todo', task.id)"
                             >
-                              <div class="task-row-main">
-                                <div class="task-row-left">
-                                  <VCheckbox
-                                    hide-details
-                                    density="compact"
-                                    :model-value="task.status === 'completed'"
-                                    :disabled="isTaskLocked(task)"
-                                    @click.stop="toggleTaskCompleted(task.id)"
-                                  />
-
-                                  <div class="task-copy">
-                                    <VTooltip :text="task.title" location="top">
-                                      <template
-                                        #activator="{ props: tooltipProps }"
-                                      >
-                                        <strong
-                                          v-bind="tooltipProps"
-                                          class="text-body-1 truncate-title"
-                                        >
-                                          {{ task.title }}
-                                        </strong>
-                                      </template>
-                                    </VTooltip>
-                                    <span class="text-sm">
-                                      Start {{ formatDate(taskStartAt(task)) }}
-                                      | Due {{ formatDate(task.dueAt) }}
-                                      <template
-                                        v-if="formatMinutes(taskCompletionMinutes(task))"
-                                      >
-                                        | Time
-                                        {{
-                                          formatMinutes(
-                                            taskCompletionMinutes(task),
-                                          )
-                                        }}
-                                      </template>
-                                    </span>
-                                    <span
-                                      v-if="task.notes"
-                                      class="text-sm text-medium-emphasis"
-                                    >
-                                      {{ task.notes }}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div class="task-row-side">
-                                  <div
-                                    v-if="task.collaborators?.length"
-                                    class="v-avatar-group demo-avatar-group"
-                                  >
-                                    <VAvatar
-                                      v-for="collaborator in task.collaborators.slice(
-                                        0,
-                                        2,
-                                      )"
-                                      :key="collaborator.id"
-                                      :size="28"
-                                      color="primary"
-                                    >
-                                      <template v-if="collaborator.avatarUrl">
-                                        <VImg :src="collaborator.avatarUrl" />
-                                      </template>
-                                      <template v-else>
-                                        <span class="task-mono">
-                                          {{
-                                            collaboratorInitials(
-                                              collaborator.name,
-                                            )
-                                          }}
-                                        </span>
-                                      </template>
-                                      <VTooltip
-                                        activator="parent"
-                                        location="top"
-                                      >
-                                        {{ collaborator.name }}
-                                      </VTooltip>
-                                    </VAvatar>
-                                    <VAvatar
-                                      v-if="task.collaborators.length > 2"
-                                      :size="28"
-                                      color="secondary"
-                                    >
-                                      +{{ task.collaborators.length - 2 }}
-                                    </VAvatar>
-                                  </div>
-
+                              <div
+                                class="job-task-row"
+                                @click="emit('open-edit-todo', task.id)"
+                              >
+                                <div class="job-task-priority">
                                   <VIcon
-                                    v-if="task.important"
-                                    icon="tabler-star-filled"
+                                    :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                                    size="20"
                                     color="warning"
-                                    size="18"
                                   />
-                                  <span
-                                    class="text-sm"
-                                    :class="{
-                                      'text-primary':
-                                        task.status === 'in_progress',
-                                      'text-warning':
-                                        task.status === 'for_review',
-                                      'text-medium-emphasis':
-                                        task.status === 'pending',
-                                      'text-success':
-                                        task.status === 'completed',
-                                    }"
+                                </div>
+                              <div class="job-task-main">
+                                <div class="job-task-chevron-slot">
+                                  <VBtn
+                                    v-if="hasTaskSteps(task)"
+                                    icon
+                                    variant="text"
+                                    size="small"
+                                    class="job-task-chevron-btn"
+                                    @click.stop="toggleTaskSteps(task)"
                                   >
-                                    {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
-                                  </span>
+                                    <VIcon
+                                      :icon="isTaskExpanded(task) ? 'tabler-chevron-up' : 'tabler-chevron-down'"
+                                      size="18"
+                                    />
+                                    <VTooltip activator="parent" location="top">
+                                      {{ isTaskExpanded(task) ? "Hide subtasks" : "Show subtasks" }}
+                                    </VTooltip>
+                                  </VBtn>
+                                  <div v-else class="job-task-chevron-placeholder" />
+                                </div>
+                                <div class="job-task-copy">
+                                  <h6 class="text-base mb-0">{{ task.title }}</h6>
+                                  <div class="text-sm text-medium-emphasis">
+                                    {{ taskNotesPreview(task) }}
+                                  </div>
+                                  <div
+                                    v-if="hasTaskSteps(task)"
+                                    class="text-xs text-medium-emphasis mt-1"
+                                  >
+                                    <VIcon icon="tabler-subtask" size="18" class="mr-2" />
+                                    Subtasks: {{ completedStepCount(task) }}/{{ task.steps.length }}
+                                  </div>
                                 </div>
                               </div>
-                            </VCard>
+                              <div class="job-task-date">
+                                {{ formatDate(task.dueAt) }}
+                              </div>
+                              <div class="job-task-assigned">
+                                <div
+                                  v-if="task.collaborators?.length"
+                                  class="v-avatar-group demo-avatar-group"
+                                >
+                                  <VAvatar
+                                    v-for="collaborator in task.collaborators.slice(0, 3)"
+                                    :key="collaborator.id"
+                                    :size="40"
+                                    color="primary"
+                                  >
+                                    <template v-if="collaborator.avatarUrl">
+                                      <VImg :src="collaborator.avatarUrl" />
+                                    </template>
+                                    <template v-else>
+                                      <span class="task-mono">
+                                        {{ collaboratorInitials(collaborator.name) }}
+                                      </span>
+                                    </template>
+                                    <VTooltip activator="parent" location="top">
+                                      {{ collaborator.name }}
+                                    </VTooltip>
+                                  </VAvatar>
+                                  <VAvatar
+                                    v-if="task.collaborators.length > 3"
+                                    :size="40"
+                                    color="secondary"
+                                  >
+                                    +{{ task.collaborators.length - 3 }}
+                                  </VAvatar>
+                                </div>
+                                <span v-else>-</span>
+                              </div>
+                              <div class="job-task-status">
+                                <span
+                                  class="text-body-1"
+                                  :class="todoStatusTextClass(task.status)"
+                                >
+                                  {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
+                                </span>
+                              </div>
+                            </div>
+                              <div v-if="isTaskExpanded(task)" class="job-subtasks-row">
+                                <div
+                                  v-for="step in task.steps"
+                                  :key="step.id"
+                                  class="job-subtask-row"
+                                >
+                                  <VIcon
+                                    :icon="step.status === 'completed' ? 'tabler-check' : 'tabler-subtask'"
+                                    size="16"
+                                    :color="step.status === 'completed' ? 'success' : undefined"
+                                  />
+                                  <div class="job-subtask-copy">
+                                    <span class="font-weight-medium">{{ step.title }}</span>
+                                    <span class="text-caption text-medium-emphasis">
+                                      {{ formatDate(step.dueAt) }} | {{ todoStatusLabel(step.status) }}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </template>
                           </div>
                           <div
                             v-else
@@ -1487,99 +1449,120 @@ const formatMinutes = (value?: number | null) => {
         </div>
 
         <div v-if="generalTasks.length" class="d-flex flex-column gap-2">
-          <VCard
+          <template
             v-for="task in generalTasks"
             :key="task.id"
-            class="task-row"
-            variant="tonal"
-            @click="emit('open-edit-todo', task.id)"
           >
-            <div class="task-row-main">
-              <div class="task-row-left">
-                <VCheckbox
-                  hide-details
-                  density="compact"
-                  :model-value="task.status === 'completed'"
-                  :disabled="isTaskLocked(task)"
-                  @click.stop="toggleTaskCompleted(task.id)"
-                />
-
-                <div class="task-copy">
-                  <VTooltip :text="task.title" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <strong
-                        v-bind="tooltipProps"
-                        class="text-body-1 truncate-title"
-                      >
-                        {{ task.title }}
-                      </strong>
-                    </template>
-                  </VTooltip>
-                  <span class="text-sm">
-                    Start {{ formatDate(taskStartAt(task)) }} | Due
-                    {{ formatDate(task.dueAt) }}
-                    <template v-if="formatMinutes(taskCompletionMinutes(task))">
-                      | Time {{ formatMinutes(taskCompletionMinutes(task)) }}
-                    </template>
-                  </span>
-                  <span v-if="task.notes" class="text-sm text-medium-emphasis">
-                    {{ task.notes }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="task-row-side">
-                <div
-                  v-if="task.collaborators?.length"
-                  class="v-avatar-group demo-avatar-group"
-                >
-                  <VAvatar
-                    v-for="collaborator in task.collaborators.slice(0, 2)"
-                    :key="collaborator.id"
-                    :size="28"
-                    color="primary"
-                  >
-                    <template v-if="collaborator.avatarUrl">
-                      <VImg :src="collaborator.avatarUrl" />
-                    </template>
-                    <template v-else>
-                      <span class="task-mono">
-                        {{ collaboratorInitials(collaborator.name) }}
-                      </span>
-                    </template>
-                    <VTooltip activator="parent" location="top">
-                      {{ collaborator.name }}
-                    </VTooltip>
-                  </VAvatar>
-                  <VAvatar
-                    v-if="task.collaborators.length > 2"
-                    :size="28"
-                    color="secondary"
-                  >
-                    +{{ task.collaborators.length - 2 }}
-                  </VAvatar>
-                </div>
-
+            <div
+              class="job-task-row"
+              @click="emit('open-edit-todo', task.id)"
+            >
+              <div class="job-task-priority">
                 <VIcon
-                  v-if="task.important"
-                  icon="tabler-star-filled"
+                  :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                  size="20"
                   color="warning"
-                  size="18"
                 />
-                <span
-                  class="text-sm"
-                  :class="{
-                    'text-primary': task.status === 'in_progress',
-                    'text-warning': task.status === 'for_review',
-                    'text-medium-emphasis': task.status === 'pending',
-                    'text-success': task.status === 'completed',
-                  }"
+              </div>
+            <div class="job-task-main">
+              <div class="job-task-chevron-slot">
+                <VBtn
+                  v-if="hasTaskSteps(task)"
+                  icon
+                  variant="text"
+                  size="small"
+                  class="job-task-chevron-btn"
+                  @click.stop="toggleTaskSteps(task)"
                 >
-                  {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
-                </span>
+                  <VIcon
+                    :icon="isTaskExpanded(task) ? 'tabler-chevron-up' : 'tabler-chevron-down'"
+                    size="18"
+                  />
+                  <VTooltip activator="parent" location="top">
+                    {{ isTaskExpanded(task) ? "Hide subtasks" : "Show subtasks" }}
+                  </VTooltip>
+                </VBtn>
+                <div v-else class="job-task-chevron-placeholder" />
+              </div>
+              <div class="job-task-copy">
+                <h6 class="text-base mb-0">{{ task.title }}</h6>
+                <div class="text-sm text-medium-emphasis">
+                  {{ taskNotesPreview(task) }}
+                </div>
+                <div
+                  v-if="hasTaskSteps(task)"
+                  class="text-xs text-medium-emphasis mt-1"
+                >
+                  <VIcon icon="tabler-subtask" size="18" class="mr-2" />
+                  Subtasks: {{ completedStepCount(task) }}/{{ task.steps.length }}
+                </div>
               </div>
             </div>
-          </VCard>
+            <div class="job-task-date">
+              {{ formatDate(task.dueAt) }}
+            </div>
+            <div class="job-task-assigned">
+              <div
+                v-if="task.collaborators?.length"
+                class="v-avatar-group demo-avatar-group"
+              >
+                <VAvatar
+                  v-for="collaborator in task.collaborators.slice(0, 3)"
+                  :key="collaborator.id"
+                  :size="40"
+                  color="primary"
+                >
+                  <template v-if="collaborator.avatarUrl">
+                    <VImg :src="collaborator.avatarUrl" />
+                  </template>
+                  <template v-else>
+                    <span class="task-mono">
+                      {{ collaboratorInitials(collaborator.name) }}
+                    </span>
+                  </template>
+                  <VTooltip activator="parent" location="top">
+                    {{ collaborator.name }}
+                  </VTooltip>
+                </VAvatar>
+                <VAvatar
+                  v-if="task.collaborators.length > 3"
+                  :size="40"
+                  color="secondary"
+                >
+                  +{{ task.collaborators.length - 3 }}
+                </VAvatar>
+              </div>
+              <span v-else>-</span>
+            </div>
+            <div class="job-task-status">
+              <span
+                class="text-body-1"
+                :class="todoStatusTextClass(task.status)"
+              >
+                {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
+              </span>
+            </div>
+          </div>
+            <div v-if="isTaskExpanded(task)" class="job-subtasks-row">
+              <div
+                v-for="step in task.steps"
+                :key="step.id"
+                class="job-subtask-row"
+              >
+                <VIcon
+                  :icon="step.status === 'completed' ? 'tabler-check' : 'tabler-subtask'"
+                  size="16"
+                  :color="step.status === 'completed' ? 'success' : undefined"
+                />
+                <div class="job-subtask-copy">
+                  <span class="font-weight-medium">{{ step.title }}</span>
+                  <span class="text-caption text-medium-emphasis">
+                    {{ formatDate(step.dueAt) }} | {{ todoStatusLabel(step.status) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
 
         <div v-else class="text-body-2 text-medium-emphasis empty-tasks">
@@ -1587,35 +1570,6 @@ const formatMinutes = (value?: number | null) => {
         </div>
       </VCardText>
     </VCard>
-    <VDialog
-      v-model="isCompletionTimeDialogVisible"
-      max-width="420"
-      persistent
-      no-click-animation
-    >
-      <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Time for Completion</VCardTitle>
-        <VCardText>
-          <AppTextField
-            v-model.number="completionMinutesDraft"
-            type="number"
-            min="0"
-            label="Time for Completion (min)"
-            placeholder="Minutes"
-          />
-        </VCardText>
-        <VCardActions class="justify-end">
-          <VBtn
-            variant="tonal"
-            color="secondary"
-            @click="cancelCompletionTime"
-          >
-            Cancel
-          </VBtn>
-          <VBtn color="primary" @click="saveCompletionTime">Save</VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
     <VDialog
       v-model="dateOverrideDialog.visible"
       max-width="560"
@@ -1882,15 +1836,6 @@ const formatMinutes = (value?: number | null) => {
   color: rgb(var(--v-theme-warning));
 }
 
-.task-row {
-  border: 1px solid rgba(255, 255, 255, 6%);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 3%);
-  padding-block: 0.75rem;
-  padding-inline: 1rem;
-}
-
-.task-row-main,
 .milestone-actions,
 .goal-actions {
   min-inline-size: 0;
@@ -1911,30 +1856,76 @@ const formatMinutes = (value?: number | null) => {
   margin-inline-start: 0.25rem;
 }
 
-.task-row-main {
-  display: flex;
+.job-task-row {
+  display: grid;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  border-block-end: 1px solid rgba(255, 255, 255, 6%);
+  background: rgba(255, 255, 255, 2%);
+  column-gap: 1rem;
+  cursor: pointer;
+  grid-template-columns:
+    2rem minmax(16rem, 1fr) minmax(5.25rem, 0.45fr)
+    minmax(8.75rem, 0.7fr) minmax(7rem, 0.48fr);
+  min-block-size: 4.5rem;
+  padding-block: 0.625rem;
+  padding-inline: 0.75rem;
 }
 
-.task-row-left {
+.job-task-row:first-child {
+  border-block-start: 1px solid rgba(255, 255, 255, 6%);
+}
+
+.job-task-row:hover {
+  background: rgba(255, 255, 255, 4%);
+}
+
+.job-task-priority {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  justify-self: center;
+}
+
+.job-task-main {
+  display: grid;
+  align-items: center;
+  column-gap: 0.5rem;
+  grid-template-columns: 1.625rem minmax(0, 1fr);
   min-inline-size: 0;
 }
 
-.task-copy {
+.job-task-chevron-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 1.625rem;
+  color: rgb(var(--v-theme-primary));
+  inline-size: 1.625rem;
+}
+
+.job-task-chevron-btn {
+  block-size: 1.625rem !important;
+  inline-size: 1.625rem !important;
+  min-block-size: 1.625rem !important;
+  min-inline-size: 1.625rem !important;
+}
+
+.job-task-chevron-placeholder {
+  block-size: 1.625rem;
+  inline-size: 1.625rem;
+}
+
+.job-task-copy {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
   min-inline-size: 0;
 }
 
-.task-copy strong,
-.task-copy span {
-  overflow-wrap: anywhere;
+.job-task-copy h6,
+.job-task-copy div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .truncate-title {
@@ -1949,12 +1940,21 @@ const formatMinutes = (value?: number | null) => {
   max-inline-size: min(28rem, 100%);
 }
 
-.task-row-side {
+.job-task-date,
+.job-task-status {
+  min-inline-size: 0;
+}
+
+.job-task-date {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-weight: 600;
+}
+
+.job-task-assigned {
   display: inline-flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.5rem;
+  min-inline-size: 0;
 }
 
 .task-mono {
@@ -1967,6 +1967,26 @@ const formatMinutes = (value?: number | null) => {
   inline-size: 100%;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+}
+
+.job-subtasks-row {
+  border-block-end: 1px solid rgba(255, 255, 255, 6%);
+  background: rgba(255, 255, 255, 2.5%);
+  padding-block: 0.5rem 0.75rem;
+  padding-inline: calc(0.75rem + 3rem) 0.75rem;
+}
+
+.job-subtask-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-block: 0.375rem;
+}
+
+.job-subtask-copy {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
 }
 
 .empty-tasks {
@@ -2010,11 +2030,6 @@ const formatMinutes = (value?: number | null) => {
     min-block-size: 30px;
   }
 
-  .task-row {
-    padding-block: 0.625rem;
-    padding-inline: 0.75rem;
-  }
-
   .section-add-btn {
     align-self: flex-start;
   }
@@ -2027,18 +2042,24 @@ const formatMinutes = (value?: number | null) => {
     margin-inline-end: 0;
   }
 
-  .task-row-main {
-    flex-direction: column;
+  .job-task-row {
     align-items: flex-start;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    row-gap: 0.5rem;
   }
 
-  .task-row-left,
-  .task-row-side {
-    inline-size: 100%;
+  .job-task-date,
+  .job-task-assigned,
+  .job-task-status {
+    grid-column: 2 / 3;
   }
 
-  .task-row-side {
-    justify-content: flex-start;
+  .job-task-assigned {
+    flex-wrap: wrap;
+  }
+
+  .job-subtasks-row {
+    padding-inline: calc(0.75rem + 2rem) 0.75rem;
   }
 
   .empty-tasks {
