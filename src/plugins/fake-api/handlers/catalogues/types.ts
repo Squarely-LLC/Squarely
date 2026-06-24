@@ -149,6 +149,7 @@ export interface CatalogueJobConfigGoal {
   afterWhen?: string | null;
   startTrigger?: CatalogueTaskStartTrigger | null;
   dueDate: string | null;
+  dateOverride?: boolean;
   priority: CatalogueJobConfigPriority;
   note: string;
   tasks: CatalogueJobConfigTask[];
@@ -159,6 +160,7 @@ export interface CatalogueJobConfigMilestone {
   name: string;
   afterWhen?: string | null;
   dueDate: string | null;
+  dateOverride?: boolean;
   priority: CatalogueJobConfigPriority;
   note: string;
   tasks: CatalogueJobConfigTask[];

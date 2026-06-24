@@ -457,6 +457,7 @@ export const useJobsStore = defineStore("jobs", {
         name: milestone.name?.trim() || "Untitled Milestone",
         startDate: milestone.startDate || undefined,
         dueDate: milestone.dueDate || undefined,
+        dateOverride: Boolean(milestone.dateOverride),
         priority: milestone.priority ?? "Normal",
         note: milestone.note?.trim() || undefined,
       };
@@ -512,6 +513,7 @@ export const useJobsStore = defineStore("jobs", {
         name: goal.name?.trim() || "Untitled Goal",
         startDate: goal.startDate || undefined,
         dueDate: goal.dueDate || undefined,
+        dateOverride: Boolean(goal.dateOverride),
         priority: goal.priority ?? "Normal",
         note: goal.note?.trim() || undefined,
       };

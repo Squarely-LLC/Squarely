@@ -313,6 +313,7 @@ function normalizeJobGoal(
         }
       : null,
     dueDate: normalizedAfterWhen,
+    dateOverride: Boolean((goal as any).dateOverride),
     priority:
       goal.priority === "Low" || goal.priority === "High"
         ? goal.priority
@@ -340,6 +341,7 @@ function normalizeJobMilestone(
     name: String(milestone.name ?? "").trim(),
     afterWhen: normalizedAfterWhen,
     dueDate: normalizedAfterWhen,
+    dateOverride: Boolean((milestone as any).dateOverride),
     priority:
       milestone.priority === "Low" || milestone.priority === "High"
         ? milestone.priority

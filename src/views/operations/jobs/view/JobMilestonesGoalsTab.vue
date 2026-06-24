@@ -45,6 +45,7 @@ const milestoneDialog = reactive({
     name: "",
     startDate: null as string | null,
     dueDate: null as string | null,
+    dateOverride: false,
     priority: "Normal" as JobMilestone["priority"],
     note: "",
   },
@@ -58,6 +59,7 @@ const goalDialog = reactive({
     name: "",
     startDate: null as string | null,
     dueDate: null as string | null,
+    dateOverride: false,
     priority: "Normal" as JobGoal["priority"],
     note: "",
   },
@@ -170,6 +172,96 @@ const taskCompletionMinutes = (task: JobTodo) =>
       )
     : null;
 
+const validDateValue = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const earliestDate = (values: Array<string | null | undefined>) => {
+  const dates = values
+    .map((value) => validDateValue(value))
+    .filter((value): value is Date => value !== null);
+  if (!dates.length) return null;
+  return new Date(Math.min(...dates.map((date) => date.getTime()))).toISOString();
+};
+
+const latestDate = (values: Array<string | null | undefined>) => {
+  const dates = values
+    .map((value) => validDateValue(value))
+    .filter((value): value is Date => value !== null);
+  if (!dates.length) return null;
+  return new Date(Math.max(...dates.map((date) => date.getTime()))).toISOString();
+};
+
+const dateKey = (value?: string | null) => {
+  const date = validDateValue(value);
+  if (!date) return "";
+  return date.toISOString().slice(0, 10);
+};
+
+const datesConflict = (
+  enteredStartDate: string | null | undefined,
+  enteredDueDate: string | null | undefined,
+  derivedStartDate: string | null,
+  derivedDueDate: string | null,
+) => {
+  return Boolean(
+    (derivedStartDate && dateKey(enteredStartDate) !== dateKey(derivedStartDate)) ||
+      (derivedDueDate && dateKey(enteredDueDate) !== dateKey(derivedDueDate)),
+  );
+};
+
+const goalDerivedStartDate = (goal: JobGoal & { tasks: JobTodo[] }) =>
+  earliestDate(goal.tasks.map((task) => taskStartAt(task)));
+
+const goalDerivedDueDate = (goal: JobGoal & { tasks: JobTodo[] }) =>
+  latestDate(goal.tasks.map((task) => task.dueAt));
+
+const goalEffectiveStartDate = (goal: JobGoal & { tasks: JobTodo[] }) =>
+  goal.dateOverride
+    ? (goal.startDate ?? null)
+    : (goalDerivedStartDate(goal) ?? goal.startDate ?? null);
+
+const goalEffectiveDueDate = (goal: JobGoal & { tasks: JobTodo[] }) =>
+  goal.dateOverride
+    ? (goal.dueDate ?? null)
+    : (goalDerivedDueDate(goal) ?? goal.dueDate ?? null);
+
+const milestoneDerivedStartDate = (milestone: JobMilestone & {
+  tasks: JobTodo[];
+  goals: Array<JobGoal & { tasks: JobTodo[] }>;
+}) =>
+  earliestDate([
+    ...milestone.tasks.map((task) => taskStartAt(task)),
+    ...milestone.goals.map((goal) => goalEffectiveStartDate(goal)),
+  ]);
+
+const milestoneDerivedDueDate = (milestone: JobMilestone & {
+  tasks: JobTodo[];
+  goals: Array<JobGoal & { tasks: JobTodo[] }>;
+}) =>
+  latestDate([
+    ...milestone.tasks.map((task) => task.dueAt),
+    ...milestone.goals.map((goal) => goalEffectiveDueDate(goal)),
+  ]);
+
+const milestoneEffectiveStartDate = (milestone: JobMilestone & {
+  tasks: JobTodo[];
+  goals: Array<JobGoal & { tasks: JobTodo[] }>;
+}) =>
+  milestone.dateOverride
+    ? (milestone.startDate ?? null)
+    : (milestoneDerivedStartDate(milestone) ?? milestone.startDate ?? null);
+
+const milestoneEffectiveDueDate = (milestone: JobMilestone & {
+  tasks: JobTodo[];
+  goals: Array<JobGoal & { tasks: JobTodo[] }>;
+}) =>
+  milestone.dateOverride
+    ? (milestone.dueDate ?? null)
+    : (milestoneDerivedDueDate(milestone) ?? milestone.dueDate ?? null);
+
 const deriveStatusFromTasks = (
   startDate: string | null | undefined,
   tasks: JobTodo[],
@@ -187,7 +279,7 @@ const completedTaskCount = (tasks: JobTodo[]) =>
   tasks.filter((task) => task.status === "completed").length;
 
 const goalStatus = (goal: JobGoal & { tasks: JobTodo[] }) =>
-  deriveStatusFromTasks(goal.startDate, goal.tasks);
+  deriveStatusFromTasks(goalEffectiveStartDate(goal), goal.tasks);
 
 const milestoneStatus = (milestone: JobMilestone & {
   tasks: JobTodo[];
@@ -197,7 +289,8 @@ const milestoneStatus = (milestone: JobMilestone & {
     ...milestone.tasks,
     ...milestone.goals.flatMap((goal) => goal.tasks),
   ];
-  if (isFutureDate(milestone.startDate)) return "Not Started";
+  if (isFutureDate(milestoneEffectiveStartDate(milestone)))
+    return "Not Started";
   if (!allTasks.length) return "Not Started";
   if (
     milestone.goals.some((goal) => goalStatus(goal) === "In Progress") ||
@@ -259,6 +352,16 @@ const expandedGoals = ref<Array<number>>([]);
 const isCompletionTimeDialogVisible = ref(false);
 const completionMinutesDraft = ref<number | null>(null);
 const pendingCompletionTask = ref<JobTodo | null>(null);
+const dateOverrideDialog = reactive({
+  visible: false,
+  kind: "milestone" as "milestone" | "goal",
+  derivedStartDate: null as string | null,
+  derivedDueDate: null as string | null,
+  enteredStartDate: null as string | null,
+  enteredDueDate: null as string | null,
+  applyChildDates: null as null | (() => void),
+  keepManualDates: null as null | (() => void),
+});
 
 const goalIdsForMilestone = (milestoneId: number) =>
   goals.value
@@ -342,6 +445,7 @@ const resetMilestoneDraft = () => {
     name: "",
     startDate: null,
     dueDate: null,
+    dateOverride: false,
     priority: "Normal",
     note: "",
   };
@@ -353,6 +457,7 @@ const resetGoalDraft = () => {
     name: "",
     startDate: null,
     dueDate: null,
+    dateOverride: false,
     priority: "Normal",
     note: "",
   };
@@ -367,47 +472,155 @@ const openEditMilestone = (milestone: JobMilestone) => {
   milestoneDialog.mode = "edit";
   milestoneDialog.visible = true;
   milestoneTargetId.value = milestone.id;
+  const milestoneTree = milestone as JobMilestone & {
+    tasks: JobTodo[];
+    goals: Array<JobGoal & { tasks: JobTodo[] }>;
+  };
+  const useManualDates = Boolean(milestone.dateOverride);
   milestoneDialog.draft = {
     id: milestone.id,
     name: milestone.name,
-    startDate: milestone.startDate ?? null,
-    dueDate: milestone.dueDate ?? null,
+    startDate: useManualDates
+      ? (milestone.startDate ?? null)
+      : milestoneEffectiveStartDate(milestoneTree),
+    dueDate: useManualDates
+      ? (milestone.dueDate ?? null)
+      : milestoneEffectiveDueDate(milestoneTree),
+    dateOverride: Boolean(milestone.dateOverride),
     priority: milestone.priority,
     note: milestone.note ?? "",
   };
   nextTick(() => milestoneFormRef.value?.resetValidation());
 };
-const saveMilestone = async () => {
+
+const closeDateOverrideDialog = () => {
+  dateOverrideDialog.visible = false;
+  dateOverrideDialog.applyChildDates = null;
+  dateOverrideDialog.keepManualDates = null;
+};
+
+const promptDateOverride = (
+  kind: "milestone" | "goal",
+  enteredStartDate: string | null | undefined,
+  enteredDueDate: string | null | undefined,
+  derivedStartDate: string | null,
+  derivedDueDate: string | null,
+  applyChildDates: () => void,
+  keepManualDates: () => void,
+) => {
+  dateOverrideDialog.kind = kind;
+  dateOverrideDialog.enteredStartDate = enteredStartDate ?? null;
+  dateOverrideDialog.enteredDueDate = enteredDueDate ?? null;
+  dateOverrideDialog.derivedStartDate = derivedStartDate;
+  dateOverrideDialog.derivedDueDate = derivedDueDate;
+  dateOverrideDialog.applyChildDates = applyChildDates;
+  dateOverrideDialog.keepManualDates = keepManualDates;
+  dateOverrideDialog.visible = true;
+};
+
+const confirmUseChildDates = () => {
+  dateOverrideDialog.applyChildDates?.();
+  closeDateOverrideDialog();
+};
+
+const confirmKeepManualDates = () => {
+  dateOverrideDialog.keepManualDates?.();
+  closeDateOverrideDialog();
+};
+
+const cancelDateOverride = () => closeDateOverrideDialog();
+
+const finishMilestoneSave = (message: string, action: string) => {
+  notifications.push(message, "success", 3000);
+  emit("status-automation-trigger", action);
+  milestoneDialog.visible = false;
+  milestoneTargetId.value = null;
+  resetMilestoneDraft();
+  nextTick(() => milestoneFormRef.value?.resetValidation());
+};
+
+const commitMilestone = (
+  patch: Partial<JobMilestone>,
+  message: string,
+  action: string,
+) => {
   if (!job.value) return;
-  const { valid } = (await milestoneFormRef.value?.validate()) ?? {
-    valid: true,
-  };
-  if (!valid) return;
   if (milestoneDialog.mode === "create") {
-    const { id, ...draftWithoutId } = milestoneDialog.draft;
-    const createdMilestone = jobsStore.addMilestone(job.value.id, {
-      ...draftWithoutId,
-    });
+    const createdMilestone = jobsStore.addMilestone(job.value.id, patch);
     if (createdMilestone?.id !== undefined) {
       expandedMilestones.value = [
         ...expandedMilestones.value,
         createdMilestone.id,
       ];
     }
-    notifications.push("Milestone added", "success", 3000);
-    emit("status-automation-trigger", "Milestone added");
   } else if (milestoneTargetId.value !== null) {
-    const { id, ...draftWithoutId } = milestoneDialog.draft;
-    jobsStore.updateMilestone(job.value.id, milestoneTargetId.value, {
-      ...draftWithoutId,
-    });
-    notifications.push("Milestone updated", "success", 3000);
-    emit("status-automation-trigger", "Milestone updated");
+    jobsStore.updateMilestone(job.value.id, milestoneTargetId.value, patch);
   }
-  milestoneDialog.visible = false;
-  milestoneTargetId.value = null;
-  resetMilestoneDraft();
-  nextTick(() => milestoneFormRef.value?.resetValidation());
+  finishMilestoneSave(message, action);
+};
+
+const saveMilestone = async () => {
+  if (!job.value) return;
+  const { valid } = (await milestoneFormRef.value?.validate()) ?? {
+    valid: true,
+  };
+  if (!valid) return;
+  const { id, ...draftWithoutId } = milestoneDialog.draft;
+  const action =
+    milestoneDialog.mode === "create" ? "Milestone added" : "Milestone updated";
+  const message =
+    milestoneDialog.mode === "create" ? "Milestone added" : "Milestone updated";
+
+  const currentTree = milestoneGoalTree.value.find((milestone) =>
+    milestoneDialog.mode === "edit"
+      ? String(milestone.id) === String(milestoneTargetId.value)
+      : false,
+  );
+  const derivedStartDate = currentTree
+    ? milestoneDerivedStartDate(currentTree)
+    : null;
+  const derivedDueDate = currentTree ? milestoneDerivedDueDate(currentTree) : null;
+  const hasConflict =
+    !draftWithoutId.dateOverride &&
+    datesConflict(
+      draftWithoutId.startDate,
+      draftWithoutId.dueDate,
+      derivedStartDate,
+      derivedDueDate,
+    );
+
+  if (hasConflict) {
+    promptDateOverride(
+      "milestone",
+      draftWithoutId.startDate,
+      draftWithoutId.dueDate,
+      derivedStartDate,
+      derivedDueDate,
+      () =>
+        commitMilestone(
+          {
+            ...draftWithoutId,
+            startDate: derivedStartDate ?? draftWithoutId.startDate,
+            dueDate: derivedDueDate ?? draftWithoutId.dueDate,
+            dateOverride: false,
+          },
+          message,
+          action,
+        ),
+      () =>
+        commitMilestone(
+          {
+            ...draftWithoutId,
+            dateOverride: true,
+          },
+          message,
+          action,
+        ),
+    );
+    return;
+  }
+
+  commitMilestone(draftWithoutId, message, action);
 };
 const deleteMilestone = (milestone: JobMilestone) => {
   if (!job.value) return;
@@ -430,17 +643,48 @@ const openEditGoal = (goal: JobGoal) => {
   goalDialog.mode = "edit";
   goalDialog.visible = true;
   goalTargetId.value = goal.id;
+  const goalTree = goal as JobGoal & { tasks: JobTodo[] };
+  const useManualDates = Boolean(goal.dateOverride);
   goalDialog.draft = {
     id: goal.id,
     milestoneId: goal.milestoneId ?? undefined,
     name: goal.name,
-    startDate: goal.startDate ?? null,
-    dueDate: goal.dueDate ?? null,
+    startDate: useManualDates
+      ? (goal.startDate ?? null)
+      : goalEffectiveStartDate(goalTree),
+    dueDate: useManualDates
+      ? (goal.dueDate ?? null)
+      : goalEffectiveDueDate(goalTree),
+    dateOverride: Boolean(goal.dateOverride),
     priority: goal.priority,
     note: goal.note ?? "",
   };
   nextTick(() => goalFormRef.value?.resetValidation());
 };
+
+const finishGoalSave = (message: string, action: string) => {
+  notifications.push(message, "success", 3000);
+  emit("status-automation-trigger", action);
+  goalDialog.visible = false;
+  goalTargetId.value = null;
+  resetGoalDraft();
+  nextTick(() => goalFormRef.value?.resetValidation());
+};
+
+const commitGoal = (
+  patch: Partial<JobGoal>,
+  message: string,
+  action: string,
+) => {
+  if (!job.value) return;
+  if (goalDialog.mode === "create") {
+    jobsStore.addGoal(job.value.id, patch);
+  } else if (goalTargetId.value !== null) {
+    jobsStore.updateGoal(job.value.id, goalTargetId.value, patch);
+  }
+  finishGoalSave(message, action);
+};
+
 const saveGoal = async () => {
   if (!job.value) return;
   const { valid } = (await goalFormRef.value?.validate()) ?? { valid: true };
@@ -451,23 +695,60 @@ const saveGoal = async () => {
   ) {
     return;
   }
-  if (goalDialog.mode === "create") {
-    const { id, ...draftWithoutId } = goalDialog.draft;
-    jobsStore.addGoal(job.value.id, { ...draftWithoutId });
-    notifications.push("Goal added", "success", 3000);
-    emit("status-automation-trigger", "Goal added");
-  } else if (goalTargetId.value !== null) {
-    const { id, ...draftWithoutId } = goalDialog.draft;
-    jobsStore.updateGoal(job.value.id, goalTargetId.value, {
-      ...draftWithoutId,
-    });
-    notifications.push("Goal updated", "success", 3000);
-    emit("status-automation-trigger", "Goal updated");
+  const { id, ...draftWithoutId } = goalDialog.draft;
+  const action = goalDialog.mode === "create" ? "Goal added" : "Goal updated";
+  const message = goalDialog.mode === "create" ? "Goal added" : "Goal updated";
+
+  const currentGoal = milestoneGoalTree.value
+    .flatMap((milestone) => milestone.goals)
+    .find((goal) =>
+      goalDialog.mode === "edit"
+        ? String(goal.id) === String(goalTargetId.value)
+        : false,
+    );
+  const derivedStartDate = currentGoal ? goalDerivedStartDate(currentGoal) : null;
+  const derivedDueDate = currentGoal ? goalDerivedDueDate(currentGoal) : null;
+  const hasConflict =
+    !draftWithoutId.dateOverride &&
+    datesConflict(
+      draftWithoutId.startDate,
+      draftWithoutId.dueDate,
+      derivedStartDate,
+      derivedDueDate,
+    );
+
+  if (hasConflict) {
+    promptDateOverride(
+      "goal",
+      draftWithoutId.startDate,
+      draftWithoutId.dueDate,
+      derivedStartDate,
+      derivedDueDate,
+      () =>
+        commitGoal(
+          {
+            ...draftWithoutId,
+            startDate: derivedStartDate ?? draftWithoutId.startDate,
+            dueDate: derivedDueDate ?? draftWithoutId.dueDate,
+            dateOverride: false,
+          },
+          message,
+          action,
+        ),
+      () =>
+        commitGoal(
+          {
+            ...draftWithoutId,
+            dateOverride: true,
+          },
+          message,
+          action,
+        ),
+    );
+    return;
   }
-  goalDialog.visible = false;
-  goalTargetId.value = null;
-  resetGoalDraft();
-  nextTick(() => goalFormRef.value?.resetValidation());
+
+  commitGoal(draftWithoutId, message, action);
 };
 const deleteGoal = (goal: JobGoal) => {
   if (!job.value) return;
@@ -487,13 +768,21 @@ const buildTaskTitlePrefix = (
 
 const openCreateTodoForMilestone = (milestone: JobMilestone) => {
   if (!job.value) return;
+  const milestoneTree = milestoneGoalTree.value.find(
+    (entry) => String(entry.id) === String(milestone.id),
+  );
   emit("open-add-todo", {
     initial: {
       title: buildTaskTitlePrefix(job.value.name, milestone.name),
       collaborators: [],
       notes: `Created for milestone: ${milestone.name}`,
-      dueAt: milestone.dueDate || new Date().toISOString(),
-      startAt: milestone.startDate || job.value.startDate || null,
+      dueAt:
+        (milestoneTree ? milestoneEffectiveDueDate(milestoneTree) : milestone.dueDate) ||
+        new Date().toISOString(),
+      startAt:
+        (milestoneTree ? milestoneEffectiveStartDate(milestoneTree) : milestone.startDate) ||
+        job.value.startDate ||
+        null,
       completionMinutes: null,
       priority:
         milestone.priority === "High"
@@ -515,13 +804,21 @@ const openCreateTodoForMilestone = (milestone: JobMilestone) => {
 
 const openCreateTodoForGoal = (goal: JobGoal) => {
   if (!job.value) return;
+  const goalTree = milestoneGoalTree.value
+    .flatMap((milestone) => milestone.goals)
+    .find((entry) => String(entry.id) === String(goal.id));
   emit("open-add-todo", {
     initial: {
       title: buildTaskTitlePrefix(job.value.name, goal.name),
       collaborators: [],
       notes: `Created for goal: ${goal.name}`,
-      dueAt: goal.dueDate || new Date().toISOString(),
-      startAt: goal.startDate || job.value.startDate || null,
+      dueAt:
+        (goalTree ? goalEffectiveDueDate(goalTree) : goal.dueDate) ||
+        new Date().toISOString(),
+      startAt:
+        (goalTree ? goalEffectiveStartDate(goalTree) : goal.startDate) ||
+        job.value.startDate ||
+        null,
       completionMinutes: null,
       priority:
         goal.priority === "High"
@@ -704,13 +1001,13 @@ const formatMinutes = (value?: number | null) => {
                     </VChip>
                   </div>
                   <div class="text-caption text-medium-emphasis">
-                    Start {{ formatDate(milestone.startDate) }}
+                    Start {{ formatDate(milestoneEffectiveStartDate(milestone)) }}
                     <span
                       :class="{
-                        'text-warning font-weight-medium': isDueSoon(milestone.dueDate),
+                        'text-warning font-weight-medium': isDueSoon(milestoneEffectiveDueDate(milestone)),
                       }"
                     >
-                      | Due {{ formatDate(milestone.dueDate) }}
+                      | Due {{ formatDate(milestoneEffectiveDueDate(milestone)) }}
                     </span>
                     | {{ completedTaskCount([
                       ...milestone.tasks,
@@ -725,6 +1022,19 @@ const formatMinutes = (value?: number | null) => {
                         >s</span
                       >
                     </span>
+                    <VChip
+                      v-if="milestone.dateOverride"
+                      size="x-small"
+                      label
+                      color="warning"
+                      variant="tonal"
+                      class="ms-1"
+                    >
+                      Manual dates
+                      <VTooltip activator="parent" location="top">
+                        Parent dates were manually kept instead of child rollup.
+                      </VTooltip>
+                    </VChip>
                   </div>
                   <div
                     v-if="milestone.note"
@@ -938,18 +1248,31 @@ const formatMinutes = (value?: number | null) => {
                             </VChip>
                           </div>
                           <div class="text-caption text-medium-emphasis">
-                            Start {{ formatDate(goal.startDate) }}
+                            Start {{ formatDate(goalEffectiveStartDate(goal)) }}
                             <span
                               :class="{
-                                'text-warning font-weight-medium': isDueSoon(goal.dueDate),
+                                'text-warning font-weight-medium': isDueSoon(goalEffectiveDueDate(goal)),
                               }"
                             >
-                              | Due {{ formatDate(goal.dueDate) }}
+                              | Due {{ formatDate(goalEffectiveDueDate(goal)) }}
                             </span>
                             | {{ completedTaskCount(goal.tasks) }}/{{
                               goal.tasks.length
                             }}
                             tasks completed
+                            <VChip
+                              v-if="goal.dateOverride"
+                              size="x-small"
+                              label
+                              color="warning"
+                              variant="tonal"
+                              class="ms-1"
+                            >
+                              Manual dates
+                              <VTooltip activator="parent" location="top">
+                                Parent dates were manually kept instead of child rollup.
+                              </VTooltip>
+                            </VChip>
                           </div>
                           <div
                             v-if="goal.note"
@@ -1290,6 +1613,48 @@ const formatMinutes = (value?: number | null) => {
             Cancel
           </VBtn>
           <VBtn color="primary" @click="saveCompletionTime">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+    <VDialog
+      v-model="dateOverrideDialog.visible"
+      max-width="560"
+      persistent
+      no-click-animation
+    >
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Date conflict</VCardTitle>
+        <VCardText>
+          <p class="mb-4">
+            This {{ dateOverrideDialog.kind }} has child work with different
+            dates. Parent dates should follow their children unless you choose
+            to keep your dates.
+          </p>
+          <div class="text-body-2 text-medium-emphasis">
+            <div>
+              Child start:
+              {{ formatDate(dateOverrideDialog.derivedStartDate) }}
+              | Entered start:
+              {{ formatDate(dateOverrideDialog.enteredStartDate) }}
+            </div>
+            <div>
+              Child due:
+              {{ formatDate(dateOverrideDialog.derivedDueDate) }}
+              | Entered due:
+              {{ formatDate(dateOverrideDialog.enteredDueDate) }}
+            </div>
+          </div>
+        </VCardText>
+        <VCardActions class="justify-end flex-wrap gap-2">
+          <VBtn variant="tonal" color="secondary" @click="cancelDateOverride">
+            Cancel
+          </VBtn>
+          <VBtn variant="tonal" color="primary" @click="confirmUseChildDates">
+            Use child dates
+          </VBtn>
+          <VBtn color="warning" @click="confirmKeepManualDates">
+            Keep my dates
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

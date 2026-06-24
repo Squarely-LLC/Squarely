@@ -173,6 +173,7 @@ type ExecutionPreviewGoal = {
   name: string;
   startDate: string;
   dueDate: string | null;
+  dateOverride?: boolean;
   priority: JobFlag;
   note: string | null;
   sourceLabel: string;
@@ -184,6 +185,7 @@ type ExecutionPreviewMilestone = {
   name: string;
   startDate: string;
   dueDate: string | null;
+  dateOverride?: boolean;
   priority: JobFlag;
   note: string | null;
   sourceLabel: string;
@@ -303,6 +305,65 @@ const resolveConvertedTaskSchedule = (
       ? resolveScheduledDate(explicitDue, baselineIso) || startAt
       : startAt,
   };
+};
+
+const earliestIso = (values: Array<string | null | undefined>) => {
+  let earliest: string | null = null;
+  let earliestTime = Number.POSITIVE_INFINITY;
+
+  values.forEach((value) => {
+    if (!value) return;
+    const time = new Date(value).getTime();
+    if (Number.isNaN(time) || time >= earliestTime) return;
+    earliest = value;
+    earliestTime = time;
+  });
+
+  return earliest;
+};
+
+const latestIso = (values: Array<string | null | undefined>) => {
+  let latest: string | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+
+  values.forEach((value) => {
+    if (!value) return;
+    const time = new Date(value).getTime();
+    if (Number.isNaN(time) || time <= latestTime) return;
+    latest = value;
+    latestTime = time;
+  });
+
+  return latest;
+};
+
+const rollupGoalPreviewDates = (goal: ExecutionPreviewGoal) => {
+  if (goal.dateOverride) return;
+
+  const childStarts = goal.tasks.map((task) => task.startAt ?? task.dueAt);
+  const childDues = goal.tasks.map((task) => task.dueAt ?? task.startAt);
+
+  goal.startDate = earliestIso(childStarts) ?? goal.startDate;
+  goal.dueDate = latestIso(childDues) ?? goal.dueDate;
+};
+
+const rollupMilestonePreviewDates = (
+  milestone: ExecutionPreviewMilestone,
+) => {
+  milestone.goals.forEach(rollupGoalPreviewDates);
+  if (milestone.dateOverride) return;
+
+  const childStarts = [
+    ...milestone.tasks.map((task) => task.startAt ?? task.dueAt),
+    ...milestone.goals.map((goal) => goal.startDate),
+  ];
+  const childDues = [
+    ...milestone.tasks.map((task) => task.dueAt ?? task.startAt),
+    ...milestone.goals.map((goal) => goal.dueDate),
+  ];
+
+  milestone.startDate = earliestIso(childStarts) ?? milestone.startDate;
+  milestone.dueDate = latestIso(childDues) ?? milestone.dueDate;
 };
 
 const resolveJobConfigMilestones = (record: CatalogueRecord | null) => {
@@ -713,6 +774,7 @@ const buildExecutionPreview = (
             milestone.afterWhen ?? milestone.dueDate,
             executedAt,
           ) ?? null,
+        dateOverride: Boolean((milestone as any).dateOverride),
         priority: milestone.priority ?? "Normal",
         note: String(milestone.note || "").trim() || null,
         sourceLabel: item.name,
@@ -740,6 +802,7 @@ const buildExecutionPreview = (
                 goal.afterWhen ?? goal.dueDate,
                 executedAt,
               ) ?? null,
+            dateOverride: Boolean((goal as any).dateOverride),
             priority: goal.priority ?? "Normal",
             note: String(goal.note || "").trim() || null,
             sourceLabel: item.name,
@@ -772,6 +835,8 @@ const buildExecutionPreview = (
         );
       });
 
+      rollupMilestonePreviewDates(previewMilestone);
+
       milestones.push(previewMilestone);
     });
 
@@ -784,6 +849,7 @@ const buildExecutionPreview = (
           currentDeal.estimatedDeliveryDate,
           executedAt,
         ),
+        dateOverride: false,
         priority: "Normal",
         note: item.note?.trim() || null,
         sourceLabel: item.name,
@@ -1590,6 +1656,7 @@ const confirmDealExecution = () => {
         name: milestone.name,
         startDate: milestone.startDate,
         dueDate: milestone.dueDate,
+        dateOverride: Boolean(milestone.dateOverride),
         priority: milestone.priority,
         note: milestone.note,
       });
@@ -1608,6 +1675,7 @@ const confirmDealExecution = () => {
           name: goal.name,
           startDate: goal.startDate,
           dueDate: goal.dueDate,
+          dateOverride: Boolean(goal.dateOverride),
           priority: goal.priority,
           note: goal.note,
         });

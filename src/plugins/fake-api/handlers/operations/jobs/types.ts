@@ -31,6 +31,7 @@ export interface JobMilestone {
   name: string;
   startDate?: string | null;
   dueDate?: string | null;
+  dateOverride?: boolean;
   priority: JobFlag;
   note?: string | null;
 }
@@ -40,6 +41,7 @@ export interface JobGoal {
   name: string;
   startDate?: string | null;
   dueDate?: string | null;
+  dateOverride?: boolean;
   priority: JobFlag;
   note?: string | null;
 }

@@ -25,6 +25,7 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
+  reactive,
   ref,
   watch,
 } from "vue";
@@ -106,6 +107,7 @@ type JobConfigGoal = {
   name: string;
   startTrigger?: CatalogueTaskStartTrigger | null;
   dueDate: string | null;
+  dateOverride?: boolean;
   priority: JobConfigPriority;
   note: string;
   tasks: JobConfigTask[];
@@ -115,6 +117,7 @@ type JobConfigMilestone = {
   id: number;
   name: string;
   dueDate: string | null;
+  dateOverride?: boolean;
   priority: JobConfigPriority;
   note: string;
   tasks: JobConfigTask[];
@@ -325,6 +328,7 @@ const jobConfigMilestones = ref<JobConfigMilestone[]>([
     id: 1,
     name: defaultMilestoneName.value,
     dueDate: null,
+    dateOverride: false,
     priority: "Normal",
     note: "",
     tasks: [],
@@ -343,6 +347,14 @@ const milestoneDialog = ref({
   },
 });
 const milestoneAfterWhenValue = ref<number | null>(null);
+const catalogueDateOverrideDialog = reactive({
+  visible: false,
+  kind: "milestone" as "milestone" | "goal",
+  enteredTiming: null as string | null,
+  childTiming: null as string | null,
+  applyChildTiming: null as null | (() => void),
+  keepManualTiming: null as null | (() => void),
+});
 const goalDialog = ref({
   visible: false,
   mode: "create" as "create" | "edit",
@@ -1398,6 +1410,103 @@ const formatDate = (value?: string | null) => {
 
 const formatTaskAfterWhen = (value?: string | null) => value || "Immediately";
 
+const relativeTimingDays = (value?: string | null) => {
+  const trimmedValue = String(value ?? "").trim();
+  if (!trimmedValue) return null;
+
+  const relativeMatch = trimmedValue.match(
+    /^([+-]?\d+)\s*(day|days|week|weeks|month|months)$/i,
+  );
+  if (!relativeMatch) return null;
+
+  const amount = Number(relativeMatch[1] || 0);
+  const unit = relativeMatch[2].toLowerCase();
+  if (!Number.isFinite(amount)) return null;
+
+  if (unit.startsWith("week")) return amount * 7;
+  if (unit.startsWith("month")) return amount * 30;
+
+  return amount;
+};
+
+const normalizeRelativeTiming = (value?: string | null) => {
+  const days = relativeTimingDays(value);
+  return days === null ? (value ?? null) : buildAfterWhenValue(days);
+};
+
+const latestRelativeTiming = (values: Array<string | null | undefined>) => {
+  let latestDays: number | null = null;
+  let latestRaw: string | null = null;
+
+  values.forEach((value) => {
+    const days = relativeTimingDays(value);
+    if (days === null) return;
+
+    if (latestDays === null || days > latestDays) {
+      latestDays = days;
+      latestRaw = buildAfterWhenValue(days);
+    }
+  });
+
+  return latestRaw;
+};
+
+const goalChildTiming = (goal: Pick<JobConfigGoal, "tasks">) =>
+  latestRelativeTiming(goal.tasks.map((task) => task.afterWhen));
+
+const goalEffectiveTiming = (goal: JobConfigGoal) =>
+  goal.dateOverride ? normalizeRelativeTiming(goal.dueDate) : goalChildTiming(goal) ?? normalizeRelativeTiming(goal.dueDate);
+
+const milestoneChildTiming = (milestone: JobConfigMilestone) =>
+  latestRelativeTiming([
+    ...milestone.tasks.map((task) => task.afterWhen),
+    ...milestone.goals.map((goal) => goalEffectiveTiming(goal)),
+  ]);
+
+const milestoneEffectiveTiming = (milestone: JobConfigMilestone) =>
+  milestone.dateOverride
+    ? normalizeRelativeTiming(milestone.dueDate)
+    : milestoneChildTiming(milestone) ?? normalizeRelativeTiming(milestone.dueDate);
+
+const relativeTimingConflicts = (
+  enteredTiming?: string | null,
+  childTiming?: string | null,
+) => {
+  if (!childTiming) return false;
+  return normalizeRelativeTiming(enteredTiming) !== normalizeRelativeTiming(childTiming);
+};
+
+const resetCatalogueDateOverrideDialog = () => {
+  catalogueDateOverrideDialog.visible = false;
+  catalogueDateOverrideDialog.applyChildTiming = null;
+  catalogueDateOverrideDialog.keepManualTiming = null;
+};
+
+const openCatalogueDateOverrideDialog = (
+  kind: "milestone" | "goal",
+  enteredTiming: string | null,
+  childTiming: string | null,
+  applyChildTiming: () => void,
+  keepManualTiming: () => void,
+) => {
+  catalogueDateOverrideDialog.kind = kind;
+  catalogueDateOverrideDialog.enteredTiming = enteredTiming;
+  catalogueDateOverrideDialog.childTiming = childTiming;
+  catalogueDateOverrideDialog.applyChildTiming = applyChildTiming;
+  catalogueDateOverrideDialog.keepManualTiming = keepManualTiming;
+  catalogueDateOverrideDialog.visible = true;
+};
+
+const applyCatalogueChildTiming = () => {
+  catalogueDateOverrideDialog.applyChildTiming?.();
+  resetCatalogueDateOverrideDialog();
+};
+
+const keepCatalogueManualTiming = () => {
+  catalogueDateOverrideDialog.keepManualTiming?.();
+  resetCatalogueDateOverrideDialog();
+};
+
 const parseAfterWhenValue = (value?: string | null) => {
   const trimmedValue = String(value ?? "").trim();
   if (!trimmedValue) return null;
@@ -1567,6 +1676,11 @@ const resetMilestoneDraft = () => {
   milestoneAfterWhenValue.value = null;
 };
 
+const closeMilestoneDialog = () => {
+  milestoneDialog.value.visible = false;
+  resetMilestoneDraft();
+};
+
 const resetGoalDraft = () => {
   goalDialog.value.targetId = null;
   goalDialog.value.milestoneId = null;
@@ -1581,6 +1695,11 @@ const resetGoalDraft = () => {
   selectedGoalDependencyId.value = null;
   goalAfterWhenPreset.value = "1_day";
   goalAfterWhenValue.value = null;
+};
+
+const closeGoalDialog = () => {
+  goalDialog.value.visible = false;
+  resetGoalDraft();
 };
 
 const syncContractualPhaseGoals = () => {
@@ -1606,6 +1725,7 @@ const syncContractualPhaseGoals = () => {
         taskId: null,
       },
       dueDate: existingGoal?.dueDate ?? null,
+      dateOverride: Boolean(existingGoal?.dateOverride),
       priority: existingGoal?.priority ?? "Normal",
       note: existingGoal?.note ?? "",
       tasks: existingGoal?.tasks ? [...existingGoal.tasks] : [],
@@ -1653,6 +1773,7 @@ const syncLinkedServiceGoals = () => {
         taskId: null,
       },
       dueDate: existingGoal?.dueDate ?? null,
+      dateOverride: Boolean(existingGoal?.dateOverride),
       priority: existingGoal?.priority ?? "Normal",
       note: service.description,
       tasks: existingGoal?.tasks ? [...existingGoal.tasks] : [],
@@ -1675,13 +1796,14 @@ const openEditMilestone = (milestone: JobConfigMilestone) => {
   milestoneDialog.value.mode = "edit";
   milestoneDialog.value.visible = true;
   milestoneDialog.value.targetId = milestone.id;
+  const effectiveTiming = milestoneEffectiveTiming(milestone);
   milestoneDialog.value.draft = {
     name: milestone.name,
-    dueDate: milestone.dueDate,
+    dueDate: effectiveTiming,
     priority: milestone.priority,
     note: milestone.note,
   };
-  milestoneAfterWhenValue.value = parseAfterWhenValue(milestone.dueDate);
+  milestoneAfterWhenValue.value = parseAfterWhenValue(effectiveTiming);
   nextTick(() => milestoneFormRef.value?.resetValidation());
 };
 
@@ -1696,16 +1818,35 @@ const saveMilestone = async () => {
   );
 
   if (milestone) {
-    milestone.name = draft.name.trim();
-    milestone.dueDate = buildAfterWhenValue(milestoneAfterWhenValue.value);
-    milestone.priority = draft.priority;
-    milestone.note = draft.note.trim();
-    hasCustomMilestoneName.value =
-      milestone.name !== defaultMilestoneName.value;
+    const enteredTiming = buildAfterWhenValue(milestoneAfterWhenValue.value);
+    const childTiming = milestoneChildTiming(milestone);
+    const applyUpdate = (timing: string | null, dateOverride: boolean) => {
+      milestone.name = draft.name.trim();
+      milestone.dueDate = timing;
+      milestone.dateOverride = dateOverride;
+      milestone.priority = draft.priority;
+      milestone.note = draft.note.trim();
+      hasCustomMilestoneName.value =
+        milestone.name !== defaultMilestoneName.value;
+      closeMilestoneDialog();
+    };
+
+    if (relativeTimingConflicts(enteredTiming, childTiming)) {
+      openCatalogueDateOverrideDialog(
+        "milestone",
+        enteredTiming,
+        childTiming,
+        () => applyUpdate(childTiming, false),
+        () => applyUpdate(enteredTiming, true),
+      );
+      return;
+    }
+
+    applyUpdate(enteredTiming ?? childTiming ?? null, false);
+    return;
   }
 
-  milestoneDialog.value.visible = false;
-  resetMilestoneDraft();
+  closeMilestoneDialog();
 };
 
 const openCreateGoal = (milestoneId: number) => {
@@ -1728,9 +1869,10 @@ const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
   goalDialog.value.visible = true;
   goalDialog.value.targetId = goal.id;
   goalDialog.value.milestoneId = milestoneId;
+  const effectiveTiming = goalEffectiveTiming(goal);
   goalDialog.value.draft = {
     name: goal.name,
-    dueDate: goal.dueDate,
+    dueDate: effectiveTiming,
     startTrigger: goal.startTrigger ?? {
       type: "time",
       goalId: null,
@@ -1743,7 +1885,7 @@ const openEditGoal = (milestoneId: number, goal: JobConfigGoal) => {
   selectedGoalDependencyId.value = goal.startTrigger?.goalId
     ? String(goal.startTrigger.goalId)
     : null;
-  goalAfterWhenValue.value = parseAfterWhenValue(goal.dueDate);
+  goalAfterWhenValue.value = parseAfterWhenValue(effectiveTiming);
   goalAfterWhenPreset.value =
     goalAfterWhenValue.value === 1
       ? "1_day"
@@ -1782,14 +1924,39 @@ const saveGoal = async () => {
     );
 
     if (goal) {
-      goal.name = draft.name.trim();
-      goal.dueDate =
+      const enteredTiming =
         goalStartMode.value === "time"
           ? buildAfterWhenValue(resolvedGoalAfterWhenValue)
           : null;
-      goal.startTrigger = buildGoalStartTrigger();
-      goal.priority = draft.priority;
-      goal.note = draft.note.trim();
+      const childTiming = goalChildTiming(goal);
+      const nextStartTrigger = buildGoalStartTrigger();
+      const applyUpdate = (timing: string | null, dateOverride: boolean) => {
+        goal.name = draft.name.trim();
+        goal.dueDate = timing;
+        goal.startTrigger = nextStartTrigger;
+        goal.dateOverride = dateOverride;
+        goal.priority = draft.priority;
+        goal.note = draft.note.trim();
+        closeGoalDialog();
+        syncExpandedGoals();
+      };
+
+      if (
+        goalStartMode.value === "time" &&
+        relativeTimingConflicts(enteredTiming, childTiming)
+      ) {
+        openCatalogueDateOverrideDialog(
+          "goal",
+          enteredTiming,
+          childTiming,
+          () => applyUpdate(childTiming, false),
+          () => applyUpdate(enteredTiming, true),
+        );
+        return;
+      }
+
+      applyUpdate(enteredTiming ?? childTiming ?? null, false);
+      return;
     }
   } else {
     milestone.goals.push({
@@ -1801,6 +1968,7 @@ const saveGoal = async () => {
           ? buildAfterWhenValue(resolvedGoalAfterWhenValue)
           : null,
       startTrigger: buildGoalStartTrigger(),
+      dateOverride: false,
       priority: draft.priority,
       note: draft.note.trim(),
       tasks: [],
@@ -1809,8 +1977,7 @@ const saveGoal = async () => {
     });
   }
 
-  goalDialog.value.visible = false;
-  resetGoalDraft();
+  closeGoalDialog();
   syncExpandedGoals();
 };
 
@@ -2183,6 +2350,7 @@ const applySharedRecord = (record: CatalogueRecord) => {
       id: 1,
       name: record.name || defaultMilestoneName.value,
       dueDate: null,
+      dateOverride: false,
       priority: "Normal",
       note: "",
       tasks: [],
@@ -2288,6 +2456,7 @@ const applyServiceTemplateRecord = (
         id: milestone.id,
         name: milestone.name,
         dueDate: milestone.dueDate,
+        dateOverride: Boolean(milestone.dateOverride),
         priority: milestone.priority,
         note: milestone.note,
         tasks: (milestone.tasks || []).map((task) => ({
@@ -2307,6 +2476,7 @@ const applyServiceTemplateRecord = (
         })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
+          dateOverride: Boolean(goal.dateOverride),
           retainerServiceId: goal.retainerServiceId ?? null,
           reccurentServiceId: goal.reccurentServiceId ?? null,
           startTrigger: normalizeStartTrigger(goal.startTrigger),
@@ -2332,6 +2502,7 @@ const applyServiceTemplateRecord = (
           id: 1,
           name: record.name || defaultMilestoneName.value,
           dueDate: null,
+          dateOverride: false,
           priority: "Normal" as JobConfigPriority,
           note: "",
           tasks: [],
@@ -2473,6 +2644,7 @@ const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
         id: milestone.id,
         name: milestone.name,
         dueDate: milestone.dueDate,
+        dateOverride: Boolean(milestone.dateOverride),
         priority: milestone.priority,
         note: milestone.note,
         tasks: (milestone.tasks || []).map((task) => ({
@@ -2492,6 +2664,7 @@ const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
         })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
+          dateOverride: Boolean(goal.dateOverride),
           retainerServiceId: goal.retainerServiceId ?? null,
           reccurentServiceId: goal.reccurentServiceId ?? null,
           startTrigger: normalizeStartTrigger(goal.startTrigger),
@@ -2517,6 +2690,7 @@ const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
           id: 1,
           name: record.name || defaultMilestoneName.value,
           dueDate: null,
+          dateOverride: false,
           priority: "Normal" as JobConfigPriority,
           note: "",
           tasks: [],
@@ -2588,6 +2762,7 @@ const resetOnetimeServiceForm = () => {
       id: 1,
       name: defaultMilestoneName.value,
       dueDate: null,
+      dateOverride: false,
       priority: "Normal",
       note: "",
       tasks: [],
@@ -2709,7 +2884,8 @@ const saveItem = async () => {
       milestones: jobConfigMilestones.value.map((milestone, index) => ({
         id: milestone.id,
         name: milestone.name.trim(),
-        dueDate: milestone.dueDate,
+        dueDate: milestoneEffectiveTiming(milestone),
+        dateOverride: Boolean(milestone.dateOverride),
         priority: milestone.priority,
         note: milestone.note.trim(),
         tasks: milestone.tasks.map((task) => serializeTaskTemplate(task)),
@@ -2717,7 +2893,8 @@ const saveItem = async () => {
           id: goal.id,
           milestoneId: goal.milestoneId,
           name: goal.name.trim(),
-          dueDate: goal.dueDate,
+          dueDate: goalEffectiveTiming(goal),
+          dateOverride: Boolean(goal.dateOverride),
           startTrigger: normalizeStartTrigger(goal.startTrigger),
           phaseId: goal.phaseId ?? null,
           retainerServiceId: goal.retainerServiceId ?? null,
@@ -2807,6 +2984,7 @@ watch(
             id: milestone.id,
             name: milestone.name,
             dueDate: milestone.dueDate,
+            dateOverride: Boolean(milestone.dateOverride),
             priority: milestone.priority,
             note: milestone.note,
             tasks: (milestone.tasks || []).map((task) => ({
@@ -2826,6 +3004,7 @@ watch(
             })),
             goals: (milestone.goals || []).map((goal) => ({
               ...goal,
+              dateOverride: Boolean(goal.dateOverride),
               retainerServiceId: goal.retainerServiceId ?? null,
               reccurentServiceId: goal.reccurentServiceId ?? null,
               startTrigger: normalizeStartTrigger(goal.startTrigger),
@@ -2851,6 +3030,7 @@ watch(
               id: 1,
               name: record.name || defaultMilestoneName.value,
               dueDate: null,
+              dateOverride: false,
               priority: "Normal" as JobConfigPriority,
               note: "",
               tasks: [],
@@ -4350,7 +4530,17 @@ watch(
                             >s</span
                           >
                         </span>
-                        | After {{ formatTaskAfterWhen(milestone.dueDate) }}
+                        | After
+                        {{ formatTaskAfterWhen(milestoneEffectiveTiming(milestone)) }}
+                        <VChip
+                          v-if="milestone.dateOverride"
+                          size="x-small"
+                          variant="tonal"
+                          color="warning"
+                          class="ms-1"
+                        >
+                          Manual dates
+                        </VChip>
                       </div>
                       <div class="text-body-2 text-medium-emphasis mt-1">
                         {{ milestone.note || "No milestone notes." }}
@@ -4549,10 +4739,19 @@ watch(
                                 |
                                 {{
                                   formatGoalStart(
-                                    goal.dueDate,
+                                    goalEffectiveTiming(goal),
                                     goal.startTrigger,
                                   )
                                 }}
+                                <VChip
+                                  v-if="goal.dateOverride"
+                                  size="x-small"
+                                  variant="tonal"
+                                  color="warning"
+                                  class="ms-1"
+                                >
+                                  Manual dates
+                                </VChip>
                               </div>
                               <div
                                 class="text-body-2 text-medium-emphasis mt-1"
@@ -5206,6 +5405,48 @@ watch(
             </VRow>
           </VForm>
         </VCardText>
+      </VCard>
+    </VDialog>
+
+    <VDialog
+      v-model="catalogueDateOverrideDialog.visible"
+      max-width="560"
+      persistent
+      no-click-animation
+    >
+      <VCard>
+        <VCardItem title="Timing conflict" />
+        <VCardText>
+          This {{ catalogueDateOverrideDialog.kind }} has child work with
+          different timing.
+          <div class="mt-3 text-body-2">
+            Child timing:
+            <strong>
+              {{
+                formatTaskAfterWhen(catalogueDateOverrideDialog.childTiming)
+              }}
+            </strong>
+          </div>
+          <div class="text-body-2">
+            Entered timing:
+            <strong>
+              {{
+                formatTaskAfterWhen(catalogueDateOverrideDialog.enteredTiming)
+              }}
+            </strong>
+          </div>
+        </VCardText>
+        <VCardActions class="px-6 pb-6 justify-end gap-3">
+          <VBtn variant="tonal" color="secondary" @click="resetCatalogueDateOverrideDialog">
+            Cancel
+          </VBtn>
+          <VBtn variant="tonal" color="primary" @click="applyCatalogueChildTiming">
+            Use child timing
+          </VBtn>
+          <VBtn color="warning" @click="keepCatalogueManualTiming">
+            Keep my timing
+          </VBtn>
+        </VCardActions>
       </VCard>
     </VDialog>
 
