@@ -115,9 +115,10 @@ const normalizeConfigurations = (
       jobDueWarningDays: Number.isFinite(Number(next.crm?.jobDueWarningDays))
         ? Math.max(0, Number(next.crm?.jobDueWarningDays))
         : 5,
-      jobTaskTimeCaptureEnabled: Boolean(
-        next.crm?.jobTaskTimeCaptureEnabled,
-      ),
+      jobTaskTimeCaptureEnabled:
+        next.crm?.jobTaskTimeCaptureEnabled === undefined
+          ? true
+          : Boolean(next.crm?.jobTaskTimeCaptureEnabled),
     },
     deals: {
       ...(next.deals || {}),

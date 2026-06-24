@@ -155,9 +155,19 @@ const isDueSoon = (value?: string | null) => {
 
 const isTaskLocked = (task: JobTodo) => isFutureDate((task as any).startAt);
 const taskStartAt = (task: JobTodo) => (task as any).startAt ?? null;
-const taskEstimatedMinutes = (task: JobTodo) =>
-  Number.isFinite(Number((task as any).estimatedMinutes))
-    ? Number((task as any).estimatedMinutes)
+const taskCompletionMinutes = (task: JobTodo) =>
+  Number.isFinite(
+    Number(
+      (task as any).completionMinutes ??
+        (task as any).actualMinutes ??
+        (task as any).estimatedMinutes,
+    ),
+  )
+    ? Number(
+        (task as any).completionMinutes ??
+          (task as any).actualMinutes ??
+          (task as any).estimatedMinutes,
+      )
     : null;
 
 const deriveStatusFromTasks = (
@@ -246,8 +256,8 @@ const goalFormRef = ref<VForm>();
 const isCreatingGoal = computed(() => goalDialog.mode === "create");
 const expandedMilestones = ref<Array<number>>([]);
 const expandedGoals = ref<Array<number>>([]);
-const isActualTimeDialogVisible = ref(false);
-const actualMinutesDraft = ref<number | null>(null);
+const isCompletionTimeDialogVisible = ref(false);
+const completionMinutesDraft = ref<number | null>(null);
 const pendingCompletionTask = ref<JobTodo | null>(null);
 
 const goalIdsForMilestone = (milestoneId: number) =>
@@ -484,8 +494,7 @@ const openCreateTodoForMilestone = (milestone: JobMilestone) => {
       notes: `Created for milestone: ${milestone.name}`,
       dueAt: milestone.dueDate || new Date().toISOString(),
       startAt: milestone.startDate || job.value.startDate || null,
-      estimatedMinutes: null,
-      actualMinutes: null,
+      completionMinutes: null,
       priority:
         milestone.priority === "High"
           ? "high"
@@ -513,8 +522,7 @@ const openCreateTodoForGoal = (goal: JobGoal) => {
       notes: `Created for goal: ${goal.name}`,
       dueAt: goal.dueDate || new Date().toISOString(),
       startAt: goal.startDate || job.value.startDate || null,
-      estimatedMinutes: null,
-      actualMinutes: null,
+      completionMinutes: null,
       priority:
         goal.priority === "High"
           ? "high"
@@ -546,9 +554,14 @@ const toggleTaskCompleted = (taskId: number | string) => {
     task.status !== "completed"
   ) {
     pendingCompletionTask.value = task as JobTodo;
-    actualMinutesDraft.value =
-      Number((task as any).estimatedMinutes ?? 0) || null;
-    isActualTimeDialogVisible.value = true;
+    completionMinutesDraft.value =
+      Number(
+        (task as any).completionMinutes ??
+          (task as any).actualMinutes ??
+          (task as any).estimatedMinutes ??
+          0,
+      ) || null;
+    isCompletionTimeDialogVisible.value = true;
     return;
   }
 
@@ -558,20 +571,26 @@ const toggleTaskCompleted = (taskId: number | string) => {
   emit("status-automation-trigger", "Task status changed");
 };
 
-const saveActualTimeCompletion = () => {
+const saveCompletionTime = () => {
   const task = pendingCompletionTask.value;
   if (!task) return;
   todosStore.updateTodo(task.id, {
     status: "completed",
-    actualMinutes: actualMinutesDraft.value,
+    completionMinutes: completionMinutesDraft.value,
     doneAt: new Date().toISOString(),
     completed: true,
     isCompleted: true,
   } as any);
   pendingCompletionTask.value = null;
-  actualMinutesDraft.value = null;
-  isActualTimeDialogVisible.value = false;
+  completionMinutesDraft.value = null;
+  isCompletionTimeDialogVisible.value = false;
   emit("status-automation-trigger", "Task completed");
+};
+
+const cancelCompletionTime = () => {
+  pendingCompletionTask.value = null;
+  completionMinutesDraft.value = null;
+  isCompletionTimeDialogVisible.value = false;
 };
 const priorityColor = (priority: "Low" | "Normal" | "High") => {
   return priority === "High"
@@ -806,9 +825,9 @@ const formatMinutes = (value?: number | null) => {
                           <span class="text-sm">
                             Start {{ formatDate(taskStartAt(task)) }} |
                             Due {{ formatDate(task.dueAt) }}
-                            <template v-if="formatMinutes(taskEstimatedMinutes(task))">
-                              | Est.
-                              {{ formatMinutes(taskEstimatedMinutes(task)) }}
+                            <template v-if="formatMinutes(taskCompletionMinutes(task))">
+                              | Time
+                              {{ formatMinutes(taskCompletionMinutes(task)) }}
                             </template>
                           </span>
                           <span
@@ -1023,12 +1042,12 @@ const formatMinutes = (value?: number | null) => {
                                       Start {{ formatDate(taskStartAt(task)) }}
                                       | Due {{ formatDate(task.dueAt) }}
                                       <template
-                                        v-if="formatMinutes(taskEstimatedMinutes(task))"
+                                        v-if="formatMinutes(taskCompletionMinutes(task))"
                                       >
-                                        | Est.
+                                        | Time
                                         {{
                                           formatMinutes(
-                                            taskEstimatedMinutes(task),
+                                            taskCompletionMinutes(task),
                                           )
                                         }}
                                       </template>
@@ -1176,8 +1195,8 @@ const formatMinutes = (value?: number | null) => {
                   <span class="text-sm">
                     Start {{ formatDate(taskStartAt(task)) }} | Due
                     {{ formatDate(task.dueAt) }}
-                    <template v-if="formatMinutes(taskEstimatedMinutes(task))">
-                      | Est. {{ formatMinutes(taskEstimatedMinutes(task)) }}
+                    <template v-if="formatMinutes(taskCompletionMinutes(task))">
+                      | Time {{ formatMinutes(taskCompletionMinutes(task)) }}
                     </template>
                   </span>
                   <span v-if="task.notes" class="text-sm text-medium-emphasis">
@@ -1245,16 +1264,20 @@ const formatMinutes = (value?: number | null) => {
         </div>
       </VCardText>
     </VCard>
-    <VDialog v-model="isActualTimeDialogVisible" max-width="420">
-      <DialogCloseBtn @click="isActualTimeDialogVisible = false" />
+    <VDialog
+      v-model="isCompletionTimeDialogVisible"
+      max-width="420"
+      persistent
+      no-click-animation
+    >
       <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Actual time</VCardTitle>
+        <VCardTitle>Time for Completion</VCardTitle>
         <VCardText>
           <AppTextField
-            v-model.number="actualMinutesDraft"
+            v-model.number="completionMinutesDraft"
             type="number"
             min="0"
-            label="Time took to finish (min)"
+            label="Time for Completion (min)"
             placeholder="Minutes"
           />
         </VCardText>
@@ -1262,11 +1285,11 @@ const formatMinutes = (value?: number | null) => {
           <VBtn
             variant="tonal"
             color="secondary"
-            @click="isActualTimeDialogVisible = false"
+            @click="cancelCompletionTime"
           >
             Cancel
           </VBtn>
-          <VBtn color="primary" @click="saveActualTimeCompletion">Save</VBtn>
+          <VBtn color="primary" @click="saveCompletionTime">Save</VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

@@ -60,6 +60,7 @@ const afterWhenPreset = ref<
 const afterWhenValue = ref<number | null>(1);
 const selectedGoalTriggerId = ref<string | null>(null);
 const notes = ref("");
+const completionMinutes = ref<number | null>(null);
 const important = ref(false);
 const selectedStatus = ref<Status>("pending");
 const attachmentInput = ref("");
@@ -172,6 +173,14 @@ const collaboratorOptions = computed(() => {
 
   return Array.from(merged.values());
 });
+
+const collaboratorContactOptions = computed<ContactRef[]>(() =>
+  collaboratorOptions.value.map((item) => ({
+    id: item.id,
+    name: item.name,
+    avatarUrl: item.avatarUrl ?? null,
+  })),
+);
 
 const idToCollaborator = computed(
   () =>
@@ -304,6 +313,7 @@ const resetForm = () => {
   afterWhenValue.value = 1;
   selectedGoalTriggerId.value = null;
   notes.value = "";
+  completionMinutes.value = null;
   important.value = false;
   selectedStatus.value = "pending";
   initialCollaborators.value = [];
@@ -350,6 +360,11 @@ const loadInitial = () => {
     afterWhenValue.value = initialAfterWhenState.days;
     afterWhenPreset.value = initialAfterWhenState.preset;
     notes.value = init.notes ?? "";
+    completionMinutes.value =
+      (init as any).completionMinutes ??
+      (init as any).actualMinutes ??
+      (init as any).estimatedMinutes ??
+      null;
     important.value = Boolean(init.important);
     selectedStatus.value = (init.status as Status | undefined) ?? "pending";
     attachment.value = init.attachment ?? null;
@@ -465,6 +480,8 @@ const openWith = (initial?: CatalogueTaskTemplatePayload) => {
 const hasDraftChanges = computed(() => {
   if (title.value.trim()) return true;
   if (notes.value.trim()) return true;
+  if (completionMinutes.value !== null && completionMinutes.value !== undefined)
+    return true;
   if (selectedCollaboratorIds.value.length) return true;
   if (steps.value.length) return true;
   if (important.value) return true;
@@ -687,6 +704,7 @@ const onSubmit = async () => {
     afterWhen: startMode.value === "time" ? buildAfterWhen() : null,
     startTrigger: buildStartTrigger(),
     status: selectedStatus.value,
+    completionMinutes: completionMinutes.value,
     notes: trimmedNotes,
     important: important.value,
     attachment: nextAttachment,
@@ -760,7 +778,7 @@ const drawerTitle = computed(() =>
                       v-model="selectedCollaboratorIds"
                       v-model:search="collabSearch"
                       class="todo-collaborators"
-                      :items="collaboratorOptions"
+                      :items="collaboratorContactOptions"
                       item-title="name"
                       item-value="idKey"
                       label="Assigned to"
@@ -879,6 +897,16 @@ const drawerTitle = computed(() =>
                       :items="statusOptions"
                       item-title="title"
                       item-value="value"
+                    />
+                  </VCol>
+
+                  <VCol cols="12">
+                    <AppTextField
+                      v-model.number="completionMinutes"
+                      type="number"
+                      min="0"
+                      label="Time for Completion (min)"
+                      placeholder="Minutes"
                     />
                   </VCol>
 
@@ -1096,7 +1124,7 @@ const drawerTitle = computed(() =>
                       v-model="newDraft.collaborators"
                       v-model:search="newSearch"
                       class="todo-collaborators"
-                      :items="collaboratorOptions"
+                      :items="collaboratorContactOptions"
                       item-title="name"
                       return-object
                       label="Assigned to"
@@ -1160,7 +1188,7 @@ const drawerTitle = computed(() =>
             <VAutocomplete
               v-model="stepDialogModel.collaborators"
               class="todo-collaborators"
-              :items="collaboratorOptions"
+              :items="collaboratorContactOptions"
               item-title="name"
               return-object
               label="Assigned to"

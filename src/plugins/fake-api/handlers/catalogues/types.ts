@@ -104,6 +104,7 @@ export interface CatalogueSalesTask {
   afterWhen: string | null;
   startTrigger?: CatalogueTaskStartTrigger | null;
   manhours: number | null;
+  completionMinutes?: number | null;
   estimatedMinutes?: number | null;
   notes: string;
   status: CatalogueJobConfigTaskStatus;
@@ -128,6 +129,7 @@ export interface CatalogueJobConfigTask {
   afterWhen: string | null;
   startTrigger?: CatalogueTaskStartTrigger | null;
   manhours: number | null;
+  completionMinutes?: number | null;
   estimatedMinutes?: number | null;
   notes: string;
   status: CatalogueJobConfigTaskStatus;

@@ -86,6 +86,7 @@ type JobConfigTask = {
   afterWhen: string | null;
   startTrigger?: CatalogueTaskStartTrigger | null;
   manhours: number | null;
+  completionMinutes?: number | null;
   notes: string;
   status: JobConfigTaskStatus;
   important: boolean;
@@ -1478,6 +1479,21 @@ const normalizeJobTaskStatus = (
   return "pending";
 };
 
+const resolveCompletionMinutes = (task: any) => {
+  const direct =
+    task?.completionMinutes ?? task?.actualMinutes ?? task?.estimatedMinutes;
+  if (Number.isFinite(Number(direct))) return Math.max(0, Number(direct));
+  if (Number.isFinite(Number(task?.manhours)))
+    return Math.max(0, Math.round(Number(task.manhours) * 60));
+  return null;
+};
+
+const formatCompletionMinutes = (task: any) => {
+  const minutes = resolveCompletionMinutes(task);
+  if (minutes === null) return "";
+  return `${minutes} min`;
+};
+
 const cloneTaskSteps = (taskSteps?: ToDoStep[] | null): ToDoStep[] => {
   if (!Array.isArray(taskSteps)) return [];
 
@@ -1531,6 +1547,7 @@ const serializeTaskTemplate = (
     null,
   startTrigger: normalizeStartTrigger(task.startTrigger),
   manhours: task.manhours ?? null,
+  completionMinutes: resolveCompletionMinutes(task),
   notes: String(task.notes ?? "").trim(),
   status: normalizeJobTaskStatus(task.status),
   important: Boolean(task.important),
@@ -1963,6 +1980,7 @@ const handleTaskTemplateCreated = (
           }
         : { type: "time", goalId: null, taskId: null },
     manhours: null,
+    completionMinutes: resolveCompletionMinutes(task),
     notes: String(task.notes ?? "").trim(),
     status:
       task.status === "in_progress" ||
@@ -2253,6 +2271,7 @@ const applyServiceTemplateRecord = (
       null,
     startTrigger: normalizeStartTrigger(task.startTrigger),
     manhours: task.manhours ?? null,
+    completionMinutes: resolveCompletionMinutes(task),
     notes: task.notes ?? "",
     status: task.status ?? "pending",
     important: task.important ?? false,
@@ -2283,6 +2302,7 @@ const applyServiceTemplateRecord = (
             (task as { dueAt?: string | null }).dueAt ??
             null,
           startTrigger: normalizeStartTrigger(task.startTrigger),
+          completionMinutes: resolveCompletionMinutes(task),
           steps: cloneTaskSteps(task.steps),
         })),
         goals: (milestone.goals || []).map((goal) => ({
@@ -2302,6 +2322,7 @@ const applyServiceTemplateRecord = (
               (task as { dueAt?: string | null }).dueAt ??
               null,
             startTrigger: normalizeStartTrigger(task.startTrigger),
+            completionMinutes: resolveCompletionMinutes(task),
             steps: cloneTaskSteps(task.steps),
           })),
         })),
@@ -2435,6 +2456,7 @@ const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
       null,
     startTrigger: normalizeStartTrigger(task.startTrigger),
     manhours: task.manhours ?? null,
+    completionMinutes: resolveCompletionMinutes(task),
     notes: task.notes ?? "",
     status: task.status ?? "pending",
     important: task.important ?? false,
@@ -2464,8 +2486,9 @@ const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
             ).afterWhen ??
             (task as { dueAt?: string | null }).dueAt ??
             null,
-          startTrigger: normalizeStartTrigger(task.startTrigger),
-          steps: cloneTaskSteps(task.steps),
+        startTrigger: normalizeStartTrigger(task.startTrigger),
+        completionMinutes: resolveCompletionMinutes(task),
+        steps: cloneTaskSteps(task.steps),
         })),
         goals: (milestone.goals || []).map((goal) => ({
           ...goal,
@@ -2484,6 +2507,7 @@ const applyProducedProductRecord = (record: CatalogueProducedProductRecord) => {
               (task as { dueAt?: string | null }).dueAt ??
               null,
             startTrigger: normalizeStartTrigger(task.startTrigger),
+            completionMinutes: resolveCompletionMinutes(task),
             steps: cloneTaskSteps(task.steps),
           })),
         })),
@@ -2766,6 +2790,7 @@ watch(
           null,
         startTrigger: normalizeStartTrigger(task.startTrigger),
         manhours: task.manhours ?? null,
+        completionMinutes: resolveCompletionMinutes(task),
         notes: task.notes ?? "",
         status: task.status ?? "pending",
         important: task.important ?? false,
@@ -2796,6 +2821,7 @@ watch(
                 (task as { dueAt?: string | null }).dueAt ??
                 null,
               startTrigger: normalizeStartTrigger(task.startTrigger),
+              completionMinutes: resolveCompletionMinutes(task),
               steps: cloneTaskSteps(task.steps),
             })),
             goals: (milestone.goals || []).map((goal) => ({
@@ -2815,6 +2841,7 @@ watch(
                   (task as { dueAt?: string | null }).dueAt ??
                   null,
                 startTrigger: normalizeStartTrigger(task.startTrigger),
+                completionMinutes: resolveCompletionMinutes(task),
                 steps: cloneTaskSteps(task.steps),
               })),
             })),
@@ -4210,11 +4237,9 @@ watch(
                       </strong>
                       <span class="text-sm">
                         {{ formatTaskStart(task.afterWhen, task.startTrigger) }}
-                        <span v-if="task.manhours !== null">
-                          | {{ task.manhours }} Manhour<span
-                            v-if="task.manhours !== 1"
-                            >s</span
-                          >
+                        <span v-if="formatCompletionMinutes(task)">
+                          | Time for Completion:
+                          {{ formatCompletionMinutes(task) }}
                         </span>
                       </span>
                       <span
@@ -4406,11 +4431,9 @@ watch(
                                     task.startTrigger,
                                   )
                                 }}
-                                <span v-if="task.manhours !== null">
-                                  | {{ task.manhours }} Manhour<span
-                                    v-if="task.manhours !== 1"
-                                    >s</span
-                                  >
+                                <span v-if="formatCompletionMinutes(task)">
+                                  | Time for Completion:
+                                  {{ formatCompletionMinutes(task) }}
                                 </span>
                               </span>
                               <span
@@ -4616,11 +4639,9 @@ watch(
                                             task.startTrigger,
                                           )
                                         }}
-                                        <span v-if="task.manhours !== null">
-                                          | {{ task.manhours }} Manhour<span
-                                            v-if="task.manhours !== 1"
-                                            >s</span
-                                          >
+                                        <span v-if="formatCompletionMinutes(task)">
+                                          | Time for Completion:
+                                          {{ formatCompletionMinutes(task) }}
                                         </span>
                                       </span>
                                       <span

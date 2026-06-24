@@ -36,7 +36,7 @@ const showContactRecord = ref(false);
 const jobAlertEnabled = ref(false);
 const jobAlertDays = ref(0);
 const jobDueWarningDays = ref(5);
-const jobTaskTimeCaptureEnabled = ref(false);
+const jobTaskTimeCaptureEnabled = ref(true);
 const leadLostIn = ref(0);
 const quotationLostIn = ref(0);
 const dealAlertEnabled = ref(false);
@@ -119,8 +119,10 @@ const loadData = () => {
   jobAlertEnabled.value = !!jobAlert.enabled;
   jobAlertDays.value = Number(jobAlert.days ?? 0);
   jobDueWarningDays.value = Number((org as any)?.jobDueWarningDays ?? 5);
-  jobTaskTimeCaptureEnabled.value = !!(org as any)
-    ?.jobTaskTimeCaptureEnabled;
+  jobTaskTimeCaptureEnabled.value =
+    (org as any)?.jobTaskTimeCaptureEnabled === undefined
+      ? true
+      : !!(org as any)?.jobTaskTimeCaptureEnabled;
 
   const deals = store.configurations.deals || {};
   leadLostIn.value = Number((deals as any).leadLostIn ?? 0);
@@ -873,7 +875,7 @@ onUnmounted(() => {
         <VCol cols="12" md="4">
           <VSwitch
             v-model="jobTaskTimeCaptureEnabled"
-            label="Capture project task actual time"
+            label="Prompt for task completion time"
             inset
             :disabled="isSavingActivitySettings"
             :loading="isSavingActivitySettings"

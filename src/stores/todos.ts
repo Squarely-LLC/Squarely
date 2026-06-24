@@ -248,8 +248,14 @@ export const useTodos = defineStore("todos", {
         copy.relatedTo = t.relatedTo ?? null;
         copy.source = t.source ?? null;
         copy.startAt = toNullableDateISOString(t.startAt);
-        copy.estimatedMinutes = toNullablePositiveNumber(t.estimatedMinutes);
-        copy.actualMinutes = toNullablePositiveNumber(t.actualMinutes);
+        copy.completionMinutes =
+          toNullablePositiveNumber((t as any).completionMinutes) ??
+          toNullablePositiveNumber((t as any).actualMinutes) ??
+          toNullablePositiveNumber((t as any).estimatedMinutes);
+        copy.estimatedMinutes = toNullablePositiveNumber(
+          (t as any).estimatedMinutes,
+        );
+        copy.actualMinutes = toNullablePositiveNumber((t as any).actualMinutes);
         copy.goalId = t.goalId ?? null;
         copy.milestoneId = t.milestoneId ?? null;
         copy.afterWhen = t.afterWhen ?? null;
@@ -293,6 +299,10 @@ export const useTodos = defineStore("todos", {
         collaborators: todo.collaborators || [],
         dueAt: toDateOnlyISOString(todo.dueAt),
         startAt: toNullableDateISOString((todo as any).startAt),
+        completionMinutes:
+          toNullablePositiveNumber((todo as any).completionMinutes) ??
+          toNullablePositiveNumber((todo as any).actualMinutes) ??
+          toNullablePositiveNumber((todo as any).estimatedMinutes),
         estimatedMinutes: toNullablePositiveNumber(
           (todo as any).estimatedMinutes,
         ),
@@ -343,6 +353,10 @@ export const useTodos = defineStore("todos", {
         nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
       if ("startAt" in nextPatch)
         nextPatch.startAt = toNullableDateISOString(nextPatch.startAt);
+      if ("completionMinutes" in nextPatch)
+        nextPatch.completionMinutes = toNullablePositiveNumber(
+          nextPatch.completionMinutes,
+        );
       if ("estimatedMinutes" in nextPatch)
         nextPatch.estimatedMinutes = toNullablePositiveNumber(
           nextPatch.estimatedMinutes,

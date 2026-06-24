@@ -93,9 +93,9 @@ const isStatusPromptVisible = ref(false);
 const statusPromptAction = ref("");
 const statusPromptTarget = ref<JobStatus | null>(null);
 const statusPromptNeverAgain = ref(false);
-const isActualTimeDialogVisible = ref(false);
+const isCompletionTimeDialogVisible = ref(false);
 const pendingCompletionTodo = ref<ToDo | null>(null);
-const actualMinutesDraft = ref<number | null>(null);
+const completionMinutesDraft = ref<number | null>(null);
 
 const jobTodos = computed(() => {
   const currentJob = job.value;
@@ -159,8 +159,7 @@ const buildTodoPatch = (payload: any) => {
     collaborators: payload.collaborators,
     dueAt: payload.dueAt,
     startAt: payload.startAt,
-    estimatedMinutes: payload.estimatedMinutes,
-    actualMinutes: payload.actualMinutes,
+    completionMinutes: payload.completionMinutes,
     status: payload.status,
     notes: payload.notes,
     important: payload.important,
@@ -1097,13 +1096,18 @@ const onTodoEdited = (payload: any) => {
     previousTodo &&
     isProjectTask(previousTodo) &&
     payload.status === "completed" &&
-    previousTodo.status !== "completed" &&
-    !partial.actualMinutes
+    previousTodo.status !== "completed"
   ) {
     pendingCompletionTodo.value = { ...previousTodo, ...partial } as ToDo;
-    actualMinutesDraft.value =
-      Number((previousTodo as any).estimatedMinutes ?? 0) || null;
-    isActualTimeDialogVisible.value = true;
+    completionMinutesDraft.value =
+      Number(
+        partial.completionMinutes ??
+          (previousTodo as any).completionMinutes ??
+          (previousTodo as any).actualMinutes ??
+          (previousTodo as any).estimatedMinutes ??
+          0,
+      ) || null;
+    isCompletionTimeDialogVisible.value = true;
     return;
   }
   todosStore.updateTodo(payload.id, partial);
@@ -1139,26 +1143,32 @@ const onTodoCreated = (payload: any) => {
   }
 };
 
-const saveActualTimeCompletion = () => {
+const saveCompletionTime = () => {
   const todo = pendingCompletionTodo.value;
   if (!todo) {
-    isActualTimeDialogVisible.value = false;
+    isCompletionTimeDialogVisible.value = false;
     return;
   }
 
   todosStore.updateTodo(todo.id, {
     ...todo,
-    actualMinutes: actualMinutesDraft.value,
+    completionMinutes: completionMinutesDraft.value,
     status: "completed",
     doneAt: new Date().toISOString(),
     completed: true,
     isCompleted: true,
   } as any);
   pendingCompletionTodo.value = null;
-  actualMinutesDraft.value = null;
-  isActualTimeDialogVisible.value = false;
+  completionMinutesDraft.value = null;
+  isCompletionTimeDialogVisible.value = false;
   isEditTodoDrawerVisible.value = false;
   nextTick(() => queueStatusSuggestion("Task completed"));
+};
+
+const cancelCompletionTime = () => {
+  pendingCompletionTodo.value = null;
+  completionMinutesDraft.value = null;
+  isCompletionTimeDialogVisible.value = false;
 };
 
 const onMeetingCreated = (payload: any) => {
@@ -1270,8 +1280,12 @@ const closeSnagDrawer = () => {
       {{ error }}
     </VAlert>
 
-    <VDialog v-model="isStatusPromptVisible" max-width="560">
-      <DialogCloseBtn @click="closeStatusPrompt('no')" />
+    <VDialog
+      v-model="isStatusPromptVisible"
+      max-width="560"
+      persistent
+      no-click-animation
+    >
       <VCard class="pa-sm-8 pa-4">
         <VCardTitle>Status suggestion</VCardTitle>
         <VCardText>
@@ -1317,28 +1331,28 @@ const closeSnagDrawer = () => {
       @saveSteps="onTodoStepsEdited"
     />
 
-    <VDialog v-model="isActualTimeDialogVisible" max-width="420">
-      <DialogCloseBtn @click="isActualTimeDialogVisible = false" />
+    <VDialog
+      v-model="isCompletionTimeDialogVisible"
+      max-width="420"
+      persistent
+      no-click-animation
+    >
       <VCard class="pa-sm-8 pa-4">
-        <VCardTitle>Actual time</VCardTitle>
+        <VCardTitle>Time for Completion</VCardTitle>
         <VCardText>
           <AppTextField
-            v-model.number="actualMinutesDraft"
+            v-model.number="completionMinutesDraft"
             type="number"
             min="0"
-            label="Time took to finish (min)"
+            label="Time for Completion (min)"
             placeholder="Minutes"
           />
         </VCardText>
         <VCardActions class="justify-end">
-          <VBtn
-            variant="tonal"
-            color="secondary"
-            @click="isActualTimeDialogVisible = false"
-          >
+          <VBtn variant="tonal" color="secondary" @click="cancelCompletionTime">
             Cancel
           </VBtn>
-          <VBtn color="primary" @click="saveActualTimeCompletion">Save</VBtn>
+          <VBtn color="primary" @click="saveCompletionTime">Save</VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

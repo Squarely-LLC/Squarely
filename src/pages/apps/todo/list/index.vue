@@ -286,6 +286,15 @@ function isCompletedRecord(t: any): boolean {
   );
 }
 
+const isFutureProjectTask = (task: ToDo) => {
+  if (task.relatedTo?.type !== "job" || !task.startAt) return false;
+  const start = new Date(task.startAt);
+  if (Number.isNaN(start.getTime())) return false;
+  const today = startOfDay(new Date()).getTime();
+  start.setHours(0, 0, 0, 0);
+  return start.getTime() > today;
+};
+
 const scopePredicate = (dueISO: string) => {
   const due = new Date(dueISO);
   if (selectedScope.value === "all") return true;
@@ -306,7 +315,7 @@ const scopePredicate = (dueISO: string) => {
 };
 
 const filtered = computed<ToDo[]>(() => {
-  let rows = [...all.value];
+  let rows = all.value.filter((task) => !isFutureProjectTask(task));
 
   if (selectedStatus.value === "completed")
     rows = rows.filter((t: any) => isCompletedRecord(t));

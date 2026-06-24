@@ -37,6 +37,7 @@ declare global {
   const buildDocumentNote: typeof import('./src/utils/quotationConfig')['buildDocumentNote']
   const buildMonthlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']
   const buildProformaNote: typeof import('./src/utils/quotationConfig')['buildProformaNote']
+  const buildProjectCodePrefix: typeof import('./src/utils/jobProjectCode')['buildProjectCodePrefix']
   const buildQuarterlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildQuarterlyBillingPeriod']
   const buildQuotationNote: typeof import('./src/utils/quotationConfig')['buildQuotationNote']
   const buildQuotationPaymentDetails: typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']
@@ -103,6 +104,7 @@ declare global {
   const formatSystemDate: typeof import('./src/@core/utils/formatters')['formatSystemDate']
   const formatSystemDateTime: typeof import('./src/@core/utils/formatters')['formatSystemDateTime']
   const formatSystemMonthYear: typeof import('./src/@core/utils/formatters')['formatSystemMonthYear']
+  const generateJobProjectCode: typeof import('./src/utils/jobProjectCode')['generateJobProjectCode']
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getBillableRootDealItems: typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
@@ -209,10 +211,12 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const maskFinancialResource: typeof import('./src/utils/authorization')['maskFinancialResource']
+  const nextJobOrderSequence: typeof import('./src/utils/jobProjectCode')['nextJobOrderSequence']
   const nextTick: typeof import('vue')['nextTick']
   const normalizeAuthorRef: typeof import('./src/utils/currentAccount')['normalizeAuthorRef']
   const normalizeBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']
   const normalizeDocumentSourceModes: typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']
+  const normalizeProjectCode: typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
@@ -236,6 +240,7 @@ declare global {
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
   const openWhatsAppIntent: typeof import('./src/utils/shareToWhatsApp')['openWhatsAppIntent']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
+  const parseJobOrderSequence: typeof import('./src/utils/jobProjectCode')['parseJobOrderSequence']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
   const permissionDeniedResponse: typeof import('./src/utils/authorization')['permissionDeniedResponse']
@@ -560,6 +565,7 @@ declare module 'vue' {
     readonly buildDocumentNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildDocumentNote']>
     readonly buildMonthlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildMonthlyBillingPeriod']>
     readonly buildProformaNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildProformaNote']>
+    readonly buildProjectCodePrefix: UnwrapRef<typeof import('./src/utils/jobProjectCode')['buildProjectCodePrefix']>
     readonly buildQuarterlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildQuarterlyBillingPeriod']>
     readonly buildQuotationNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationNote']>
     readonly buildQuotationPaymentDetails: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationPaymentDetails']>
@@ -626,6 +632,7 @@ declare module 'vue' {
     readonly formatSystemDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemDate']>
     readonly formatSystemDateTime: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemDateTime']>
     readonly formatSystemMonthYear: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatSystemMonthYear']>
+    readonly generateJobProjectCode: UnwrapRef<typeof import('./src/utils/jobProjectCode')['generateJobProjectCode']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getBillableRootDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']>
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
@@ -733,10 +740,12 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly maskFinancialResource: UnwrapRef<typeof import('./src/utils/authorization')['maskFinancialResource']>
+    readonly nextJobOrderSequence: UnwrapRef<typeof import('./src/utils/jobProjectCode')['nextJobOrderSequence']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly normalizeAuthorRef: UnwrapRef<typeof import('./src/utils/currentAccount')['normalizeAuthorRef']>
     readonly normalizeBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']>
     readonly normalizeDocumentSourceModes: UnwrapRef<typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']>
+    readonly normalizeProjectCode: UnwrapRef<typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
@@ -760,6 +769,7 @@ declare module 'vue' {
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
     readonly openWhatsAppIntent: UnwrapRef<typeof import('./src/utils/shareToWhatsApp')['openWhatsAppIntent']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
+    readonly parseJobOrderSequence: UnwrapRef<typeof import('./src/utils/jobProjectCode')['parseJobOrderSequence']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly permissionDeniedResponse: UnwrapRef<typeof import('./src/utils/authorization')['permissionDeniedResponse']>

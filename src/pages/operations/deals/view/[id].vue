@@ -149,7 +149,7 @@ type ExecutionPreviewTask = {
   title: string;
   dueAt: string;
   startAt: string | null;
-  estimatedMinutes: number | null;
+  completionMinutes: number | null;
   notes: string;
   status: ToDo["status"];
   important: boolean;
@@ -631,12 +631,21 @@ const buildExecutionPreview = (
         title: String(rawTask.title || "").trim() || "Untitled Task",
         dueAt: resolveTaskDueAt(rawTask.afterWhen, executedAt),
         startAt: options.startAt ?? executedAt,
-        estimatedMinutes:
-          Number.isFinite(Number((rawTask as any).estimatedMinutes))
-            ? Number((rawTask as any).estimatedMinutes)
-            : Number.isFinite(Number(rawTask.manhours))
-              ? Math.max(0, Math.round(Number(rawTask.manhours) * 60))
-              : null,
+        completionMinutes: Number.isFinite(
+          Number(
+            (rawTask as any).completionMinutes ??
+              (rawTask as any).actualMinutes ??
+              (rawTask as any).estimatedMinutes,
+          ),
+        )
+          ? Number(
+              (rawTask as any).completionMinutes ??
+                (rawTask as any).actualMinutes ??
+                (rawTask as any).estimatedMinutes,
+            )
+          : Number.isFinite(Number(rawTask.manhours))
+            ? Math.max(0, Math.round(Number(rawTask.manhours) * 60))
+            : null,
         notes: String(rawTask.notes || "").trim(),
         status:
           rawTask.status === "in_progress" ||
@@ -1597,8 +1606,7 @@ const confirmDealExecution = () => {
         })),
         dueAt: task.dueAt,
         startAt: task.startAt,
-        estimatedMinutes: task.estimatedMinutes,
-        actualMinutes: null,
+        completionMinutes: task.completionMinutes,
         afterWhen: task.afterWhen,
         startTrigger:
           task.startTriggerType === "goal" && task.startTriggerGoalKey

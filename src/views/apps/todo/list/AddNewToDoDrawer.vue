@@ -56,8 +56,7 @@ const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(getDefaultDueAt());
 const startAt = ref<string | null>(null);
-const estimatedMinutes = ref<number | null>(null);
-const actualMinutes = ref<number | null>(null);
+const completionMinutes = ref<number | null>(null);
 const dueMode = ref<"scheduled" | "immediately">(getDefaultDueMode());
 const notes = ref<string>("");
 const important = ref<boolean>(false);
@@ -150,8 +149,7 @@ function resetForm() {
   dueMode.value = getDefaultDueMode(props.showImmediateDueOption);
   dueAt.value = getDefaultDueAt(props.showImmediateDueOption);
   startAt.value = null;
-  estimatedMinutes.value = null;
-  actualMinutes.value = null;
+  completionMinutes.value = null;
   notes.value = "";
   important.value = false;
   relatedTo.value = null;
@@ -212,9 +210,11 @@ function loadInitialAndMaybeFocus() {
     dueMode.value = getDefaultDueMode(props.showImmediateDueOption);
     dueAt.value = init.dueAt === undefined ? dueAt.value : (init.dueAt ?? null);
     startAt.value = (init as any).startAt ?? startAt.value;
-    estimatedMinutes.value =
-      (init as any).estimatedMinutes ?? estimatedMinutes.value;
-    actualMinutes.value = (init as any).actualMinutes ?? actualMinutes.value;
+    completionMinutes.value =
+      (init as any).completionMinutes ??
+      (init as any).actualMinutes ??
+      (init as any).estimatedMinutes ??
+      completionMinutes.value;
 
     if (init.dueAt) {
       dueMode.value = "scheduled";
@@ -399,8 +399,7 @@ async function onSubmit() {
     collaborators: selectedCollaborators.value,
     dueAt: dueISO,
     startAt: props.jobTaskMode ? startAt.value : undefined,
-    estimatedMinutes: props.jobTaskMode ? estimatedMinutes.value : undefined,
-    actualMinutes: props.jobTaskMode ? actualMinutes.value : undefined,
+    completionMinutes: props.jobTaskMode ? completionMinutes.value : undefined,
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
@@ -574,22 +573,12 @@ async function onSubmit() {
                 />
               </VCol>
 
-              <VCol v-if="props.jobTaskMode" cols="12" md="6">
+              <VCol v-if="props.jobTaskMode" cols="12">
                 <AppTextField
-                  v-model.number="estimatedMinutes"
+                  v-model.number="completionMinutes"
                   type="number"
                   min="0"
-                  label="Estimated Time (min)"
-                  placeholder="Minutes"
-                />
-              </VCol>
-
-              <VCol v-if="props.jobTaskMode" cols="12" md="6">
-                <AppTextField
-                  v-model.number="actualMinutes"
-                  type="number"
-                  min="0"
-                  label="Actual Time (min)"
+                  label="Time for Completion (min)"
                   placeholder="Minutes"
                 />
               </VCol>

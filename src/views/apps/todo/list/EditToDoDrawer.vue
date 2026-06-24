@@ -43,8 +43,7 @@ interface Emit {
       collaborators: ContactRef[];
       dueAt: string;
       startAt?: string | null;
-      estimatedMinutes?: number | null;
-      actualMinutes?: number | null;
+      completionMinutes?: number | null;
       status: Status;
       notes: string;
       important: boolean;
@@ -78,8 +77,7 @@ const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(null);
 const startAt = ref<string | null>(null);
-const estimatedMinutes = ref<number | null>(null);
-const actualMinutes = ref<number | null>(null);
+const completionMinutes = ref<number | null>(null);
 const dueMode = ref<"scheduled" | "immediately">("scheduled");
 const notes = ref<string>("");
 const important = ref<boolean>(false);
@@ -239,8 +237,11 @@ function loadFromToDo(t: ToDo) {
   const resolvedDueAt = t.dueAt ? new Date(t.dueAt).toISOString() : null;
   dueAt.value = resolvedDueAt;
   startAt.value = (t as any).startAt ?? null;
-  estimatedMinutes.value = (t as any).estimatedMinutes ?? null;
-  actualMinutes.value = (t as any).actualMinutes ?? null;
+  completionMinutes.value =
+    (t as any).completionMinutes ??
+    (t as any).actualMinutes ??
+    (t as any).estimatedMinutes ??
+    null;
   dueMode.value =
     resolvedDueAt && resolvedDueAt !== toDateOnlyISOString(resolvedDueAt)
       ? "immediately"
@@ -278,8 +279,7 @@ function resetForm() {
   dueMode.value = "scheduled";
   dueAt.value = null;
   startAt.value = null;
-  estimatedMinutes.value = null;
-  actualMinutes.value = null;
+  completionMinutes.value = null;
   notes.value = "";
   important.value = false;
   attachment.value = null;
@@ -424,8 +424,7 @@ async function onSaveAll() {
     collaborators: selectedCollaborators.value,
     dueAt: dueISO,
     startAt: props.jobTaskMode ? startAt.value : undefined,
-    estimatedMinutes: props.jobTaskMode ? estimatedMinutes.value : undefined,
-    actualMinutes: props.jobTaskMode ? actualMinutes.value : undefined,
+    completionMinutes: props.jobTaskMode ? completionMinutes.value : undefined,
     status: selectedStatus.value, // keep your status UX separate from completion toggle
     notes: (notes.value ?? "").toString().trim(),
     important: Boolean(important.value),
@@ -609,22 +608,12 @@ async function onSaveAll() {
                     />
                   </VCol>
 
-                  <VCol v-if="props.jobTaskMode" cols="12" md="6">
+                  <VCol v-if="props.jobTaskMode" cols="12">
                     <AppTextField
-                      v-model.number="estimatedMinutes"
+                      v-model.number="completionMinutes"
                       type="number"
                       min="0"
-                      label="Estimated Time (min)"
-                      placeholder="Minutes"
-                    />
-                  </VCol>
-
-                  <VCol v-if="props.jobTaskMode" cols="12" md="6">
-                    <AppTextField
-                      v-model.number="actualMinutes"
-                      type="number"
-                      min="0"
-                      label="Actual Time (min)"
+                      label="Time for Completion (min)"
                       placeholder="Minutes"
                     />
                   </VCol>

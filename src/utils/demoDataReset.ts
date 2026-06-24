@@ -1,5 +1,5 @@
 export const DEMO_DATA_VERSION_KEY = "app.demo-data.version";
-export const DEMO_DATA_VERSION = "2026-06-jobs-table-logical-seeds";
+export const DEMO_DATA_VERSION = "2026-06-task-timing-completion-seeds";
 
 const DEMO_STORAGE_PREFIXES = [
   "app.account-roles.",

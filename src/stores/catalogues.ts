@@ -136,6 +136,25 @@ function normalizeQty(type: CatalogueItemType, qty?: number | null) {
   return null;
 }
 
+function normalizeCompletionMinutes(task: Partial<CatalogueJobConfigTask>) {
+  const direct =
+    (task as any).completionMinutes ??
+    (task as any).actualMinutes ??
+    (task as any).estimatedMinutes;
+
+  if (direct !== null && direct !== undefined && Number.isFinite(Number(direct)))
+    return Math.max(0, Number(direct));
+
+  if (
+    task.manhours !== null &&
+    task.manhours !== undefined &&
+    Number.isFinite(Number(task.manhours))
+  )
+    return Math.max(0, Math.round(Number(task.manhours) * 60));
+
+  return null;
+}
+
 function normalizeJobTask(
   task: Partial<CatalogueJobConfigTask>,
   fallbackId: number,
@@ -172,15 +191,7 @@ function normalizeJobTask(
         : Number.isFinite(Number(task.manhours))
           ? Number(task.manhours)
           : null,
-    estimatedMinutes:
-      (task as any).estimatedMinutes === null ||
-      (task as any).estimatedMinutes === undefined
-        ? Number.isFinite(Number(task.manhours))
-          ? Math.max(0, Math.round(Number(task.manhours) * 60))
-          : null
-        : Number.isFinite(Number((task as any).estimatedMinutes))
-          ? Math.max(0, Number((task as any).estimatedMinutes))
-          : null,
+    completionMinutes: normalizeCompletionMinutes(task),
     notes: String(task.notes ?? "").trim(),
     status:
       task.status === "in_progress" ||

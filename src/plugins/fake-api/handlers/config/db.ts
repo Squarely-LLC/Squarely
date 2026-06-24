@@ -223,7 +223,7 @@ export const db: ConfigDB = {
       jobStatuses: ['New', 'Pending', 'In Progress', 'On Hold', 'Completed', 'Closed'],
       jobAlert: { enabled: true, days: 3 },
       jobDueWarningDays: 5,
-      jobTaskTimeCaptureEnabled: false,
+      jobTaskTimeCaptureEnabled: true,
     },
     deals: {
       leadLostIn: 30,
