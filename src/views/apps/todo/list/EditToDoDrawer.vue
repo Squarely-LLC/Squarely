@@ -42,6 +42,9 @@ interface Emit {
       title: string;
       collaborators: ContactRef[];
       dueAt: string;
+      startAt?: string | null;
+      estimatedMinutes?: number | null;
+      actualMinutes?: number | null;
       status: Status;
       notes: string;
       important: boolean;
@@ -57,6 +60,7 @@ interface Props {
   collaboratorsOptions: ContactRef[];
   showImmediateDueOption?: boolean;
   hideRelatedToField?: boolean;
+  jobTaskMode?: boolean;
 }
 const props = defineProps<Props>();
 const emit = defineEmits<Emit>();
@@ -73,6 +77,9 @@ const collabSearch = ref("");
 const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(null);
+const startAt = ref<string | null>(null);
+const estimatedMinutes = ref<number | null>(null);
+const actualMinutes = ref<number | null>(null);
 const dueMode = ref<"scheduled" | "immediately">("scheduled");
 const notes = ref<string>("");
 const important = ref<boolean>(false);
@@ -231,6 +238,9 @@ function loadFromToDo(t: ToDo) {
   selectedCollaboratorIds.value = (t.collaborators ?? []).map((c) => c.id);
   const resolvedDueAt = t.dueAt ? new Date(t.dueAt).toISOString() : null;
   dueAt.value = resolvedDueAt;
+  startAt.value = (t as any).startAt ?? null;
+  estimatedMinutes.value = (t as any).estimatedMinutes ?? null;
+  actualMinutes.value = (t as any).actualMinutes ?? null;
   dueMode.value =
     resolvedDueAt && resolvedDueAt !== toDateOnlyISOString(resolvedDueAt)
       ? "immediately"
@@ -267,6 +277,9 @@ function resetForm() {
   selectedCollaboratorIds.value = [];
   dueMode.value = "scheduled";
   dueAt.value = null;
+  startAt.value = null;
+  estimatedMinutes.value = null;
+  actualMinutes.value = null;
   notes.value = "";
   important.value = false;
   attachment.value = null;
@@ -410,6 +423,9 @@ async function onSaveAll() {
     title: (title.value ?? "").toString().trim(),
     collaborators: selectedCollaborators.value,
     dueAt: dueISO,
+    startAt: props.jobTaskMode ? startAt.value : undefined,
+    estimatedMinutes: props.jobTaskMode ? estimatedMinutes.value : undefined,
+    actualMinutes: props.jobTaskMode ? actualMinutes.value : undefined,
     status: selectedStatus.value, // keep your status UX separate from completion toggle
     notes: (notes.value ?? "").toString().trim(),
     important: Boolean(important.value),
@@ -580,6 +596,36 @@ async function onSaveAll() {
                       "
                       :disabled="dueMode === 'immediately'"
                       :config="{ dateFormat: 'Y-m-d' }"
+                    />
+                  </VCol>
+
+                  <VCol v-if="props.jobTaskMode" cols="12">
+                    <AppDateTimePicker
+                      v-model="startAt"
+                      label="Start Date"
+                      placeholder="Select start date"
+                      clearable
+                      :config="{ dateFormat: 'Y-m-d' }"
+                    />
+                  </VCol>
+
+                  <VCol v-if="props.jobTaskMode" cols="12" md="6">
+                    <AppTextField
+                      v-model.number="estimatedMinutes"
+                      type="number"
+                      min="0"
+                      label="Estimated Time (min)"
+                      placeholder="Minutes"
+                    />
+                  </VCol>
+
+                  <VCol v-if="props.jobTaskMode" cols="12" md="6">
+                    <AppTextField
+                      v-model.number="actualMinutes"
+                      type="number"
+                      min="0"
+                      label="Actual Time (min)"
+                      placeholder="Minutes"
                     />
                   </VCol>
 

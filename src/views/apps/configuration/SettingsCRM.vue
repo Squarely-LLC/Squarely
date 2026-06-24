@@ -35,6 +35,8 @@ const jobStatuses = ref<string[]>([]);
 const showContactRecord = ref(false);
 const jobAlertEnabled = ref(false);
 const jobAlertDays = ref(0);
+const jobDueWarningDays = ref(5);
+const jobTaskTimeCaptureEnabled = ref(false);
 const leadLostIn = ref(0);
 const quotationLostIn = ref(0);
 const dealAlertEnabled = ref(false);
@@ -61,6 +63,7 @@ const indInactiveAfterMonths = ref(0);
 let inactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let indInactiveSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let jobAlertSaveHandle: ReturnType<typeof setTimeout> | null = null;
+let jobDueWarningSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let leadLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let quotationLostInSaveHandle: ReturnType<typeof setTimeout> | null = null;
 let dealAlertSaveHandle: ReturnType<typeof setTimeout> | null = null;
@@ -115,6 +118,9 @@ const loadData = () => {
   };
   jobAlertEnabled.value = !!jobAlert.enabled;
   jobAlertDays.value = Number(jobAlert.days ?? 0);
+  jobDueWarningDays.value = Number((org as any)?.jobDueWarningDays ?? 5);
+  jobTaskTimeCaptureEnabled.value = !!(org as any)
+    ?.jobTaskTimeCaptureEnabled;
 
   const deals = store.configurations.deals || {};
   leadLostIn.value = Number((deals as any).leadLostIn ?? 0);
@@ -331,6 +337,8 @@ const saveActivitySettings = async () => {
       ...(store.configurations.crm || {}),
       showContactRecord: showContactRecord.value,
       jobAlert: { enabled: jobAlertEnabled.value, days: jobAlertDays.value },
+      jobDueWarningDays: jobDueWarningDays.value,
+      jobTaskTimeCaptureEnabled: jobTaskTimeCaptureEnabled.value,
     },
   } as any);
   isSavingActivitySettings.value = false;
@@ -459,6 +467,16 @@ const onJobAlertInput = (event: Event) => {
   }, 400);
 };
 
+const onJobDueWarningInput = (event: Event) => {
+  const val = parseFloat((event.target as HTMLInputElement).value);
+  jobDueWarningDays.value = isNaN(val) || val < 0 ? 0 : val;
+  if (jobDueWarningSaveHandle) clearTimeout(jobDueWarningSaveHandle);
+  jobDueWarningSaveHandle = setTimeout(() => {
+    jobDueWarningSaveHandle = null;
+    void saveActivitySettings();
+  }, 400);
+};
+
 const onLeadLostInInput = (event: Event) => {
   const val = parseFloat((event.target as HTMLInputElement).value);
   leadLostIn.value = isNaN(val) || val < 0 ? 0 : val;
@@ -501,6 +519,10 @@ onUnmounted(() => {
   if (jobAlertSaveHandle) {
     clearTimeout(jobAlertSaveHandle);
     jobAlertSaveHandle = null;
+  }
+  if (jobDueWarningSaveHandle) {
+    clearTimeout(jobDueWarningSaveHandle);
+    jobDueWarningSaveHandle = null;
   }
   if (leadLostInSaveHandle) {
     clearTimeout(leadLostInSaveHandle);
@@ -820,6 +842,42 @@ onUnmounted(() => {
               }
             "
             @input="onJobAlertInput"
+          />
+        </VCol>
+        <VCol cols="6" md="3">
+          <label class="text-subtitle-2 mb-2 d-block">
+            Job Due Warning (Days)
+          </label>
+          <AppTextField
+            v-model.number="jobDueWarningDays"
+            type="number"
+            min="0"
+            hide-details
+            density="compact"
+            :loading="isSavingActivitySettings"
+            :disabled="isSavingActivitySettings"
+            @keydown="
+              (e: KeyboardEvent) => {
+                if (
+                  e.key === '-' ||
+                  e.key === 'e' ||
+                  e.key === 'E' ||
+                  e.key === '+'
+                )
+                  e.preventDefault();
+              }
+            "
+            @input="onJobDueWarningInput"
+          />
+        </VCol>
+        <VCol cols="12" md="4">
+          <VSwitch
+            v-model="jobTaskTimeCaptureEnabled"
+            label="Capture project task actual time"
+            inset
+            :disabled="isSavingActivitySettings"
+            :loading="isSavingActivitySettings"
+            @change="() => void saveActivitySettings()"
           />
         </VCol>
       </VRow>

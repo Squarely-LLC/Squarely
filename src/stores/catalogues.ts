@@ -172,6 +172,15 @@ function normalizeJobTask(
         : Number.isFinite(Number(task.manhours))
           ? Number(task.manhours)
           : null,
+    estimatedMinutes:
+      (task as any).estimatedMinutes === null ||
+      (task as any).estimatedMinutes === undefined
+        ? Number.isFinite(Number(task.manhours))
+          ? Math.max(0, Math.round(Number(task.manhours) * 60))
+          : null
+        : Number.isFinite(Number((task as any).estimatedMinutes))
+          ? Math.max(0, Number((task as any).estimatedMinutes))
+          : null,
     notes: String(task.notes ?? "").trim(),
     status:
       task.status === "in_progress" ||

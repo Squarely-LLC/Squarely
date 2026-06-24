@@ -7,6 +7,7 @@ import type {
   JobMilestone,
   JobProperties,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useConfigStore } from "@/stores/config";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
@@ -23,6 +24,8 @@ const emit = defineEmits<{
   (e: "status-automation-trigger", action: string): void;
 }>();
 const jobsStore = useJobsStore();
+const configStore = useConfigStore();
+configStore.init();
 const notifications = useNotificationsStore();
 const todosStore = useTodos();
 todosStore.init();
@@ -73,6 +76,8 @@ type JobTodo = ToDo & {
   milestoneId?: number | string | null;
 };
 
+type WorkStatus = "Not Started" | "In Progress" | "On Hold" | "Completed";
+
 const jobTodos = computed<JobTodo[]>(() => {
   const jobId = String(props.jobId);
   return (todosStore.items || []).filter((todo: any) => {
@@ -121,6 +126,97 @@ const milestoneGoalTree = computed(() => {
   });
 });
 
+const dueWarningDays = computed(() =>
+  Math.max(0, Number(configStore.configurations?.crm?.jobDueWarningDays ?? 5)),
+);
+
+const isFutureDate = (value?: string | null) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime() > today.getTime();
+};
+
+const isDueSoon = (value?: string | null) => {
+  if (!value) return false;
+  const due = new Date(value);
+  if (Number.isNaN(due.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil(
+    (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  return diffDays >= 0 && diffDays <= dueWarningDays.value;
+};
+
+const isTaskLocked = (task: JobTodo) => isFutureDate((task as any).startAt);
+const taskStartAt = (task: JobTodo) => (task as any).startAt ?? null;
+const taskEstimatedMinutes = (task: JobTodo) =>
+  Number.isFinite(Number((task as any).estimatedMinutes))
+    ? Number((task as any).estimatedMinutes)
+    : null;
+
+const deriveStatusFromTasks = (
+  startDate: string | null | undefined,
+  tasks: JobTodo[],
+): WorkStatus => {
+  if (isFutureDate(startDate)) return "Not Started";
+  if (!tasks.length) return "Not Started";
+  if (tasks.some((task) => task.status === "in_progress"))
+    return "In Progress";
+  if (tasks.every((task) => task.status === "completed")) return "Completed";
+  if (tasks.some((task) => task.status === "completed")) return "On Hold";
+  return "Not Started";
+};
+
+const completedTaskCount = (tasks: JobTodo[]) =>
+  tasks.filter((task) => task.status === "completed").length;
+
+const goalStatus = (goal: JobGoal & { tasks: JobTodo[] }) =>
+  deriveStatusFromTasks(goal.startDate, goal.tasks);
+
+const milestoneStatus = (milestone: JobMilestone & {
+  tasks: JobTodo[];
+  goals: Array<JobGoal & { tasks: JobTodo[] }>;
+}) => {
+  const allTasks = [
+    ...milestone.tasks,
+    ...milestone.goals.flatMap((goal) => goal.tasks),
+  ];
+  if (isFutureDate(milestone.startDate)) return "Not Started";
+  if (!allTasks.length) return "Not Started";
+  if (
+    milestone.goals.some((goal) => goalStatus(goal) === "In Progress") ||
+    allTasks.some((task) => task.status === "in_progress")
+  )
+    return "In Progress";
+  if (allTasks.every((task) => task.status === "completed")) return "Completed";
+  if (
+    milestone.goals.some((goal) => goalStatus(goal) === "On Hold") ||
+    allTasks.some((task) => task.status === "completed")
+  )
+    return "On Hold";
+  return "Not Started";
+};
+
+const workStatusColor = (status: WorkStatus) => {
+  switch (status) {
+    case "Completed":
+      return "success";
+    case "In Progress":
+      return "primary";
+    case "On Hold":
+      return "secondary";
+    case "Not Started":
+    default:
+      return "secondary";
+  }
+};
+
 const shouldExpandGoal = (goalId: number) => {
   const tasks = jobTodos.value.filter(
     (todo) => String(todo.goalId ?? "") === String(goalId),
@@ -150,6 +246,9 @@ const goalFormRef = ref<VForm>();
 const isCreatingGoal = computed(() => goalDialog.mode === "create");
 const expandedMilestones = ref<Array<number>>([]);
 const expandedGoals = ref<Array<number>>([]);
+const isActualTimeDialogVisible = ref(false);
+const actualMinutesDraft = ref<number | null>(null);
+const pendingCompletionTask = ref<JobTodo | null>(null);
 
 const goalIdsForMilestone = (milestoneId: number) =>
   goals.value
@@ -286,12 +385,14 @@ const saveMilestone = async () => {
       ];
     }
     notifications.push("Milestone added", "success", 3000);
+    emit("status-automation-trigger", "Milestone added");
   } else if (milestoneTargetId.value !== null) {
     const { id, ...draftWithoutId } = milestoneDialog.draft;
     jobsStore.updateMilestone(job.value.id, milestoneTargetId.value, {
       ...draftWithoutId,
     });
     notifications.push("Milestone updated", "success", 3000);
+    emit("status-automation-trigger", "Milestone updated");
   }
   milestoneDialog.visible = false;
   milestoneTargetId.value = null;
@@ -305,6 +406,7 @@ const deleteMilestone = (milestone: JobMilestone) => {
     (id) => id !== milestone.id,
   );
   notifications.push("Milestone removed", "success", 3000);
+  emit("status-automation-trigger", "Milestone removed");
 };
 const openCreateGoal = (milestoneId?: number) => {
   if (milestoneId === undefined || milestoneId === null) return;
@@ -343,12 +445,14 @@ const saveGoal = async () => {
     const { id, ...draftWithoutId } = goalDialog.draft;
     jobsStore.addGoal(job.value.id, { ...draftWithoutId });
     notifications.push("Goal added", "success", 3000);
+    emit("status-automation-trigger", "Goal added");
   } else if (goalTargetId.value !== null) {
     const { id, ...draftWithoutId } = goalDialog.draft;
     jobsStore.updateGoal(job.value.id, goalTargetId.value, {
       ...draftWithoutId,
     });
     notifications.push("Goal updated", "success", 3000);
+    emit("status-automation-trigger", "Goal updated");
   }
   goalDialog.visible = false;
   goalTargetId.value = null;
@@ -360,6 +464,7 @@ const deleteGoal = (goal: JobGoal) => {
   jobsStore.removeGoal(job.value.id, goal.id);
   expandedGoals.value = expandedGoals.value.filter((id) => id !== goal.id);
   notifications.push("Goal removed", "success", 3000);
+  emit("status-automation-trigger", "Goal removed");
 };
 const buildTaskTitlePrefix = (
   projectName?: string | null,
@@ -378,6 +483,9 @@ const openCreateTodoForMilestone = (milestone: JobMilestone) => {
       collaborators: [],
       notes: `Created for milestone: ${milestone.name}`,
       dueAt: milestone.dueDate || new Date().toISOString(),
+      startAt: milestone.startDate || job.value.startDate || null,
+      estimatedMinutes: null,
+      actualMinutes: null,
       priority:
         milestone.priority === "High"
           ? "high"
@@ -404,6 +512,9 @@ const openCreateTodoForGoal = (goal: JobGoal) => {
       collaborators: [],
       notes: `Created for goal: ${goal.name}`,
       dueAt: goal.dueDate || new Date().toISOString(),
+      startAt: goal.startDate || job.value.startDate || null,
+      estimatedMinutes: null,
+      actualMinutes: null,
       priority:
         goal.priority === "High"
           ? "high"
@@ -425,11 +536,42 @@ const openCreateTodoForGoal = (goal: JobGoal) => {
 const toggleTaskCompleted = (taskId: number | string) => {
   const task = todosStore.byId(taskId);
   if (!task) return;
+  if (isTaskLocked(task as JobTodo)) {
+    notifications.push("Task is locked until its start date", "warning", 3000);
+    return;
+  }
+
+  if (
+    configStore.configurations?.crm?.jobTaskTimeCaptureEnabled &&
+    task.status !== "completed"
+  ) {
+    pendingCompletionTask.value = task as JobTodo;
+    actualMinutesDraft.value =
+      Number((task as any).estimatedMinutes ?? 0) || null;
+    isActualTimeDialogVisible.value = true;
+    return;
+  }
 
   todosStore.updateTodo(taskId, {
     status: task.status === "completed" ? "pending" : "completed",
   });
   emit("status-automation-trigger", "Task status changed");
+};
+
+const saveActualTimeCompletion = () => {
+  const task = pendingCompletionTask.value;
+  if (!task) return;
+  todosStore.updateTodo(task.id, {
+    status: "completed",
+    actualMinutes: actualMinutesDraft.value,
+    doneAt: new Date().toISOString(),
+    completed: true,
+    isCompleted: true,
+  } as any);
+  pendingCompletionTask.value = null;
+  actualMinutesDraft.value = null;
+  isActualTimeDialogVisible.value = false;
+  emit("status-automation-trigger", "Task completed");
 };
 const priorityColor = (priority: "Low" | "Normal" | "High") => {
   return priority === "High"
@@ -466,6 +608,14 @@ const formatDate = (value?: string | null) => {
     console.warn("Failed to format date", error);
     return value;
   }
+};
+const formatMinutes = (value?: number | null) => {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
 };
 </script>
 <template>
@@ -527,33 +677,46 @@ const formatDate = (value?: string | null) => {
                       </template>
                     </VTooltip>
                     <VChip
-                      :color="priorityColor(milestone.priority)"
+                      :color="workStatusColor(milestoneStatus(milestone))"
                       size="small"
-                      variant="text"
+                      label
                     >
-                      {{ milestone.priority }}
+                      {{ milestoneStatus(milestone) }}
                     </VChip>
                   </div>
                   <div class="text-caption text-medium-emphasis">
-                    {{ milestone.goals.length }} Goal<span
-                      v-if="milestone.goals.length !== 1"
-                      >s</span
+                    Start {{ formatDate(milestone.startDate) }}
+                    <span
+                      :class="{
+                        'text-warning font-weight-medium': isDueSoon(milestone.dueDate),
+                      }"
                     >
-                    <span v-if="milestone.tasks.length">
-                      | {{ milestone.tasks.length }} Task<span
-                        v-if="milestone.tasks.length !== 1"
+                      | Due {{ formatDate(milestone.dueDate) }}
+                    </span>
+                    | {{ completedTaskCount([
+                      ...milestone.tasks,
+                      ...milestone.goals.flatMap((goal) => goal.tasks),
+                    ]) }}/{{ [
+                      ...milestone.tasks,
+                      ...milestone.goals.flatMap((goal) => goal.tasks),
+                    ].length }} tasks completed
+                    <span>
+                      | {{ milestone.goals.length }} Goal<span
+                        v-if="milestone.goals.length !== 1"
                         >s</span
                       >
                     </span>
-                    | Due {{ formatDate(milestone.dueDate) }}
                   </div>
-                  <div class="text-body-2 text-medium-emphasis mt-1">
-                    {{ milestone.note || "No milestone notes." }}
+                  <div
+                    v-if="milestone.note"
+                    class="text-body-2 text-medium-emphasis mt-1"
+                  >
+                    {{ milestone.note }}
                   </div>
                 </div>
 
                 <div
-                  class="d-flex align-center gap-2 milestone-actions"
+                  class="d-flex align-center gap-3 milestone-actions"
                   @click.stop
                 >
                   <VTooltip text="Add Task" location="top">
@@ -582,6 +745,9 @@ const formatDate = (value?: string | null) => {
                   </VTooltip>
                   <VBtn icon variant="text" size="x-small">
                     <VIcon icon="tabler-dots-vertical" size="18" />
+                    <VTooltip activator="parent" location="top">
+                      Show more
+                    </VTooltip>
                     <VMenu activator="parent">
                       <VList>
                         <VListItem @click="openEditMilestone(milestone)">
@@ -622,6 +788,7 @@ const formatDate = (value?: string | null) => {
                           hide-details
                           density="compact"
                           :model-value="task.status === 'completed'"
+                          :disabled="isTaskLocked(task)"
                           @click.stop="toggleTaskCompleted(task.id)"
                         />
 
@@ -636,9 +803,14 @@ const formatDate = (value?: string | null) => {
                               </strong>
                             </template>
                           </VTooltip>
-                          <span class="text-sm"
-                            >Due {{ formatDate(task.dueAt) }}</span
-                          >
+                          <span class="text-sm">
+                            Start {{ formatDate(taskStartAt(task)) }} |
+                            Due {{ formatDate(task.dueAt) }}
+                            <template v-if="formatMinutes(taskEstimatedMinutes(task))">
+                              | Est.
+                              {{ formatMinutes(taskEstimatedMinutes(task)) }}
+                            </template>
+                          </span>
                           <span
                             v-if="task.notes"
                             class="text-sm text-medium-emphasis"
@@ -698,7 +870,7 @@ const formatDate = (value?: string | null) => {
                             'text-success': task.status === 'completed',
                           }"
                         >
-                          {{ todoStatusLabel(task.status) }}
+                          {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
                         </span>
                       </div>
                     </div>
@@ -739,27 +911,37 @@ const formatDate = (value?: string | null) => {
                               </template>
                             </VTooltip>
                             <VChip
-                              :color="priorityColor(goal.priority)"
+                              :color="workStatusColor(goalStatus(goal))"
                               size="x-small"
-                              variant="text"
+                              label
                             >
-                              {{ goal.priority }}
+                              {{ goalStatus(goal) }}
                             </VChip>
                           </div>
                           <div class="text-caption text-medium-emphasis">
-                            {{ goal.tasks.length }} Task<span
-                              v-if="goal.tasks.length !== 1"
-                              >s</span
+                            Start {{ formatDate(goal.startDate) }}
+                            <span
+                              :class="{
+                                'text-warning font-weight-medium': isDueSoon(goal.dueDate),
+                              }"
                             >
-                            | Due {{ formatDate(goal.dueDate) }}
+                              | Due {{ formatDate(goal.dueDate) }}
+                            </span>
+                            | {{ completedTaskCount(goal.tasks) }}/{{
+                              goal.tasks.length
+                            }}
+                            tasks completed
                           </div>
-                          <div class="text-body-2 text-medium-emphasis mt-1">
-                            {{ goal.note || "No goal notes." }}
+                          <div
+                            v-if="goal.note"
+                            class="text-body-2 text-medium-emphasis mt-1"
+                          >
+                            {{ goal.note }}
                           </div>
                         </div>
 
                         <div
-                          class="d-flex align-center gap-1 goal-actions"
+                          class="d-flex align-center gap-3 goal-actions"
                           @click.stop
                         >
                           <VTooltip text="Add Task" location="top">
@@ -776,6 +958,9 @@ const formatDate = (value?: string | null) => {
                           </VTooltip>
                           <VBtn icon variant="text" size="x-small">
                             <VIcon icon="tabler-dots-vertical" size="18" />
+                            <VTooltip activator="parent" location="top">
+                              Show more
+                            </VTooltip>
                             <VMenu activator="parent">
                               <VList>
                                 <VListItem @click="openEditGoal(goal)">
@@ -817,6 +1002,7 @@ const formatDate = (value?: string | null) => {
                                     hide-details
                                     density="compact"
                                     :model-value="task.status === 'completed'"
+                                    :disabled="isTaskLocked(task)"
                                     @click.stop="toggleTaskCompleted(task.id)"
                                   />
 
@@ -833,9 +1019,20 @@ const formatDate = (value?: string | null) => {
                                         </strong>
                                       </template>
                                     </VTooltip>
-                                    <span class="text-sm"
-                                      >Due {{ formatDate(task.dueAt) }}</span
-                                    >
+                                    <span class="text-sm">
+                                      Start {{ formatDate(taskStartAt(task)) }}
+                                      | Due {{ formatDate(task.dueAt) }}
+                                      <template
+                                        v-if="formatMinutes(taskEstimatedMinutes(task))"
+                                      >
+                                        | Est.
+                                        {{
+                                          formatMinutes(
+                                            taskEstimatedMinutes(task),
+                                          )
+                                        }}
+                                      </template>
+                                    </span>
                                     <span
                                       v-if="task.notes"
                                       class="text-sm text-medium-emphasis"
@@ -906,7 +1103,7 @@ const formatDate = (value?: string | null) => {
                                         task.status === 'completed',
                                     }"
                                   >
-                                    {{ todoStatusLabel(task.status) }}
+                                    {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
                                   </span>
                                 </div>
                               </div>
@@ -961,6 +1158,7 @@ const formatDate = (value?: string | null) => {
                   hide-details
                   density="compact"
                   :model-value="task.status === 'completed'"
+                  :disabled="isTaskLocked(task)"
                   @click.stop="toggleTaskCompleted(task.id)"
                 />
 
@@ -975,7 +1173,13 @@ const formatDate = (value?: string | null) => {
                       </strong>
                     </template>
                   </VTooltip>
-                  <span class="text-sm">Due {{ formatDate(task.dueAt) }}</span>
+                  <span class="text-sm">
+                    Start {{ formatDate(taskStartAt(task)) }} | Due
+                    {{ formatDate(task.dueAt) }}
+                    <template v-if="formatMinutes(taskEstimatedMinutes(task))">
+                      | Est. {{ formatMinutes(taskEstimatedMinutes(task)) }}
+                    </template>
+                  </span>
                   <span v-if="task.notes" class="text-sm text-medium-emphasis">
                     {{ task.notes }}
                   </span>
@@ -1029,7 +1233,7 @@ const formatDate = (value?: string | null) => {
                     'text-success': task.status === 'completed',
                   }"
                 >
-                  {{ todoStatusLabel(task.status) }}
+                  {{ isTaskLocked(task) ? "Scheduled" : todoStatusLabel(task.status) }}
                 </span>
               </div>
             </div>
@@ -1041,6 +1245,31 @@ const formatDate = (value?: string | null) => {
         </div>
       </VCardText>
     </VCard>
+    <VDialog v-model="isActualTimeDialogVisible" max-width="420">
+      <DialogCloseBtn @click="isActualTimeDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Actual time</VCardTitle>
+        <VCardText>
+          <AppTextField
+            v-model.number="actualMinutesDraft"
+            type="number"
+            min="0"
+            label="Time took to finish (min)"
+            placeholder="Minutes"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isActualTimeDialogVisible = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn color="primary" @click="saveActualTimeCompletion">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
     <VDialog
       :model-value="milestoneDialog.visible"
       attach="body"

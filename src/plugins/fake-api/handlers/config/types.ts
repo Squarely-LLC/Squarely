@@ -108,6 +108,8 @@ export interface CrmConfig {
   jobStages?: string[]
   jobStatuses?: string[]
   jobAlert?: { enabled: boolean; days: number }
+  jobDueWarningDays?: number
+  jobTaskTimeCaptureEnabled?: boolean
 }
 
 export interface DealsConfig {

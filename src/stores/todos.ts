@@ -48,6 +48,18 @@ function toDateOnlyISOString(value?: string | null): string {
   ).toISOString();
 }
 
+function toNullableDateISOString(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function toNullablePositiveNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
 function computeEndAt(startAt: string, durationMin: number): string {
   const d = new Date(startAt);
   if (Number.isNaN(d.getTime())) return startAt;
@@ -235,6 +247,9 @@ export const useTodos = defineStore("todos", {
         });
         copy.relatedTo = t.relatedTo ?? null;
         copy.source = t.source ?? null;
+        copy.startAt = toNullableDateISOString(t.startAt);
+        copy.estimatedMinutes = toNullablePositiveNumber(t.estimatedMinutes);
+        copy.actualMinutes = toNullablePositiveNumber(t.actualMinutes);
         copy.goalId = t.goalId ?? null;
         copy.milestoneId = t.milestoneId ?? null;
         copy.afterWhen = t.afterWhen ?? null;
@@ -277,6 +292,11 @@ export const useTodos = defineStore("todos", {
         title: todo.title || "Untitled",
         collaborators: todo.collaborators || [],
         dueAt: toDateOnlyISOString(todo.dueAt),
+        startAt: toNullableDateISOString((todo as any).startAt),
+        estimatedMinutes: toNullablePositiveNumber(
+          (todo as any).estimatedMinutes,
+        ),
+        actualMinutes: toNullablePositiveNumber((todo as any).actualMinutes),
         afterWhen: (todo as any).afterWhen ?? null,
         startTrigger: (todo as any).startTrigger ?? null,
         important: !!todo.important,
@@ -321,6 +341,16 @@ export const useTodos = defineStore("todos", {
       const nextPatch = { ...patch } as any;
       if ("dueAt" in nextPatch)
         nextPatch.dueAt = toDateOnlyISOString(nextPatch.dueAt);
+      if ("startAt" in nextPatch)
+        nextPatch.startAt = toNullableDateISOString(nextPatch.startAt);
+      if ("estimatedMinutes" in nextPatch)
+        nextPatch.estimatedMinutes = toNullablePositiveNumber(
+          nextPatch.estimatedMinutes,
+        );
+      if ("actualMinutes" in nextPatch)
+        nextPatch.actualMinutes = toNullablePositiveNumber(
+          nextPatch.actualMinutes,
+        );
       if (Array.isArray(nextPatch.steps)) {
         nextPatch.steps = nextPatch.steps.map((step: any) => {
           const nextStep = { ...step, dueAt: toDateOnlyISOString(step?.dueAt) };

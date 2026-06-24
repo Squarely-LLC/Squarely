@@ -222,6 +222,8 @@ export const db: ConfigDB = {
       jobStages: ['PRPSL', 'In Review', 'Project | In Progress', 'RFI'],
       jobStatuses: ['New', 'Pending', 'In Progress', 'On Hold', 'Completed', 'Closed'],
       jobAlert: { enabled: true, days: 3 },
+      jobDueWarningDays: 5,
+      jobTaskTimeCaptureEnabled: false,
     },
     deals: {
       leadLostIn: 30,

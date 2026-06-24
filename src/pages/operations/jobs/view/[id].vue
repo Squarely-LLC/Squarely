@@ -93,6 +93,9 @@ const isStatusPromptVisible = ref(false);
 const statusPromptAction = ref("");
 const statusPromptTarget = ref<JobStatus | null>(null);
 const statusPromptNeverAgain = ref(false);
+const isActualTimeDialogVisible = ref(false);
+const pendingCompletionTodo = ref<ToDo | null>(null);
+const actualMinutesDraft = ref<number | null>(null);
 
 const jobTodos = computed(() => {
   const currentJob = job.value;
@@ -119,8 +122,10 @@ const suggestedStatus = computed<JobStatus>(() => {
   if (tasks.some((task) => task.status === "in_progress"))
     return "In Progress";
 
+  const executableTasks = tasks.filter((task) => task.status !== "for_review");
   const allTasksCompleted =
-    tasks.length > 0 && tasks.every((task) => task.status === "completed");
+    executableTasks.length > 0 &&
+    executableTasks.every((task) => task.status === "completed");
   if (
     allTasksCompleted &&
     (currentJob.milestones?.length || currentJob.goals?.length || tasks.length)
@@ -130,6 +135,45 @@ const suggestedStatus = computed<JobStatus>(() => {
 
   return "Pending";
 });
+
+const jobTaskTimeCaptureEnabled = computed(() =>
+  Boolean(configStore.configurations?.crm?.jobTaskTimeCaptureEnabled),
+);
+
+const isProjectTask = (todo: Partial<ToDo> | null | undefined) =>
+  todo?.relatedTo?.type === "job";
+
+const isFutureTaskStart = (value?: string | null) => {
+  if (!value) return false;
+  const start = new Date(value);
+  if (Number.isNaN(start.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  start.setHours(0, 0, 0, 0);
+  return start.getTime() > today.getTime();
+};
+
+const buildTodoPatch = (payload: any) => {
+  const partial: any = {
+    title: payload.title,
+    collaborators: payload.collaborators,
+    dueAt: payload.dueAt,
+    startAt: payload.startAt,
+    estimatedMinutes: payload.estimatedMinutes,
+    actualMinutes: payload.actualMinutes,
+    status: payload.status,
+    notes: payload.notes,
+    important: payload.important,
+    attachment: payload.attachment,
+    relatedTo: payload.relatedTo,
+  };
+
+  if ("completed" in payload) partial.completed = payload.completed;
+  if ("isCompleted" in payload) partial.isCompleted = payload.isCompleted;
+  if ("doneAt" in payload) partial.doneAt = payload.doneAt;
+
+  return partial;
+};
 
 const queueStatusSuggestion = (action: string) => {
   const currentJob = job.value;
@@ -357,7 +401,7 @@ const tabKeys = [
 ] as const;
 
 const tabs = [
-  { icon: "tabler-flag", title: "Milestones & Goals" },
+  { icon: "tabler-flag", title: "Details" },
   { icon: "tabler-message", title: "Communication" },
   { icon: "tabler-folder", title: "Documents" },
   { icon: "tabler-credit-card", title: "Expenses" },
@@ -1037,21 +1081,31 @@ const handleMilestoneGoalTodoEditRequest = (todoId: number | string) => {
 };
 
 const onTodoEdited = (payload: any) => {
-  const partial: any = {
-    title: payload.title,
-    collaborators: payload.collaborators,
-    dueAt: payload.dueAt,
-    status: payload.status,
-    notes: payload.notes,
-    important: payload.important,
-    attachment: payload.attachment,
-    relatedTo: payload.relatedTo,
-  };
-
-  if ("completed" in payload) partial.completed = payload.completed;
-  if ("isCompleted" in payload) partial.isCompleted = payload.isCompleted;
-  if ("doneAt" in payload) partial.doneAt = payload.doneAt;
-
+  const partial = buildTodoPatch(payload);
+  const previousTodo = todosStore.byId(payload.id);
+  if (
+    previousTodo &&
+    isProjectTask(previousTodo) &&
+    payload.status !== "pending" &&
+    isFutureTaskStart(partial.startAt ?? (previousTodo as any).startAt)
+  ) {
+    notifications.push("Task is locked until its start date", "warning", 3000);
+    return;
+  }
+  if (
+    jobTaskTimeCaptureEnabled.value &&
+    previousTodo &&
+    isProjectTask(previousTodo) &&
+    payload.status === "completed" &&
+    previousTodo.status !== "completed" &&
+    !partial.actualMinutes
+  ) {
+    pendingCompletionTodo.value = { ...previousTodo, ...partial } as ToDo;
+    actualMinutesDraft.value =
+      Number((previousTodo as any).estimatedMinutes ?? 0) || null;
+    isActualTimeDialogVisible.value = true;
+    return;
+  }
   todosStore.updateTodo(payload.id, partial);
   isEditTodoDrawerVisible.value = false;
   nextTick(() => queueStatusSuggestion("Task updated"));
@@ -1071,6 +1125,9 @@ const onTodoCreated = (payload: any) => {
     try {
       todosStore.init();
     } catch {}
+    if (isProjectTask(payload) && isFutureTaskStart(payload.startAt)) {
+      payload.status = "pending";
+    }
     todosStore.addTodo && todosStore.addTodo(payload);
     notifications.push("Task created", "success", 3500);
     nextTick(() => queueStatusSuggestion("Task created"));
@@ -1080,6 +1137,28 @@ const onTodoCreated = (payload: any) => {
   } finally {
     isAddTodoDrawerVisible.value = false;
   }
+};
+
+const saveActualTimeCompletion = () => {
+  const todo = pendingCompletionTodo.value;
+  if (!todo) {
+    isActualTimeDialogVisible.value = false;
+    return;
+  }
+
+  todosStore.updateTodo(todo.id, {
+    ...todo,
+    actualMinutes: actualMinutesDraft.value,
+    status: "completed",
+    doneAt: new Date().toISOString(),
+    completed: true,
+    isCompleted: true,
+  } as any);
+  pendingCompletionTodo.value = null;
+  actualMinutesDraft.value = null;
+  isActualTimeDialogVisible.value = false;
+  isEditTodoDrawerVisible.value = false;
+  nextTick(() => queueStatusSuggestion("Task completed"));
 };
 
 const onMeetingCreated = (payload: any) => {
@@ -1225,6 +1304,7 @@ const closeSnagDrawer = () => {
       v-model:is-drawer-open="isAddTodoDrawerVisible"
       :collaborators-options="taskCollaboratorOptions"
       :initial="addTodoInitial"
+      job-task-mode
       @user-data="onTodoCreated"
     />
 
@@ -1232,9 +1312,36 @@ const closeSnagDrawer = () => {
       v-model:is-drawer-open="isEditTodoDrawerVisible"
       :todo="editingTodo"
       :collaborators-options="taskCollaboratorOptions"
+      job-task-mode
       @save="onTodoEdited"
       @saveSteps="onTodoStepsEdited"
     />
+
+    <VDialog v-model="isActualTimeDialogVisible" max-width="420">
+      <DialogCloseBtn @click="isActualTimeDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>Actual time</VCardTitle>
+        <VCardText>
+          <AppTextField
+            v-model.number="actualMinutesDraft"
+            type="number"
+            min="0"
+            label="Time took to finish (min)"
+            placeholder="Minutes"
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isActualTimeDialogVisible = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn color="primary" @click="saveActualTimeCompletion">Save</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <!-- Meeting Drawer -->
     <AddMeetingDrawer

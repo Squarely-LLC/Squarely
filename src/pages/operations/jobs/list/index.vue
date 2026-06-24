@@ -1075,6 +1075,7 @@ const updateItemsPerPage = (value: number | string) => {
       :collaborators-options="[]"
       source="contacts"
       :initial="addTodoInitial"
+      job-task-mode
       @user-data="onTodoCreated"
     />
 

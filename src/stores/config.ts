@@ -112,6 +112,12 @@ const normalizeConfigurations = (
       ...(next.crm || {}),
       jobStatuses,
       jobStages: next.crm?.jobStages || legacyJobStages,
+      jobDueWarningDays: Number.isFinite(Number(next.crm?.jobDueWarningDays))
+        ? Math.max(0, Number(next.crm?.jobDueWarningDays))
+        : 5,
+      jobTaskTimeCaptureEnabled: Boolean(
+        next.crm?.jobTaskTimeCaptureEnabled,
+      ),
     },
     deals: {
       ...(next.deals || {}),

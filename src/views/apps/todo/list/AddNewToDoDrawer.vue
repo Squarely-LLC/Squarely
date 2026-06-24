@@ -41,6 +41,7 @@ interface Props {
   source?: "contacts" | "employees";
   showImmediateDueOption?: boolean;
   hideRelatedToField?: boolean;
+  jobTaskMode?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -54,6 +55,9 @@ const collabSearch = ref("");
 const title = ref<string>("");
 const selectedCollaboratorIds = ref<(number | string)[]>([]);
 const dueAt = ref<string | null>(getDefaultDueAt());
+const startAt = ref<string | null>(null);
+const estimatedMinutes = ref<number | null>(null);
+const actualMinutes = ref<number | null>(null);
 const dueMode = ref<"scheduled" | "immediately">(getDefaultDueMode());
 const notes = ref<string>("");
 const important = ref<boolean>(false);
@@ -145,6 +149,9 @@ function resetForm() {
     : [];
   dueMode.value = getDefaultDueMode(props.showImmediateDueOption);
   dueAt.value = getDefaultDueAt(props.showImmediateDueOption);
+  startAt.value = null;
+  estimatedMinutes.value = null;
+  actualMinutes.value = null;
   notes.value = "";
   important.value = false;
   relatedTo.value = null;
@@ -204,6 +211,10 @@ function loadInitialAndMaybeFocus() {
     );
     dueMode.value = getDefaultDueMode(props.showImmediateDueOption);
     dueAt.value = init.dueAt === undefined ? dueAt.value : (init.dueAt ?? null);
+    startAt.value = (init as any).startAt ?? startAt.value;
+    estimatedMinutes.value =
+      (init as any).estimatedMinutes ?? estimatedMinutes.value;
+    actualMinutes.value = (init as any).actualMinutes ?? actualMinutes.value;
 
     if (init.dueAt) {
       dueMode.value = "scheduled";
@@ -387,6 +398,9 @@ async function onSubmit() {
     title: trimmedTitle,
     collaborators: selectedCollaborators.value,
     dueAt: dueISO,
+    startAt: props.jobTaskMode ? startAt.value : undefined,
+    estimatedMinutes: props.jobTaskMode ? estimatedMinutes.value : undefined,
+    actualMinutes: props.jobTaskMode ? actualMinutes.value : undefined,
     status: selectedStatus.value,
     notes: trimmedNotes,
     important: important.value,
@@ -547,6 +561,36 @@ async function onSubmit() {
                   "
                   :disabled="dueMode === 'immediately'"
                   :config="{ dateFormat: 'Y-m-d' }"
+                />
+              </VCol>
+
+              <VCol v-if="props.jobTaskMode" cols="12">
+                <AppDateTimePicker
+                  v-model="startAt"
+                  label="Start Date"
+                  placeholder="Select start date"
+                  clearable
+                  :config="{ dateFormat: 'Y-m-d' }"
+                />
+              </VCol>
+
+              <VCol v-if="props.jobTaskMode" cols="12" md="6">
+                <AppTextField
+                  v-model.number="estimatedMinutes"
+                  type="number"
+                  min="0"
+                  label="Estimated Time (min)"
+                  placeholder="Minutes"
+                />
+              </VCol>
+
+              <VCol v-if="props.jobTaskMode" cols="12" md="6">
+                <AppTextField
+                  v-model.number="actualMinutes"
+                  type="number"
+                  min="0"
+                  label="Actual Time (min)"
+                  placeholder="Minutes"
                 />
               </VCol>
 

@@ -148,6 +148,8 @@ type ExecutionPreviewTask = {
   key: string;
   title: string;
   dueAt: string;
+  startAt: string | null;
+  estimatedMinutes: number | null;
   notes: string;
   status: ToDo["status"];
   important: boolean;
@@ -610,6 +612,7 @@ const buildExecutionPreview = (
         sourceLabel: string;
         milestoneKey?: string | null;
         goalKey?: string | null;
+        startAt?: string | null;
       },
     ): ExecutionPreviewTask => {
       const triggerGoalKey =
@@ -627,6 +630,13 @@ const buildExecutionPreview = (
         key: options.key,
         title: String(rawTask.title || "").trim() || "Untitled Task",
         dueAt: resolveTaskDueAt(rawTask.afterWhen, executedAt),
+        startAt: options.startAt ?? executedAt,
+        estimatedMinutes:
+          Number.isFinite(Number((rawTask as any).estimatedMinutes))
+            ? Number((rawTask as any).estimatedMinutes)
+            : Number.isFinite(Number(rawTask.manhours))
+              ? Math.max(0, Math.round(Number(rawTask.manhours) * 60))
+              : null,
         notes: String(rawTask.notes || "").trim(),
         status:
           rawTask.status === "in_progress" ||
@@ -667,7 +677,8 @@ const buildExecutionPreview = (
       const previewMilestone: ExecutionPreviewMilestone = {
         key: milestoneKey,
         name: String(milestone.name || item.name).trim() || item.name,
-        startDate: executedAt,
+        startDate:
+          resolveScheduledDate(milestone.afterWhen, executedAt) ?? executedAt,
         dueDate:
           resolveScheduledDate(
             milestone.afterWhen ?? milestone.dueDate,
@@ -692,7 +703,9 @@ const buildExecutionPreview = (
             key: goalKey,
             milestoneKey,
             name: String(goal.name || "").trim() || "Untitled Goal",
-            startDate: executedAt,
+            startDate:
+              resolveScheduledDate(goal.afterWhen, executedAt) ??
+              previewMilestone.startDate,
             dueDate:
               resolveScheduledDate(
                 goal.afterWhen ?? goal.dueDate,
@@ -712,6 +725,7 @@ const buildExecutionPreview = (
           kind: "milestone",
           sourceLabel: `${item.name} / ${previewMilestone.name}`,
           milestoneKey,
+          startAt: previewMilestone.startDate,
         }),
       );
 
@@ -724,6 +738,7 @@ const buildExecutionPreview = (
             sourceLabel: `${item.name} / ${goalPreview.name}`,
             milestoneKey,
             goalKey: goalPreview.key,
+            startAt: goalPreview.startDate || previewMilestone.startDate,
           }),
         );
       });
@@ -1581,6 +1596,9 @@ const confirmDealExecution = () => {
           ...collaborator,
         })),
         dueAt: task.dueAt,
+        startAt: task.startAt,
+        estimatedMinutes: task.estimatedMinutes,
+        actualMinutes: null,
         afterWhen: task.afterWhen,
         startTrigger:
           task.startTriggerType === "goal" && task.startTriggerGoalKey

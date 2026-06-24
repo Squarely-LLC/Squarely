@@ -75,6 +75,9 @@ export type ToDo = {
   title: string;
   collaborators: ContactRef[];
   dueAt: string;
+  startAt?: string | null;
+  estimatedMinutes?: number | null;
+  actualMinutes?: number | null;
   afterWhen?: string | null;
   startTrigger?: TaskStartTrigger | null;
   priority?: Priority;
