@@ -8,8 +8,10 @@ import type {
   JobProperties,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
 import { useConfigStore } from "@/stores/config";
+import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import {
   jobWorkStatusChipStyle,
@@ -31,7 +33,11 @@ const emit = defineEmits<{
 const jobsStore = useJobsStore();
 const configStore = useConfigStore();
 configStore.init();
+const employeesStore = useEmployeesStore();
+employeesStore.init();
 const notifications = useNotificationsStore();
+const systemNotificationsStore = useSystemNotificationsStore();
+systemNotificationsStore.init();
 const todosStore = useTodos();
 todosStore.init();
 const job = computed<JobProperties | null>(() => jobsStore.byId(props.jobId));
@@ -67,6 +73,7 @@ const goalDialog = reactive({
     dateOverride: false,
     priority: "Normal" as JobGoal["priority"],
     note: "",
+    source: null as JobGoal["source"],
   },
 });
 const milestoneTargetId = ref<number | null>(null);
@@ -310,6 +317,67 @@ const milestoneStatus = (milestone: JobMilestone & {
 
 const workStatusColor = (status: WorkStatus) => jobWorkStatusColor(status);
 
+const isPeriodGoal = (goal: JobGoal) =>
+  goal.source?.periodKind === "recurrent" || goal.source?.periodKind === "retainer";
+
+const periodGoalLabel = (goal: JobGoal) =>
+  goal.source?.periodLabel ||
+  (goal.source?.periodNumber ? `Period ${goal.source.periodNumber}` : "Period");
+
+const periodGoalTitle = (goal: JobGoal) =>
+  goal.source?.itemName
+    ? `${periodGoalLabel(goal)} - ${goal.source.itemName}`
+    : goal.name;
+
+const periodGoalDateRange = (goal: JobGoal) =>
+  `${formatDate(goal.source?.periodStartDate ?? goal.startDate)} - ${formatDate(
+    goal.source?.periodEndDate ?? goal.dueDate,
+  )}`;
+
+const periodGoalKindLabel = (goal: JobGoal) =>
+  goal.source?.periodKind === "retainer" ? "Retainer period" : "Recurrent period";
+
+const notifyRetainerOverageManagers = (source: JobGoal["source"]) => {
+  if (!job.value || source?.periodKind !== "retainer") return;
+  const totalPeriods = Number(source.totalPeriods ?? 0);
+  if (!totalPeriods) return;
+
+  const relatedRetainerGoals = goals.value.filter(
+    (goal) =>
+      goal.source?.periodKind === "retainer" &&
+      String(goal.source?.dealItemId ?? "") === String(source.dealItemId ?? ""),
+  );
+  if (relatedRetainerGoals.length <= totalPeriods) return;
+
+  const owner = job.value.projectManagerId
+    ? employeesStore.byId(job.value.projectManagerId)
+    : null;
+  const managerIds = [
+    ...new Set(
+      ((owner?.employment?.reportToIds ?? []) as Array<number | string>)
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  ];
+  const jobId = job.value.id;
+  const jobName = job.value.name ?? "Job";
+
+  managerIds.forEach((managerId) => {
+    systemNotificationsStore.addNotification({
+      recipientEmployeeId: managerId,
+      title: `Retainer goal overage: ${jobName}`,
+      body: `${source.itemName ?? "Retainer"} has ${relatedRetainerGoals.length} goals across ${totalPeriods} period(s).`,
+      type: "retainer-overage",
+      target: {
+        entityType: "job",
+        entityId: jobId,
+        routeName: "operations-jobs-view-id",
+        query: { tab: "milestones-goals" },
+      },
+    });
+  });
+};
+
 const shouldExpandGoal = (goalId: number) => {
   const tasks = jobTodos.value.filter(
     (todo) => String(todo.goalId ?? "") === String(goalId),
@@ -447,6 +515,7 @@ const resetGoalDraft = () => {
     dateOverride: false,
     priority: "Normal",
     note: "",
+    source: null,
   };
 };
 const openCreateMilestone = () => {
@@ -618,12 +687,13 @@ const deleteMilestone = (milestone: JobMilestone) => {
   notifications.push("Milestone removed", "success", 3000);
   emit("status-automation-trigger", "Milestone removed");
 };
-const openCreateGoal = (milestoneId?: number) => {
+const openCreateGoal = (milestoneId?: number, source?: JobGoal["source"]) => {
   if (milestoneId === undefined || milestoneId === null) return;
   goalDialog.mode = "create";
   goalDialog.visible = true;
   resetGoalDraft();
   goalDialog.draft.milestoneId = milestoneId;
+  goalDialog.draft.source = source ?? null;
   nextTick(() => goalFormRef.value?.resetValidation());
 };
 const openEditGoal = (goal: JobGoal) => {
@@ -645,6 +715,7 @@ const openEditGoal = (goal: JobGoal) => {
     dateOverride: Boolean(goal.dateOverride),
     priority: goal.priority,
     note: goal.note ?? "",
+    source: goal.source ?? null,
   };
   nextTick(() => goalFormRef.value?.resetValidation());
 };
@@ -665,7 +736,9 @@ const commitGoal = (
 ) => {
   if (!job.value) return;
   if (goalDialog.mode === "create") {
-    jobsStore.addGoal(job.value.id, patch);
+    const createdGoal = jobsStore.addGoal(job.value.id, patch);
+    if (createdGoal?.source?.periodKind === "retainer")
+      notifyRetainerOverageManagers(createdGoal.source);
   } else if (goalTargetId.value !== null) {
     jobsStore.updateGoal(job.value.id, goalTargetId.value, patch);
   }
@@ -1224,11 +1297,12 @@ const taskNotesPreview = (task: JobTodo) => {
                     :key="goal.id"
                     :value="goal.id"
                     class="goal-panel"
+                    :class="{ 'goal-panel--period': isPeriodGoal(goal) }"
                   >
                     <VExpansionPanelTitle>
                       <div class="d-flex align-center gap-3 w-100">
                         <VIcon
-                          icon="tabler-target-arrow"
+                          :icon="isPeriodGoal(goal) ? 'tabler-calendar-stats' : 'tabler-target-arrow'"
                           size="16"
                           class="goal-icon"
                         />
@@ -1241,7 +1315,7 @@ const taskNotesPreview = (task: JobTodo) => {
                                   v-bind="tooltipProps"
                                   class="font-weight-medium truncate-title truncate-title--header"
                                 >
-                                  {{ goal.name }}
+                                  {{ isPeriodGoal(goal) ? periodGoalTitle(goal) : goal.name }}
                                 </div>
                               </template>
                             </VTooltip>
@@ -1255,6 +1329,14 @@ const taskNotesPreview = (task: JobTodo) => {
                             </VChip>
                           </div>
                           <div class="text-caption text-medium-emphasis">
+                            <template v-if="isPeriodGoal(goal)">
+                              {{ periodGoalKindLabel(goal) }}
+                              <span v-if="goal.source?.periodNumber">
+                                {{ goal.source.periodNumber }}/{{ goal.source.totalPeriods || "--" }}
+                              </span>
+                              | {{ periodGoalDateRange(goal) }}
+                            </template>
+                            <template v-else>
                             Start {{ formatDate(goalEffectiveStartDate(goal)) }}
                             <span
                               :class="{
@@ -1263,6 +1345,7 @@ const taskNotesPreview = (task: JobTodo) => {
                             >
                               | Due {{ formatDate(goalEffectiveDueDate(goal)) }}
                             </span>
+                            </template>
                             | {{ completedTaskCount(goal.tasks) }}/{{
                               goal.tasks.length
                             }}
@@ -1302,6 +1385,22 @@ const taskNotesPreview = (task: JobTodo) => {
                                 variant="text"
                                 icon="tabler-checkbox"
                                 @click="openCreateTodoForGoal(goal)"
+                              />
+                            </template>
+                          </VTooltip>
+                          <VTooltip
+                            v-if="goal.source?.periodKind === 'retainer'"
+                            text="Add Goal to Period"
+                            location="top"
+                          >
+                            <template #activator="{ props: tooltipProps }">
+                              <VBtn
+                                v-bind="tooltipProps"
+                                class="goal-add-goal-btn"
+                                size="x-small"
+                                variant="text"
+                                icon="tabler-target-arrow"
+                                @click="openCreateGoal(goal.milestoneId ?? undefined, goal.source)"
                               />
                             </template>
                           </VTooltip>
@@ -1868,6 +1967,15 @@ const taskNotesPreview = (task: JobTodo) => {
   border: 0;
   border-radius: 10px;
   background: rgba(var(--v-theme-info), 0.035);
+}
+
+.goal-panels :deep(.goal-panel--period) {
+  border: 1px solid rgba(var(--v-theme-primary), 0.18);
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+
+.goal-panel--period :deep(.v-expansion-panel-title) {
+  border-block-end: 1px solid rgba(var(--v-theme-primary), 0.14);
 }
 
 .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {

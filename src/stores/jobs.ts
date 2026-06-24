@@ -144,6 +144,28 @@ function ensureGoals(goals: JobGoal[] | undefined | null): JobGoal[] {
   if (!Array.isArray(goals)) return [];
   return goals.map((goal) => cloneGoal(goal));
 }
+function normalizeGoalSource(source: JobGoal["source"] | undefined | null) {
+  if (!source || typeof source !== "object") return null;
+
+  return {
+    dealItemId: source.dealItemId ?? null,
+    catalogueType: source.catalogueType ?? null,
+    periodKind:
+      source.periodKind === "recurrent" || source.periodKind === "retainer"
+        ? source.periodKind
+        : null,
+    periodNumber: Number.isFinite(Number(source.periodNumber))
+      ? Number(source.periodNumber)
+      : null,
+    totalPeriods: Number.isFinite(Number(source.totalPeriods))
+      ? Number(source.totalPeriods)
+      : null,
+    periodLabel: source.periodLabel ?? null,
+    periodStartDate: source.periodStartDate ?? null,
+    periodEndDate: source.periodEndDate ?? null,
+    itemName: source.itemName ?? null,
+  };
+}
 function ensureDocuments(
   documents: JobDocument[] | undefined | null,
 ): JobDocument[] {
@@ -516,6 +538,7 @@ export const useJobsStore = defineStore("jobs", {
         dateOverride: Boolean(goal.dateOverride),
         priority: goal.priority ?? "Normal",
         note: goal.note?.trim() || undefined,
+        source: normalizeGoalSource(goal.source),
       };
       const updatedGoals = [...job.goals, normalized];
       this.updateJob(jobId, { goals: updatedGoals });
@@ -538,6 +561,10 @@ export const useJobsStore = defineStore("jobs", {
         ...patch,
         name: patch.name?.trim() || existing.name,
         note: patch.note?.trim() || existing.note,
+        source:
+          patch.source === undefined
+            ? (existing.source ?? null)
+            : normalizeGoalSource(patch.source),
         milestoneId:
           patch.milestoneId === undefined
             ? existing.milestoneId

@@ -408,7 +408,7 @@ const tabKeys = [
 
 const tabs = [
   { icon: "tabler-flag", title: "Details" },
-  { icon: "tabler-message", title: "Communication" },
+  { icon: "tabler-message", title: "Activities" },
   { icon: "tabler-folder", title: "Documents" },
   { icon: "tabler-credit-card", title: "Expenses" },
 ] as const;

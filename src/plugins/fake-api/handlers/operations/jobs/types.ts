@@ -44,6 +44,17 @@ export interface JobGoal {
   dateOverride?: boolean;
   priority: JobFlag;
   note?: string | null;
+  source?: {
+    dealItemId?: number | string | null;
+    catalogueType?: string | null;
+    periodKind?: "recurrent" | "retainer" | null;
+    periodNumber?: number | null;
+    totalPeriods?: number | null;
+    periodLabel?: string | null;
+    periodStartDate?: string | null;
+    periodEndDate?: string | null;
+    itemName?: string | null;
+  } | null;
 }
 
 export interface JobDocument {

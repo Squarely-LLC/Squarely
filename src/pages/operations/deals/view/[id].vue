@@ -20,6 +20,7 @@ import type {
 import type {
   JobDocument,
   JobFlag,
+  JobGoal,
   JobProperties,
   JobType,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
@@ -177,6 +178,7 @@ type ExecutionPreviewGoal = {
   priority: JobFlag;
   note: string | null;
   sourceLabel: string;
+  source?: JobGoal["source"];
   tasks: ExecutionPreviewTask[];
 };
 
@@ -238,6 +240,68 @@ const validJobTypes: JobType[] = [
 
 const isJobType = (value: string | null | undefined): value is JobType =>
   validJobTypes.includes((value || "") as JobType);
+
+type JobPeriodKind = "recurrent" | "retainer";
+
+const toIsoDateOnly = (date: Date) => date.toISOString().slice(0, 10);
+
+const addMonthsClamped = (date: Date, months: number) => {
+  const next = new Date(date);
+  const targetDay = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + months);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(targetDay, lastDay));
+
+  return next;
+};
+
+const buildJobPeriodRanges = (
+  item: DealItem,
+  kind: JobPeriodKind,
+): Array<NonNullable<JobGoal["source"]>> => {
+  const startValue =
+    kind === "recurrent" ? item.recurrentStartDate : item.retainerStartDate;
+  const endValue =
+    kind === "recurrent" ? item.recurrentEndDate : item.retainerEndDate;
+  const periodCount = Math.max(
+    Number(kind === "recurrent" ? item.recurrentPeriods : item.retainerPeriods) ||
+      1,
+    1,
+  );
+  const startDate = startValue ? new Date(startValue) : new Date();
+
+  return Array.from({ length: periodCount }, (_entry, index) => {
+    const periodStart = addMonthsClamped(startDate, index);
+    const naturalEnd = addMonthsClamped(periodStart, 1);
+    naturalEnd.setDate(naturalEnd.getDate() - 1);
+    const explicitEnd = endValue ? new Date(endValue) : null;
+    const periodEnd =
+      explicitEnd && index === periodCount - 1 && explicitEnd < naturalEnd
+        ? explicitEnd
+        : naturalEnd;
+    const periodNumber = index + 1;
+    const periodLabel = `Period ${periodNumber} - ${periodStart.toLocaleString(
+      "en-US",
+      {
+        month: "short",
+        year: "numeric",
+      },
+    )}`;
+
+    return {
+      dealItemId: item.id,
+      catalogueType: item.catalogueType ?? item.itemTypeLabel ?? null,
+      periodKind: kind,
+      periodNumber,
+      totalPeriods: periodCount,
+      periodLabel,
+      periodStartDate: toIsoDateOnly(periodStart),
+      periodEndDate: toIsoDateOnly(periodEnd),
+      itemName: item.name,
+    };
+  });
+};
 
 const formatPreviewDate = (value?: string | null) => {
   if (!value) return "--";
@@ -761,6 +825,97 @@ const buildExecutionPreview = (
 
       return previewTask;
     };
+
+    const itemTypeLabel = item.catalogueType || item.itemTypeLabel || "";
+    const itemPeriodKind: JobPeriodKind | null =
+      itemTypeLabel === "Reccurent Service"
+        ? "recurrent"
+        : itemTypeLabel === "Retainer Service"
+          ? "retainer"
+          : null;
+
+    if (itemPeriodKind) {
+      const periodRanges = buildJobPeriodRanges(item, itemPeriodKind);
+      const periodMilestones = configMilestones.length
+        ? configMilestones
+        : [
+            {
+              id: "periods",
+              name: item.name,
+              priority: "Normal",
+              note: item.note || "",
+              tasks: [],
+              goals: [],
+            } as any,
+          ];
+
+      periodMilestones.forEach((milestone, milestoneIndex) => {
+        const milestoneKey = `milestone:${item.id}:${milestone.id}:${milestoneIndex}`;
+        const previewMilestone: ExecutionPreviewMilestone = {
+          key: milestoneKey,
+          name: String(milestone.name || item.name).trim() || item.name,
+          startDate: periodRanges[0]?.periodStartDate || executedAt,
+          dueDate:
+            periodRanges[periodRanges.length - 1]?.periodEndDate ?? null,
+          dateOverride: true,
+          priority: milestone.priority ?? "Normal",
+          note: String(milestone.note || "").trim() || null,
+          sourceLabel: item.name,
+          isFallback: false,
+          tasks: [],
+          goals: [],
+        };
+
+        previewMilestone.goals = periodRanges.map((period) => {
+          const goalKey = `goal:${item.id}:${milestone.id}:period:${period.periodNumber}:${milestoneIndex}`;
+          const periodLabel = period.periodLabel || `Period ${period.periodNumber}`;
+          const previewGoal: ExecutionPreviewGoal = {
+            key: goalKey,
+            milestoneKey,
+            name: `${periodLabel} - ${item.name}`,
+            startDate: period.periodStartDate || executedAt,
+            dueDate: period.periodEndDate ?? null,
+            dateOverride: true,
+            priority: milestone.priority ?? "Normal",
+            note: null,
+            sourceLabel: item.name,
+            source: period,
+            tasks: [],
+          };
+          const periodTasks = [
+            ...(milestone.tasks || []),
+            ...(milestone.goals || []).flatMap((goal: any) => goal.tasks || []),
+          ];
+
+          previewGoal.tasks = periodTasks.map((task, taskIndex) =>
+            createPreviewTask(task, {
+              key: `task:${itemPeriodKind}:${item.id}:${milestone.id}:${period.periodNumber}:${task.id}:${taskIndex}`,
+              kind: "goal",
+              sourceLabel: `${item.name} / ${periodLabel}`,
+              milestoneKey,
+              goalKey,
+              baselineAt: period.periodStartDate || executedAt,
+            }),
+          );
+
+          return previewGoal;
+        });
+
+        milestones.push(previewMilestone);
+      });
+
+      itemTasks.forEach((task) => {
+        if (task.startTriggerType !== "task" || !task.startTriggerTaskSourceId)
+          return;
+
+        const lookupKey = task.startTriggerTaskSourceId;
+        if (!lookupKey) return;
+
+        task.startTriggerTaskKey = taskTemplateMap.get(lookupKey) ?? null;
+      });
+
+      return;
+    }
 
     configMilestones.forEach((milestone, milestoneIndex) => {
       const milestoneKey = `milestone:${item.id}:${milestone.id}:${milestoneIndex}`;
@@ -1699,6 +1854,7 @@ const confirmDealExecution = () => {
           dateOverride: Boolean(goal.dateOverride),
           priority: goal.priority,
           note: goal.note,
+          source: goal.source ?? null,
         });
 
         if (createdGoal) goalIdByKey.set(goal.key, createdGoal.id);
