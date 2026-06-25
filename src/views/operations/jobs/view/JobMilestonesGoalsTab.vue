@@ -251,7 +251,10 @@ const latestDate = (values: Array<string | null | undefined>) => {
 const dateKey = (value?: string | null) => {
   const date = validDateValue(value);
   if (!date) return "";
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 const datesConflict = (
@@ -284,8 +287,8 @@ const goalEffectiveDueDate = (goal: JobGoal & { tasks: JobTodo[] }) =>
 
 const hasGoalDateConflict = (goal: JobGoal & { tasks: JobTodo[] }) =>
   datesConflict(
-    goal.startDate,
-    goal.dueDate,
+    goalEffectiveStartDate(goal),
+    goalEffectiveDueDate(goal),
     goalDerivedStartDate(goal),
     goalDerivedDueDate(goal),
   );
@@ -329,8 +332,8 @@ const hasMilestoneDateConflict = (milestone: JobMilestone & {
   goals: Array<JobGoal & { tasks: JobTodo[] }>;
 }) =>
   datesConflict(
-    milestone.startDate,
-    milestone.dueDate,
+    milestoneEffectiveStartDate(milestone),
+    milestoneEffectiveDueDate(milestone),
     milestoneDerivedStartDate(milestone),
     milestoneDerivedDueDate(milestone),
   );
