@@ -164,6 +164,33 @@ function normalizeGoalSource(source: JobGoal["source"] | undefined | null) {
     periodStartDate: source.periodStartDate ?? null,
     periodEndDate: source.periodEndDate ?? null,
     itemName: source.itemName ?? null,
+    serviceId: source.serviceId ?? null,
+    serviceKind:
+      source.serviceKind === "custom" || source.serviceKind === "imported"
+        ? source.serviceKind
+        : null,
+    serviceName: source.serviceName ?? null,
+    customServiceId: source.customServiceId ?? null,
+    serviceQuantity: Number.isFinite(Number(source.serviceQuantity))
+      ? Math.max(0, Number(source.serviceQuantity))
+      : null,
+    retainerServices: Array.isArray(source.retainerServices)
+      ? source.retainerServices
+          .map((service) => ({
+            id: service.id,
+            name: String(service.name ?? "").trim(),
+            quantity: Number.isFinite(Number(service.quantity))
+              ? Math.max(0, Number(service.quantity))
+              : 0,
+            note: service.note ?? null,
+            kind:
+              service.kind === "custom" || service.kind === "imported"
+                ? service.kind
+                : null,
+          }))
+          .filter((service) => service.name && service.quantity > 0)
+      : null,
+    isPeriodPlaceholder: Boolean(source.isPeriodPlaceholder),
   };
 }
 function ensureDocuments(

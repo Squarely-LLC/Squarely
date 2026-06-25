@@ -54,6 +54,19 @@ export interface JobGoal {
     periodStartDate?: string | null;
     periodEndDate?: string | null;
     itemName?: string | null;
+    serviceId?: number | string | null;
+    serviceKind?: "imported" | "custom" | null;
+    serviceName?: string | null;
+    customServiceId?: number | string | null;
+    serviceQuantity?: number | null;
+    retainerServices?: Array<{
+      id: number | string;
+      name: string;
+      quantity: number;
+      note?: string | null;
+      kind?: "imported" | "custom" | null;
+    }> | null;
+    isPeriodPlaceholder?: boolean | null;
   } | null;
 }
 

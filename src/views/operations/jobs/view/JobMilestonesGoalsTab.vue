@@ -2,12 +2,15 @@
 import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ToDo } from "@/data/schema";
+import type { DealItem } from "@/plugins/fake-api/handlers/operations/deals/types";
 import type {
   JobGoal,
   JobMilestone,
   JobProperties,
 } from "@/plugins/fake-api/handlers/operations/jobs/types";
+import { useCataloguesStore } from "@/stores/catalogues";
 import { useConfigStore } from "@/stores/config";
+import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -20,6 +23,7 @@ import {
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import type { VForm } from "vuetify/components/VForm";
+import { getDealRetainerServiceLines } from "@/utils/dealDocumentDraft";
 interface Props {
   jobId: number | string;
 }
@@ -31,6 +35,10 @@ const emit = defineEmits<{
   (e: "status-automation-trigger", action: string): void;
 }>();
 const jobsStore = useJobsStore();
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
+const dealsStore = useDealsStore();
+dealsStore.init();
 const configStore = useConfigStore();
 configStore.init();
 const employeesStore = useEmployeesStore();
@@ -76,6 +84,16 @@ const goalDialog = reactive({
     source: null as JobGoal["source"],
   },
 });
+const retainerServicesDialog = reactive({
+  visible: false,
+  groupKey: "",
+  periodNumber: 0,
+  milestoneId: 0,
+  goalId: null as number | string | null,
+  periodSource: null as JobGoal["source"],
+  selections: [] as RetainerServiceSelection[],
+  customServices: [] as RetainerCustomServiceDraft[],
+});
 const milestoneTargetId = ref<number | null>(null);
 const goalTargetId = ref<number | null>(null);
 const milestoneTitle = computed(() =>
@@ -110,6 +128,22 @@ type PeriodGroup = {
   milestoneId: number;
   totalPeriods: number;
   sections: PeriodSection[];
+};
+type RetainerServiceSelection = {
+  id: number | string;
+  name: string;
+  original: number;
+  used: number;
+  remaining: number;
+  quantity: number;
+  note?: string | null;
+  kind?: "imported" | "custom" | null;
+};
+type RetainerCustomServiceDraft = {
+  id: string;
+  name: string;
+  quantity: number;
+  note: string;
 };
 
 const jobTodos = computed<JobTodo[]>(() => {
@@ -189,6 +223,8 @@ const isDueSoon = (value?: string | null) => {
 
 const isTaskLocked = (task: JobTodo) => isFutureDate((task as any).startAt);
 const taskStartAt = (task: JobTodo) => (task as any).startAt ?? null;
+const formatTaskStartDate = (task: JobTodo) => formatDate(taskStartAt(task));
+const formatTaskEndDate = (task: JobTodo) => formatDate(task.dueAt);
 
 const validDateValue = (value?: string | null) => {
   if (!value) return null;
@@ -246,6 +282,14 @@ const goalEffectiveDueDate = (goal: JobGoal & { tasks: JobTodo[] }) =>
     ? (goal.dueDate ?? null)
     : (goalDerivedDueDate(goal) ?? goal.dueDate ?? null);
 
+const hasGoalDateConflict = (goal: JobGoal & { tasks: JobTodo[] }) =>
+  datesConflict(
+    goal.startDate,
+    goal.dueDate,
+    goalDerivedStartDate(goal),
+    goalDerivedDueDate(goal),
+  );
+
 const milestoneDerivedStartDate = (milestone: JobMilestone & {
   tasks: JobTodo[];
   goals: Array<JobGoal & { tasks: JobTodo[] }>;
@@ -279,6 +323,17 @@ const milestoneEffectiveDueDate = (milestone: JobMilestone & {
   milestone.dateOverride
     ? (milestone.dueDate ?? null)
     : (milestoneDerivedDueDate(milestone) ?? milestone.dueDate ?? null);
+
+const hasMilestoneDateConflict = (milestone: JobMilestone & {
+  tasks: JobTodo[];
+  goals: Array<JobGoal & { tasks: JobTodo[] }>;
+}) =>
+  datesConflict(
+    milestone.startDate,
+    milestone.dueDate,
+    milestoneDerivedStartDate(milestone),
+    milestoneDerivedDueDate(milestone),
+  );
 
 const deriveStatusFromTasks = (
   startDate: string | null | undefined,
@@ -349,6 +404,14 @@ const workStatusColor = (status: WorkStatus) => jobWorkStatusColor(status);
 
 const isPeriodGoal = (goal: JobGoal) =>
   goal.source?.periodKind === "recurrent" || goal.source?.periodKind === "retainer";
+
+const isRetainerPlaceholderGoal = (goal: JobGoal) =>
+  goal.source?.periodKind === "retainer" && Boolean(goal.source?.isPeriodPlaceholder);
+
+const periodVisibleGoals = (section: PeriodSection) =>
+  section.goals.filter(
+    (goal) => !isRetainerPlaceholderGoal(goal) || goal.tasks.length > 0,
+  );
 
 const periodGoalLabel = (goal: JobGoal) =>
   goal.source?.periodLabel ||
@@ -432,10 +495,19 @@ const periodGroupsForMilestone = (milestone: MilestoneWithChildren): PeriodGroup
 const periodSectionTasks = (section: PeriodSection) =>
   section.goals.flatMap((goal) => goal.tasks);
 
+const periodServiceTasks = (section: PeriodSection) =>
+  section.goals
+    .filter((goal) => isRetainerPlaceholderGoal(goal))
+    .flatMap((goal) => goal.tasks);
+
 const periodSectionStatus = (section: PeriodSection): WorkStatus => {
   const tasks = periodSectionTasks(section);
-  if (!section.goals.length || !tasks.length) return "Not Started";
-  const goalStatuses = section.goals.map((goal) => goalStatus(goal));
+  const serviceGoals = periodVisibleGoals(section);
+  if (!tasks.length && !serviceGoals.length) return "Not Started";
+  if (!tasks.length) return "Not Started";
+  const goalStatuses = serviceGoals.length
+    ? serviceGoals.map((goal) => goalStatus(goal))
+    : [deriveStatusFromTasks(section.source.periodStartDate, tasks)];
   if (goalStatuses.every((status) => status === "Completed")) return "Completed";
   if (goalStatuses.some((status) => status === "In Progress"))
     return "In Progress";
@@ -481,6 +553,310 @@ const periodTimelineProgressWidth = (group: PeriodGroup) => {
 
 const periodGroupTypeLabel = (group: PeriodGroup) =>
   group.kind === "retainer" ? "Retainer Periods" : "Recurrent Periods";
+
+const retainerServicesFromLinkedDeal = (group: PeriodGroup) => {
+  const source = group.sections.find((section) => section.source.dealItemId)?.source;
+  if (!source?.dealItemId) return [];
+
+  const dealItem = dealsStore.all
+    .flatMap((deal) => deal.items || [])
+    .find((item) => String(item.id) === String(source.dealItemId));
+  if (!dealItem) return [];
+
+  const record = dealItem.catalogueItemId
+    ? cataloguesStore.recordById(
+        dealItem.catalogueItemId,
+        dealItem.catalogueType || undefined,
+      )
+    : null;
+  if (record?.type !== "Retainer Service") return [];
+
+  return getDealRetainerServiceLines(dealItem as DealItem, record).map((service) => ({
+    id: service.isCustom ? `custom-${service.id}` : service.id,
+    name: service.name,
+    quantity: Math.max(1, Number(service.quantity ?? 1)),
+    note: service.note ?? null,
+    kind: service.isCustom ? "custom" as const : "imported" as const,
+  }));
+};
+
+const retainerServicesForGroup = (group: PeriodGroup) => {
+  const services = new Map<
+    string,
+    {
+      id: number | string;
+      name: string;
+      quantity: number;
+      note?: string | null;
+      kind?: "imported" | "custom" | null;
+    }
+  >();
+
+  group.sections.forEach((section) => {
+    (section.source.retainerServices || []).forEach((service) => {
+      if (!service?.name) return;
+      const quantity = Number(service.quantity ?? 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) return;
+      services.set(String(service.id), {
+        id: service.id,
+        name: service.name,
+        quantity,
+        note: service.note ?? null,
+        kind: service.kind ?? "imported",
+      });
+    });
+  });
+
+  if (!services.size) {
+    retainerServicesFromLinkedDeal(group).forEach((service) => {
+      services.set(String(service.id), service);
+    });
+  }
+
+  return [...services.values()];
+};
+
+const usedRetainerServiceQuantity = (
+  group: PeriodGroup,
+  serviceId: number | string,
+) => {
+  const usedFromGoals = group.sections
+    .flatMap((section) => periodVisibleGoals(section))
+    .filter((goal) => String(goal.source?.serviceId ?? "") === String(serviceId))
+    .reduce((sum, goal) => sum + Math.max(1, Number(goal.source?.serviceQuantity ?? 1)), 0);
+  const usedFromTasks = group.sections
+    .flatMap((section) => periodSectionTasks(section))
+    .filter((task) => String((task as any).source?.serviceId ?? "") === String(serviceId))
+    .reduce(
+      (sum, task) =>
+        sum + Math.max(1, Number((task as any).source?.serviceQuantity ?? 1)),
+      0,
+    );
+
+  return usedFromGoals + usedFromTasks;
+};
+
+const remainingRetainerServices = (group: PeriodGroup) =>
+  retainerServicesForGroup(group)
+    .map((service) => {
+      const used = usedRetainerServiceQuantity(group, service.id);
+
+      return {
+        ...service,
+        used,
+        remaining: Math.max(0, service.quantity - used),
+      };
+    });
+
+const addCustomRetainerServiceDraft = () => {
+  retainerServicesDialog.customServices.push({
+    id: `custom-${Date.now()}-${retainerServicesDialog.customServices.length + 1}`,
+    name: "",
+    quantity: 1,
+    note: "",
+  });
+};
+
+const removeCustomRetainerServiceDraft = (id: string) => {
+  retainerServicesDialog.customServices =
+    retainerServicesDialog.customServices.filter((service) => service.id !== id);
+};
+
+const openAddRetainerServices = (group: PeriodGroup, section: PeriodSection) => {
+  const periodGoal =
+    section.goals.find((goal) => isRetainerPlaceholderGoal(goal)) ??
+    section.goals[0] ??
+    null;
+  retainerServicesDialog.visible = true;
+  retainerServicesDialog.groupKey = group.key;
+  retainerServicesDialog.periodNumber = section.periodNumber;
+  retainerServicesDialog.milestoneId = group.milestoneId;
+  retainerServicesDialog.goalId = periodGoal?.id ?? null;
+  retainerServicesDialog.periodSource = section.source;
+  retainerServicesDialog.selections = remainingRetainerServices(group).map(
+    (service) => ({
+      id: service.id,
+      name: service.name,
+      original: service.quantity,
+      used: service.used,
+      remaining: service.remaining,
+      quantity: 0,
+      note: service.note ?? null,
+      kind: service.kind ?? "imported",
+    }),
+  );
+  retainerServicesDialog.customServices = [];
+  if (!retainerServicesDialog.selections.some((service) => service.remaining > 0))
+    addCustomRetainerServiceDraft();
+};
+
+const closeRetainerServicesDialog = () => {
+  retainerServicesDialog.visible = false;
+  retainerServicesDialog.groupKey = "";
+  retainerServicesDialog.periodNumber = 0;
+  retainerServicesDialog.milestoneId = 0;
+  retainerServicesDialog.goalId = null;
+  retainerServicesDialog.periodSource = null;
+  retainerServicesDialog.selections = [];
+  retainerServicesDialog.customServices = [];
+};
+
+const saveRetainerServices = () => {
+  if (!job.value || !retainerServicesDialog.periodSource) return;
+
+  const selected = retainerServicesDialog.selections.filter(
+    (service) => Number(service.quantity) > 0,
+  );
+  const customServices = retainerServicesDialog.customServices
+    .map((service) => ({
+      ...service,
+      name: service.name.trim(),
+      quantity: Number(service.quantity),
+      note: service.note.trim(),
+    }))
+    .filter((service) => service.name && service.quantity > 0);
+
+  if (!selected.length && !customServices.length) {
+    notifications.push("Select at least one service", "warning", 2500);
+    return;
+  }
+  if (
+    retainerServicesDialog.customServices.some(
+      (service) => service.name.trim() && Number(service.quantity) <= 0,
+    )
+  ) {
+    notifications.push("Custom service quantity must be greater than 0", "warning", 3000);
+    return;
+  }
+  if (
+    selected.some(
+      (service) =>
+        Number(service.quantity) > service.remaining || Number(service.quantity) < 0,
+    )
+  ) {
+    notifications.push("Service quantity exceeds remaining quantity", "warning", 3000);
+    return;
+  }
+
+  const addRetainerServiceTask = (service: {
+    id: number | string;
+    name: string;
+    quantity: number;
+    note?: string | null;
+    kind?: "imported" | "custom" | null;
+    customServiceId?: number | string | null;
+  }) => {
+    const quantity = Math.max(1, Number(service.quantity));
+    const taskTitle = `${service.name}${quantity > 1 ? ` x ${quantity}` : ""}`;
+
+    todosStore.addTodo({
+      title: taskTitle,
+      collaborators: [],
+      dueAt:
+        retainerServicesDialog.periodSource?.periodEndDate ||
+        new Date().toISOString(),
+      startAt:
+        retainerServicesDialog.periodSource?.periodStartDate ||
+        job.value?.startDate ||
+        null,
+      completionMinutes: null,
+      important: false,
+      status: "pending",
+      steps: [],
+      notes: service.note || `Created for retainer period service: ${service.name}`,
+      activities: [],
+      messages: [],
+      relatedTo: {
+        id: job.value!.id,
+        name: job.value!.name,
+        type: "job",
+      },
+      milestoneId: retainerServicesDialog.milestoneId,
+      goalId: retainerServicesDialog.goalId,
+      source: {
+        ...(retainerServicesDialog.periodSource || {}),
+        type: "job-retainer-service",
+        isPeriodPlaceholder: false,
+        serviceId: service.id,
+        serviceKind: service.kind ?? "imported",
+        customServiceId: service.customServiceId ?? null,
+        serviceName: service.name,
+        serviceQuantity: quantity,
+      } as any,
+    });
+  };
+
+  selected.forEach((service) => {
+    const quantity = Math.max(1, Number(service.quantity));
+    addRetainerServiceTask({
+      id: service.id,
+      name: service.name,
+      quantity,
+      note: service.note ?? null,
+      kind: service.kind ?? "imported",
+    });
+  });
+
+  customServices.forEach((service) => {
+    const quantity = Math.max(1, Number(service.quantity));
+    const customServiceId = service.id || `custom-${Date.now()}`;
+
+    addRetainerServiceTask({
+      id: customServiceId,
+      name: service.name,
+      quantity,
+      note: service.note || null,
+      kind: "custom",
+      customServiceId,
+    });
+  });
+
+  if (customServices.length) notifyCustomRetainerServiceManagers(customServices);
+
+  notifications.push("Services added", "success", 2500);
+  closeRetainerServicesDialog();
+  emit("status-automation-trigger", "Retainer services added");
+};
+
+const notifyCustomRetainerServiceManagers = (
+  customServices: Array<{ name: string; quantity: number }>,
+) => {
+  if (!job.value || !customServices.length) return;
+
+  const owner = job.value.projectManagerId
+    ? employeesStore.byId(job.value.projectManagerId)
+    : null;
+  const managerIds = [
+    ...new Set(
+      ((owner?.employment?.reportToIds ?? []) as Array<number | string>)
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  ];
+  const jobId = job.value.id;
+  const jobName = job.value.name ?? "Job";
+  const servicesLabel = customServices
+    .map((service) => `${service.name} x ${Math.max(1, Number(service.quantity))}`)
+    .join(", ");
+  const periodLabel =
+    retainerServicesDialog.periodSource?.periodLabel ||
+    `Period ${retainerServicesDialog.periodNumber}`;
+
+  managerIds.forEach((managerId) => {
+    systemNotificationsStore.addNotification({
+      recipientEmployeeId: managerId,
+      title: `Custom retainer service: ${jobName}`,
+      body: `${servicesLabel} added to ${periodLabel}.`,
+      type: "retainer-custom-service",
+      target: {
+        entityType: "job",
+        entityId: jobId,
+        routeName: "operations-jobs-view-id",
+        query: { tab: "milestones-goals" },
+      },
+    });
+  });
+};
 
 const notifyRetainerOverageManagers = (source: JobGoal["source"]) => {
   if (!job.value || source?.periodKind !== "retainer") return;
@@ -1210,16 +1586,16 @@ const taskNotesPreview = (task: JobTodo) => {
                       >
                     </span>
                     <VChip
-                      v-if="milestone.dateOverride"
+                      v-if="hasMilestoneDateConflict(milestone)"
                       size="x-small"
                       label
                       color="warning"
                       variant="tonal"
                       class="ms-1"
                     >
-                      Manual dates
+                      Conflicting dates
                       <VTooltip activator="parent" location="top">
-                        Parent dates were manually kept instead of child rollup.
+                        Parent dates differ from child rollup dates.
                       </VTooltip>
                     </VChip>
                   </div>
@@ -1362,7 +1738,8 @@ const taskNotesPreview = (task: JobTodo) => {
                       </div>
 
                       <div class="job-task-date">
-                        {{ formatDate(task.dueAt) }}
+                        <span>{{ formatTaskStartDate(task) }}</span>
+                        <span>{{ formatTaskEndDate(task) }}</span>
                       </div>
 
                       <div class="job-task-assigned">
@@ -1440,8 +1817,10 @@ const taskNotesPreview = (task: JobTodo) => {
                     class="job-period-timeline"
                   >
                     <div class="job-period-timeline__services">
-                      <div class="job-period-timeline__services-title">
-                        {{ periodGroupTypeLabel(periodGroup) }}
+                      <div class="job-period-timeline__services-heading">
+                        <div class="job-period-timeline__services-title">
+                          {{ periodGroupTypeLabel(periodGroup) }}
+                        </div>
                       </div>
                       <div class="job-period-timeline__services-list">
                         <VCard
@@ -1497,9 +1876,20 @@ const taskNotesPreview = (task: JobTodo) => {
                               class="d-flex align-center gap-3 goal-actions"
                               @click.stop
                             >
+                              <VBtn
+                                v-if="periodGroup.kind === 'retainer' && selectedPeriodSection(periodGroup)"
+                                size="x-small"
+                                color="primary"
+                                variant="tonal"
+                                prepend-icon="tabler-plus"
+                                @click="openAddRetainerServices(periodGroup, selectedPeriodSection(periodGroup)!)"
+                              >
+                                Add Services
+                              </VBtn>
                               <VTooltip text="Add Task" location="top">
                                 <template #activator="{ props: tooltipProps }">
                                   <VBtn
+                                    v-if="!isRetainerPlaceholderGoal(goal)"
                                     v-bind="tooltipProps"
                                     class="goal-add-task-btn"
                                     size="x-small"
@@ -1509,23 +1899,12 @@ const taskNotesPreview = (task: JobTodo) => {
                                   />
                                 </template>
                               </VTooltip>
-                              <VTooltip
-                                v-if="goal.source?.periodKind === 'retainer'"
-                                text="Add Goal to Period"
-                                location="top"
+                              <VBtn
+                                v-if="!isRetainerPlaceholderGoal(goal)"
+                                icon
+                                variant="text"
+                                size="x-small"
                               >
-                                <template #activator="{ props: tooltipProps }">
-                                  <VBtn
-                                    v-bind="tooltipProps"
-                                    class="goal-add-goal-btn"
-                                    size="x-small"
-                                    variant="text"
-                                    icon="tabler-target-arrow"
-                                    @click="openCreateGoal(goal.milestoneId ?? undefined, goal.source)"
-                                  />
-                                </template>
-                              </VTooltip>
-                              <VBtn icon variant="text" size="x-small">
                                 <VIcon icon="tabler-dots-vertical" size="18" />
                                 <VTooltip activator="parent" location="top">
                                   Show more
@@ -1625,12 +2004,12 @@ const taskNotesPreview = (task: JobTodo) => {
                             <template v-if="periodGroup.kind === 'retainer'">
                               <VDivider class="my-1" />
                               <VListItem
-                                @click="openCreateGoal(periodGroup.milestoneId, section.source)"
+                                @click="openAddRetainerServices(periodGroup, section)"
                               >
                                 <template #prepend>
                                   <VIcon icon="tabler-target-arrow" />
                                 </template>
-                                <VListItemTitle>Add Goal to Period</VListItemTitle>
+                                <VListItemTitle>Add Services</VListItemTitle>
                               </VListItem>
                             </template>
                           </VList>
@@ -1642,28 +2021,14 @@ const taskNotesPreview = (task: JobTodo) => {
                       v-if="selectedPeriodSection(periodGroup)"
                       class="job-period-selected"
                     >
-                      <div class="job-period-selected__header">
-                        <div>
-                          <div class="job-period-selected__title">
-                            {{ selectedPeriodSection(periodGroup)?.label }}
-                          </div>
-                          <div class="text-caption text-medium-emphasis">
-                            {{ selectedPeriodSection(periodGroup) ? periodSectionDateRange(selectedPeriodSection(periodGroup)!) : "--" }}
-                          </div>
-                        </div>
-                        <VChip
-                          v-if="selectedPeriodSection(periodGroup)"
-                          :color="workStatusColor(periodSectionStatus(selectedPeriodSection(periodGroup)!))"
-                          :style="jobWorkStatusChipStyle(periodSectionStatus(selectedPeriodSection(periodGroup)!))"
-                          size="x-small"
-                          label
-                        >
-                          {{ periodSectionStatus(selectedPeriodSection(periodGroup)!) }}
-                        </VChip>
+                      <div
+                        v-if="periodGroup.kind === 'retainer' && selectedPeriodSection(periodGroup) && !periodVisibleGoals(selectedPeriodSection(periodGroup)!).length"
+                        class="text-body-2 text-medium-emphasis empty-tasks"
+                      >
+                        No services added to this period yet.
                       </div>
-
                       <template
-                        v-for="goal in selectedPeriodSection(periodGroup)?.goals || []"
+                        v-for="goal in selectedPeriodSection(periodGroup) ? periodVisibleGoals(selectedPeriodSection(periodGroup)!) : []"
                         :key="`period-goal-tasks-${goal.id}`"
                       >
                         <div
@@ -1741,7 +2106,8 @@ const taskNotesPreview = (task: JobTodo) => {
                               </div>
 
                               <div class="job-task-date">
-                                {{ formatDate(task.dueAt) }}
+                                <span>{{ formatTaskStartDate(task) }}</span>
+                                <span>{{ formatTaskEndDate(task) }}</span>
                               </div>
 
                               <div class="job-task-assigned">
@@ -1884,16 +2250,16 @@ const taskNotesPreview = (task: JobTodo) => {
                             }}
                             tasks completed
                             <VChip
-                              v-if="goal.dateOverride"
+                              v-if="hasGoalDateConflict(goal)"
                               size="x-small"
                               label
                               color="warning"
                               variant="tonal"
                               class="ms-1"
                             >
-                              Manual dates
+                              Conflicting dates
                               <VTooltip activator="parent" location="top">
-                                Parent dates were manually kept instead of child rollup.
+                                Parent dates differ from child rollup dates.
                               </VTooltip>
                             </VChip>
                           </div>
@@ -1918,22 +2284,6 @@ const taskNotesPreview = (task: JobTodo) => {
                                 variant="text"
                                 icon="tabler-checkbox"
                                 @click="openCreateTodoForGoal(goal)"
-                              />
-                            </template>
-                          </VTooltip>
-                          <VTooltip
-                            v-if="goal.source?.periodKind === 'retainer'"
-                            text="Add Goal to Period"
-                            location="top"
-                          >
-                            <template #activator="{ props: tooltipProps }">
-                              <VBtn
-                                v-bind="tooltipProps"
-                                class="goal-add-goal-btn"
-                                size="x-small"
-                                variant="text"
-                                icon="tabler-target-arrow"
-                                @click="openCreateGoal(goal.milestoneId ?? undefined, goal.source)"
                               />
                             </template>
                           </VTooltip>
@@ -2039,7 +2389,8 @@ const taskNotesPreview = (task: JobTodo) => {
                                 </div>
                               </div>
                               <div class="job-task-date">
-                                {{ formatDate(task.dueAt) }}
+                                <span>{{ formatTaskStartDate(task) }}</span>
+                                <span>{{ formatTaskEndDate(task) }}</span>
                               </div>
                               <div class="job-task-assigned">
                                 <div
@@ -2209,7 +2560,8 @@ const taskNotesPreview = (task: JobTodo) => {
               </div>
             </div>
             <div class="job-task-date">
-              {{ formatDate(task.dueAt) }}
+              <span>{{ formatTaskStartDate(task) }}</span>
+              <span>{{ formatTaskEndDate(task) }}</span>
             </div>
             <div class="job-task-assigned">
               <div
@@ -2318,6 +2670,144 @@ const taskNotesPreview = (task: JobTodo) => {
           </VBtn>
           <VBtn color="warning" @click="confirmKeepManualDates">
             Keep my dates
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+    <VDialog
+      :model-value="retainerServicesDialog.visible"
+      attach="body"
+      :width="$vuetify.display.smAndDown ? 'auto' : 640"
+      @update:model-value="(val: boolean) => (val ? undefined : closeRetainerServicesDialog())"
+    >
+      <DialogCloseBtn @click="closeRetainerServicesDialog" />
+      <VCard>
+        <VCardText>
+          <h5 class="text-h5 mb-2">Add Services</h5>
+          <p class="text-body-2 text-medium-emphasis mb-4">
+            Add imported services by remaining quantity, or add custom services for this period.
+          </p>
+          <div class="text-subtitle-2 mb-2">Imported Services</div>
+          <div
+            v-if="retainerServicesDialog.selections.length"
+            class="d-flex flex-column gap-3"
+          >
+            <VCard
+              v-for="service in retainerServicesDialog.selections"
+              :key="service.id"
+              variant="tonal"
+              class="pa-3"
+            >
+              <div class="d-flex align-center gap-3 flex-wrap">
+                <div class="flex-grow-1 min-w-0">
+                  <div class="font-weight-medium">{{ service.name }}</div>
+                  <div class="text-caption text-medium-emphasis">
+                    Original: {{ service.original }} | Used: {{ service.used }} |
+                    Remaining: {{ service.remaining }}
+                  </div>
+                </div>
+                <VTextField
+                  v-model.number="service.quantity"
+                  label="Qty"
+                  type="number"
+                  min="0"
+                  :max="service.remaining"
+                  density="compact"
+                  :disabled="service.remaining <= 0"
+                  hide-details
+                  style="max-inline-size: 7rem"
+                />
+              </div>
+            </VCard>
+          </div>
+          <div v-else class="text-body-2 text-medium-emphasis">
+            No imported services found for this period.
+          </div>
+
+          <VDivider class="my-4" />
+
+          <div class="d-flex align-center justify-space-between gap-3 mb-2">
+            <div>
+              <div class="text-subtitle-2">Custom Services</div>
+              <div class="text-caption text-medium-emphasis">
+                Custom services notify the project owner's managers.
+              </div>
+            </div>
+            <VBtn
+              size="small"
+              variant="tonal"
+              color="primary"
+              prepend-icon="tabler-plus"
+              @click="addCustomRetainerServiceDraft"
+            >
+              Custom
+            </VBtn>
+          </div>
+
+          <div
+            v-if="retainerServicesDialog.customServices.length"
+            class="d-flex flex-column gap-3"
+          >
+            <VCard
+              v-for="service in retainerServicesDialog.customServices"
+              :key="service.id"
+              variant="tonal"
+              class="pa-3"
+            >
+              <VRow dense>
+                <VCol cols="12" md="6">
+                  <AppTextField
+                    v-model="service.name"
+                    label="Service"
+                    placeholder="Service name"
+                    hide-details
+                  />
+                </VCol>
+                <VCol cols="8" md="3">
+                  <AppTextField
+                    v-model.number="service.quantity"
+                    label="Qty"
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    hide-details
+                  />
+                </VCol>
+                <VCol cols="4" md="3" class="d-flex justify-end align-center">
+                  <VBtn
+                    icon
+                    variant="text"
+                    color="error"
+                    @click="removeCustomRetainerServiceDraft(service.id)"
+                  >
+                    <VIcon icon="tabler-trash" size="18" />
+                  </VBtn>
+                </VCol>
+                <VCol cols="12">
+                  <AppTextarea
+                    v-model="service.note"
+                    label="Note"
+                    rows="2"
+                    auto-grow
+                    hide-details
+                  />
+                </VCol>
+              </VRow>
+            </VCard>
+          </div>
+          <div v-else class="text-body-2 text-medium-emphasis">
+            No custom services added.
+          </div>
+        </VCardText>
+        <VCardActions class="justify-end flex-wrap gap-2">
+          <VBtn variant="tonal" color="secondary" @click="closeRetainerServicesDialog">
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            @click="saveRetainerServices"
+          >
+            Add Services
           </VBtn>
         </VCardActions>
       </VCard>
@@ -2564,6 +3054,13 @@ const taskNotesPreview = (task: JobTodo) => {
   margin-block-end: 0.9rem;
 }
 
+.job-period-timeline__services-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .job-period-timeline__services-title {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.68rem;
@@ -2778,18 +3275,6 @@ const taskNotesPreview = (task: JobTodo) => {
   margin-block-start: 0.9rem;
 }
 
-.job-period-selected__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.job-period-selected__title {
-  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-weight: 700;
-}
-
 .milestone-direct-tasks {
   margin-block-end: 0;
 }
@@ -2830,7 +3315,7 @@ const taskNotesPreview = (task: JobTodo) => {
   column-gap: 1rem;
   cursor: pointer;
   grid-template-columns:
-    1.75rem 2rem minmax(16rem, 1fr) minmax(5.25rem, 0.45fr)
+    1.75rem 2rem minmax(16rem, 1fr) minmax(5.25rem, 0.38fr)
     minmax(8.75rem, 0.7fr) minmax(7rem, 0.48fr);
   min-block-size: 4.5rem;
   padding-block: 0.625rem;
@@ -2929,8 +3414,19 @@ const taskNotesPreview = (task: JobTodo) => {
 }
 
 .job-task-date {
+  display: flex;
+  flex-direction: column;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.78rem;
   font-weight: 600;
+  gap: 0.05rem;
+  line-height: 1.15;
+}
+
+.job-task-date span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .job-task-assigned {

@@ -29,6 +29,7 @@ declare global {
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
   const buildAbilityRules: typeof import('./src/utils/accountRoles')['buildAbilityRules']
+  const buildCompletedTaskPatch: typeof import('./src/utils/jobTaskRules')['buildCompletedTaskPatch']
   const buildCustomBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']
   const buildDealDocumentDraftRecord: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']
   const buildDealDocumentUsageKey: typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']
@@ -66,6 +67,7 @@ declare global {
   const createGenericProjection: typeof import('@vueuse/math')['createGenericProjection']
   const createGlobalState: typeof import('@vueuse/core')['createGlobalState']
   const createInjectionState: typeof import('@vueuse/core')['createInjectionState']
+  const createJobStatusSuggestionNotification: typeof import('./src/utils/jobTaskRules')['createJobStatusSuggestionNotification']
   const createPdfFileFromElement: typeof import('./src/utils/domPdf')['createPdfFileFromElement']
   const createPinia: typeof import('pinia')['createPinia']
   const createProjection: typeof import('@vueuse/math')['createProjection']
@@ -89,6 +91,7 @@ declare global {
   const definePage: typeof import('unplugin-vue-router/runtime')['definePage']
   const defineStore: typeof import('pinia')['defineStore']
   const deleteFile: typeof import('./src/utils/fileStore')['deleteFile']
+  const deriveSuggestedJobStatus: typeof import('./src/utils/jobTaskRules')['deriveSuggestedJobStatus']
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
@@ -107,6 +110,7 @@ declare global {
   const generateJobProjectCode: typeof import('./src/utils/jobProjectCode')['generateJobProjectCode']
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getBillableRootDealItems: typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']
+  const getCompletionMinutesDraft: typeof import('./src/utils/jobTaskRules')['getCompletionMinutesDraft']
   const getConfiguredCurrencySymbol: typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']
   const getContactAndEmployeeEmailOptions: typeof import('./src/utils/peopleOptions')['getContactAndEmployeeEmailOptions']
   const getContactAndEmployeeOptions: typeof import('./src/utils/peopleOptions')['getContactAndEmployeeOptions']
@@ -164,6 +168,7 @@ declare global {
   const h: typeof import('vue')['h']
   const hasDealDocumentPhaseOrPeriodLines: typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']
   const hasHiddenFinancials: typeof import('./src/utils/authorization')['hasHiddenFinancials']
+  const hasJobTaskStartedEarly: typeof import('./src/utils/jobTaskRules')['hasJobTaskStartedEarly']
   const hasRolePermission: typeof import('./src/utils/accountRoles')['hasRolePermission']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -174,6 +179,7 @@ declare global {
   const invalidateAuthSession: typeof import('./src/utils/authSession')['invalidateAuthSession']
   const isAutoBillableDealItem: typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']
   const isBillableRootDealItem: typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']
+  const isCurrentProjectOwner: typeof import('./src/utils/jobTaskRules')['isCurrentProjectOwner']
   const isDealDocumentPhaseOrPeriodLine: typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']
   const isDealPhaseOrPeriodItem: typeof import('./src/utils/dealDocumentDraft')['isDealPhaseOrPeriodItem']
   const isDefined: typeof import('@vueuse/core')['isDefined']
@@ -181,6 +187,9 @@ declare global {
   const isDocumentSourceInternal: typeof import('./src/utils/documentSourceModes')['isDocumentSourceInternal']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
+  const isExecutableJobTaskStatus: typeof import('./src/utils/jobTaskRules')['isExecutableJobTaskStatus']
+  const isFutureJobTaskStart: typeof import('./src/utils/jobTaskRules')['isFutureJobTaskStart']
+  const isJobTask: typeof import('./src/utils/jobTaskRules')['isJobTask']
   const isLiteralRelatedDealItem: typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']
   const isNullOrUndefined: typeof import('./src/@core/utils/helpers')['isNullOrUndefined']
   const isObject: typeof import('./src/@core/utils/helpers')['isObject']
@@ -191,6 +200,12 @@ declare global {
   const isRef: typeof import('vue')['isRef']
   const isRichTextEmpty: typeof import('./src/utils/richText')['isRichTextEmpty']
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
+  const jobStatusChipStyle: typeof import('./src/utils/jobStatusColors')['jobStatusChipStyle']
+  const jobStatusColor: typeof import('./src/utils/jobStatusColors')['jobStatusColor']
+  const jobStatusColorClass: typeof import('./src/utils/jobStatusColors')['jobStatusColorClass']
+  const jobWorkStatusChipStyle: typeof import('./src/utils/jobStatusColors')['jobWorkStatusChipStyle']
+  const jobWorkStatusColor: typeof import('./src/utils/jobStatusColors')['jobWorkStatusColor']
+  const jobWorkStatusColorClass: typeof import('./src/utils/jobStatusColors')['jobWorkStatusColorClass']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
   const loadAccountRoleState: typeof import('./src/utils/accountRoles')['loadAccountRoleState']
@@ -298,6 +313,7 @@ declare global {
   const shallowRef: typeof import('vue')['shallowRef']
   const shareToWhatsApp: typeof import('./src/utils/shareToWhatsApp')['shareToWhatsApp']
   const shareWithSystem: typeof import('./src/utils/shareWithSystem')['shareWithSystem']
+  const shouldHideJobTaskFromTasksPage: typeof import('./src/utils/jobTaskRules')['shouldHideJobTaskFromTasksPage']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const syncRef: typeof import('@vueuse/core')['syncRef']
   const syncRefs: typeof import('@vueuse/core')['syncRefs']
@@ -557,6 +573,7 @@ declare module 'vue' {
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
     readonly buildAbilityRules: UnwrapRef<typeof import('./src/utils/accountRoles')['buildAbilityRules']>
+    readonly buildCompletedTaskPatch: UnwrapRef<typeof import('./src/utils/jobTaskRules')['buildCompletedTaskPatch']>
     readonly buildCustomBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildCustomBillingPeriod']>
     readonly buildDealDocumentDraftRecord: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentDraftRecord']>
     readonly buildDealDocumentUsageKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildDealDocumentUsageKey']>
@@ -594,6 +611,7 @@ declare module 'vue' {
     readonly createGenericProjection: UnwrapRef<typeof import('@vueuse/math')['createGenericProjection']>
     readonly createGlobalState: UnwrapRef<typeof import('@vueuse/core')['createGlobalState']>
     readonly createInjectionState: UnwrapRef<typeof import('@vueuse/core')['createInjectionState']>
+    readonly createJobStatusSuggestionNotification: UnwrapRef<typeof import('./src/utils/jobTaskRules')['createJobStatusSuggestionNotification']>
     readonly createPdfFileFromElement: UnwrapRef<typeof import('./src/utils/domPdf')['createPdfFileFromElement']>
     readonly createPinia: UnwrapRef<typeof import('pinia')['createPinia']>
     readonly createProjection: UnwrapRef<typeof import('@vueuse/math')['createProjection']>
@@ -617,6 +635,7 @@ declare module 'vue' {
     readonly definePage: UnwrapRef<typeof import('unplugin-vue-router/runtime')['definePage']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
     readonly deleteFile: UnwrapRef<typeof import('./src/utils/fileStore')['deleteFile']>
+    readonly deriveSuggestedJobStatus: UnwrapRef<typeof import('./src/utils/jobTaskRules')['deriveSuggestedJobStatus']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
@@ -635,6 +654,7 @@ declare module 'vue' {
     readonly generateJobProjectCode: UnwrapRef<typeof import('./src/utils/jobProjectCode')['generateJobProjectCode']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getBillableRootDealItems: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['getBillableRootDealItems']>
+    readonly getCompletionMinutesDraft: UnwrapRef<typeof import('./src/utils/jobTaskRules')['getCompletionMinutesDraft']>
     readonly getConfiguredCurrencySymbol: UnwrapRef<typeof import('./src/utils/quotationConfig')['getConfiguredCurrencySymbol']>
     readonly getContactAndEmployeeEmailOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactAndEmployeeEmailOptions']>
     readonly getContactAndEmployeeOptions: UnwrapRef<typeof import('./src/utils/peopleOptions')['getContactAndEmployeeOptions']>
@@ -693,6 +713,7 @@ declare module 'vue' {
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasDealDocumentPhaseOrPeriodLines: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['hasDealDocumentPhaseOrPeriodLines']>
     readonly hasHiddenFinancials: UnwrapRef<typeof import('./src/utils/authorization')['hasHiddenFinancials']>
+    readonly hasJobTaskStartedEarly: UnwrapRef<typeof import('./src/utils/jobTaskRules')['hasJobTaskStartedEarly']>
     readonly hasRolePermission: UnwrapRef<typeof import('./src/utils/accountRoles')['hasRolePermission']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
@@ -703,6 +724,7 @@ declare module 'vue' {
     readonly invalidateAuthSession: UnwrapRef<typeof import('./src/utils/authSession')['invalidateAuthSession']>
     readonly isAutoBillableDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isAutoBillableDealItem']>
     readonly isBillableRootDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isBillableRootDealItem']>
+    readonly isCurrentProjectOwner: UnwrapRef<typeof import('./src/utils/jobTaskRules')['isCurrentProjectOwner']>
     readonly isDealDocumentPhaseOrPeriodLine: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealDocumentPhaseOrPeriodLine']>
     readonly isDealPhaseOrPeriodItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isDealPhaseOrPeriodItem']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
@@ -710,6 +732,9 @@ declare module 'vue' {
     readonly isDocumentSourceInternal: UnwrapRef<typeof import('./src/utils/documentSourceModes')['isDocumentSourceInternal']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>
+    readonly isExecutableJobTaskStatus: UnwrapRef<typeof import('./src/utils/jobTaskRules')['isExecutableJobTaskStatus']>
+    readonly isFutureJobTaskStart: UnwrapRef<typeof import('./src/utils/jobTaskRules')['isFutureJobTaskStart']>
+    readonly isJobTask: UnwrapRef<typeof import('./src/utils/jobTaskRules')['isJobTask']>
     readonly isLiteralRelatedDealItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['isLiteralRelatedDealItem']>
     readonly isNullOrUndefined: UnwrapRef<typeof import('./src/@core/utils/helpers')['isNullOrUndefined']>
     readonly isObject: UnwrapRef<typeof import('./src/@core/utils/helpers')['isObject']>
@@ -720,6 +745,12 @@ declare module 'vue' {
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
     readonly isRichTextEmpty: UnwrapRef<typeof import('./src/utils/richText')['isRichTextEmpty']>
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
+    readonly jobStatusChipStyle: UnwrapRef<typeof import('./src/utils/jobStatusColors')['jobStatusChipStyle']>
+    readonly jobStatusColor: UnwrapRef<typeof import('./src/utils/jobStatusColors')['jobStatusColor']>
+    readonly jobStatusColorClass: UnwrapRef<typeof import('./src/utils/jobStatusColors')['jobStatusColorClass']>
+    readonly jobWorkStatusChipStyle: UnwrapRef<typeof import('./src/utils/jobStatusColors')['jobWorkStatusChipStyle']>
+    readonly jobWorkStatusColor: UnwrapRef<typeof import('./src/utils/jobStatusColors')['jobWorkStatusColor']>
+    readonly jobWorkStatusColorClass: UnwrapRef<typeof import('./src/utils/jobStatusColors')['jobWorkStatusColorClass']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
     readonly loadAccountRoleState: UnwrapRef<typeof import('./src/utils/accountRoles')['loadAccountRoleState']>
@@ -827,6 +858,7 @@ declare module 'vue' {
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly shareToWhatsApp: UnwrapRef<typeof import('./src/utils/shareToWhatsApp')['shareToWhatsApp']>
     readonly shareWithSystem: UnwrapRef<typeof import('./src/utils/shareWithSystem')['shareWithSystem']>
+    readonly shouldHideJobTaskFromTasksPage: UnwrapRef<typeof import('./src/utils/jobTaskRules')['shouldHideJobTaskFromTasksPage']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>

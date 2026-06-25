@@ -36,7 +36,10 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
-import { getQuotationTopLevelDealItems } from "@/utils/dealDocumentDraft";
+import {
+  getDealRetainerServiceLines,
+  getQuotationTopLevelDealItems,
+} from "@/utils/dealDocumentDraft";
 import {
   getDealDocumentBalance,
   getDealDocumentPaid,
@@ -301,6 +304,40 @@ const buildJobPeriodRanges = (
       itemName: item.name,
     };
   });
+};
+
+const buildRetainerServiceOptions = (
+  item: DealItem,
+): NonNullable<NonNullable<JobGoal["source"]>["retainerServices"]> => {
+  const record = item.catalogueItemId
+    ? (cataloguesStore.recordById(
+        item.catalogueItemId,
+        item.catalogueType || undefined,
+      ) as any)
+    : null;
+  if (record?.type === "Retainer Service") {
+    return getDealRetainerServiceLines(item, record).map((service) => ({
+      id: service.isCustom ? `custom-${service.id}` : service.id,
+      name: service.name,
+      quantity: Math.max(1, Number(service.quantity ?? 1)),
+      note: service.note ?? null,
+      kind: service.isCustom ? "custom" : "imported",
+    }));
+  }
+
+  const quantity = Number.isFinite(Number(item.quantity))
+    ? Math.max(1, Number(item.quantity))
+    : 1;
+
+  return [
+    {
+      id: item.id,
+      name: item.name,
+      quantity,
+      note: item.note ?? null,
+      kind: "imported",
+    },
+  ];
 };
 
 const formatPreviewDate = (value?: string | null) => {
@@ -835,7 +872,18 @@ const buildExecutionPreview = (
           : null;
 
     if (itemPeriodKind) {
-      const periodRanges = buildJobPeriodRanges(item, itemPeriodKind);
+      const retainerServices =
+        itemPeriodKind === "retainer" ? buildRetainerServiceOptions(item) : null;
+      const periodRanges = buildJobPeriodRanges(item, itemPeriodKind).map(
+        (period) =>
+          itemPeriodKind === "retainer"
+            ? {
+                ...period,
+                retainerServices,
+                isPeriodPlaceholder: true,
+              }
+            : period,
+      );
       const periodMilestones = configMilestones.length
         ? configMilestones
         : [
@@ -872,7 +920,10 @@ const buildExecutionPreview = (
           const previewGoal: ExecutionPreviewGoal = {
             key: goalKey,
             milestoneKey,
-            name: `${periodLabel} - ${item.name}`,
+            name:
+              itemPeriodKind === "retainer"
+                ? periodLabel
+                : `${periodLabel} - ${item.name}`,
             startDate: period.periodStartDate || executedAt,
             dueDate: period.periodEndDate ?? null,
             dateOverride: true,
@@ -882,10 +933,15 @@ const buildExecutionPreview = (
             source: period,
             tasks: [],
           };
-          const periodTasks = [
-            ...(milestone.tasks || []),
-            ...(milestone.goals || []).flatMap((goal: any) => goal.tasks || []),
-          ];
+          const periodTasks =
+            itemPeriodKind === "retainer"
+              ? []
+              : [
+                  ...(milestone.tasks || []),
+                  ...(milestone.goals || []).flatMap(
+                    (goal: any) => goal.tasks || [],
+                  ),
+                ];
 
           previewGoal.tasks = periodTasks.map((task, taskIndex) =>
             createPreviewTask(task, {

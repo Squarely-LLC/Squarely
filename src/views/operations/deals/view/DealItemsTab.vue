@@ -2925,7 +2925,7 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
                 discountPercent: service.discountPercent,
                 discountLabel: null,
                 taxApplicable: service.taxApplicable,
-                showQuantity: false,
+                showQuantity: true,
                 showPrice: false,
                 showDiscount: false,
                 showTaxApplicable: false,
@@ -2962,7 +2962,7 @@ const deriveSections = (item: DealItem): DerivedSection[] => {
               discountPercent: service.discountPercent,
               discountLabel: null,
               taxApplicable: service.taxApplicable,
-              showQuantity: false,
+              showQuantity: true,
               showPrice: false,
               showDiscount: false,
               showTaxApplicable: false,
@@ -8171,6 +8171,12 @@ const openEditTask = (taskId: number | string) => {
                                 >
                                   {{ goal.typeLabel }}
                                 </VChip>
+                                <span
+                                  v-if="goal.typeLabel === 'Retainer Service'"
+                                  class="text-body-2 text-medium-emphasis"
+                                >
+                                  Qty {{ goal.quantity ?? "--" }}
+                                </span>
                               </div>
                             </div>
 
