@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
+import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { getContactAndEmployeeRefs } from "@/utils/peopleOptions";
 import { computed, nextTick, ref, watch } from "vue";
@@ -35,6 +36,7 @@ export interface NewMeetingPayload {
   meetingType: string;
   linkedTo: ContactRef[];
   relatedTo?: { id: string | number; name: string; type: string } | null;
+  relatedToMany?: { id: string | number; name: string; type: string }[];
   attachmentFile?: File | null;
   // compatibility aliases for other consumers (todos store expects these)
   subject?: string;
@@ -71,7 +73,9 @@ const emit = defineEmits<{
 }>();
 
 const jobsStore = useJobsStore();
+const dealsStore = useDealsStore();
 jobsStore.init();
+dealsStore.init();
 
 const refForm = ref<VForm>();
 const isFormValid = ref(false);
@@ -86,12 +90,10 @@ const locationPreset = ref("");
 const locationDetails = ref("");
 const notes = ref("");
 const attachmentFile = ref<File | null>(null);
-const selectedRelatedKey = ref<string | null>(null);
-const initialRelatedTo = ref<{
-  id: string | number;
-  name: string;
-  type: string;
-} | null>(null);
+const selectedRelatedKeys = ref<string[]>([]);
+const initialRelatedToMany = ref<
+  { id: string | number; name: string; type: string }[]
+>([]);
 
 // build stable keys so contact/employee ids don't collide
 const contactKey = (id: string | number) => `contact-${id}`;
@@ -107,14 +109,32 @@ const combinedKey = (
     .toLowerCase()
     .trim();
 
-// Options for the Related to dropdown (jobs only)
+// Options for the Related to dropdown (jobs + deals)
 const relatedOptions = computed(() =>
-  jobsStore.all.map((job) => ({
-    title: job.name,
-    value: `job-${job.id}`,
-    type: "job" as const,
-    rawId: job.id,
-  })),
+  [
+    ...jobsStore.all.map((job) => ({
+      title: `Job: ${job.code || job.name || job.id}`,
+      value: `job:${job.id}`,
+      type: "job" as const,
+      rawId: job.id,
+      raw: {
+        id: job.id,
+        name: job.name || job.code || `Job #${job.id}`,
+        type: "job",
+      },
+    })),
+    ...dealsStore.all.map((deal: any) => ({
+      title: `Deal: ${deal.code || deal.name || deal.id}`,
+      value: `deal:${deal.id}`,
+      type: "deal" as const,
+      rawId: deal.id,
+      raw: {
+        id: deal.id,
+        name: deal.name || deal.code || `Deal #${deal.id}`,
+        type: "deal",
+      },
+    })),
+  ],
 );
 
 // Normalized options for the Linked to dropdown (contacts + employees + both)
@@ -374,9 +394,17 @@ function applyInitial(initial?: any) {
         .map((l: any) => resolveLinkedValue(l))
         .filter((v: string | null): v is string => !!v);
     }
-    initialRelatedTo.value = initial.relatedTo ?? null;
-    if (initial.relatedTo && initial.relatedTo.type === "job") {
-      selectedRelatedKey.value = `job-${initial.relatedTo.id}`;
+    initialRelatedToMany.value = Array.isArray(initial.relatedToMany)
+      ? initial.relatedToMany
+      : initial.relatedTo
+        ? [initial.relatedTo]
+        : [];
+    if (initialRelatedToMany.value.length) {
+      selectedRelatedKeys.value = initialRelatedToMany.value.map(
+        (record) => `${record.type}:${record.id}`,
+      );
+    } else if (initial.relatedTo) {
+      selectedRelatedKeys.value = [`${initial.relatedTo.type}:${initial.relatedTo.id}`];
     }
     if (initial.attachmentFile)
       attachmentFile.value = initial.attachmentFile as File;
@@ -517,12 +545,10 @@ watch(
 watch(
   () => relatedOptions.value,
   (opts) => {
-    if (
-      selectedRelatedKey.value &&
-      !opts.some((opt) => opt.value === selectedRelatedKey.value)
-    ) {
-      selectedRelatedKey.value = null;
-    }
+    const valid = new Set(opts.map((opt) => opt.value));
+    selectedRelatedKeys.value = selectedRelatedKeys.value.filter((key) =>
+      valid.has(key),
+    );
   },
   { deep: true },
 );
@@ -557,8 +583,8 @@ function initialiseForm() {
   locationDetails.value = "";
   notes.value = "";
   attachmentFile.value = null;
-  selectedRelatedKey.value = null;
-  initialRelatedTo.value = null;
+  selectedRelatedKeys.value = [];
+  initialRelatedToMany.value = [];
   linkedSearch.value = "";
 }
 
@@ -592,9 +618,10 @@ async function onSubmit() {
 
   const location = buildLocation();
 
-  const relatedOption = relatedOptions.value.find(
-    (opt) => opt.value === selectedRelatedKey.value,
-  );
+  const selectedRelated = new Set(selectedRelatedKeys.value.map(String));
+  const relatedRecords = relatedOptions.value
+    .filter((opt) => selectedRelated.has(opt.value))
+    .map((opt) => opt.raw);
 
   const payload: NewMeetingPayload = {
     id: `${Date.now()}`,
@@ -612,13 +639,8 @@ async function onSubmit() {
     meetingType: meetingType.value,
     linkedTo: linkedContactsPayload.value,
     attachmentFile: attachmentFile.value,
-    relatedTo: relatedOption
-      ? {
-          id: relatedOption.rawId,
-          name: relatedOption.title,
-          type: relatedOption.type,
-        }
-      : initialRelatedTo.value,
+    relatedTo: relatedRecords[0] || null,
+    relatedToMany: relatedRecords,
     // compatibility fields expected by todos store and other consumers
     subject: subject.value.trim(),
     startAt: startDate.toISOString(),
@@ -814,22 +836,25 @@ function toDateTimeLocalString(input?: string | Date) {
                 </AppAutocomplete>
               </VCol>
 
-              <!-- Related to job selection -->
+              <!-- Related to jobs/deals selection -->
               <VCol cols="12">
-                <AppSelect
-                  v-model="selectedRelatedKey"
+                <AppAutocomplete
+                  v-model="selectedRelatedKeys"
                   label="Related to"
-                  placeholder="Select a job"
+                  placeholder="Attach jobs or deals"
                   item-title="title"
                   item-value="value"
                   :items="relatedOptions"
+                  multiple
+                  chips
+                  closable-chips
                   clearable
                   :disabled="props.lockRelatedTo"
                 >
                   <template #prepend-inner>
                     <VIcon icon="tabler-briefcase" size="20" class="me-2" />
                   </template>
-                </AppSelect>
+                </AppAutocomplete>
               </VCol>
 
               <VCol cols="12">

@@ -12,10 +12,13 @@ import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { getEmployeeRefs } from "@/utils/peopleOptions";
+import AddMeetingDrawer, {
+  type NewMeetingPayload,
+} from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import MomKanbanBoard from "@/views/apps/meetings/MomKanbanBoard.vue";
-import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
-import { computed, reactive, ref, watch } from "vue";
+import { formatSystemDateTime } from "@core/utils/formatters";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const route = useRoute();
@@ -31,7 +34,10 @@ jobsStore.init();
 
 const meetingId = computed(() => String(route.params.id || ""));
 const meeting = computed(() => todosStore.meetingById(meetingId.value) as Meeting | null);
+const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
+const isMeetingDrawerOpen = ref(false);
 const emailDialog = ref<InstanceType<typeof EmailDialog> | null>(null);
+const isEmailDialogVisible = ref(false);
 
 const DEFAULT_SUBJECT_ID = "default";
 
@@ -65,13 +71,33 @@ const completeDialog = reactive({
 });
 
 const deleteDialog = ref(false);
+const replaceSummaryDialog = ref(false);
+const pendingGeneratedSummary = ref("");
+
+const postponeDialog = reactive({
+  open: false,
+  startAt: "",
+});
 
 function nowIso() {
   return new Date().toISOString();
 }
 
+function toast(message: string, color: "success" | "error" | "warning" | "info" = "success") {
+  notifications.push(message, color);
+}
+
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.round(Math.random() * 10000)}`;
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function cloneMom(source?: MeetingMom | null): MeetingMom {
@@ -173,6 +199,7 @@ function updateRelatedRecords(keys: Array<string | number>) {
     },
     { system: true },
   );
+  toast("Meeting related records updated.");
 }
 
 const attendees = computed<ContactRef[]>(() => {
@@ -216,6 +243,17 @@ function statusColor(status = effectiveStatus.value) {
   return "primary";
 }
 
+const canComplete = computed(
+  () => effectiveStatus.value !== "canceled" && effectiveStatus.value !== "completed",
+);
+const canPostpone = computed(
+  () => effectiveStatus.value !== "canceled" && effectiveStatus.value !== "completed",
+);
+const canCancel = computed(
+  () => effectiveStatus.value !== "completed" && effectiveStatus.value !== "canceled",
+);
+const canGenerateTasks = computed(() => Boolean(mom.value.completedAt));
+
 function notesForSubject(subjectId: string | number) {
   const orderedIds =
     subjects.value.find((subject) => String(subject.id) === String(subjectId))?.noteIds || [];
@@ -241,9 +279,26 @@ function autoSummary(nextMom = mom.value) {
       const subjectNotes = nextMom.notes.filter((note) => String(note.subjectId) === String(subject.id));
       if (!subjectNotes.length) return "";
       const list = subjectNotes
-        .map((note) => `<li>${stripHtml(note.bodyHtml) || "Note"}</li>`)
+        .map((note) => {
+          const meta = [
+            note.dueAt
+              ? `Due: ${formatSystemDateTime(new Date(note.dueAt).getTime())}`
+              : "",
+            note.assignee ? `Assignee: ${note.assignee}` : "",
+            note.collaborators?.length
+              ? `Collaborators: ${note.collaborators.map((item) => item.name).join(", ")}`
+              : "",
+            note.attachments?.length ? `${note.attachments.length} attachment(s)` : "",
+            note.links?.length ? `${note.links.length} link(s)` : "",
+            note.internal ? "Internal" : "",
+            note.createTask ? "Task requested" : "",
+          ].filter(Boolean);
+          return `<li><p>${escapeHtml(stripHtml(note.bodyHtml) || "Note")}</p>${
+            meta.length ? `<small>${escapeHtml(meta.join(" | "))}</small>` : ""
+          }</li>`;
+        })
         .join("");
-      return `<h3>${subject.title}</h3><ul>${list}</ul>`;
+      return `<h3>${escapeHtml(subject.title)}</h3><ul>${list}</ul>`;
     })
     .filter(Boolean)
     .join("");
@@ -261,10 +316,31 @@ function updateSummary(summaryHtml: string) {
   persistMom(nextMom);
 }
 
-function parseMmSs(value: string) {
-  const [mins = "0", secs = "0"] = String(value || "").split(":");
-  const total = Number(mins) * 60 + Number(secs);
-  return Number.isFinite(total) && total >= 0 ? total : 0;
+function applyGeneratedSummary(summaryHtml = pendingGeneratedSummary.value) {
+  const nextMom = cloneMom(mom.value);
+  nextMom.summaryHtml = summaryHtml || "<p>No meeting notes yet.</p>";
+  nextMom.summaryTouched = true;
+  persistMom(nextMom);
+  pendingGeneratedSummary.value = "";
+  replaceSummaryDialog.value = false;
+  toast("Meeting summary generated.");
+}
+
+function generateSummary() {
+  const generated = autoSummary(mom.value) || "<p>No meeting notes yet.</p>";
+  const hasExisting = stripHtml(mom.value.summaryHtml).trim().length > 0;
+  if (hasExisting) {
+    pendingGeneratedSummary.value = generated;
+    replaceSummaryDialog.value = true;
+    return;
+  }
+  applyGeneratedSummary(generated);
+}
+
+function cancelSummaryReplacement() {
+  pendingGeneratedSummary.value = "";
+  replaceSummaryDialog.value = false;
+  toast("Summary replacement canceled.", "info");
 }
 
 function formatMmSs(seconds?: number | null) {
@@ -283,12 +359,6 @@ function formatHhMm(minutes?: number | null) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function onDurationChange(value: string) {
-  const nextMom = cloneMom(mom.value);
-  nextMom.durationSeconds = parseMmSs(value);
-  persistMom(nextMom);
-}
-
 function avatarText(name?: string | null) {
   return (
     name
@@ -298,6 +368,71 @@ function avatarText(name?: string | null) {
       .map((part) => part[0]?.toUpperCase())
       .join("") || "?"
   );
+}
+
+function toLocalDateTimeInput(value?: string | Date | null) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function parseDateTimeInput(value: string) {
+  const normalized = String(value || "").trim().replace(" ", "T");
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function openEditMeeting() {
+  if (!meeting.value) return;
+  isMeetingDrawerOpen.value = true;
+  nextTick(() => {
+    addMeetingRef.value?.openWith?.({
+      title: meeting.value?.subject,
+      initialStart: meeting.value?.startAt,
+      durationMins: meeting.value?.duration,
+      meetingType: meeting.value?.type,
+      notes: meeting.value?.note,
+      location: meeting.value?.location,
+      linkedTo: meeting.value?.linkedTo || [],
+      relatedTo: meeting.value?.relatedTo || null,
+      relatedToMany: meeting.value?.relatedToMany || [],
+    });
+  });
+}
+
+function closeMeetingDrawer() {
+  isMeetingDrawerOpen.value = false;
+}
+
+function saveMeetingEdit(payload: NewMeetingPayload) {
+  if (!meeting.value) {
+    toast("Meeting update failed.", "error");
+    return;
+  }
+
+  todosStore.updateMeeting(
+    meeting.value.id,
+    {
+      subject: payload.subject || payload.title,
+      startAt: payload.startAt || payload.start,
+      duration: payload.duration ?? payload.durationMins,
+      type: (payload.type || payload.meetingType) as Meeting["type"],
+      linkedTo: payload.linkedTo as any,
+      relatedTo: payload.relatedTo || null,
+      relatedToMany: Array.isArray(payload.relatedToMany)
+        ? (payload.relatedToMany as any)
+        : payload.relatedTo
+          ? [payload.relatedTo as any]
+          : meeting.value.relatedToMany || [],
+      location: payload.location || "",
+      note: payload.note || payload.notes || "",
+      attachments: payload.attachments as any,
+    },
+    { system: true },
+  );
+  isMeetingDrawerOpen.value = false;
+  toast("Meeting updated.");
 }
 
 function addSubject(titleValue: string) {
@@ -313,6 +448,7 @@ function addSubject(titleValue: string) {
     updatedAt: now,
   });
   persistMom(syncSummary(nextMom));
+  toast("Subject added.");
 }
 
 function renameSubject(payload: { subjectId: string | number; title: string }) {
@@ -327,6 +463,7 @@ function renameSubject(payload: { subjectId: string | number; title: string }) {
     String(item.id) === String(subject.id) ? { ...item, title, updatedAt: nowIso() } : item,
   );
   persistMom(syncSummary(nextMom));
+  toast("Subject renamed.");
 }
 
 function removeSubject(subject: MeetingMomSubject) {
@@ -343,6 +480,7 @@ function removeSubject(subject: MeetingMomSubject) {
       .map((note) => note.id);
   }
   persistMom(syncSummary(nextMom));
+  toast("Subject deleted.");
 }
 
 function updateSubjectOrder(ids: Array<string | number>) {
@@ -363,6 +501,7 @@ function updateSubjectOrder(ids: Array<string | number>) {
     ? [defaultSubject, ...ordered, ...missing]
     : [...ordered, ...missing];
   persistMom(nextMom);
+  toast("Subjects reordered.");
 }
 
 function selectedCollaborators(ids: Array<string | number>): ContactRef[] {
@@ -411,6 +550,7 @@ function saveInlineNote(payload: MomNoteSavePayload) {
   });
 
   persistMom(syncSummary(nextMom));
+  toast(index === -1 ? "Note added." : "Note updated.");
 }
 
 function updateNotesState(payload: {
@@ -434,6 +574,10 @@ function updateNotesState(payload: {
     };
   });
   persistMom(syncSummary(nextMom));
+  const targetSubject = subjects.value.find(
+    (subject) => String(subject.id) === String(payload.subjectId),
+  );
+  toast(`Note moved${targetSubject ? ` to ${targetSubject.title}` : ""}.`);
 }
 
 function deleteNote(note: MeetingMomNote) {
@@ -444,6 +588,7 @@ function deleteNote(note: MeetingMomNote) {
     noteIds: subject.noteIds.filter((id) => String(id) !== String(note.id)),
   }));
   persistMom(syncSummary(nextMom));
+  toast("Note deleted.");
 }
 
 function toggleInternal(note: MeetingMomNote) {
@@ -454,6 +599,7 @@ function toggleInternal(note: MeetingMomNote) {
       : item,
   );
   persistMom(nextMom);
+  toast(!note.internal ? "Note marked internal." : "Note marked public.");
 }
 
 function markAttendance(attendee: ContactRef, attended: boolean) {
@@ -463,9 +609,14 @@ function markAttendance(attendee: ContactRef, attended: boolean) {
     [String(attendee.id)]: attended,
   };
   persistMom(nextMom);
+  toast(`${attendee.name} marked ${attended ? "attended" : "not attended"}.`);
 }
 
 function openCompleteMeeting() {
+  if (!canComplete.value) {
+    toast("Canceled or completed meetings cannot be completed.", "error");
+    return;
+  }
   completeDialog.sentiment = (mom.value.sentiment || "good") as MeetingSentiment;
   completeDialog.duration = formatHhMm(
     mom.value.durationSeconds ? Math.round(mom.value.durationSeconds / 60) : meeting.value?.duration || 30,
@@ -474,6 +625,10 @@ function openCompleteMeeting() {
 }
 
 function completeMeeting() {
+  if (!meeting.value || !canComplete.value) {
+    toast("Meeting cannot be completed.", "error");
+    return;
+  }
   const nextMom = cloneMom(mom.value);
   const seconds = parseHhMm(completeDialog.duration);
   nextMom.completedAt = nowIso();
@@ -489,36 +644,68 @@ function completeMeeting() {
     },
   });
   completeDialog.open = false;
+  toast("Meeting completed.");
+}
+
+function openPostponeMeeting() {
+  if (!canPostpone.value) {
+    toast("Canceled or completed meetings cannot be postponed.", "error");
+    return;
+  }
+  postponeDialog.startAt = toLocalDateTimeInput(meeting.value?.startAt);
+  postponeDialog.open = true;
 }
 
 function postponeMeeting() {
-  if (!meeting.value || effectiveStatus.value === "completed") return;
+  if (!meeting.value || !canPostpone.value) {
+    toast("Meeting cannot be postponed.", "error");
+    return;
+  }
+  const nextStart = parseDateTimeInput(postponeDialog.startAt);
+  if (!nextStart) {
+    toast("Select a valid postpone date.", "error");
+    return;
+  }
   todosStore.updateMeeting(
     meeting.value.id,
     {
       status: "postponed",
+      startAt: nextStart.toISOString(),
       postponedCount: Number(meeting.value.postponedCount || 0) + 1,
     },
     { system: true },
   );
+  postponeDialog.open = false;
+  toast("Meeting postponed.");
 }
 
 function cancelMeeting() {
-  if (!meeting.value || effectiveStatus.value === "completed") return;
+  if (!meeting.value || !canCancel.value) {
+    toast("Meeting cannot be canceled.", "error");
+    return;
+  }
   const nextMom = cloneMom(mom.value);
   nextMom.cancelledAt = nowIso();
   persistMom(nextMom, { status: "canceled" });
+  toast("Meeting canceled.");
 }
 
 function removeMeeting() {
-  if (!meeting.value) return;
+  if (!meeting.value) {
+    toast("Meeting delete failed.", "error");
+    return;
+  }
   todosStore.removeMeeting(meeting.value.id, { system: true });
   deleteDialog.value = false;
+  toast("Meeting deleted.");
   router.push({ name: "apps-calendar" });
 }
 
 function generateTasks() {
-  if (!meeting.value || !mom.value.completedAt) return;
+  if (!meeting.value || !mom.value.completedAt) {
+    toast("Complete the meeting before generating tasks.", "error");
+    return;
+  }
   const nextMom = cloneMom(mom.value);
   let count = 0;
   nextMom.notes = nextMom.notes.map((note) => {
@@ -544,33 +731,91 @@ function generateTasks() {
     return { ...note, generatedTaskId: todo.id, updatedAt: nowIso() };
   });
   persistMom(nextMom);
-  notifications.push(`${count} M.O.M task${count === 1 ? "" : "s"} generated`, "success");
+  toast(`${count} M.O.M task${count === 1 ? "" : "s"} generated.`);
 }
 
 function printableHtml() {
   const related = relatedRecords.value
-    .map((record) => `<li>${record.type}: ${record.name}</li>`)
+    .map((record) => `<li>${escapeHtml(record.type)}: ${escapeHtml(record.name)}</li>`)
+    .join("");
+  const attendeesHtml = attendees.value
+    .map((attendee) => {
+      const attended = mom.value.attendance?.[String(attendee.id)];
+      return `<tr><td>${escapeHtml(attendee.name)}</td><td>${attended ? "Attended" : "Not attended"}</td></tr>`;
+    })
     .join("");
   const notesHtml = subjects.value
     .map((subject) => {
       const body = notesForSubject(subject.id)
-        .map((note) => `<li>${stripHtml(note.bodyHtml)}</li>`)
+        .map((note) => {
+          const meta = [
+            note.dueAt
+              ? `Due: ${formatSystemDateTime(new Date(note.dueAt).getTime())}`
+              : "",
+            note.assignee ? `Assignee: ${note.assignee}` : "",
+            note.collaborators?.length
+              ? `Collaborators: ${note.collaborators.map((item) => item.name).join(", ")}`
+              : "",
+            note.attachments?.length ? `${note.attachments.length} attachment(s)` : "",
+            note.links?.length ? `${note.links.length} link(s)` : "",
+            note.internal ? "Internal" : "",
+            note.createTask ? "Task requested" : "",
+          ].filter(Boolean);
+          return `<li><div>${escapeHtml(stripHtml(note.bodyHtml)) || "Note"}</div>${
+            meta.length ? `<small>${escapeHtml(meta.join(" | "))}</small>` : ""
+          }</li>`;
+        })
         .join("");
-      return `<h2>${subject.title}</h2><ul>${body || "<li>No notes</li>"}</ul>`;
+      return `<section><h2>${escapeHtml(subject.title)}</h2><ul>${body || "<li>No notes</li>"}</ul></section>`;
     })
     .join("");
 
   return `
     <html>
-      <head><title>Minutes of Meeting - ${meeting.value?.subject || ""}</title></head>
+      <head>
+        <title>Minutes of Meeting - ${escapeHtml(meeting.value?.subject || "")}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #2f2b3d; font-family: Inter, Arial, sans-serif; background: #fff; }
+          .doc { max-width: 960px; margin: 0 auto; padding: 40px; }
+          .header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #d7d6de; padding-bottom: 24px; margin-bottom: 28px; }
+          .brand { color: #00a6a6; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+          h1 { margin: 8px 0 0; font-size: 30px; }
+          h2 { margin: 28px 0 12px; font-size: 18px; color: #4b465c; }
+          .status { display: inline-block; border-radius: 6px; padding: 6px 10px; background: #eef2ff; font-weight: 600; }
+          .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+          .label { color: #6f6b7d; font-size: 12px; text-transform: uppercase; }
+          .value { font-weight: 600; margin-top: 3px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border-bottom: 1px solid #ebe9f1; padding: 10px; text-align: left; }
+          ul { margin: 0; padding-left: 20px; }
+          li { margin: 8px 0; }
+          small { display: block; color: #6f6b7d; margin-top: 3px; }
+          .summary { border: 1px solid #ebe9f1; border-radius: 8px; padding: 16px; }
+          @media print { .doc { padding: 24px; max-width: none; } }
+        </style>
+      </head>
       <body>
-        <h1>Minutes of Meeting</h1>
-        <p><strong>${meeting.value?.subject || ""}</strong></p>
-        <p>${meeting.value?.startAt ? formatSystemDateTime(new Date(meeting.value.startAt).getTime()) : ""}</p>
-        <p>Status: ${statusLabel.value}</p>
-        <h2>Related</h2><ul>${related || "<li>None</li>"}</ul>
-        <h2>Summary</h2>${mom.value.summaryHtml || ""}
-        <h2>Notes</h2>${notesHtml}
+        <main class="doc">
+          <div class="header">
+            <div>
+              <div class="brand">Squarely</div>
+              <h1>Minutes of Meeting</h1>
+              <p><strong>${escapeHtml(meeting.value?.subject || "")}</strong></p>
+            </div>
+            <div><span class="status">${escapeHtml(statusLabel.value)}</span></div>
+          </div>
+          <section class="grid">
+            <div><div class="label">Start</div><div class="value">${meeting.value?.startAt ? formatSystemDateTime(new Date(meeting.value.startAt).getTime()) : "--"}</div></div>
+            <div><div class="label">Duration</div><div class="value">${escapeHtml(formatMmSs(mom.value.durationSeconds))}</div></div>
+            <div><div class="label">Type</div><div class="value">${escapeHtml(meeting.value?.type || "--")}</div></div>
+            <div><div class="label">Location</div><div class="value">${escapeHtml(meeting.value?.location || "--")}</div></div>
+          </section>
+          <h2>Related</h2><ul>${related || "<li>None</li>"}</ul>
+          <h2>Attendees</h2><table><tbody>${attendeesHtml || "<tr><td>No attendees linked.</td><td></td></tr>"}</tbody></table>
+          <h2>Summary</h2><div class="summary">${mom.value.summaryHtml || "<p>No summary.</p>"}</div>
+          <h2>Notes</h2>${notesHtml}
+        </main>
       </body>
     </html>
   `;
@@ -578,23 +823,36 @@ function printableHtml() {
 
 function printMom() {
   const win = window.open("", "_blank", "width=900,height=700");
-  if (!win) return;
+  if (!win) {
+    toast("Print preview could not be opened.", "error");
+    return;
+  }
   win.document.write(printableHtml());
   win.document.close();
   win.focus();
   win.print();
+  toast("Print preview opened.");
 }
 
 function emailMom() {
-  emailDialog.value?.openWith({
-    subject: `Minutes of Meeting - ${meeting.value?.subject || ""}`,
-    message: printableHtml(),
-    attachments: [
-      {
-        name: `MOM-${meeting.value?.id || "meeting"}.html`,
-        url: `data:text/html;charset=utf-8,${encodeURIComponent(printableHtml())}`,
-      },
-    ],
+  if (!meeting.value) {
+    toast("Email could not be prepared.", "error");
+    return;
+  }
+  const html = printableHtml();
+  isEmailDialogVisible.value = true;
+  nextTick(() => {
+    emailDialog.value?.openWith?.({
+      subject: `Minutes of Meeting - ${meeting.value?.subject || ""}`,
+      message: html,
+      attachments: [
+        {
+          name: `MOM-${meeting.value?.id || "meeting"}.html`,
+          url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+        },
+      ],
+    });
+    toast("M.O.M email prepared.");
   });
 }
 
@@ -625,14 +883,14 @@ watch(
           <VCardItem>
             <template #title>Meeting Summary</template>
             <template #append>
-              <AppTextField
-                :model-value="formatMmSs(mom.durationSeconds)"
-                label="Duration"
-                placeholder="MM:SS"
-                density="compact"
-                class="mom-duration-field mom-bordered-field"
-                @update:model-value="onDurationChange"
-              />
+              <VBtn
+                color="primary"
+                variant="tonal"
+                prepend-icon="tabler-sparkles"
+                @click="generateSummary"
+              >
+                Generate Summary
+              </VBtn>
             </template>
           </VCardItem>
           <VCardText>
@@ -669,7 +927,18 @@ watch(
             <span class="text-h4">{{ avatarText(meeting.subject) }}</span>
           </VAvatar>
           <h3 class="text-h5 mb-1">{{ meeting.subject }}</h3>
-          <VChip :color="statusColor()" size="small">{{ statusLabel }}</VChip>
+          <div class="d-flex align-center justify-center gap-2 flex-wrap">
+            <VChip :color="statusColor()" size="small">{{ statusLabel }}</VChip>
+            <VBtn
+              size="small"
+              variant="tonal"
+              color="primary"
+              prepend-icon="tabler-edit"
+              @click="openEditMeeting"
+            >
+              Edit
+            </VBtn>
+          </div>
         </VCardText>
 
         <VDivider />
@@ -725,81 +994,102 @@ watch(
 
         <VCardText>
           <div class="mom-action-panel">
-            <VBtn
-              block
-              color="success"
-              prepend-icon="tabler-check"
-              @click="openCompleteMeeting"
-            >
-              Complete Meeting
-            </VBtn>
-
-            <div class="mom-action-grid">
+            <div class="mom-action-row mom-action-row--two">
               <VBtn
-                color="primary"
-                variant="tonal"
-                icon
-                :disabled="!mom.completedAt"
-                @click="generateTasks"
+                color="success"
+                prepend-icon="tabler-check"
+                :disabled="!canComplete"
+                @click="openCompleteMeeting"
               >
-                <VIcon icon="tabler-list-check" />
-                <VTooltip activator="parent">Generate Tasks</VTooltip>
+                Complete
+                <VTooltip v-if="!canComplete" activator="parent">
+                  Canceled or completed meetings cannot be completed.
+                </VTooltip>
               </VBtn>
-              <VBtn
-                variant="tonal"
-                icon
-                @click="printMom"
-              >
-                <VIcon icon="tabler-printer" />
-                <VTooltip activator="parent">Print M.O.M</VTooltip>
-              </VBtn>
-              <VBtn
-                variant="tonal"
-                icon
-                @click="emailMom"
-              >
-                <VIcon icon="tabler-mail" />
-                <VTooltip activator="parent">Email M.O.M</VTooltip>
-              </VBtn>
-            </div>
-
-            <div class="mom-action-grid">
               <VBtn
                 color="warning"
                 variant="tonal"
                 prepend-icon="tabler-clock-pause"
-                :disabled="effectiveStatus === 'completed'"
-                @click="postponeMeeting"
+                :disabled="!canPostpone"
+                @click="openPostponeMeeting"
               >
                 Postpone
+                <VTooltip v-if="!canPostpone" activator="parent">
+                  Canceled or completed meetings cannot be postponed.
+                </VTooltip>
               </VBtn>
+            </div>
+
+            <div class="mom-action-row mom-action-row--three">
+              <VBtn
+                color="primary"
+                variant="tonal"
+                prepend-icon="tabler-list-check"
+                :disabled="!canGenerateTasks"
+                @click="generateTasks"
+              >
+                Generate Tasks
+                <VTooltip v-if="!canGenerateTasks" activator="parent">
+                  Complete the meeting first.
+                </VTooltip>
+              </VBtn>
+              <VBtn
+                variant="tonal"
+                prepend-icon="tabler-printer"
+                @click="printMom"
+              >
+                Print
+              </VBtn>
+              <VBtn
+                variant="tonal"
+                prepend-icon="tabler-mail"
+                @click="emailMom"
+              >
+                Email
+              </VBtn>
+            </div>
+
+            <div class="mom-action-row mom-action-row--two">
               <VBtn
                 color="secondary"
                 variant="tonal"
                 prepend-icon="tabler-calendar-x"
-                :disabled="effectiveStatus === 'completed'"
+                :disabled="!canCancel"
                 @click="cancelMeeting"
               >
                 Cancel
+                <VTooltip v-if="!canCancel" activator="parent">
+                  Completed or canceled meetings cannot be canceled.
+                </VTooltip>
+              </VBtn>
+              <VBtn
+                color="error"
+                variant="tonal"
+                prepend-icon="tabler-trash"
+                @click="deleteDialog = true"
+              >
+                Delete
               </VBtn>
             </div>
-
-            <VDivider />
-
-            <VBtn
-              color="error"
-              variant="text"
-              prepend-icon="tabler-trash"
-              @click="deleteDialog = true"
-            >
-              Delete Meeting
-            </VBtn>
           </div>
         </VCardText>
       </VCard>
 
       <VCard>
-        <VCardItem title="Attendees" subtitle="Confirm attendance" />
+        <VCardItem title="Attendees" subtitle="Confirm attendance">
+          <template #append>
+            <VBtn
+              icon
+              size="32"
+              variant="tonal"
+              color="primary"
+              @click="openEditMeeting"
+            >
+              <VIcon icon="tabler-plus" size="18" />
+              <VTooltip activator="parent">Add attendees</VTooltip>
+            </VBtn>
+          </template>
+        </VCardItem>
         <VCardText>
           <div
             v-for="attendee in attendees"
@@ -859,6 +1149,38 @@ watch(
     </VCard>
   </VDialog>
 
+  <VDialog v-model="replaceSummaryDialog" max-width="460" persistent>
+    <VCard title="Replace Meeting Summary">
+      <VCardText>
+        A summary already exists. Replace it with a new summary generated from current notes?
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn variant="text" @click="cancelSummaryReplacement">Cancel</VBtn>
+        <VBtn color="primary" @click="applyGeneratedSummary()">Replace</VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="postponeDialog.open" max-width="420" persistent>
+    <VCard title="Postpone Meeting">
+      <VCardText>
+        <AppDateTimePicker
+          v-model="postponeDialog.startAt"
+          label="Postpone to"
+          placeholder="YYYY-MM-DD HH:mm"
+          class="mom-bordered-field"
+          :config="{ enableTime: true, dateFormat: 'Y-m-d H:i' }"
+        />
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn variant="text" @click="postponeDialog.open = false">Cancel</VBtn>
+        <VBtn color="warning" @click="postponeMeeting">Postpone</VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
   <VDialog v-model="deleteDialog" max-width="420" persistent>
     <VCard title="Delete Meeting">
       <VCardText>
@@ -875,7 +1197,18 @@ watch(
     </VCard>
   </VDialog>
 
-  <EmailDialog ref="emailDialog" />
+  <AddMeetingDrawer
+    ref="addMeetingRef"
+    v-model:modelValue="isMeetingDrawerOpen"
+    @save="saveMeetingEdit"
+    @cancel="closeMeetingDrawer"
+  />
+
+  <EmailDialog
+    ref="emailDialog"
+    v-model:is-dialog-visible="isEmailDialogVisible"
+    @close="isEmailDialogVisible = false"
+  />
 </template>
 
 <style scoped>
@@ -897,10 +1230,6 @@ watch(
 
 .mom-summary-card {
   z-index: 3;
-}
-
-.mom-duration-field {
-  inline-size: 130px;
 }
 
 .mom-shell :deep(.v-field) {
@@ -949,13 +1278,20 @@ watch(
   gap: 0.75rem;
 }
 
-.mom-action-grid {
+.mom-action-row {
   display: grid;
   gap: 0.5rem;
+}
+
+.mom-action-row--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mom-action-row--three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.mom-action-grid .v-btn:not(.v-btn--icon) {
+.mom-action-row .v-btn {
   min-inline-size: 0;
 }
 

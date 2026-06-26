@@ -189,11 +189,6 @@ function noteText(note?: MeetingMomNote) {
   return stripHtml(note?.bodyHtml) || "Note";
 }
 
-function noteTitle(note?: MeetingMomNote) {
-  const text = noteText(note);
-  return text.length > 72 ? `${text.slice(0, 72).trim()}...` : text;
-}
-
 function avatarText(name?: string | null) {
   return (
     name
@@ -302,7 +297,8 @@ function closeEditor() {
   editingNoteId.value = null;
   resetEditorChrome();
   resetDraft();
-  refAddForm.value?.resetValidation?.();
+  const resetValidation = (refAddForm.value as any)?.resetValidation;
+  if (typeof resetValidation === "function") resetValidation();
 }
 
 function escapeHtml(value: string) {
@@ -797,14 +793,9 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
               cover
             />
 
-            <div>
-              <p class="text-base text-high-emphasis font-weight-medium mb-1 mom-note-title">
-                {{ noteTitle(resolveNote(id)) }}
-              </p>
-              <p class="text-body-2 text-medium-emphasis mb-0 mom-note-preview">
-                {{ noteText(resolveNote(id)) }}
-              </p>
-            </div>
+            <p class="text-base text-high-emphasis font-weight-medium mb-0 mom-note-preview">
+              {{ noteText(resolveNote(id)) }}
+            </p>
 
             <div class="task-footer d-flex align-center flex-wrap justify-space-between gap-2">
               <div class="d-flex align-center flex-wrap gap-3">
@@ -1138,19 +1129,14 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
   block-size: 12rem;
 }
 
-.mom-note-title,
 .mom-note-preview {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
 }
 
-.mom-note-title {
-  -webkit-line-clamp: 2;
-}
-
 .mom-note-preview {
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
 }
 
 .mom-inline-editor-card {
