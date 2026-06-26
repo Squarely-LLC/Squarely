@@ -94,6 +94,7 @@ const selectedRelatedKeys = ref<string[]>([]);
 const initialRelatedToMany = ref<
   { id: string | number; name: string; type: string }[]
 >([]);
+const drawerTitle = ref("New Meeting");
 
 // build stable keys so contact/employee ids don't collide
 const contactKey = (id: string | number) => `contact-${id}`;
@@ -370,7 +371,9 @@ const pendingInitial = ref<any | null>(null);
 function applyInitial(initial?: any) {
   if (!initial) return;
   try {
-    if (initial.title) subject.value = String(initial.title);
+    drawerTitle.value = initial.drawerTitle || "New Meeting";
+    if (initial.subject || initial.title)
+      subject.value = String(initial.subject || initial.title);
     if (initial.initialStart || initial.start)
       startAt.value = toDateTimeLocalString(
         initial.initialStart || initial.start,
@@ -585,6 +588,7 @@ function initialiseForm() {
   attachmentFile.value = null;
   selectedRelatedKeys.value = [];
   initialRelatedToMany.value = [];
+  drawerTitle.value = "New Meeting";
   linkedSearch.value = "";
 }
 
@@ -689,7 +693,7 @@ function toDateTimeLocalString(input?: string | Date) {
     :model-value="props.modelValue"
     @update:model-value="handleDrawerModelValueUpdate"
   >
-    <AppDrawerHeaderSection title="New Meeting" @cancel="closeDrawer" />
+    <AppDrawerHeaderSection :title="drawerTitle" @cancel="closeDrawer" />
 
     <VDivider />
 

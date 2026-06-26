@@ -45,15 +45,20 @@ const emit = defineEmits<{
   (e: "saveNote", value: MomNoteSavePayload): void;
   (e: "deleteNote", value: MeetingMomNote): void;
   (e: "toggleInternal", value: MeetingMomNote): void;
+  (e: "toggleCreateTask", value: MeetingMomNote): void;
   (e: "updateSubjectOrder", value: Array<string | number>): void;
   (e: "updateNotesState", value: { subjectId: string | number; ids: Array<string | number> }): void;
 }>();
 
 const boardWrapper = ref<HTMLElement>();
+const topScroll = ref<HTMLElement>();
+const bottomScroll = ref<HTMLElement>();
+const scrollContentWidth = ref(0);
 const refAddSubject = ref<VForm>();
 const localSubjects = ref<MeetingMomSubject[]>([]);
 const isAddNewFormVisible = ref(false);
 const subjectTitle = ref("");
+let resizeObserver: ResizeObserver | null = null;
 
 function sameOrder(
   left: Array<string | number>,
@@ -134,11 +139,49 @@ function hideAddNewForm() {
   refAddSubject.value?.reset();
 }
 
+function updateScrollContentWidth() {
+  scrollContentWidth.value = bottomScroll.value?.scrollWidth || 0;
+}
+
+function syncScroll(source: "top" | "bottom") {
+  const top = topScroll.value;
+  const bottom = bottomScroll.value;
+  if (!top || !bottom) return;
+  if (source === "top" && bottom.scrollLeft !== top.scrollLeft)
+    bottom.scrollLeft = top.scrollLeft;
+  if (source === "bottom" && top.scrollLeft !== bottom.scrollLeft)
+    top.scrollLeft = bottom.scrollLeft;
+}
+
+onMounted(() => {
+  nextTick(updateScrollContentWidth);
+  resizeObserver = new ResizeObserver(updateScrollContentWidth);
+  if (bottomScroll.value) resizeObserver.observe(bottomScroll.value);
+  if (boardWrapper.value) resizeObserver.observe(boardWrapper.value);
+});
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+});
+
 onClickOutside(refAddSubject, hideAddNewForm);
 </script>
 
 <template>
-  <div class="mom-kanban-main-wrapper kanban-main-wrapper d-flex gap-4 h-100">
+  <div
+    ref="topScroll"
+    class="mom-kanban-top-scroll"
+    @scroll="syncScroll('top')"
+  >
+    <div :style="{ inlineSize: `${scrollContentWidth}px` }" />
+  </div>
+
+  <div
+    ref="bottomScroll"
+    class="mom-kanban-main-wrapper kanban-main-wrapper d-flex gap-4 h-100"
+    @scroll="syncScroll('bottom')"
+  >
     <div
       ref="boardWrapper"
       class="d-flex ga-6"
@@ -158,6 +201,7 @@ onClickOutside(refAddSubject, hideAddNewForm);
           @save-note="emit('saveNote', $event)"
           @delete-note="emit('deleteNote', $event)"
           @toggle-internal="emit('toggleInternal', $event)"
+          @toggle-create-task="emit('toggleCreateTask', $event)"
           @update-notes-state="emit('updateNotesState', $event)"
         />
       </template>
@@ -243,6 +287,16 @@ onClickOutside(refAddSubject, hideAddNewForm);
       border-radius: vuetify.$border-radius-root;
       background-color: rgb(var(--v-theme-surface));
     }
+  }
+}
+
+.mom-kanban-top-scroll {
+  overflow: auto hidden;
+  block-size: 14px;
+  margin-block-end: 0.75rem;
+
+  > div {
+    block-size: 1px;
   }
 }
 </style>

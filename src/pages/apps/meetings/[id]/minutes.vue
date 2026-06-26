@@ -397,6 +397,8 @@ function openEditMeeting() {
       linkedTo: meeting.value?.linkedTo || [],
       relatedTo: meeting.value?.relatedTo || null,
       relatedToMany: meeting.value?.relatedToMany || [],
+      subject: meeting.value?.subject,
+      drawerTitle: "Edit Meeting",
     });
   });
 }
@@ -600,6 +602,17 @@ function toggleInternal(note: MeetingMomNote) {
   );
   persistMom(nextMom);
   toast(!note.internal ? "Note marked internal." : "Note marked public.");
+}
+
+function toggleCreateTask(note: MeetingMomNote) {
+  const nextMom = cloneMom(mom.value);
+  nextMom.notes = nextMom.notes.map((item) =>
+    String(item.id) === String(note.id)
+      ? { ...item, createTask: !item.createTask, updatedAt: nowIso() }
+      : item,
+  );
+  persistMom(nextMom);
+  toast(!note.createTask ? "Note marked as task." : "Note task flag removed.");
 }
 
 function markAttendance(attendee: ContactRef, attended: boolean) {
@@ -915,6 +928,7 @@ watch(
           @save-note="saveInlineNote"
           @delete-note="deleteNote"
           @toggle-internal="toggleInternal"
+          @toggle-create-task="toggleCreateTask"
           @update-subject-order="updateSubjectOrder"
           @update-notes-state="updateNotesState"
         />
@@ -923,22 +937,19 @@ watch(
       <div class="mom-side">
       <VCard class="mom-detail-card">
         <VCardText class="text-center">
-          <VAvatar size="84" color="primary" class="mb-3">
-            <span class="text-h4">{{ avatarText(meeting.subject) }}</span>
-          </VAvatar>
           <h3 class="text-h5 mb-1">{{ meeting.subject }}</h3>
-          <div class="d-flex align-center justify-center gap-2 flex-wrap">
+          <div class="d-flex align-center justify-center gap-2 flex-wrap mb-2">
             <VChip :color="statusColor()" size="small">{{ statusLabel }}</VChip>
-            <VBtn
-              size="small"
-              variant="tonal"
-              color="primary"
-              prepend-icon="tabler-edit"
-              @click="openEditMeeting"
-            >
-              Edit
-            </VBtn>
           </div>
+          <VBtn
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="tabler-edit"
+            @click="openEditMeeting"
+          >
+            Edit
+          </VBtn>
         </VCardText>
 
         <VDivider />
@@ -967,19 +978,6 @@ watch(
 
           <div class="mt-4">
             <div class="font-weight-medium mb-2">Related</div>
-            <AppAutocomplete
-              :model-value="selectedRelatedKeys"
-              :items="relatedOptions"
-              item-title="title"
-              item-value="value"
-              multiple
-              chips
-              closable-chips
-              density="compact"
-              placeholder="Attach jobs or deals"
-              class="mb-3"
-              @update:model-value="updateRelatedRecords"
-            />
             <VChip
               v-for="record in relatedRecords"
               :key="`${record.type}-${record.id}`"
@@ -1247,6 +1245,20 @@ watch(
 .mom-bordered-editor :deep(.ProseMirror) {
   min-block-size: 7rem;
   padding: 0.75rem;
+  line-height: 1.55;
+}
+
+.mom-bordered-editor :deep(.ProseMirror ul),
+.mom-bordered-editor :deep(.ProseMirror ol) {
+  padding-inline-start: 1.35rem;
+  margin-block: 0.4rem;
+  list-style-position: outside;
+}
+
+.mom-bordered-editor :deep(.ProseMirror li) {
+  display: list-item;
+  padding-inline-start: 0.2rem;
+  margin-block: 0.25rem;
 }
 
 .mom-bordered-field :deep(.v-field) {
@@ -1288,7 +1300,7 @@ watch(
 }
 
 .mom-action-row--three {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .mom-action-row .v-btn {

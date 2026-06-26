@@ -58,6 +58,7 @@ const emit = defineEmits<{
   (e: "saveNote", value: MomNoteSavePayload): void;
   (e: "deleteNote", value: MeetingMomNote): void;
   (e: "toggleInternal", value: MeetingMomNote): void;
+  (e: "toggleCreateTask", value: MeetingMomNote): void;
   (e: "updateNotesState", value: { subjectId: string | number; ids: Array<string | number> }): void;
 }>();
 
@@ -773,6 +774,11 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
                   <VListItem @click.stop="emit('toggleInternal', resolveNote(id)!)">
                     <VListItemTitle>Mark Internal</VListItemTitle>
                   </VListItem>
+                  <VListItem @click.stop="emit('toggleCreateTask', resolveNote(id)!)">
+                    <VListItemTitle>
+                      {{ resolveNote(id)?.createTask ? "Unmark as Task" : "Mark as Task" }}
+                    </VListItemTitle>
+                  </VListItem>
                   <VListItem @click.stop="openEditEditor(resolveNote(id)!)">
                     <VListItemTitle>Edit</VListItemTitle>
                   </VListItem>
@@ -1115,10 +1121,6 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
   }
 
   .more-options {
-    opacity: 0;
-  }
-
-  &:hover .more-options {
     opacity: 1;
   }
 }
