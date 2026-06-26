@@ -48,6 +48,7 @@ declare module 'vue-router/auto-routes' {
     'apps-kanban': RouteRecordInfo<'apps-kanban', '/apps/kanban', Record<never, never>, Record<never, never>>,
     'apps-logistics-dashboard': RouteRecordInfo<'apps-logistics-dashboard', '/apps/logistics/dashboard', Record<never, never>, Record<never, never>>,
     'apps-logistics-fleet': RouteRecordInfo<'apps-logistics-fleet', '/apps/logistics/fleet', Record<never, never>, Record<never, never>>,
+    'apps-meetings-id-minutes': RouteRecordInfo<'apps-meetings-id-minutes', '/apps/meetings/:id/minutes', { id: ParamValue<true> }, { id: ParamValue<false> }>,
     'apps-permissions': RouteRecordInfo<'apps-permissions', '/apps/permissions', Record<never, never>, Record<never, never>>,
     'apps-proforma-add': RouteRecordInfo<'apps-proforma-add', '/apps/proforma/add', Record<never, never>, Record<never, never>>,
     'apps-proforma-edit-id': RouteRecordInfo<'apps-proforma-edit-id', '/apps/proforma/edit/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,

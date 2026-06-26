@@ -5,6 +5,7 @@ import { useSiteSurveys } from "@/stores/siteSurveys";
 import { useSnaglists } from "@/stores/snaglists";
 import { useTodos } from "@/stores/todos";
 import { computed } from "vue";
+import { useRouter } from "vue-router";
 
 const props = defineProps<{ jobId: number | string }>();
 
@@ -14,8 +15,20 @@ const emit = defineEmits<{
   "open-add-snag": [];
 }>();
 
+type ActivityItem = {
+  id: string;
+  kind: "meeting" | "survey" | "snag";
+  title: string;
+  body: string;
+  date?: string | null;
+  duration?: number | null;
+  meetingId?: number | string;
+  linkedTo: any[];
+};
+
 const jobsStore = useJobsStore();
 const todosStore = useTodos();
+const router = useRouter();
 const siteSurveysStore = useSiteSurveys();
 const snaglistsStore = useSnaglists();
 
@@ -71,7 +84,7 @@ const jobSnaglists = computed(() => {
   });
 });
 
-function timeAgo(iso?: string) {
+function timeAgo(iso?: string | null) {
   if (!iso) return "";
 
   try {
@@ -134,18 +147,19 @@ function labelText(kind: string) {
   return "Snaglist";
 }
 
-const communicationActivities = computed(() => {
-  const meetings = jobMeetings.value.map((meeting: any) => ({
+const communicationActivities = computed<ActivityItem[]>(() => {
+  const meetings: ActivityItem[] = jobMeetings.value.map((meeting: any) => ({
     id: `meeting-${meeting.id}`,
     kind: "meeting",
     title: meeting.subject || "Meeting",
     body: meeting.agenda || meeting.note || "",
     date: meeting.startAt || meeting.createdAt,
     duration: meeting.duration,
+    meetingId: meeting.id,
     linkedTo: linkedParticipants(meeting),
   }));
 
-  const surveys = jobSiteSurveys.value.map((survey: any) => ({
+  const surveys: ActivityItem[] = jobSiteSurveys.value.map((survey: any) => ({
     id: `survey-${survey.id}`,
     kind: "survey",
     title: survey.subject || "Site Survey",
@@ -155,7 +169,7 @@ const communicationActivities = computed(() => {
     linkedTo: linkedParticipants(survey),
   }));
 
-  const snags = jobSnaglists.value.map((snag: any) => ({
+  const snags: ActivityItem[] = jobSnaglists.value.map((snag: any) => ({
     id: `snag-${snag.id}`,
     kind: "snag",
     title: snag.subject || "Snaglist",
@@ -187,6 +201,15 @@ function openAddSurvey() {
 
 function openAddSnag() {
   emit("open-add-snag");
+}
+
+function openActivity(activity: any) {
+  if (activity?.kind === "meeting" && activity.meetingId) {
+    router.push({
+      name: "apps-meetings-id-minutes",
+      params: { id: activity.meetingId },
+    });
+  }
 }
 </script>
 
@@ -250,7 +273,11 @@ function openAddSnag() {
                 <div
                   class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
                 >
-                  <div class="d-flex align-center">
+                  <div
+                    class="d-flex align-center"
+                    :class="activity.meetingId ? 'activity-clickable' : ''"
+                    @click="openActivity(activity)"
+                  >
                     <span class="app-timeline-title">{{ activity.title }}</span>
                     <VChip
                       size="small"
@@ -361,6 +388,10 @@ function openAddSnag() {
 
 .activity-card__body::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0 0 0 / 18%);
+}
+
+.activity-clickable {
+  cursor: pointer;
 }
 
 .activity-card__body .v-timeline {

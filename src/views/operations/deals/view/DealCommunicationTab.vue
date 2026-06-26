@@ -3,6 +3,7 @@ import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deal
 import { useTodos } from "@/stores/todos";
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
 type ActivityItem = {
   id: string;
@@ -21,6 +22,7 @@ type ActivityItem = {
   date: string | null | undefined;
   meta?: string;
   duration?: number | null;
+  meetingId?: number | string;
   rawType?: string;
   linkedTo: Array<{
     id?: number | string;
@@ -36,6 +38,7 @@ const props = defineProps<{
 }>();
 
 const todosStore = useTodos();
+const router = useRouter();
 todosStore.init();
 
 const EMAIL_THREAD_NOTE = "__deal_email_thread__";
@@ -218,6 +221,7 @@ const communicationActivities = computed<ActivityItem[]>(() => {
       body: meeting.agenda || meeting.note || "",
       date: meeting.startAt || meeting.createdAt || null,
       duration: meeting.duration,
+      meetingId: meeting.id,
       rawType: meeting.type,
       linkedTo: linkedParticipants(meeting),
     };
@@ -345,6 +349,15 @@ function activityDateTooltip(date?: string | null) {
     return date;
   }
 }
+
+function openActivity(activity: ActivityItem) {
+  if ((activity.kind === "meeting" || activity.kind === "call") && activity.meetingId) {
+    router.push({
+      name: "apps-meetings-id-minutes",
+      params: { id: activity.meetingId },
+    });
+  }
+}
 </script>
 
 <template>
@@ -410,7 +423,11 @@ function activityDateTooltip(date?: string | null) {
                 <div
                   class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2"
                 >
-                  <div class="d-flex align-center">
+                  <div
+                    class="d-flex align-center"
+                    :class="activity.meetingId ? 'activity-clickable' : ''"
+                    @click="openActivity(activity)"
+                  >
                     <span class="app-timeline-title">{{ activity.title }}</span>
                     <VChip
                       size="small"
@@ -556,6 +573,10 @@ function activityDateTooltip(date?: string | null) {
 
 .activity-card__body .v-timeline {
   min-block-size: 0;
+}
+
+.activity-clickable {
+  cursor: pointer;
 }
 
 .timeline-chip {
