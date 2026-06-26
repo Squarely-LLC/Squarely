@@ -65,7 +65,8 @@ const emit = defineEmits<{
 const refDropZone = ref<HTMLElement>();
 const refAddForm = ref<VForm>();
 const refSubjectTitle = ref<VForm>();
-const fileInput = ref<HTMLInputElement | null>(null);
+const fileInput = ref<HTMLInputElement | HTMLInputElement[] | null>(null);
+const noteTextareaRef = ref<any | null>(null);
 
 const localIds = ref<Array<string | number>>([...props.noteIds]);
 const localSubjectTitle = ref(props.subject.title);
@@ -273,6 +274,7 @@ function openAddEditor() {
   resetDraft();
   resetEditorChrome();
   isAddNewFormVisible.value = true;
+  focusNoteTextarea();
 }
 
 function openEditEditor(note: MeetingMomNote) {
@@ -280,6 +282,7 @@ function openEditEditor(note: MeetingMomNote) {
   populateDraft(note);
   resetEditorChrome();
   isAddNewFormVisible.value = true;
+  focusNoteTextarea();
 }
 
 function openCollaboratorsEditor(note: MeetingMomNote) {
@@ -300,6 +303,28 @@ function closeEditor() {
   resetDraft();
   const resetValidation = (refAddForm.value as any)?.resetValidation;
   if (typeof resetValidation === "function") resetValidation();
+}
+
+function focusNoteTextarea() {
+  nextTick(() => {
+    const root = noteTextareaRef.value?.$el ?? noteTextareaRef.value;
+    const input = root?.querySelector?.("textarea") as HTMLTextAreaElement | null;
+    input?.focus?.();
+  });
+}
+
+function openFilePicker() {
+  const inputRef = fileInput.value as any;
+  const input = Array.isArray(inputRef) ? inputRef[0] : inputRef;
+  if (input && typeof input.click === "function") {
+    input.click();
+    return;
+  }
+
+  const fallback = document.querySelector(
+    `[data-mom-subject="${String(props.subject.id)}"] input[type="file"]`,
+  ) as HTMLInputElement | null;
+  fallback?.click?.();
 }
 
 function escapeHtml(value: string) {
@@ -520,7 +545,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
                   size="32"
                   variant="tonal"
                   color="secondary"
-                  @click="fileInput?.click()"
+                  @click="openFilePicker"
                 >
                   <VIcon
                     icon="tabler-paperclip"
@@ -550,6 +575,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
               </div>
 
               <VTextarea
+                ref="noteTextareaRef"
                 v-model="draft.bodyText"
                 class="mom-bordered-field mom-note-textarea"
                 placeholder="Write note..."
@@ -893,7 +919,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
                   size="32"
                   variant="tonal"
                   color="secondary"
-                  @click="fileInput?.click()"
+                  @click="openFilePicker"
                 >
                   <VIcon icon="tabler-paperclip" size="18" />
                   <VTooltip activator="parent">Attachment</VTooltip>
@@ -917,6 +943,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
               </div>
 
               <VTextarea
+                ref="noteTextareaRef"
                 v-model="draft.bodyText"
                 class="mom-bordered-field mom-note-textarea"
                 placeholder="Write note..."

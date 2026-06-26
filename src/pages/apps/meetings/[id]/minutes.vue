@@ -10,6 +10,8 @@ import type {
 import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
+import { usePeopleStore } from "@/stores/people";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import { getContactAndEmployeeRefs, getEmployeeRefs } from "@/utils/peopleOptions";
 import AddMeetingDrawer, {
@@ -27,10 +29,14 @@ const todosStore = useTodos();
 const notifications = useNotificationsStore();
 const dealsStore = useDealsStore();
 const jobsStore = useJobsStore();
+const peopleStore = usePeopleStore();
+const systemNotificationsStore = useSystemNotificationsStore();
 
 todosStore.init();
 dealsStore.init();
 jobsStore.init();
+peopleStore.init();
+systemNotificationsStore.init();
 
 const meetingId = computed(() => String(route.params.id || ""));
 const meeting = computed(() => todosStore.meetingById(meetingId.value) as Meeting | null);
@@ -283,6 +289,7 @@ function saveAttendees() {
     },
     { system: true },
   );
+  isMeetingDrawerOpen.value = false;
   attendeesDialog.value = false;
   toast("Attendees updated.");
 }
@@ -341,6 +348,107 @@ const canCancel = computed(
   () => effectiveStatus.value !== "completed" && effectiveStatus.value !== "canceled",
 );
 const canGenerateTasks = computed(() => Boolean(mom.value.completedAt));
+
+function meetingNotificationTarget() {
+  return {
+    entityType: "meeting",
+    entityId: meeting.value?.id || meetingId.value,
+    path: `/apps/meetings/${meeting.value?.id || meetingId.value}/minutes`,
+  };
+}
+
+function resolveAttendeePerson(attendee: any) {
+  const roles = Array.isArray(attendee?.roles) ? attendee.roles : [];
+  const employeeBacked =
+    attendee?.employeeId !== undefined ||
+    attendee?.type === "employee" ||
+    attendee?.type === "employee_contact" ||
+    roles.includes("employee");
+  const candidateIds = [
+    attendee?.employeeId,
+    employeeBacked || attendee?.type === undefined ? attendee?.id : undefined,
+    attendee?.contactId,
+  ].filter((value) => value !== undefined && value !== null);
+
+  for (const id of candidateIds) {
+    const person = peopleStore.byId(id);
+    if (person?.hrProfile) return person;
+  }
+
+  return null;
+}
+
+function meetingNotificationRecipients() {
+  const recipients = new Set<number>();
+
+  attendees.value.forEach((attendee) => {
+    const person = resolveAttendeePerson(attendee);
+    if (!person) return;
+
+    recipients.add(person.id);
+    (person.hrProfile?.employment?.reportToIds || []).forEach((managerId) => {
+      const manager = peopleStore.byId(managerId);
+      if (manager?.hrProfile) recipients.add(manager.id);
+    });
+  });
+
+  return [...recipients];
+}
+
+function meetingNotificationExists(recipientEmployeeId: number, title: string) {
+  const targetId = String(meeting.value?.id || meetingId.value);
+  return systemNotificationsStore.items.some(
+    (notification) =>
+      Number(notification.recipientEmployeeId) === recipientEmployeeId &&
+      notification.type === "meeting" &&
+      notification.title === title &&
+      String(notification.target?.entityId ?? "") === targetId,
+  );
+}
+
+function notifyMeetingLifecycle(
+  event: "missed" | "postponed" | "canceled" | "completed",
+  options: { postponedTo?: Date; dedupe?: boolean } = {},
+) {
+  if (!meeting.value) return;
+
+  const subject = meeting.value.subject || "Meeting";
+  const startText = meeting.value.startAt
+    ? formatSystemDateTime(new Date(meeting.value.startAt).getTime())
+    : "--";
+  const title =
+    event === "missed"
+      ? `Meeting missed: ${subject}`
+      : event === "postponed"
+        ? `Meeting postponed: ${subject}`
+        : event === "canceled"
+          ? `Meeting canceled: ${subject}`
+          : `Meeting completed: ${subject}`;
+  const body =
+    event === "missed"
+      ? `${subject} was scheduled for ${startText} and is now missed.`
+      : event === "postponed"
+        ? `${subject} was postponed to ${
+            options.postponedTo
+              ? formatSystemDateTime(options.postponedTo.getTime())
+              : startText
+          }.`
+        : event === "canceled"
+          ? `${subject} was canceled.`
+          : `${subject} was completed.`;
+
+  meetingNotificationRecipients().forEach((recipientEmployeeId) => {
+    if (options.dedupe && meetingNotificationExists(recipientEmployeeId, title)) return;
+
+    systemNotificationsStore.addNotification({
+      recipientEmployeeId,
+      title,
+      body,
+      type: "meeting",
+      target: meetingNotificationTarget(),
+    });
+  });
+}
 
 function notesForSubject(subjectId: string | number) {
   const orderedIds =
@@ -471,24 +579,31 @@ function parseDateTimeInput(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function openEditMeeting() {
+async function openEditMeeting() {
   if (!meeting.value) return;
+  const current = meeting.value;
+  const payload = {
+    title: current.subject,
+    initialStart: current.startAt,
+    durationMins: current.duration,
+    meetingType: current.type,
+    notes: current.note,
+    location: current.location,
+    linkedTo: current.linkedTo || [],
+    relatedTo: current.relatedTo || null,
+    relatedToMany: current.relatedToMany || [],
+    subject: current.subject,
+    drawerTitle: "Edit Meeting",
+  };
+
+  await nextTick();
+  if (addMeetingRef.value?.openWith) {
+    addMeetingRef.value.openWith(payload);
+    return;
+  }
+
   isMeetingDrawerOpen.value = true;
-  nextTick(() => {
-    addMeetingRef.value?.openWith?.({
-      title: meeting.value?.subject,
-      initialStart: meeting.value?.startAt,
-      durationMins: meeting.value?.duration,
-      meetingType: meeting.value?.type,
-      notes: meeting.value?.note,
-      location: meeting.value?.location,
-      linkedTo: meeting.value?.linkedTo || [],
-      relatedTo: meeting.value?.relatedTo || null,
-      relatedToMany: meeting.value?.relatedToMany || [],
-      subject: meeting.value?.subject,
-      drawerTitle: "Edit Meeting",
-    });
-  });
+  window.setTimeout(() => addMeetingRef.value?.openWith?.(payload), 0);
 }
 
 function closeMeetingDrawer() {
@@ -745,6 +860,7 @@ function completeMeeting() {
     },
   });
   completeDialog.open = false;
+  notifyMeetingLifecycle("completed");
   toast("Meeting completed.");
 }
 
@@ -783,6 +899,7 @@ function postponeMeeting() {
     { system: true },
   );
   postponeDialog.open = false;
+  notifyMeetingLifecycle("postponed", { postponedTo: nextStart });
   toast("Meeting postponed.");
 }
 
@@ -794,6 +911,7 @@ function cancelMeeting() {
   const nextMom = cloneMom(mom.value);
   nextMom.cancelledAt = nowIso();
   persistMom(nextMom, { status: "canceled" });
+  notifyMeetingLifecycle("canceled");
   toast("Meeting canceled.");
 }
 
@@ -969,6 +1087,15 @@ watch(
     if (meeting.value && !meeting.value.mom) {
       persistMom(cloneMom(null));
     }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [meeting.value?.id, effectiveStatus.value] as const,
+  () => {
+    if (meeting.value && effectiveStatus.value === "missed")
+      notifyMeetingLifecycle("missed", { dedupe: true });
   },
   { immediate: true },
 );
@@ -1416,9 +1543,13 @@ watch(
 
 .mom-side {
   position: sticky;
-  display: grid;
+  display: flex;
+  overflow-y: auto;
+  flex-direction: column;
   gap: 1rem;
-  inset-block-start: 0;
+  inset-block-start: 1rem;
+  max-block-size: calc(100vh - 2rem);
+  padding-inline-end: 0.25rem;
 }
 
 .mom-detail-row {
