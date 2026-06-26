@@ -46,9 +46,13 @@ const props = withDefaults(
     notes: MeetingMomNote[];
     groupName: string;
     employeeOptions?: EmployeeOption[];
+    dragDisabled?: boolean;
+    boardLocked?: boolean;
   }>(),
   {
     employeeOptions: () => [],
+    dragDisabled: false,
+    boardLocked: false,
   },
 );
 
@@ -60,6 +64,7 @@ const emit = defineEmits<{
   (e: "toggleInternal", value: MeetingMomNote): void;
   (e: "toggleCreateTask", value: MeetingMomNote): void;
   (e: "updateNotesState", value: { subjectId: string | number; ids: Array<string | number> }): void;
+  (e: "editorState", value: { subjectId: string | number; open: boolean }): void;
 }>();
 
 const refDropZone = ref<HTMLElement>();
@@ -76,6 +81,8 @@ const editingNoteId = ref<string | number | null>(null);
 const imagePreviewUrls = ref<Record<string, string>>({});
 const isCollaboratorPickerVisible = ref(false);
 const isLinkEditorVisible = ref(false);
+const hasOpenEditor = computed(() => isAddNewFormVisible.value);
+const isInteractionLocked = computed(() => props.boardLocked);
 
 const emptyDraft = (): NoteDraft => ({
   bodyHtml: "",
@@ -115,17 +122,17 @@ const subjectActions = computed(() => [
   {
     title: "Rename",
     prependIcon: "tabler-pencil",
-    disabled: Boolean(props.subject.locked),
+    disabled: Boolean(props.subject.locked) || props.boardLocked,
     onClick: () => {
-      if (!props.subject.locked) isSubjectNameEditing.value = true;
+      if (!props.subject.locked && !props.boardLocked) isSubjectNameEditing.value = true;
     },
   },
   {
     title: "Delete",
     prependIcon: "tabler-trash",
-    disabled: Boolean(props.subject.locked),
+    disabled: Boolean(props.subject.locked) || props.boardLocked,
     onClick: () => {
-      if (!props.subject.locked) emit("deleteSubject", props.subject);
+      if (!props.subject.locked && !props.boardLocked) emit("deleteSubject", props.subject);
     },
   },
 ]);
@@ -134,13 +141,16 @@ dragAndDrop({
   parent: refDropZone,
   values: localIds,
   group: props.groupName,
-  draggable: (child) => child.classList.contains("kanban-card"),
+  draggable: (child) =>
+    !props.dragDisabled && !props.boardLocked && child.classList.contains("kanban-card"),
   plugins: [animations()],
   performTransfer: (state, data) => {
+    if (props.dragDisabled || props.boardLocked) return;
     performTransfer(state, data);
     emitNotesStateIfChanged();
   },
   handleEnd: (data) => {
+    if (props.dragDisabled || props.boardLocked) return;
     handleEnd(data);
     emitNotesStateIfChanged();
   },
@@ -167,6 +177,12 @@ watch(
     void loadImagePreviews();
   },
   { immediate: true, deep: true },
+);
+
+watch(
+  isAddNewFormVisible,
+  (visible) => emit("editorState", { subjectId: props.subject.id, open: visible }),
+  { immediate: true },
 );
 
 function resolveNote(id: string | number) {
@@ -270,6 +286,7 @@ function resetEditorChrome() {
 }
 
 function openAddEditor() {
+  if (props.boardLocked && !hasOpenEditor.value) return;
   editingNoteId.value = null;
   resetDraft();
   resetEditorChrome();
@@ -278,6 +295,7 @@ function openAddEditor() {
 }
 
 function openEditEditor(note: MeetingMomNote) {
+  if (props.boardLocked && !hasOpenEditor.value) return;
   editingNoteId.value = note.id;
   populateDraft(note);
   resetEditorChrome();
@@ -286,6 +304,7 @@ function openEditEditor(note: MeetingMomNote) {
 }
 
 function openCollaboratorsEditor(note: MeetingMomNote) {
+  if (props.boardLocked && !hasOpenEditor.value) return;
   openEditEditor(note);
   isCollaboratorPickerVisible.value = true;
   nextTick(() => {
@@ -363,7 +382,7 @@ function saveEditor() {
 }
 
 function renameSubject() {
-  if (props.subject.locked) return;
+  if (props.subject.locked || props.boardLocked) return;
   refSubjectTitle.value?.validate().then((valid) => {
     if (!valid.valid) return;
     emit("renameSubject", {
@@ -467,12 +486,13 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
         </h4>
         <div class="d-flex align-center">
           <VIcon
-            v-if="!subject.locked"
+            v-if="!subject.locked && !boardLocked"
             class="mom-subject-drag-handler"
             size="20"
             icon="tabler-arrows-move"
           />
           <MoreBtn
+            v-if="!boardLocked"
             size="28"
             icon-size="20"
             class="text-high-emphasis"
@@ -491,7 +511,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
     >
       <div class="add-new-form">
         <h6
-          v-if="!isAddNewFormVisible"
+          v-if="!isAddNewFormVisible && !boardLocked"
           class="text-base font-weight-regular cursor-pointer ms-4 mb-0"
           @click="openAddEditor"
         >
@@ -755,6 +775,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
         <VCard
           v-if="resolveNote(id) && String(editingNoteId) !== String(id)"
           class="kanban-card position-relative"
+          :class="{ 'mom-kanban-card--locked': isInteractionLocked }"
           :ripple="false"
           :link="false"
           @click="openEditEditor(resolveNote(id)!)"
@@ -785,7 +806,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
                 </VChip>
               </div>
               <VSpacer />
-              <VMenu>
+              <VMenu :disabled="isInteractionLocked">
                 <template #activator="{ props: p, isActive }">
                   <VIcon
                     v-bind="p"
@@ -1152,6 +1173,11 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
   .more-options {
     opacity: 1;
   }
+}
+
+.mom-kanban-card--locked {
+  cursor: default;
+  pointer-events: none;
 }
 
 .mom-note-preview-image {

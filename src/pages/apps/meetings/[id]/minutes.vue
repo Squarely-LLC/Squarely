@@ -10,10 +10,12 @@ import type {
 import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
-import { usePeopleStore } from "@/stores/people";
-import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import { getContactAndEmployeeRefs, getEmployeeRefs } from "@/utils/peopleOptions";
+import {
+  notifyMeetingAttendeesAdded,
+  notifyMeetingEvent,
+} from "@/utils/meetingNotifications";
 import AddMeetingDrawer, {
   type NewMeetingPayload,
 } from "@/views/apps/todo/list/AddMeetingDrawer.vue";
@@ -25,18 +27,23 @@ import { useRoute, useRouter } from "vue-router";
 
 const route = useRoute();
 const router = useRouter();
+const authUserData = useCookie("userData");
+const authAccessToken = useCookie("accessToken");
 const todosStore = useTodos();
 const notifications = useNotificationsStore();
 const dealsStore = useDealsStore();
 const jobsStore = useJobsStore();
-const peopleStore = usePeopleStore();
-const systemNotificationsStore = useSystemNotificationsStore();
 
 todosStore.init();
 dealsStore.init();
 jobsStore.init();
-peopleStore.init();
-systemNotificationsStore.init();
+
+if (!authUserData.value || !authAccessToken.value) {
+  void router.replace({
+    name: "login",
+    query: { to: route.fullPath },
+  });
+}
 
 const meetingId = computed(() => String(route.params.id || ""));
 const meeting = computed(() => todosStore.meetingById(meetingId.value) as Meeting | null);
@@ -213,10 +220,7 @@ function updateRelatedRecords(keys: Array<string | number>) {
 }
 
 const attendees = computed<ContactRef[]>(() => {
-  const all = [
-    ...(Array.isArray(meeting.value?.linkedTo) ? meeting.value!.linkedTo : []),
-    meeting.value?.requestedBy,
-  ].filter(Boolean) as ContactRef[];
+  const all = (Array.isArray(meeting.value?.linkedTo) ? meeting.value!.linkedTo : []) as ContactRef[];
   const seen = new Set<string>();
   return all.filter((attendee) => {
     const key = String(attendee.id);
@@ -232,6 +236,19 @@ function attendeeKey(attendee: any) {
   if (attendee?.type && attendee?.id !== undefined)
     return `${attendee.type}-${attendee.id}`;
   return String(attendee?.id ?? attendee?.name ?? "");
+}
+
+function attendeeIdentityKeys(attendee: any) {
+  return [
+    attendee?.employeeId,
+    attendee?.personId,
+    attendee?.contactId,
+    attendee?.id,
+    attendee?.value,
+    attendee?.name,
+  ]
+    .filter((value) => value !== undefined && value !== null && value !== "")
+    .map((value) => String(value).trim().toLowerCase());
 }
 
 function resolveAttendeeKey(attendee: any) {
@@ -263,6 +280,10 @@ function openAttendeesDialog() {
 
 function saveAttendees() {
   if (!meeting.value) return;
+  const previousKeys = new Set(
+    (Array.isArray(meeting.value.linkedTo) ? meeting.value.linkedTo : [])
+      .flatMap(attendeeIdentityKeys),
+  );
   const selected = new Set(selectedAttendeeKeys.value.map(String));
   const linkedTo = attendeeOptions.value
     .filter((option: any) => selected.has(String(option.value)))
@@ -275,6 +296,9 @@ function saveAttendees() {
       contactId: option.contactId,
       employeeId: option.employeeId,
     }));
+  const addedAttendees = linkedTo.filter(
+    (attendee) => !attendeeIdentityKeys(attendee).some((key) => previousKeys.has(key)),
+  );
 
   const retainedIds = new Set(linkedTo.map((attendee) => String(attendee.id)));
   const nextMom = cloneMom(mom.value);
@@ -289,6 +313,8 @@ function saveAttendees() {
     },
     { system: true },
   );
+  if (addedAttendees.length)
+    notifyMeetingAttendeesAdded({ ...meeting.value, linkedTo: linkedTo as any }, addedAttendees as any);
   isMeetingDrawerOpen.value = false;
   attendeesDialog.value = false;
   toast("Attendees updated.");
@@ -349,104 +375,14 @@ const canCancel = computed(
 );
 const canGenerateTasks = computed(() => Boolean(mom.value.completedAt));
 
-function meetingNotificationTarget() {
-  return {
-    entityType: "meeting",
-    entityId: meeting.value?.id || meetingId.value,
-    path: `/apps/meetings/${meeting.value?.id || meetingId.value}/minutes`,
-  };
-}
-
-function resolveAttendeePerson(attendee: any) {
-  const roles = Array.isArray(attendee?.roles) ? attendee.roles : [];
-  const employeeBacked =
-    attendee?.employeeId !== undefined ||
-    attendee?.type === "employee" ||
-    attendee?.type === "employee_contact" ||
-    roles.includes("employee");
-  const candidateIds = [
-    attendee?.employeeId,
-    employeeBacked || attendee?.type === undefined ? attendee?.id : undefined,
-    attendee?.contactId,
-  ].filter((value) => value !== undefined && value !== null);
-
-  for (const id of candidateIds) {
-    const person = peopleStore.byId(id);
-    if (person?.hrProfile) return person;
-  }
-
-  return null;
-}
-
-function meetingNotificationRecipients() {
-  const recipients = new Set<number>();
-
-  attendees.value.forEach((attendee) => {
-    const person = resolveAttendeePerson(attendee);
-    if (!person) return;
-
-    recipients.add(person.id);
-    (person.hrProfile?.employment?.reportToIds || []).forEach((managerId) => {
-      const manager = peopleStore.byId(managerId);
-      if (manager?.hrProfile) recipients.add(manager.id);
-    });
-  });
-
-  return [...recipients];
-}
-
-function meetingNotificationExists(recipientEmployeeId: number, title: string) {
-  const targetId = String(meeting.value?.id || meetingId.value);
-  return systemNotificationsStore.items.some(
-    (notification) =>
-      Number(notification.recipientEmployeeId) === recipientEmployeeId &&
-      notification.type === "meeting" &&
-      notification.title === title &&
-      String(notification.target?.entityId ?? "") === targetId,
-  );
-}
-
 function notifyMeetingLifecycle(
   event: "missed" | "postponed" | "canceled" | "completed",
   options: { postponedTo?: Date; dedupe?: boolean } = {},
 ) {
   if (!meeting.value) return;
-
-  const subject = meeting.value.subject || "Meeting";
-  const startText = meeting.value.startAt
-    ? formatSystemDateTime(new Date(meeting.value.startAt).getTime())
-    : "--";
-  const title =
-    event === "missed"
-      ? `Meeting missed: ${subject}`
-      : event === "postponed"
-        ? `Meeting postponed: ${subject}`
-        : event === "canceled"
-          ? `Meeting canceled: ${subject}`
-          : `Meeting completed: ${subject}`;
-  const body =
-    event === "missed"
-      ? `${subject} was scheduled for ${startText} and is now missed.`
-      : event === "postponed"
-        ? `${subject} was postponed to ${
-            options.postponedTo
-              ? formatSystemDateTime(options.postponedTo.getTime())
-              : startText
-          }.`
-        : event === "canceled"
-          ? `${subject} was canceled.`
-          : `${subject} was completed.`;
-
-  meetingNotificationRecipients().forEach((recipientEmployeeId) => {
-    if (options.dedupe && meetingNotificationExists(recipientEmployeeId, title)) return;
-
-    systemNotificationsStore.addNotification({
-      recipientEmployeeId,
-      title,
-      body,
-      type: "meeting",
-      target: meetingNotificationTarget(),
-    });
+  notifyMeetingEvent(meeting.value, event, {
+    ...options,
+    includeManagers: true,
   });
 }
 
@@ -472,7 +408,9 @@ function stripHtml(html?: string) {
 function autoSummary(nextMom = mom.value) {
   return nextMom.subjects
     .map((subject) => {
-      const subjectNotes = nextMom.notes.filter((note) => String(note.subjectId) === String(subject.id));
+      const subjectNotes = nextMom.notes.filter(
+        (note) => String(note.subjectId) === String(subject.id) && !note.internal,
+      );
       if (!subjectNotes.length) return "";
       const list = subjectNotes
         .map((note) => {
@@ -486,7 +424,6 @@ function autoSummary(nextMom = mom.value) {
               : "",
             note.attachments?.length ? `${note.attachments.length} attachment(s)` : "",
             note.links?.length ? `${note.links.length} link(s)` : "",
-            note.internal ? "Internal" : "",
             note.createTask ? "Task requested" : "",
           ].filter(Boolean);
           return `<li><p>${escapeHtml(stripHtml(note.bodyHtml) || "Note")}</p>${
@@ -501,7 +438,6 @@ function autoSummary(nextMom = mom.value) {
 }
 
 function syncSummary(nextMom: MeetingMom) {
-  if (!nextMom.summaryTouched) nextMom.summaryHtml = autoSummary(nextMom);
   return nextMom;
 }
 
@@ -524,7 +460,10 @@ function applyGeneratedSummary(summaryHtml = pendingGeneratedSummary.value) {
 
 function generateSummary() {
   const generated = autoSummary(mom.value) || "<p>No meeting notes yet.</p>";
-  const hasExisting = stripHtml(mom.value.summaryHtml).trim().length > 0;
+  const existingText = stripHtml(mom.value.summaryHtml).trim();
+  const hasExisting =
+    existingText.length > 0 &&
+    existingText.toLowerCase() !== "no meeting notes yet.";
   if (hasExisting) {
     pendingGeneratedSummary.value = generated;
     replaceSummaryDialog.value = true;
@@ -714,13 +653,43 @@ function selectedCollaborators(ids: Array<string | number>): ContactRef[] {
   return employeeOptions.value
     .filter(
       (employee) =>
-        employee.value !== undefined && selected.has(String(employee.value)),
+        (employee.value !== undefined && selected.has(String(employee.value))) ||
+        (employee.id !== undefined && selected.has(String(employee.id))) ||
+        (employee.employeeId !== undefined && selected.has(String(employee.employeeId))),
     )
     .map((employee) => ({
-      id: employee.value as string | number,
+      id: (employee.employeeId ?? employee.id ?? employee.value) as string | number,
       name: employee.title,
       avatarUrl: employee.avatarUrl || null,
     }));
+}
+
+function normalizeTaskCollaborators(collaborators: MeetingMomNote["collaborators"] = []) {
+  return collaborators
+    .map((collaborator) => {
+      const match = employeeOptions.value.find((employee) => {
+        const values = [
+          employee.value,
+          employee.id,
+          employee.employeeId,
+          employee.contactId,
+          employee.title,
+          employee.name,
+        ]
+          .filter((value) => value !== undefined && value !== null && value !== "")
+          .map(String);
+        return values.includes(String(collaborator.id)) || values.includes(String(collaborator.name));
+      });
+
+      if (!match) return collaborator;
+
+      return {
+        id: (match.employeeId ?? match.id ?? match.value) as string | number,
+        name: match.title || match.name || collaborator.name,
+        avatarUrl: match.avatarUrl || collaborator.avatarUrl || null,
+      };
+    })
+    .filter((collaborator) => !String(collaborator.id).startsWith("employee-"));
 }
 
 function saveInlineNote(payload: MomNoteSavePayload) {
@@ -940,7 +909,7 @@ function generateTasks() {
         title: stripHtml(note.bodyHtml).slice(0, 80) || `M.O.M note - ${meeting.value?.subject}`,
         notes: stripHtml(note.bodyHtml),
         dueAt: note.dueAt || meeting.value?.startAt || nowIso(),
-        collaborators: note.collaborators || [],
+        collaborators: normalizeTaskCollaborators(note.collaborators || []),
         important: false,
         status: "pending",
         attachment: note.attachments[0] || note.links[0] || null,
@@ -972,6 +941,7 @@ function printableHtml() {
   const notesHtml = subjects.value
     .map((subject) => {
       const body = notesForSubject(subject.id)
+        .filter((note) => !note.internal)
         .map((note) => {
           const meta = [
             note.dueAt
@@ -983,7 +953,6 @@ function printableHtml() {
               : "",
             note.attachments?.length ? `${note.attachments.length} attachment(s)` : "",
             note.links?.length ? `${note.links.length} link(s)` : "",
-            note.internal ? "Internal" : "",
             note.createTask ? "Task requested" : "",
           ].filter(Boolean);
           return `<li><div>${escapeHtml(stripHtml(note.bodyHtml)) || "Note"}</div>${
@@ -991,8 +960,10 @@ function printableHtml() {
           }</li>`;
         })
         .join("");
-      return `<section><h2>${escapeHtml(subject.title)}</h2><ul>${body || "<li>No notes</li>"}</ul></section>`;
+      if (!body) return "";
+      return `<section><h2>${escapeHtml(subject.title)}</h2><ul>${body}</ul></section>`;
     })
+    .filter(Boolean)
     .join("");
 
   return `
@@ -1039,7 +1010,7 @@ function printableHtml() {
           <h2>Related</h2><ul>${related || "<li>None</li>"}</ul>
           <h2>Attendees</h2><table><tbody>${attendeesHtml || "<tr><td>No attendees linked.</td><td></td></tr>"}</tbody></table>
           <h2>Summary</h2><div class="summary">${mom.value.summaryHtml || "<p>No summary.</p>"}</div>
-          <h2>Notes</h2>${notesHtml}
+          <h2>Notes</h2>${notesHtml || "<p>No public notes.</p>"}
         </main>
       </body>
     </html>
@@ -1242,7 +1213,7 @@ watch(
               </VBtn>
             </div>
 
-            <div class="mom-action-row mom-action-row--three">
+            <div class="mom-action-row">
               <VBtn
                 color="primary"
                 variant="tonal"
@@ -1255,6 +1226,8 @@ watch(
                   Complete the meeting first.
                 </VTooltip>
               </VBtn>
+            </div>
+            <div class="mom-action-row mom-action-row--two">
               <VBtn
                 variant="tonal"
                 prepend-icon="tabler-printer"
@@ -1542,13 +1515,9 @@ watch(
 }
 
 .mom-side {
-  position: sticky;
   display: flex;
-  overflow-y: auto;
   flex-direction: column;
   gap: 1rem;
-  inset-block-start: 1rem;
-  max-block-size: calc(100vh - 2rem);
   padding-inline-end: 0.25rem;
 }
 
@@ -1576,10 +1545,6 @@ watch(
 
 .mom-action-row--two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.mom-action-row--three {
-  grid-template-columns: 1fr;
 }
 
 .mom-action-row .v-btn {

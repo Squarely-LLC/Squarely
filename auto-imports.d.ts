@@ -226,6 +226,7 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const maskFinancialResource: typeof import('./src/utils/authorization')['maskFinancialResource']
+  const meetingNotificationRecipients: typeof import('./src/utils/meetingNotifications')['meetingNotificationRecipients']
   const nextJobOrderSequence: typeof import('./src/utils/jobProjectCode')['nextJobOrderSequence']
   const nextTick: typeof import('vue')['nextTick']
   const normalizeAuthorRef: typeof import('./src/utils/currentAccount')['normalizeAuthorRef']
@@ -233,6 +234,8 @@ declare global {
   const normalizeDocumentSourceModes: typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']
   const normalizeProjectCode: typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
+  const notifyMeetingAttendeesAdded: typeof import('./src/utils/meetingNotifications')['notifyMeetingAttendeesAdded']
+  const notifyMeetingEvent: typeof import('./src/utils/meetingNotifications')['notifyMeetingEvent']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
   const onBeforeRouteLeave: typeof import('vue-router/auto')['onBeforeRouteLeave']
@@ -771,6 +774,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly maskFinancialResource: UnwrapRef<typeof import('./src/utils/authorization')['maskFinancialResource']>
+    readonly meetingNotificationRecipients: UnwrapRef<typeof import('./src/utils/meetingNotifications')['meetingNotificationRecipients']>
     readonly nextJobOrderSequence: UnwrapRef<typeof import('./src/utils/jobProjectCode')['nextJobOrderSequence']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly normalizeAuthorRef: UnwrapRef<typeof import('./src/utils/currentAccount')['normalizeAuthorRef']>
@@ -778,6 +782,8 @@ declare module 'vue' {
     readonly normalizeDocumentSourceModes: UnwrapRef<typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']>
     readonly normalizeProjectCode: UnwrapRef<typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
+    readonly notifyMeetingAttendeesAdded: UnwrapRef<typeof import('./src/utils/meetingNotifications')['notifyMeetingAttendeesAdded']>
+    readonly notifyMeetingEvent: UnwrapRef<typeof import('./src/utils/meetingNotifications')['notifyMeetingEvent']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
     readonly onBeforeRouteLeave: UnwrapRef<typeof import('vue-router/auto')['onBeforeRouteLeave']>

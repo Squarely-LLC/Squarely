@@ -19,11 +19,20 @@ const router = useRouter()
 const systemNotificationsStore = useSystemNotificationsStore()
 systemNotificationsStore.init()
 
-const currentEmployeeId = computed(() => getSignedInIdentity().employeeId ?? null)
+const currentIdentityIds = computed(() => {
+  const identity = getSignedInIdentity()
+  return new Set(
+    [identity.employeeId, identity.personId, identity.id]
+      .filter(value => value !== undefined && value !== null && value !== '')
+      .map(value => String(value)),
+  )
+})
 
 const notifications = computed<SystemBellNotification[]>(() =>
-  systemNotificationsStore
-    .forEmployee(currentEmployeeId.value)
+  systemNotificationsStore.items
+    .filter(notification =>
+      currentIdentityIds.value.has(String(notification.recipientEmployeeId)),
+    )
     .slice()
     .sort(
       (a, b) =>

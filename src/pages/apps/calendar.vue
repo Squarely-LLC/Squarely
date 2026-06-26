@@ -310,30 +310,30 @@ const onDateClick = (arg: { date: Date }) => {
 // Handler called by AddMeetingDrawer on save — persist to useTodos().meetings
 const onCreateMeeting = async (m: NewMeetingPayload) => {
   // start & end (end comes from start + durationMins)
-  const startMs = new Date(m.start).getTime();
+  const startAt = m.startAt || m.start;
+  const duration = Number(m.duration ?? m.durationMins) || DEFAULT_MEETING_MINUTES;
+  const startMs = new Date(startAt).getTime();
   const endMs =
-    startMs + (Number(m.durationMins) || DEFAULT_MEETING_MINUTES) * 60000;
+    startMs + duration * 60000;
   const endISO = new Date(endMs).toISOString();
 
-  // Map to your meeting shape used by `meetingEvents`
-  const meeting = {
-    id: m.id,
-    subject: m.title?.trim() || "Untitled",
-    startAt: m.start, // ISO
+  todos.addMeeting({
+    subject: (m.subject || m.title || "").trim() || "Untitled",
+    startAt, // ISO
     endAt: endISO, // ISO (spans days if duration > 24h)
-    duration: Number(m.durationMins) || DEFAULT_MEETING_MINUTES, // mins
-    type: m.meetingType || "meeting",
+    duration, // mins
+    type: (m.type || m.meetingType || "meeting") as any,
     location: m.location || "",
-    linkedTo: m.linkedTo || null, // ContactRef from your Linked to field
-    requestedBy: undefined,
-    note: m.notes || "",
-  };
-
-  // Save into To-Dos store (replace array to keep Pinia reactivity solid)
-  const list = Array.isArray((todos as any).meetings)
-    ? (todos as any).meetings
-    : [];
-  (todos as any).meetings = [...list, meeting];
+    linkedTo: (m.linkedTo as any) || [],
+    relatedTo: (m.relatedTo as any) || null,
+    relatedToMany: Array.isArray(m.relatedToMany)
+      ? (m.relatedToMany as any)
+      : m.relatedTo
+        ? [(m.relatedTo as any)]
+        : [],
+    note: m.note || m.notes || "",
+    attachments: (m.attachments as any) || [],
+  });
 
   // Refresh calendar
   const api = refCalendar.value?.getApi?.();

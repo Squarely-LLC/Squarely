@@ -8,6 +8,7 @@ import type {
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { usePeopleStore } from "@/stores/people";
 import { getSignedInAuthorRef, normalizeAuthorRef } from "@/utils/currentAccount";
+import { notifyMeetingEvent } from "@/utils/meetingNotifications";
 import {
   authorizeRecord,
   filterReadableResources,
@@ -625,6 +626,7 @@ export const useTodos = defineStore("todos", {
       };
 
       this.meetings.unshift(newMeeting);
+      if (!options.system) notifyMeetingEvent(newMeeting, "scheduled");
       return newMeeting;
     },
 

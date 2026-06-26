@@ -57,6 +57,8 @@ const scrollContentWidth = ref(0);
 const refAddSubject = ref<VForm>();
 const localSubjects = ref<MeetingMomSubject[]>([]);
 const isAddNewFormVisible = ref(false);
+const openNoteEditors = reactive(new Set<string>());
+const isNoteEditorOpen = computed(() => openNoteEditors.size > 0);
 const subjectTitle = ref("");
 let resizeObserver: ResizeObserver | null = null;
 
@@ -80,6 +82,7 @@ dragAndDrop({
   parent: boardWrapper,
   values: localSubjects,
   dragHandle: ".mom-subject-drag-handler",
+  draggable: (child) => !isNoteEditorOpen.value && child.classList.contains("kanban-board"),
   plugins: [animations()],
 });
 
@@ -95,6 +98,7 @@ watch(
 watch(
   localSubjects,
   () => {
+    if (isNoteEditorOpen.value) return;
     const pinned = pinDefault([...localSubjects.value]);
     const changed = pinned.some((subject, index) => subject.id !== localSubjects.value[index]?.id);
     if (changed) {
@@ -126,6 +130,7 @@ function noteIdsForSubject(subject: MeetingMomSubject) {
 }
 
 function addNewSubject() {
+  if (isNoteEditorOpen.value) return;
   refAddSubject.value?.validate().then((valid) => {
     if (!valid.valid) return;
     emit("addSubject", subjectTitle.value);
@@ -139,9 +144,21 @@ function hideAddNewForm() {
   refAddSubject.value?.reset();
 }
 
+function setNoteEditorState(payload: { subjectId: string | number; open: boolean }) {
+  const key = String(payload.subjectId);
+  if (payload.open) openNoteEditors.add(key);
+  else openNoteEditors.delete(key);
+}
+
 function updateScrollContentWidth() {
   scrollContentWidth.value = bottomScroll.value?.scrollWidth || 0;
 }
+
+const hasHorizontalOverflow = computed(() => {
+  const bottom = bottomScroll.value;
+  if (!bottom) return false;
+  return scrollContentWidth.value > bottom.clientWidth + 1;
+});
 
 function syncScroll(source: "top" | "bottom") {
   const top = topScroll.value;
@@ -170,6 +187,7 @@ onClickOutside(refAddSubject, hideAddNewForm);
 
 <template>
   <div
+    v-show="hasHorizontalOverflow"
     ref="topScroll"
     class="mom-kanban-top-scroll"
     @scroll="syncScroll('top')"
@@ -180,6 +198,7 @@ onClickOutside(refAddSubject, hideAddNewForm);
   <div
     ref="bottomScroll"
     class="mom-kanban-main-wrapper kanban-main-wrapper d-flex gap-4 h-100"
+    :class="{ 'mom-kanban-main-wrapper--locked': isNoteEditorOpen }"
     @scroll="syncScroll('bottom')"
   >
     <div
@@ -196,6 +215,8 @@ onClickOutside(refAddSubject, hideAddNewForm);
           :note-ids="noteIdsForSubject(subject)"
           :notes="notes"
           :employee-options="employeeOptions"
+          :drag-disabled="isNoteEditorOpen"
+          :board-locked="isNoteEditorOpen"
           @rename-subject="emit('renameSubject', $event)"
           @delete-subject="emit('deleteSubject', $event)"
           @save-note="emit('saveNote', $event)"
@@ -203,11 +224,13 @@ onClickOutside(refAddSubject, hideAddNewForm);
           @toggle-internal="emit('toggleInternal', $event)"
           @toggle-create-task="emit('toggleCreateTask', $event)"
           @update-notes-state="emit('updateNotesState', $event)"
+          @editor-state="setNoteEditorState"
         />
       </template>
     </div>
 
     <div
+      v-if="!isNoteEditorOpen"
       class="add-new-form text-no-wrap"
       style="inline-size: 10rem"
     >
@@ -290,6 +313,13 @@ onClickOutside(refAddSubject, hideAddNewForm);
   }
 }
 
+.mom-kanban-main-wrapper--locked {
+  .mom-subject-drag-handler {
+    pointer-events: none;
+    opacity: 0 !important;
+  }
+}
+
 .mom-kanban-top-scroll {
   overflow: auto hidden;
   block-size: 14px;
@@ -298,5 +328,28 @@ onClickOutside(refAddSubject, hideAddNewForm);
   > div {
     block-size: 1px;
   }
+}
+
+.mom-kanban-main-wrapper,
+.mom-kanban-top-scroll {
+  scrollbar-color: rgba(var(--v-theme-on-surface), 0.35) transparent;
+  scrollbar-width: thin;
+}
+
+.mom-kanban-main-wrapper::-webkit-scrollbar,
+.mom-kanban-top-scroll::-webkit-scrollbar {
+  block-size: 8px;
+  inline-size: 8px;
+}
+
+.mom-kanban-main-wrapper::-webkit-scrollbar-thumb,
+.mom-kanban-top-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: rgba(var(--v-theme-on-surface), 0.28);
+}
+
+.mom-kanban-main-wrapper::-webkit-scrollbar-track,
+.mom-kanban-top-scroll::-webkit-scrollbar-track {
+  background-color: transparent;
 }
 </style>
