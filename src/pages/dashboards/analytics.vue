@@ -1313,38 +1313,55 @@ const personAvatar = (person: any) => {
             </template>
 
             <template #item.collaborators="{ item }">
-              <div class="d-flex align-center gap-1">
-                <template
-                  v-for="collaborator in item.collaborators.slice(0, 3)"
-                  :key="`${item.id}-${personCanonicalKey(collaborator)}`"
+              <div class="dashboard-collaborators-cell d-flex align-center gap-1">
+                <div
+                  v-if="item.collaborators.length"
+                  class="v-avatar-group demo-avatar-group"
                 >
-                  <VTooltip :text="personLabel(collaborator)">
-                    <template #activator="{ props }">
-                      <VAvatar
-                        v-bind="props"
-                        size="32"
-                        class="me-n2 dashboard-avatar"
-                        :image="personAvatar(collaborator)"
-                      >
-                        <span class="text-caption">{{ personLabel(collaborator).slice(0, 2).toUpperCase() }}</span>
-                      </VAvatar>
-                    </template>
-                  </VTooltip>
-                </template>
-                <VAvatar
-                  v-if="item.collaborators.length > 3"
-                  size="32"
-                  color="secondary"
-                  class="text-caption"
-                >
-                  +{{ item.collaborators.length - 3 }}
-                </VAvatar>
+                  <template
+                    v-for="collaborator in item.collaborators.slice(0, 3)"
+                    :key="`${item.id}-${personCanonicalKey(collaborator)}`"
+                  >
+                    <VAvatar
+                      :size="40"
+                      :color="personAvatar(collaborator) ? undefined : 'primary'"
+                      :class="personAvatar(collaborator) ? undefined : 'text-white font-weight-medium'"
+                    >
+                      <template v-if="personAvatar(collaborator)">
+                        <VImg :src="personAvatar(collaborator)" />
+                      </template>
+                      <template v-else>
+                        <span>{{ personLabel(collaborator).slice(0, 2).toUpperCase() }}</span>
+                      </template>
+                      <VTooltip activator="parent" location="top">
+                        {{ personLabel(collaborator) }}
+                      </VTooltip>
+                    </VAvatar>
+                  </template>
+
+                  <VAvatar
+                    v-if="item.collaborators.length > 3"
+                    :size="40"
+                    color="secondary"
+                    class="font-weight-medium text-white"
+                  >
+                    +{{ item.collaborators.length - 3 }}
+                    <VTooltip activator="parent" location="top">
+                      {{
+                        item.collaborators
+                          .slice(3)
+                          .map((collaborator: any) => personLabel(collaborator))
+                          .join(", ")
+                      }}
+                    </VTooltip>
+                  </VAvatar>
+                </div>
+
                 <span
-                  v-if="!item.collaborators.length"
+                  v-else
                   class="text-medium-emphasis"
                 >-</span>
                 <IconBtn
-                  size="small"
                   @click.stop="openRowCollaboratorDialog(item)"
                 >
                   <VIcon icon="tabler-plus" />
@@ -1584,7 +1601,7 @@ const personAvatar = (person: any) => {
             <VCardTitle>Activity Timeline</VCardTitle>
             <VCardSubtitle>{{ canSeeTeam ? "Own and team activity" : "Your activity" }}</VCardSubtitle>
           </VCardItem>
-          <VCardText>
+          <VCardText class="dashboard-timeline-body">
             <VTimeline
               v-if="activityTimelineRows.length"
               side="end"
@@ -1628,10 +1645,16 @@ const personAvatar = (person: any) => {
                       <template #activator="{ props }">
                         <VAvatar
                           v-bind="props"
-                          :size="32"
-                          :image="personAvatar(collaborator)"
+                          :size="40"
+                          :color="personAvatar(collaborator) ? undefined : 'primary'"
+                          :class="personAvatar(collaborator) ? undefined : 'text-white font-weight-medium'"
                         >
-                          <span class="text-caption">{{ personLabel(collaborator).slice(0, 2).toUpperCase() }}</span>
+                          <template v-if="personAvatar(collaborator)">
+                            <VImg :src="personAvatar(collaborator)" />
+                          </template>
+                          <template v-else>
+                            <span>{{ personLabel(collaborator).slice(0, 2).toUpperCase() }}</span>
+                          </template>
                         </VAvatar>
                       </template>
                       {{ personLabel(collaborator) }}
@@ -1639,8 +1662,9 @@ const personAvatar = (person: any) => {
                   </template>
                   <VAvatar
                     v-if="activity.collaborators.length > 4"
-                    :size="32"
+                    :size="40"
                     color="secondary"
+                    class="font-weight-medium text-white"
                   >
                     +{{ activity.collaborators.length - 4 }}
                   </VAvatar>
@@ -1827,23 +1851,112 @@ const personAvatar = (person: any) => {
 
 .dashboard-workspace {
   .dashboard-work-table {
+    overflow: hidden;
+
+    .v-table__wrapper {
+      overflow-x: hidden;
+    }
+
+    table {
+      inline-size: 100%;
+      table-layout: fixed;
+    }
+
     .v-data-table__td,
     .v-data-table__th {
+      overflow: hidden;
+      padding-inline: 1rem;
       white-space: nowrap;
     }
 
+    .v-data-table__td:nth-child(1),
+    .v-data-table__th:nth-child(1) {
+      inline-size: 35%;
+    }
+
+    .v-data-table__td:nth-child(2),
+    .v-data-table__th:nth-child(2) {
+      inline-size: 23%;
+    }
+
+    .v-data-table__td:nth-child(3),
+    .v-data-table__th:nth-child(3) {
+      inline-size: 12%;
+    }
+
+    .v-data-table__td:nth-child(4),
+    .v-data-table__th:nth-child(4) {
+      inline-size: 18%;
+    }
+
+    .v-data-table__td:nth-child(5),
+    .v-data-table__th:nth-child(5) {
+      inline-size: 12%;
+    }
+
     .v-data-table__td:first-child {
-      min-inline-size: 280px;
       white-space: normal;
     }
   }
 
-  .dashboard-avatar {
-    border: 2px solid rgb(var(--v-theme-surface));
+  .dashboard-collaborators-cell {
+    min-inline-size: 0;
+    overflow: hidden;
+
+    .v-avatar-group {
+      flex: 0 1 auto;
+      min-inline-size: 0;
+      max-inline-size: calc(100% - 2rem);
+    }
+
+    .v-avatar {
+      border: 2px solid rgb(var(--v-theme-surface));
+    }
   }
 
   .dashboard-timeline-card {
-    min-block-size: 100%;
+    display: flex;
+    flex-direction: column;
+    block-size: calc(100vh - 250px);
+    min-block-size: 420px;
+    max-block-size: calc(100vh - 250px);
+    overflow: hidden;
+  }
+
+  .dashboard-timeline-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-block-start: 0.5rem;
+    scrollbar-color: rgba(var(--v-theme-on-surface), 0.28) transparent;
+    scrollbar-width: thin;
+
+    &::-webkit-scrollbar {
+      inline-size: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      background-color: rgba(var(--v-theme-on-surface), 0.28);
+    }
+  }
+
+  .app-timeline-title,
+  .app-timeline-text {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+  }
+
+  .app-timeline-title {
+    -webkit-line-clamp: 2;
+  }
+
+  .app-timeline-text {
+    -webkit-line-clamp: 3;
   }
 }
 </style>
