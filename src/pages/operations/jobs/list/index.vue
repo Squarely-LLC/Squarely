@@ -881,11 +881,10 @@ const updateItemsPerPage = (value: number | string) => {
         @update:options="updateOptions"
       >
         <template #item.code="{ item }">
-          <div class="job-code-cell d-flex align-center gap-1">
+          <div class="job-code-cell d-flex align-center gap-x-3">
             <VBtn
               icon
               variant="text"
-              size="x-small"
               :color="item.flag === 'High' ? 'warning' : 'secondary'"
               @click.stop="togglePriority(item)"
             >
@@ -898,7 +897,7 @@ const updateItemsPerPage = (value: number | string) => {
             </VBtn>
             <RouterLink
               :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-              class="job-code-link font-weight-medium text-link"
+              class="job-code-link text-base font-weight-medium text-link"
             >
               {{ item.code || "--" }}
               <VTooltip activator="parent" location="top">
@@ -1249,7 +1248,7 @@ const updateItemsPerPage = (value: number | string) => {
 .jobs-table :deep(th),
 .jobs-table :deep(td) {
   overflow: hidden;
-  padding-block: 0.72rem !important;
+  padding-block: 0.48rem !important;
   padding-inline: 0.45rem !important;
   font-size: 0.88rem;
   vertical-align: middle;
@@ -1334,16 +1333,20 @@ const updateItemsPerPage = (value: number | string) => {
   white-space: normal;
 }
 
+.job-description-cell.gap-1 {
+  gap: 0.1rem !important;
+}
+
 .job-client-link {
   font-size: 0.95rem;
-  line-height: 1.2;
+  line-height: 1.12;
 }
 
 .job-description-line {
   display: block;
   overflow: hidden;
   color: rgba(var(--v-theme-on-surface), 70%);
-  line-height: 1.28;
+  line-height: 1.14;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1390,10 +1393,6 @@ const updateItemsPerPage = (value: number | string) => {
   .jobs-table :deep(th),
   .jobs-table :deep(td) {
     padding-inline: 0.32rem !important;
-  }
-
-  .job-code-cell {
-    gap: 0.1rem !important;
   }
 
   .job-code-link,

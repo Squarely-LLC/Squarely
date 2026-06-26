@@ -1,4 +1,10 @@
-import type { Meeting, Message, ToDo, ToDoAttachment } from "@/data/schema";
+import type {
+  Meeting,
+  MeetingMom,
+  Message,
+  ToDo,
+  ToDoAttachment,
+} from "@/data/schema";
 import { SeedMeetings, SeedTodos } from "@/data/seed-todos";
 import { usePeopleStore } from "@/stores/people";
 import { getSignedInAuthorRef, normalizeAuthorRef } from "@/utils/currentAccount";
@@ -89,6 +95,69 @@ function normalizeAttachment(attachment: any): ToDoAttachment | null {
   };
 }
 
+function normalizeMeetingMom(value?: MeetingMom | null): MeetingMom {
+  const now = new Date().toISOString();
+  const rawSubjects = Array.isArray(value?.subjects) ? value!.subjects : [];
+  const hasDefault = rawSubjects.some(
+    (subject) => String(subject?.id) === "default",
+  );
+  const subjects = [
+    ...(hasDefault
+      ? []
+      : [
+          {
+            id: "default",
+            title: "Default",
+            noteIds: [],
+            locked: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]),
+    ...rawSubjects,
+  ].map((subject, index) => ({
+    id:
+      subject?.id ??
+      (index === 0 ? "default" : `subject-${Date.now()}-${index}`),
+    title:
+      index === 0 || String(subject?.id) === "default"
+        ? "Default"
+        : subject?.title || "Subject",
+    noteIds: Array.isArray(subject?.noteIds) ? subject.noteIds : [],
+    locked:
+      index === 0 || String(subject?.id) === "default"
+        ? true
+        : Boolean(subject?.locked),
+    createdAt: subject?.createdAt || now,
+    updatedAt: subject?.updatedAt || now,
+  }));
+
+  return {
+    subjects,
+    notes: Array.isArray(value?.notes)
+      ? value!.notes.map((note) => ({
+          ...note,
+          bodyHtml: note?.bodyHtml || "",
+          collaborators: Array.isArray(note?.collaborators)
+            ? note.collaborators
+            : [],
+          attachments: Array.isArray(note?.attachments) ? note.attachments : [],
+          links: Array.isArray(note?.links) ? note.links : [],
+          createdAt: note?.createdAt || now,
+          updatedAt: note?.updatedAt || now,
+        }))
+      : [],
+    summaryHtml: value?.summaryHtml || "",
+    summaryTouched: Boolean(value?.summaryTouched),
+    durationSeconds:
+      typeof value?.durationSeconds === "number" ? value.durationSeconds : null,
+    completedAt: value?.completedAt || null,
+    cancelledAt: value?.cancelledAt || null,
+    sentiment: value?.sentiment || null,
+    attendance: value?.attendance || {},
+  };
+}
+
 function replaceDealCodeText(
   value: string | null | undefined,
   previousCode: string,
@@ -173,7 +242,15 @@ export const useTodos = defineStore("todos", {
       const seeded = localStorage.getItem(STORAGE_KEY_MEETINGS_SEEDED) === "1";
       const stored = loadMeetingsFromStorage();
       this.meetings =
-        seeded && Array.isArray(stored) ? stored : [...SeedMeetings];
+        seeded && Array.isArray(stored)
+          ? stored.map((meeting) => ({
+              ...meeting,
+              mom: normalizeMeetingMom((meeting as any).mom),
+            }))
+          : SeedMeetings.map((meeting) => ({
+              ...meeting,
+              mom: normalizeMeetingMom((meeting as any).mom),
+            }));
       localStorage.setItem(STORAGE_KEY_MEETINGS_SEEDED, "1");
       if (this.initialized) return;
 
@@ -270,8 +347,14 @@ export const useTodos = defineStore("todos", {
       const storedMeetings = loadMeetingsFromStorage();
       this.meetings =
         Array.isArray(storedMeetings) && storedMeetings.length > 0
-          ? storedMeetings
-          : [...SeedMeetings];
+          ? storedMeetings.map((meeting) => ({
+              ...meeting,
+              mom: normalizeMeetingMom((meeting as any).mom),
+            }))
+          : SeedMeetings.map((meeting) => ({
+              ...meeting,
+              mom: normalizeMeetingMom((meeting as any).mom),
+            }));
 
       this.initialized = true;
 
@@ -517,8 +600,15 @@ export const useTodos = defineStore("todos", {
         duration,
         endAt: computeEndAt(startAt, duration),
         type: (meeting.type as Meeting["type"]) || "Sales",
+        status: meeting.status || "scheduled",
+        postponedCount: Number((meeting as any).postponedCount || 0),
         linkedTo: (meeting.linkedTo as any) || [],
         relatedTo: (meeting as any).relatedTo || null,
+        relatedToMany: Array.isArray((meeting as any).relatedToMany)
+          ? ((meeting as any).relatedToMany as any)
+          : (meeting as any).relatedTo
+            ? [(meeting as any).relatedTo]
+            : [],
         location: meeting.location || "",
         note: meeting.note || "",
         attachments: meeting.attachments || [],
@@ -529,6 +619,7 @@ export const useTodos = defineStore("todos", {
           ? (meeting as any).notes
           : [],
         summary: (meeting as any).summary,
+        mom: normalizeMeetingMom((meeting as any).mom),
         createdAt: now,
         updatedAt: now,
       };
@@ -562,6 +653,14 @@ export const useTodos = defineStore("todos", {
           patch.relatedTo !== undefined
             ? (patch.relatedTo as any)
             : (prev.relatedTo ?? null),
+        relatedToMany:
+          patch.relatedToMany !== undefined
+            ? ((patch.relatedToMany as any) ?? [])
+            : Array.isArray((prev as any).relatedToMany)
+              ? (prev as any).relatedToMany
+              : prev.relatedTo
+                ? [prev.relatedTo]
+                : [],
         requestedBy:
           patch.requestedBy !== undefined
             ? normalizeAuthorRef(patch.requestedBy as any)
@@ -569,6 +668,9 @@ export const useTodos = defineStore("todos", {
               ? normalizeAuthorRef(prev.requestedBy as any)
               : getSignedInAuthorRef(),
         endAt: computeEndAt(startAt, duration),
+        mom: normalizeMeetingMom(
+          patch.mom !== undefined ? (patch.mom as any) : prev.mom,
+        ),
         updatedAt: new Date().toISOString(),
       };
       this.meetings.splice(idx, 1, next);

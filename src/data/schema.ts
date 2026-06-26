@@ -1,6 +1,12 @@
 export type Priority = "low" | "normal" | "high";
 export type Status = "pending" | "in_progress" | "for_review" | "completed";
 export type MeetingType = "Sales" | "Operation" | "Brief" | "Site Visit";
+export type MeetingStatus =
+  | "scheduled"
+  | "postponed"
+  | "canceled"
+  | "completed"
+  | "missed";
 export type MeetingSentiment =
   | "very_poor"
   | "poor"
@@ -70,6 +76,43 @@ export type MeetingSummary = {
   duration: number; // minutes (actual)
 };
 
+export type MeetingMomSubject = {
+  id: number | string;
+  title: string;
+  noteIds: Array<number | string>;
+  locked?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MeetingMomNote = {
+  id: number | string;
+  subjectId: number | string;
+  bodyHtml: string;
+  assignee?: string;
+  dueAt?: string | null;
+  createTask?: boolean;
+  collaborators: ContactRef[];
+  attachments: ToDoAttachment[];
+  links: ToDoAttachment[];
+  internal?: boolean;
+  generatedTaskId?: number | string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MeetingMom = {
+  subjects: MeetingMomSubject[];
+  notes: MeetingMomNote[];
+  summaryHtml?: string;
+  summaryTouched?: boolean;
+  durationSeconds?: number | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  sentiment?: MeetingSentiment | null;
+  attendance?: Record<string, boolean>;
+};
+
 export type ToDo = {
   id: number | string;
   title: string;
@@ -110,14 +153,18 @@ export type Meeting = {
   duration: number; // minutes (planned)
   endAt: string; // ISO — computed from startAt + duration
   type: MeetingType;
+  status?: MeetingStatus;
+  postponedCount?: number;
   linkedTo?: Array<{ id: string | number; name: string }>;
   relatedTo?: { id: string | number; name: string; type: string } | null; // Job reference when created from job context
+  relatedToMany?: Array<{ id: string | number; name: string; type: "job" | "deal" | string }>;
   location?: string;
   note?: string; // single quick note (optional)
   notes?: string[]; // multiple notes allowed
   attachments?: string[];
   requestedBy?: { id: string | number; name: string } | null;
   summary?: MeetingSummary;
+  mom?: MeetingMom | null;
   createdAt: string;
   updatedAt: string;
 };

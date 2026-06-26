@@ -5,6 +5,7 @@ import type { EventApi } from "@fullcalendar/core";
 import FullCalendar from "@fullcalendar/vue3";
 import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 
 import type { ToDo } from "@/data/schema";
@@ -21,6 +22,8 @@ import AddMeetingDrawer, {
 } from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
+
+const router = useRouter();
 
 function fmtMinutes(total?: number) {
   if (!total || total <= 0) return "0m";
@@ -415,15 +418,13 @@ calendarOptions.eventClick = (arg: any) => {
   if (isMeeting) {
     arg?.jsEvent?.preventDefault?.();
     arg?.jsEvent?.stopPropagation?.();
-    window.dispatchEvent(
-      new CustomEvent("meeting:open", {
-        detail: {
-          id:
-            arg.event.extendedProps?.meetingId ??
-            arg.event.id?.toString()?.replace(/^meeting-/, ""),
-        },
-      }),
-    );
+    const meetingId =
+      arg.event.extendedProps?.meetingId ??
+      arg.event.id?.toString()?.replace(/^meeting-/, "");
+    router.push({
+      name: "apps-meetings-id-minutes",
+      params: { id: meetingId },
+    });
     return;
   }
   if (typeof baseEventClick === "function") baseEventClick(arg);

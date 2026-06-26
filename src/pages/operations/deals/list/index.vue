@@ -1115,7 +1115,7 @@ const updateItemsPerPage = (value: number | string) => {
               color="medium-emphasis"
               @click="openEditDialog(item)"
             >
-              <VIcon icon="tabler-pencil" />
+              <VIcon icon="tabler-edit" />
             </VBtn>
 
             <VBtn icon variant="text" color="medium-emphasis">
