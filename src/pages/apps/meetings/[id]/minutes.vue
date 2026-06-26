@@ -11,7 +11,7 @@ import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import { getEmployeeRefs } from "@/utils/peopleOptions";
+import { getContactAndEmployeeRefs, getEmployeeRefs } from "@/utils/peopleOptions";
 import AddMeetingDrawer, {
   type NewMeetingPayload,
 } from "@/views/apps/todo/list/AddMeetingDrawer.vue";
@@ -63,6 +63,7 @@ const sentimentOptions = [
 ] as const;
 
 const employeeOptions = computed(() => getEmployeeRefs());
+const attendeeOptions = computed(() => getContactAndEmployeeRefs());
 
 const completeDialog = reactive({
   open: false,
@@ -73,6 +74,9 @@ const completeDialog = reactive({
 const deleteDialog = ref(false);
 const replaceSummaryDialog = ref(false);
 const pendingGeneratedSummary = ref("");
+const attendeesDialog = ref(false);
+const selectedAttendeeKeys = ref<string[]>([]);
+const attendeeSearch = ref("");
 
 const postponeDialog = reactive({
   open: false,
@@ -215,6 +219,90 @@ const attendees = computed<ContactRef[]>(() => {
     return true;
   });
 });
+
+function attendeeKey(attendee: any) {
+  if (attendee?.value !== undefined && attendee?.value !== null)
+    return String(attendee.value);
+  if (attendee?.type && attendee?.id !== undefined)
+    return `${attendee.type}-${attendee.id}`;
+  return String(attendee?.id ?? attendee?.name ?? "");
+}
+
+function resolveAttendeeKey(attendee: any) {
+  const direct = attendeeKey(attendee);
+  if (attendeeOptions.value.some((option: any) => String(option.value) === direct))
+    return direct;
+  const id = attendee?.id;
+  const name = String(attendee?.name || "").trim().toLowerCase();
+  const match = attendeeOptions.value.find((option: any) => {
+    const optionIds = [
+      option.id,
+      option.contactId,
+      option.employeeId,
+      option.value,
+    ].map((value) => String(value ?? ""));
+    return (
+      (id !== undefined && optionIds.includes(String(id))) ||
+      (name && String(option.name || option.title || "").trim().toLowerCase() === name)
+    );
+  });
+  return match ? String(match.value) : direct;
+}
+
+function openAttendeesDialog() {
+  selectedAttendeeKeys.value = attendees.value.map(resolveAttendeeKey).filter(Boolean);
+  attendeeSearch.value = "";
+  attendeesDialog.value = true;
+}
+
+function saveAttendees() {
+  if (!meeting.value) return;
+  const selected = new Set(selectedAttendeeKeys.value.map(String));
+  const linkedTo = attendeeOptions.value
+    .filter((option: any) => selected.has(String(option.value)))
+    .map((option: any) => ({
+      id: option.id ?? option.contactId ?? option.employeeId ?? option.value,
+      name: option.name || option.title,
+      avatarUrl: option.avatarUrl || option.avatar || null,
+      type: option.type,
+      roles: option.roles,
+      contactId: option.contactId,
+      employeeId: option.employeeId,
+    }));
+
+  const retainedIds = new Set(linkedTo.map((attendee) => String(attendee.id)));
+  const nextMom = cloneMom(mom.value);
+  nextMom.attendance = Object.fromEntries(
+    Object.entries(nextMom.attendance || {}).filter(([id]) => retainedIds.has(String(id))),
+  );
+  todosStore.updateMeeting(
+    meeting.value.id,
+    {
+      linkedTo: linkedTo as any,
+      mom: nextMom,
+    },
+    { system: true },
+  );
+  attendeesDialog.value = false;
+  toast("Attendees updated.");
+}
+
+function compactRelatedLabel(record: any) {
+  const type = String(record?.type || "").toLowerCase();
+  if (type === "job") {
+    const job = jobsStore.byId?.(record.id) || jobsStore.all.find((item: any) => String(item.id) === String(record.id));
+    return `Job: ${job?.code || job?.jobOrderNumber || record?.code || record?.name || record?.id}`;
+  }
+  if (type === "deal") {
+    const deal = dealsStore.byId?.(record.id) || dealsStore.all.find((item: any) => String(item.id) === String(record.id));
+    return `Deal: ${deal?.code || record?.code || record?.name || record?.id}`;
+  }
+  return `${record?.type || "Record"}: ${record?.code || record?.name || record?.id || "--"}`;
+}
+
+function fullRelatedLabel(record: any) {
+  return `${record?.type || "Record"}: ${record?.name || record?.code || record?.id || "--"}`;
+}
 
 const effectiveStatus = computed(() => {
   const raw = meeting.value?.status || "scheduled";
@@ -679,6 +767,12 @@ function postponeMeeting() {
     toast("Select a valid postpone date.", "error");
     return;
   }
+  const currentMinute = new Date();
+  currentMinute.setSeconds(0, 0);
+  if (nextStart.getTime() < currentMinute.getTime()) {
+    toast("Postpone date cannot be in the past.", "error");
+    return;
+  }
   todosStore.updateMeeting(
     meeting.value.id,
     {
@@ -984,7 +1078,10 @@ watch(
               size="small"
               class="me-1 mb-1"
             >
-              {{ record.type }}: {{ record.name }}
+              {{ compactRelatedLabel(record) }}
+              <VTooltip activator="parent">
+                {{ fullRelatedLabel(record) }}
+              </VTooltip>
             </VChip>
             <span v-if="!relatedRecords.length" class="text-medium-emphasis">--</span>
           </div>
@@ -1081,7 +1178,7 @@ watch(
               size="32"
               variant="tonal"
               color="primary"
-              @click="openEditMeeting"
+              @click="openAttendeesDialog"
             >
               <VIcon icon="tabler-plus" size="18" />
               <VTooltip activator="parent">Add attendees</VTooltip>
@@ -1191,6 +1288,57 @@ watch(
         <VSpacer />
         <VBtn variant="text" @click="deleteDialog = false">Cancel</VBtn>
         <VBtn color="error" @click="removeMeeting">Delete</VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
+
+  <VDialog v-model="attendeesDialog" max-width="520" persistent>
+    <VCard title="Add Attendees">
+      <VCardText>
+        <AppAutocomplete
+          v-model="selectedAttendeeKeys"
+          v-model:search="attendeeSearch"
+          :items="attendeeOptions"
+          item-title="title"
+          item-value="value"
+          group-by="group"
+          label="Attendees"
+          placeholder="Select contacts or employees"
+          multiple
+          chips
+          closable-chips
+          clearable
+          @update:model-value="attendeeSearch = ''"
+        >
+          <template #group="{ props: groupProps, item }">
+            <VListSubheader
+              v-bind="groupProps"
+              class="text-uppercase text-caption text-medium-emphasis"
+            >
+              {{ item.title }}
+            </VListSubheader>
+          </template>
+          <template #item="{ props: itemProps, item }">
+            <VListItem v-bind="itemProps">
+              <template #prepend>
+                <VAvatar size="28" color="primary">
+                  <VImg v-if="item.raw.avatarUrl" :src="item.raw.avatarUrl" />
+                  <span v-else class="text-caption font-weight-bold">
+                    {{ avatarText(item.raw.name || item.raw.title) }}
+                  </span>
+                </VAvatar>
+              </template>
+              <VListItemSubtitle class="text-capitalize">
+                {{ item.raw.group }}
+              </VListItemSubtitle>
+            </VListItem>
+          </template>
+        </AppAutocomplete>
+      </VCardText>
+      <VCardActions>
+        <VSpacer />
+        <VBtn variant="text" @click="attendeesDialog = false">Cancel</VBtn>
+        <VBtn color="primary" @click="saveAttendees">Save</VBtn>
       </VCardActions>
     </VCard>
   </VDialog>

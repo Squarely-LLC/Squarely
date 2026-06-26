@@ -556,6 +556,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
                 auto-grow
                 rows="2"
                 hide-details
+                @keydown.enter.exact.prevent="saveEditor"
               />
 
               <div class="mom-editor-meta-grid mt-3">
@@ -922,6 +923,7 @@ onClickOutside(refSubjectTitle, hideResetSubjectNameForm);
                 auto-grow
                 rows="2"
                 hide-details
+                @keydown.enter.exact.prevent="saveEditor"
               />
 
               <div class="mom-editor-meta-grid mt-3">
