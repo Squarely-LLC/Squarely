@@ -9,9 +9,6 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { usePeopleStore } from "@/stores/people";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
-import customCheck from "@images/svg/Check.svg";
-import customLaptop from "@images/svg/laptop.svg";
-import customLightbulb from "@images/svg/lightbulb.svg";
 
 type DashboardRequestType = "Addition" | "Deduction" | "Advance" | "Time au Lieu";
 const requestTypes: DashboardRequestType[] = [
@@ -354,21 +351,21 @@ const statCards = computed(() => [
       overdueTasks.value.length > 0
         ? `${overdueTasks.value.length} overdue`
         : "No overdue tasks",
-    icon: customLaptop,
+    icon: "tabler-list-check",
     color: "primary",
   },
   {
     title: "Today's Meetings",
     value: String(todaysMeetings.value.length),
     hint: `${completedTodaysMeetings.value.length} completed`,
-    icon: customLightbulb,
+    icon: "tabler-calendar-event",
     color: "info",
   },
   {
     title: "Requests",
     value: String(scopedRequests.value.length),
     hint: canSeeTeam.value ? "Own + team" : "Own",
-    icon: customCheck,
+    icon: "tabler-file-text",
     color: "warning",
   },
 ]);
@@ -540,7 +537,7 @@ const openRequestDrawer = (type: DashboardRequestType) => {
             <div class="d-flex flex-wrap justify-space-between gap-4">
               <div>
                 <h5 class="text-h5 mb-2">
-                  Welcome back,<span class="text-h4"> {{ firstName }} 👋🏻 </span>
+                  Welcome back, <span class="text-h4">{{ firstName }} 👋🏻 </span>
                 </h5>
 
                 <div
