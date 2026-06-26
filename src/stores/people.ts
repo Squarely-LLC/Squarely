@@ -24,7 +24,7 @@ import type {
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 
-const STORAGE_KEY = "app.people.v2";
+const STORAGE_KEY = "app.people.v3";
 
 export type PersonProfileKind = "crm" | "hr";
 

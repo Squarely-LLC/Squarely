@@ -3,7 +3,7 @@ import avatar2 from "@images/avatars/avatar-2.png";
 import avatar3 from "@images/avatars/avatar-3.png";
 import avatar4 from "@images/avatars/avatar-4.png";
 
-import type { EmployeeProperties } from "./types";
+import type { EmployeeProperties, EmployeeRequest } from "./types";
 import { seedIdentities } from "@/utils/seedIdentityGraph";
 
 interface DB {
@@ -707,6 +707,91 @@ export const db: DB = {
   ],
 };
 
+const seededEmployeeRequests: Record<number, EmployeeRequest[]> = {
+  1: [
+    {
+      id: 101,
+      type: "Leave",
+      typeId: "Vacation",
+      startDate: "2026-07-06",
+      returnDate: "2026-07-08",
+      requestedDays: 2,
+      deductible: true,
+      periodId: "July - 2026",
+      reason: "Family appointment",
+      status: "pending",
+      createdAt: "2026-06-26T08:15:00Z",
+    },
+    {
+      id: 102,
+      type: "Deduction",
+      deductionType: "Expense correction",
+      date: "2026-06-26",
+      amount: 75,
+      period: "June - 2026",
+      notes: "Parking expense correction for dashboard testing.",
+      status: "pending",
+      createdAt: "2026-06-26T09:10:00Z",
+    },
+  ],
+  2: [
+    {
+      id: 201,
+      type: "Advance",
+      advanceType: "Salary advance",
+      date: "2026-06-26",
+      amount: 500,
+      payBackInMonths: 2,
+      startOfPaymentPeriod: "July - 2026",
+      notes: "Pending manager approval from Lina.",
+      status: "pending",
+      createdAt: "2026-06-26T07:45:00Z",
+    },
+  ],
+  3: [
+    {
+      id: 301,
+      type: "Time au Lieu",
+      numberOfDays: 1,
+      date: "2026-06-27",
+      relatedTo: "Weekend support",
+      note: "HR weekend onboarding support.",
+      status: "pending",
+      createdAt: "2026-06-26T10:05:00Z",
+    },
+  ],
+  5: [
+    {
+      id: 501,
+      type: "Addition",
+      additionType: "Commission adjustment",
+      date: "2026-06-26",
+      amount: 250,
+      period: "June - 2026",
+      relatedType: "Deal",
+      relatedId: "DL01",
+      notes: "Sales commission adjustment pending Lina approval.",
+      status: "pending",
+      createdAt: "2026-06-26T11:20:00Z",
+    },
+  ],
+  9: [
+    {
+      id: 901,
+      type: "Leave",
+      typeId: "Sick",
+      startDate: "2026-06-30",
+      returnDate: "2026-07-01",
+      requestedDays: 1,
+      deductible: false,
+      periodId: "June - 2026",
+      reason: "Medical checkup",
+      status: "pending",
+      createdAt: "2026-06-26T12:00:00Z",
+    },
+  ],
+};
+
 const canonicalEmployee = (identity: (typeof seedIdentities)[number]): EmployeeProperties => ({
   id: identity.id,
   fullName: identity.fullName,
@@ -809,7 +894,7 @@ const canonicalEmployee = (identity: (typeof seedIdentities)[number]): EmployeeP
     },
     allowedExtraTime: 12,
   },
-  requests: [],
+  requests: seededEmployeeRequests[identity.id] ?? [],
 });
 
 db.users = seedIdentities.map(canonicalEmployee);

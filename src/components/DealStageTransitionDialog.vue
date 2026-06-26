@@ -1,14 +1,44 @@
 <script setup lang="ts">
 import { useDealsStore } from "@/stores/deals";
 import { useNotificationsStore } from "@/stores/notifications";
-import { computed } from "vue";
+import { computed, watch } from "vue";
 
 const dealsStore = useDealsStore();
 const notifications = useNotificationsStore();
+const route = useRoute();
+const userData = useCookie("userData");
+const accessToken = useCookie("accessToken");
 
-dealsStore.init();
+const isAuthenticated = computed(() => Boolean(userData.value && accessToken.value));
+const isAuthRoute = computed(() => {
+  const routePath = String(route.path || "").toLowerCase();
+  const routeName = String(route.name || "").toLowerCase();
 
-const pendingDeal = computed(() => dealsStore.latestPendingStageDeal);
+  return (
+    Boolean(route.meta?.unauthenticatedOnly) ||
+    routePath === "/login" ||
+    routePath === "/register" ||
+    routePath.includes("forgot-password") ||
+    routePath.includes("reset-password") ||
+    routeName.includes("login") ||
+    routeName.includes("register") ||
+    routeName.includes("forgot-password") ||
+    routeName.includes("reset-password")
+  );
+});
+const canShowDialog = computed(() => isAuthenticated.value && !isAuthRoute.value);
+
+watch(
+  canShowDialog,
+  (canShow) => {
+    if (canShow) dealsStore.init();
+  },
+  { immediate: true },
+);
+
+const pendingDeal = computed(() =>
+  canShowDialog.value ? dealsStore.latestPendingStageDeal : null,
+);
 const pendingTransition = computed(
   () => pendingDeal.value?.pendingStageTransition ?? null,
 );

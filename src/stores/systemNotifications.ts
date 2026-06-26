@@ -28,7 +28,7 @@ export type SystemNotification = {
   target: SystemNotificationTarget | null;
 };
 
-const STORAGE_KEY = "app.system-notifications.v1";
+const STORAGE_KEY = "app.system-notifications.v2";
 
 const cloneNotification = (notification: SystemNotification) => ({
   ...notification,

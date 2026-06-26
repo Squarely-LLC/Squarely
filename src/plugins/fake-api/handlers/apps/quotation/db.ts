@@ -104,13 +104,17 @@ const buildRecord = (
   id: number,
   status: QuotationRecord["quotation"]["quotationStatus"],
   avatar: string,
-  overrides: Partial<QuotationRecord["quotation"]> & {
+  overrides: Partial<QuotationRecord["quotation"]> &
+    Partial<Pick<QuotationRecord, "approvalMode" | "approvalRequestedAt" | "approverEmployeeId">> & {
     client: QuotationRecord["quotation"]["client"];
     purchasedProducts?: QuotationRecord["purchasedProducts"];
   },
 ): QuotationRecord => {
   const {
     purchasedProducts: overridePurchasedProducts,
+    approvalMode,
+    approvalRequestedAt,
+    approverEmployeeId,
     ...quotationOverrides
   } = overrides;
   const purchasedProducts =
@@ -155,8 +159,9 @@ const buildRecord = (
     totalFx: null,
     paymentMethod: "Bank Transfer",
     paymentLink: null,
-    approvalMode: "Automatic",
-    approverEmployeeId: null,
+    approvalMode: approvalMode ?? "Automatic",
+    approvalRequestedAt: approvalRequestedAt ?? null,
+    approverEmployeeId: approverEmployeeId ?? null,
     salesperson: "Nour Khoury",
     thanksNote: "Thank you for considering Squarely.",
   };
@@ -176,6 +181,9 @@ export const database: QuotationRecord[] = [
     service: "Retail branch design package",
     dealId: 2,
     linkedRecordType: "deal",
+    approvalMode: "Request Approval",
+    approverEmployeeId: 1,
+    approvalRequestedAt: "2026-06-26T09:30:00Z",
   }),
   buildRecord(6104, "Converted", getSeedAvatar(10), {
     total: 9200,
@@ -213,5 +221,8 @@ export const database: QuotationRecord[] = [
     parentQuotationId: 6102,
     isRevision: true,
     revisionLabel: "R1",
+    approvalMode: "Request Approval",
+    approverEmployeeId: 1,
+    approvalRequestedAt: "2026-06-26T10:15:00Z",
   }),
 ];

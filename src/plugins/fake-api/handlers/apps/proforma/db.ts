@@ -66,11 +66,18 @@ const buildStandaloneRecord = (
   id: number,
   status: ProformaRecord["quotation"]["quotationStatus"],
   avatar: string,
-  overrides: Partial<ProformaRecord["quotation"]> & {
+  overrides: Partial<ProformaRecord["quotation"]> &
+    Partial<Pick<ProformaRecord, "approvalMode" | "approvalRequestedAt" | "approverEmployeeId">> & {
     client: ProformaRecord["quotation"]["client"];
   },
   payments: ProformaRecord["payments"] = [],
 ): ProformaRecord => {
+  const {
+    approvalMode,
+    approvalRequestedAt,
+    approverEmployeeId,
+    ...quotationOverrides
+  } = overrides;
   const purchasedProducts = defaultPurchasedProducts(Number(overrides.total || 0));
   const total = getQuotationGrandTotal(purchasedProducts);
   const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -91,8 +98,8 @@ const buildStandaloneRecord = (
     parentQuotationId: null,
     isRevision: false,
     revisionLabel: null,
-    ...overrides,
-    attachmentFileKey: overrides.attachmentFileKey ?? null,
+    ...quotationOverrides,
+    attachmentFileKey: quotationOverrides.attachmentFileKey ?? null,
     total,
     balance: Math.max(total - paid, 0),
   },
@@ -110,8 +117,9 @@ const buildStandaloneRecord = (
   totalFx: null,
   paymentMethod: "Bank Transfer",
   paymentLink: null,
-  approvalMode: "Automatic",
-  approverEmployeeId: null,
+  approvalMode: approvalMode ?? "Automatic",
+  approvalRequestedAt: approvalRequestedAt ?? null,
+  approverEmployeeId: approverEmployeeId ?? null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
   };
@@ -158,6 +166,7 @@ const toProformaRecord = (
   paymentMethod: quotationRecord.paymentMethod,
   paymentLink: quotationRecord.paymentLink,
   approvalMode: quotationRecord.approvalMode,
+  approvalRequestedAt: quotationRecord.approvalRequestedAt ?? null,
   approverEmployeeId: quotationRecord.approverEmployeeId,
   convertedInvoiceId: quotationRecord.quotation.convertedInvoiceId ?? null,
   salesperson: quotationRecord.salesperson,
@@ -186,6 +195,9 @@ const standaloneRecords: ProformaRecord[] = [
     service: "Retail branch design package",
     dealId: 2,
     linkedRecordType: "deal",
+    approvalMode: "Request Approval",
+    approverEmployeeId: 1,
+    approvalRequestedAt: "2026-06-26T10:45:00Z",
   }),
   buildStandaloneRecord(6203, "Not Paid", "", {
     total: 3100,

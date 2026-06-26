@@ -31,11 +31,11 @@ const contactRef = (id: number): ContactRef => {
 const nameToId: Record<string, number> = {
   ted: 1,
   dana: 3,
-  pierre: 7,
-  alex: 8,
-  nora: 10,
-  omar: 5,
-  lina: 6,
+  pierre: 13,
+  alex: 14,
+  nora: 15,
+  omar: 16,
+  lina: 17,
 };
 
 // `C.<name>` resolves dynamically to a ContactRef from the canonical DB at runtime.
@@ -44,7 +44,7 @@ const C: Record<string, ContactRef> = new Proxy(
   {
     get(_, prop: string) {
       const id = nameToId[prop];
-      return id ? employeeRef(id) : undefined;
+      return id ? contactRef(id) : undefined;
     },
   },
 ) as Record<string, ContactRef>;
@@ -118,6 +118,51 @@ const dealRef = (id: number) => ({
 // Keep task seeds limited to records owned by active modules.
 export const SeedTodos: ToDo[] = [
   // Module-backed seeds only: deal tasks/email threads and job project tasks.
+  {
+    id: 550,
+    title: "Review quotation approval pack",
+    collaborators: [E.lina, E.financeExecutive],
+    dueAt: dateOnlyISO(0),
+    completionMinutes: 45,
+    important: true,
+    status: "pending",
+    steps: [],
+    notes: "Check totals and approval notes before finance releases the quotation.",
+    activities: [],
+    relatedTo: dealRef(2),
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+  },
+  {
+    id: 551,
+    title: "Follow up overdue client confirmation",
+    collaborators: [E.lina, E.salesManager],
+    dueAt: dateOnlyISO(-1),
+    completionMinutes: 30,
+    important: false,
+    status: "pending",
+    steps: [],
+    notes: "Overdue client confirmation needed for today's dashboard outstanding count.",
+    activities: [],
+    relatedTo: dealRef(1),
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+  },
+  {
+    id: 552,
+    title: "Prepare team handover notes",
+    collaborators: [E.farah, E.operationManager],
+    dueAt: dateOnlyISO(0),
+    completionMinutes: 60,
+    important: false,
+    status: "completed",
+    steps: [],
+    notes: "Completed team task for manager dashboard activity and completion percent.",
+    activities: [],
+    relatedTo: { id: 1, name: "Workplace Activation Package", type: "job" },
+    createdAt: nowISO(),
+    updatedAt: nowISO(),
+  },
   {
     id: 560,
     title: "Confirm final wall finish samples",
@@ -304,6 +349,77 @@ export const SeedTodos: ToDo[] = [
 ];
 
 export const SeedMeetings: Meeting[] = [
+  {
+    id: 101,
+    subject: "Operations stand-up - Workplace Activation",
+    startAt: atMin(90),
+    duration: 30,
+    type: "Operation",
+    linkedTo: [E.lina, E.farah, E.operationManager],
+    relatedTo: { id: 1, name: "Workplace Activation Package", type: "job" },
+    location: "Squarely HQ - Operations Room",
+    note: "Review today's tasks, blockers, and owner actions.",
+    attachments: [],
+    requestedBy: E.lina,
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(90), 30),
+  },
+  {
+    id: 102,
+    subject: "Finance approval review - Retail branch",
+    startAt: atMin(3 * 60),
+    duration: 45,
+    type: "Brief",
+    linkedTo: [E.lina, E.financeExecutive, E.salesManager],
+    relatedTo: dealRef(2),
+    location: "Google Meet",
+    note: "Review quotation, proforma, and invoice approvals assigned to Lina.",
+    attachments: [],
+    requestedBy: E.lina,
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: MEET_NOW.toISOString(),
+    endAt: endAtFrom(atMin(3 * 60), 45),
+  },
+  {
+    id: 103,
+    subject: "Completed handover sync - Team dashboard",
+    startAt: atMin(-90),
+    duration: 20,
+    type: "Operation",
+    linkedTo: [E.lina, E.farah],
+    relatedTo: { id: 1, name: "Workplace Activation Package", type: "job" },
+    location: "Phone",
+    note: "Completed meeting seed for dashboard percent.",
+    attachments: [],
+    requestedBy: E.farah,
+    status: "completed",
+    mom: {
+      subjects: [
+        {
+          id: "default",
+          title: "Default",
+          noteIds: [],
+          locked: true,
+          createdAt: MEET_NOW.toISOString(),
+          updatedAt: MEET_NOW.toISOString(),
+        },
+      ],
+      notes: [],
+      summaryHtml: "<p>Team handover notes were reviewed and accepted.</p>",
+      summaryTouched: true,
+      durationSeconds: 20 * 60,
+      completedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+      sentiment: "good",
+      attendance: {
+        [String(E.lina.id)]: true,
+        [String(E.farah.id)]: true,
+      },
+    },
+    createdAt: MEET_NOW.toISOString(),
+    updatedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    endAt: endAtFrom(atMin(-90), 20),
+  },
   {
     id: 1,
     subject: "Sales discovery - Decorative Wall Finish",

@@ -35,9 +35,9 @@ import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
 
-const STORAGE_KEY = "app.quotations.v7";
-const PROFORMA_STORAGE_KEY = "app.proformas.v3";
-const INVOICE_STORAGE_KEY = "app.invoices.v4";
+const STORAGE_KEY = "app.quotations.v8";
+const PROFORMA_STORAGE_KEY = "app.proformas.v4";
+const INVOICE_STORAGE_KEY = "app.invoices.v5";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
   quotation?: Partial<Quotation>;
 };

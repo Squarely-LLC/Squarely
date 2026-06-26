@@ -216,6 +216,12 @@ export const db: DB = {
       type: "Wholesale",
       estimatedDeliveryDate: "2026-06-05",
       stage: "Pre-Sale",
+      pendingStageTransition: {
+        targetStage: "Negotation",
+        reason: "Sales manager requested approval to move showroom refresh into negotiation.",
+        event: "quotation-created",
+        requestedAt: "2026-06-26T08:40:00Z",
+      },
       important: false,
       location: "Riyadh",
       collaborators: [7, 8],

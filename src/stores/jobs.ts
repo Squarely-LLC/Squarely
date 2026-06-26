@@ -21,7 +21,7 @@ import {
   normalizeProjectCode,
   parseJobOrderSequence,
 } from "@/utils/jobProjectCode";
-const STORAGE_KEY = "app.jobs.v2";
+const STORAGE_KEY = "app.jobs.v3";
 const JOB_STATUS_VALUES: JobStatus[] = [
   "New",
   "Pending",

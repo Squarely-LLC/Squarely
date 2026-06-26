@@ -1256,7 +1256,7 @@ const personAvatar = (person: any) => {
       </VCol>
     </VRow>
 
-    <VRow class="dashboard-workspace align-stretch">
+    <VRow class="dashboard-workspace align-start">
       <VCol
         cols="12"
         md="8"
@@ -1323,7 +1323,7 @@ const personAvatar = (person: any) => {
                     :key="`${item.id}-${personCanonicalKey(collaborator)}`"
                   >
                     <VAvatar
-                      :size="40"
+                      :size="32"
                       :color="personAvatar(collaborator) ? undefined : 'primary'"
                       :class="personAvatar(collaborator) ? undefined : 'text-white font-weight-medium'"
                     >
@@ -1341,7 +1341,7 @@ const personAvatar = (person: any) => {
 
                   <VAvatar
                     v-if="item.collaborators.length > 3"
-                    :size="40"
+                    :size="32"
                     color="secondary"
                     class="font-weight-medium text-white"
                   >
@@ -1596,7 +1596,7 @@ const personAvatar = (person: any) => {
         cols="12"
         md="4"
       >
-        <VCard class="dashboard-timeline-card h-100">
+        <VCard class="dashboard-timeline-card">
           <VCardItem>
             <VCardTitle>Activity Timeline</VCardTitle>
             <VCardSubtitle>{{ canSeeTeam ? "Own and team activity" : "Your activity" }}</VCardSubtitle>
@@ -1616,8 +1616,8 @@ const personAvatar = (person: any) => {
                 :dot-color="activity.color"
                 size="x-small"
               >
-                <div class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2">
-                  <div class="d-flex align-center">
+                <div class="d-flex justify-space-between align-start gap-2 mb-2">
+                  <div class="dashboard-timeline-heading">
                     <span class="app-timeline-title">{{ activity.title }}</span>
                     <VChip
                       size="small"
@@ -1645,7 +1645,7 @@ const personAvatar = (person: any) => {
                       <template #activator="{ props }">
                         <VAvatar
                           v-bind="props"
-                          :size="40"
+                          :size="32"
                           :color="personAvatar(collaborator) ? undefined : 'primary'"
                           :class="personAvatar(collaborator) ? undefined : 'text-white font-weight-medium'"
                         >
@@ -1662,7 +1662,7 @@ const personAvatar = (person: any) => {
                   </template>
                   <VAvatar
                     v-if="activity.collaborators.length > 4"
-                    :size="40"
+                    :size="32"
                     color="secondary"
                     class="font-weight-medium text-white"
                   >
@@ -1871,22 +1871,22 @@ const personAvatar = (person: any) => {
 
     .v-data-table__td:nth-child(1),
     .v-data-table__th:nth-child(1) {
-      inline-size: 35%;
+      inline-size: 36%;
     }
 
     .v-data-table__td:nth-child(2),
     .v-data-table__th:nth-child(2) {
-      inline-size: 23%;
+      inline-size: 20%;
     }
 
     .v-data-table__td:nth-child(3),
     .v-data-table__th:nth-child(3) {
-      inline-size: 12%;
+      inline-size: 11%;
     }
 
     .v-data-table__td:nth-child(4),
     .v-data-table__th:nth-child(4) {
-      inline-size: 18%;
+      inline-size: 21%;
     }
 
     .v-data-table__td:nth-child(5),
@@ -1917,9 +1917,9 @@ const personAvatar = (person: any) => {
   .dashboard-timeline-card {
     display: flex;
     flex-direction: column;
-    block-size: calc(100vh - 250px);
-    min-block-size: 420px;
-    max-block-size: calc(100vh - 250px);
+    block-size: clamp(14rem, calc(100vh - 23rem), 34rem);
+    min-block-size: 0;
+    max-block-size: clamp(14rem, calc(100vh - 23rem), 34rem);
     overflow: hidden;
   }
 
@@ -1955,8 +1955,36 @@ const personAvatar = (person: any) => {
     -webkit-line-clamp: 2;
   }
 
+  .dashboard-timeline-heading {
+    display: flex;
+    min-inline-size: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .timeline-chip {
+    max-inline-size: 100%;
+    flex: 0 0 auto;
+  }
+
   .app-timeline-text {
     -webkit-line-clamp: 3;
+  }
+
+  @media (max-height: 820px) {
+    .dashboard-timeline-card {
+      block-size: clamp(12rem, calc(100vh - 24rem), 29rem);
+      max-block-size: clamp(12rem, calc(100vh - 24rem), 29rem);
+    }
+  }
+
+  @media (max-height: 700px) {
+    .dashboard-timeline-card {
+      block-size: clamp(10rem, calc(100vh - 21rem), 23rem);
+      max-block-size: clamp(10rem, calc(100vh - 21rem), 23rem);
+    }
   }
 }
 </style>

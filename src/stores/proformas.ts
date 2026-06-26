@@ -32,7 +32,7 @@ import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
 
-const STORAGE_KEY = "app.proformas.v3";
+const STORAGE_KEY = "app.proformas.v4";
 type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
   quotation?: Partial<Proforma>;
 };

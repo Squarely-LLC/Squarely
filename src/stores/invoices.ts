@@ -32,7 +32,7 @@ import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
 
-const STORAGE_KEY = "app.invoices.v4";
+const STORAGE_KEY = "app.invoices.v5";
 type InvoicePayload = Omit<Partial<InvoiceRecord>, "quotation"> & {
   quotation?: Partial<Invoice>;
 };

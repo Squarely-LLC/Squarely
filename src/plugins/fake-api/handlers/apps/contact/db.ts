@@ -15,12 +15,12 @@ export const db: DB = {
   users: [
     {
       id: 1,
-      fullName: "Lina Haddad",
+      fullName: "Ted Samaha",
       class: "Lead",
       roles: ["client"],
       type: "Individual",
       category: "VIP",
-      email: "lina.haddad@example.com",
+      email: "ted.samaha@atelier-client.example",
       number: "+961 70 123 456",
       status: "Active",
       picture: avatar1,
@@ -51,14 +51,14 @@ export const db: DB = {
       city: "Beirut",
       language: "Arabic",
       channel: "Referral",
-      website: "https://lina.example.com",
+      website: "https://atelier-client.example",
       birthdate: "1987-04-15",
       worksInSales: true,
       createdAt: "2024-09-01T09:00:00Z",
     },
     {
       id: 2,
-      fullName: "Farah Mansour",
+      fullName: "Cedar Holdings",
       class: "Client",
       roles: ["client"],
       type: "Entity",
@@ -76,7 +76,7 @@ export const db: DB = {
         },
         {
           contactId: 9,
-          contactName: "Imad Khoury",
+          contactName: "Nadim Karam",
           isPrimary: false,
           relation: "Financial Analyst",
         },
@@ -113,13 +113,13 @@ export const db: DB = {
       connections: [
         {
           contactId: 1,
-          contactName: "Lina Haddad",
+          contactName: "Ted Samaha",
           isPrimary: true,
           relation: "Key Contact",
         },
         {
           contactId: 4,
-          contactName: "Nour Yazbek",
+          contactName: "Rita Yazbeck",
           isPrimary: false,
           relation: "Operations Lead",
         },
@@ -144,11 +144,11 @@ export const db: DB = {
     },
     {
       id: 4,
-      fullName: "Nour Yazbek",
+      fullName: "Rita Yazbeck",
       class: "Contact",
       type: "Individual",
       category: "General",
-      email: "nour.yazbek@squarely.com",
+      email: "rita.yazbeck@cedarholdings.com",
       number: "+961 3 782 120",
       status: "Potential",
       picture: avatar4,
@@ -193,13 +193,13 @@ export const db: DB = {
       connections: [
         {
           contactId: 2,
-          contactName: "Farah Mansour",
+          contactName: "Cedar Holdings",
           isPrimary: true,
           relation: "Primary Client",
         },
         {
           contactId: 8,
-          contactName: "Rania Abdul",
+          contactName: "Nadia Barakat",
           isPrimary: false,
           relation: "Regional Manager",
         },
@@ -233,13 +233,13 @@ export const db: DB = {
       connections: [
         {
           contactId: 1,
-          contactName: "Lina Haddad",
+          contactName: "Ted Samaha",
           isPrimary: true,
           relation: "Prospect Owner",
         },
         {
           contactId: 9,
-          contactName: "Imad Khoury",
+          contactName: "Nadim Karam",
           isPrimary: false,
           relation: "Analyst",
         },
@@ -272,7 +272,7 @@ export const db: DB = {
       connections: [
         {
           contactId: 4,
-          contactName: "Nour Yazbek",
+          contactName: "Rita Yazbeck",
           isPrimary: true,
           relation: "Consultant",
         },
@@ -303,12 +303,12 @@ export const db: DB = {
     },
     {
       id: 8,
-      fullName: "Rania Abdul",
+      fullName: "Nadia Barakat",
       class: "Supplier",
       roles: ["supplier"],
       type: "Individual",
       category: "General",
-      email: "rania.abdul@alignbrokerage.co",
+      email: "nadia.barakat@alignbrokerage.co",
       number: "+974 5 668 1200",
       status: "Active",
       picture: avatar4,
@@ -321,7 +321,7 @@ export const db: DB = {
         },
         {
           contactId: 2,
-          contactName: "Farah Mansour",
+          contactName: "Cedar Holdings",
           isPrimary: false,
           relation: "Key Client",
         },
@@ -346,18 +346,18 @@ export const db: DB = {
     },
     {
       id: 9,
-      fullName: "Imad Khoury",
+      fullName: "Nadim Karam",
       class: "Contact",
       type: "Individual",
       category: "VIP",
-      email: "imad.khoury@financepros.co",
+      email: "nadim.karam@financepros.co",
       number: "+961 1 880 441",
       status: "Dormant",
       picture: avatar5,
       connections: [
         {
           contactId: 2,
-          contactName: "Farah Mansour",
+          contactName: "Cedar Holdings",
           isPrimary: true,
           relation: "Client",
         },
@@ -406,7 +406,7 @@ export const db: DB = {
         },
         {
           contactId: 1,
-          contactName: "Lina Haddad",
+          contactName: "Ted Samaha",
           isPrimary: false,
           relation: "Advisor",
         },
@@ -430,11 +430,11 @@ export const db: DB = {
     // Added contacts (fully populated)
     {
       id: 11,
-      fullName: "Ted Samaha",
+      fullName: "Tarek Samaha",
       class: "Lead",
       type: "Individual",
       category: "General",
-      email: "ted.samaha@squarely.com",
+      email: "tarek.samaha@samaha-design.example",
       number: "+961 71 102 110",
       status: "Active",
       picture: avatar1,
@@ -447,7 +447,7 @@ export const db: DB = {
         },
         {
           contactId: 1,
-          contactName: "Lina Haddad",
+          contactName: "Ted Samaha",
           isPrimary: false,
           relation: "Product Lead",
         },
@@ -490,7 +490,7 @@ export const db: DB = {
         },
         {
           contactId: 2,
-          contactName: "Farah Mansour",
+          contactName: "Cedar Holdings",
           isPrimary: false,
           relation: "Account Manager",
         },
@@ -533,7 +533,7 @@ export const db: DB = {
         },
         {
           contactId: 9,
-          contactName: "Imad Khoury",
+          contactName: "Nadim Karam",
           isPrimary: false,
           relation: "Finance Partner",
         },
@@ -606,7 +606,7 @@ export const db: DB = {
       connections: [
         {
           contactId: 2,
-          contactName: "Farah Mansour",
+          contactName: "Cedar Holdings",
           isPrimary: true,
           relation: "Account Manager",
         },
@@ -636,18 +636,18 @@ export const db: DB = {
     },
     {
       id: 16,
-      fullName: "Omar Haddad",
+      fullName: "Omar Kallas",
       class: "Contact",
       type: "Individual",
       category: "General",
-      email: "omar.haddad@haddadgroup.com",
+      email: "omar.kallas@kallasgroup.com",
       number: "+961 70 220 016",
       status: "Active",
       picture: "",
       connections: [
         {
           contactId: 1,
-          contactName: "Lina Haddad",
+          contactName: "Ted Samaha",
           isPrimary: true,
           relation: "Brother",
         },

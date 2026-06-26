@@ -24,7 +24,7 @@ import {
   requireCurrentUserPermission,
 } from "@/utils/authorization";
 
-const STORAGE_KEY = "app.deals.v6";
+const STORAGE_KEY = "app.deals.v7";
 const DEFAULT_DEAL_PREFIX = "DL";
 const DEFAULT_DEAL_STAGES = ["Pre-Sale", "Negotation", "Active", "Closed"];
 

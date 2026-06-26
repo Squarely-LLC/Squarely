@@ -66,11 +66,18 @@ const buildStandaloneRecord = (
   id: number,
   status: InvoiceRecord["quotation"]["quotationStatus"],
   avatar: string,
-  overrides: Partial<InvoiceRecord["quotation"]> & {
+  overrides: Partial<InvoiceRecord["quotation"]> &
+    Partial<Pick<InvoiceRecord, "approvalMode" | "approvalRequestedAt" | "approverEmployeeId">> & {
     client: InvoiceRecord["quotation"]["client"];
   },
   payments: InvoiceRecord["payments"] = [],
 ): InvoiceRecord => {
+  const {
+    approvalMode,
+    approvalRequestedAt,
+    approverEmployeeId,
+    ...quotationOverrides
+  } = overrides;
   const purchasedProducts = defaultPurchasedProducts(Number(overrides.total || 0));
   const total = getQuotationGrandTotal(purchasedProducts);
   const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -91,8 +98,8 @@ const buildStandaloneRecord = (
     parentQuotationId: null,
     isRevision: false,
     revisionLabel: null,
-    ...overrides,
-    attachmentFileKey: overrides.attachmentFileKey ?? null,
+    ...quotationOverrides,
+    attachmentFileKey: quotationOverrides.attachmentFileKey ?? null,
     total,
     balance: Math.max(total - paid, 0),
   },
@@ -110,8 +117,9 @@ const buildStandaloneRecord = (
   totalFx: null,
   paymentMethod: "Bank Transfer",
   paymentLink: null,
-  approvalMode: "Automatic",
-  approverEmployeeId: null,
+  approvalMode: approvalMode ?? "Automatic",
+  approvalRequestedAt: approvalRequestedAt ?? null,
+  approverEmployeeId: approverEmployeeId ?? null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
   };
@@ -158,6 +166,7 @@ const toInvoiceRecord = (
   paymentMethod: quotationRecord.paymentMethod,
   paymentLink: quotationRecord.paymentLink,
   approvalMode: quotationRecord.approvalMode,
+  approvalRequestedAt: quotationRecord.approvalRequestedAt ?? null,
   approverEmployeeId: quotationRecord.approverEmployeeId,
   salesperson: quotationRecord.salesperson,
   thanksNote: quotationRecord.thanksNote,
@@ -196,6 +205,9 @@ const standaloneRecords: InvoiceRecord[] = [
     service: "Retail branch execution invoice",
     dealId: 2,
     linkedRecordType: "deal",
+    approvalMode: "Request Approval",
+    approverEmployeeId: 1,
+    approvalRequestedAt: "2026-06-26T11:05:00Z",
   }, [
     {
       id: "inv-pay-6302-1",
