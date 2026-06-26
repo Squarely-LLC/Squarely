@@ -15,7 +15,9 @@ import type {
   DealStageLifecycleEvent,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useConfigStore } from "@/stores/config";
+import { useEmployeesStore } from "@/stores/employees";
 import { resolveEmployeePersonId } from "@/stores/people";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import {
   authorizeRecord,
@@ -27,6 +29,63 @@ import {
 const STORAGE_KEY = "app.deals.v7";
 const DEFAULT_DEAL_PREFIX = "DL";
 const DEFAULT_DEAL_STAGES = ["Pre-Sale", "Negotation", "Active", "Closed"];
+
+function normalizeLookupKey(value: unknown) {
+  return value === undefined || value === null || value === ""
+    ? ""
+    : String(value).trim().toLowerCase();
+}
+
+function notifyDealStageConflictManagers(deal: DealProperties, targetStage: string, reason: string) {
+  const employeesStore = useEmployeesStore();
+  const notificationsStore = useSystemNotificationsStore();
+  employeesStore.init();
+  notificationsStore.init();
+
+  const employeeIds = new Set<string>();
+  (deal.collaborators ?? []).forEach((collaboratorId) => {
+    const employeeId = resolveEmployeePersonId(collaboratorId);
+    if (employeeId !== null && employeeId !== undefined) employeeIds.add(String(employeeId));
+  });
+
+  const salesmanKey = normalizeLookupKey(deal.salesman);
+  if (salesmanKey) {
+    employeesStore.all.forEach((employee: any) => {
+      const keys = [
+        employee.id,
+        employee.fullName,
+        employee.name,
+        employee.email,
+      ].map(normalizeLookupKey);
+      if (keys.includes(salesmanKey)) employeeIds.add(String(employee.id));
+    });
+  }
+
+  const managerIds = new Set<string>();
+  employeeIds.forEach((employeeId) => {
+    const employee = employeesStore.byId(employeeId) as any;
+    (employee?.employment?.reportToIds ?? []).forEach((managerId: number | string) => {
+      if (managerId !== null && managerId !== undefined && managerId !== "") {
+        managerIds.add(String(managerId));
+      }
+    });
+  });
+
+  managerIds.forEach((managerId) => {
+    notificationsStore.addNotification({
+      recipientEmployeeId: managerId,
+      title: `Deal stage conflict: ${deal.code || deal.name || `Deal #${deal.id}`}`,
+      body: `${reason}. Automatic lifecycle wants to move this deal to ${targetStage}.`,
+      type: "system",
+      target: {
+        entityType: "deal",
+        entityId: deal.id,
+        routeName: "operations-deals-view-id",
+        params: { id: deal.id },
+      },
+    });
+  });
+}
 
 function cloneDeal(deal: DealProperties): DealProperties {
   const raw = toRaw(deal) as DealProperties;
@@ -966,7 +1025,7 @@ export const useDealsStore = defineStore("deals", {
       if (currentDeal.stageManuallyManaged) {
         if (currentDeal.stage === targetStage) return currentDeal;
 
-        return this.updateDeal(
+        const updatedDeal = this.updateDeal(
           id,
           {
             pendingStageTransition: {
@@ -978,6 +1037,12 @@ export const useDealsStore = defineStore("deals", {
           },
           { system: true },
         );
+
+        if (updatedDeal?.pendingStageTransition) {
+          notifyDealStageConflictManagers(updatedDeal, targetStage, reason);
+        }
+
+        return updatedDeal;
       }
 
       if (!shouldPromoteLifecycleStage(currentDeal.stage, targetStage)) {

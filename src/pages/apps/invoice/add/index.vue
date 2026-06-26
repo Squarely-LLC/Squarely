@@ -30,6 +30,7 @@ import {
   formatCurrencyAmount,
   getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
+import { FINANCE_APPROVAL_CONVERSION_MESSAGE } from "@/utils/financeApproval";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import InvoiceEditable from "@/views/apps/invoice/InvoiceEditable.vue";
 import type { InvoiceData, PurchasedProduct } from "@/views/apps/invoice/types";
@@ -95,6 +96,7 @@ const buildBlankQuotation = (): InvoiceData => {
       linkedRecordType: null,
       source: "squarely",
       attachmentName: null,
+      attachmentFileKey: null,
       parentQuotationId: null,
       isRevision: false,
       revisionLabel: null,
@@ -169,7 +171,7 @@ const buildRevisionDraft = (parentId: number): InvoiceData => {
     .toISOString()
     .slice(0, 10);
   revisionDraft.quotation.quotationStatus = "Not Paid";
-  revisionDraft.quotation.approvalRequestedAt = null;
+  revisionDraft.approvalRequestedAt = null;
   revisionDraft.note = `${sourceRecord.note}\n${revisionLabel} draft created from ${baseQuoteNumber}.`;
 
   return revisionDraft;
@@ -195,7 +197,7 @@ const buildDuplicateDraft = (sourceId: number): InvoiceData => {
   duplicateDraft.quotation.isRevision = false;
   duplicateDraft.quotation.revisionLabel = null;
   duplicateDraft.quotation.quotationStatus = "Not Paid";
-  duplicateDraft.quotation.approvalRequestedAt = null;
+  duplicateDraft.approvalRequestedAt = null;
   duplicateDraft.quotation.balance = 0;
   duplicateDraft.quotation.total = total;
   duplicateDraft.payments = [];
@@ -454,7 +456,10 @@ const saveQuotation = () => {
   const created = invoicesStore.addInvoice(
     cloneInvoiceRecord(quotationData.value),
   );
-  if (!created) return;
+  if (!created) {
+    notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
+    return;
+  }
 
   notifications.push(
     `Invoice ${created.quotation.quoteNumber} saved successfully.`,

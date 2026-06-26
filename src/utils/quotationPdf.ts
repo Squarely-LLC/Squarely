@@ -1,4 +1,5 @@
 import type { QuotationRecord } from "@/plugins/fake-api/handlers/apps/quotation/types";
+import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import {
   formatCurrencyAmount,
   getVatSummary,
@@ -13,7 +14,7 @@ import {
 } from "@/utils/quotationPricing";
 
 type CreateQuotationPdfFileOptions = {
-  quotationRecord: QuotationRecord;
+  quotationRecord: QuotationRecord | ProformaRecord;
   companyName: string;
   companyAddressLines?: string[];
   companyContactLines?: string[];

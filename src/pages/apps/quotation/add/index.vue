@@ -17,6 +17,10 @@ import {
     loadDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
 import {
+    applyFinanceApprovalRequestFields,
+    notifyFinanceApprovalRequest,
+} from "@/utils/financeApprovalNotifications";
+import {
     buildQuotationNote,
     buildQuotationPaymentDetails,
     buildQuotationSalesperson,
@@ -223,7 +227,6 @@ const buildInitialQuotation = (): QuotationData => {
 
   const dealDraft = loadDealDocumentDraft("quotation");
   if (route.query.dealDraft === "1" && dealDraft?.source === "deal") {
-    clearDealDocumentDraft("quotation");
     return cloneQuotationRecord(dealDraft.quotation);
   }
 
@@ -416,6 +419,7 @@ const confirmLeave = async () => {
   if (!target) return;
 
   bypassUnsavedWarning.value = true;
+  if (isDealDraftRoute.value) clearDealDocumentDraft("quotation");
   await router.push(target);
 };
 
@@ -455,11 +459,13 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  applyFinanceApprovalRequestFields(quotationData.value);
 
   const created = quotationsStore.addQuotation(
     cloneQuotationRecord(quotationData.value),
   );
   if (!created) return;
+  notifyFinanceApprovalRequest("quotation", created);
 
   notifications.push(
     `Quotation ${created.quotation.quoteNumber} saved successfully.`,

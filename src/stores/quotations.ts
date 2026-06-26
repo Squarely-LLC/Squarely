@@ -23,6 +23,10 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import {
+  canConvertFinanceDocument,
+  normalizeFinanceApprovalFields,
+} from "@/utils/financeApproval";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -30,13 +34,15 @@ import {
   mapAuthorizationResource,
   requireCurrentUserPermission,
 } from "@/utils/authorization";
+import { getSignedInAuthorRef } from "@/utils/currentAccount";
 import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
 
-const STORAGE_KEY = "app.quotations.v8";
-const PROFORMA_STORAGE_KEY = "app.proformas.v4";
+const STORAGE_KEY = "app.quotations.v10";
+const USER_CREATED_STORAGE_KEY = "squarely.user-created.quotations.v1";
+const PROFORMA_STORAGE_KEY = "app.proformas.v6";
 const INVOICE_STORAGE_KEY = "app.invoices.v5";
 type QuotationPayload = Omit<Partial<QuotationRecord>, "quotation"> & {
   quotation?: Partial<Quotation>;
@@ -102,6 +108,24 @@ function cloneQuotationArray(records: QuotationRecord[]) {
   return records.map((record) => cloneQuotationRecord(record));
 }
 
+function normalizeFinanceAuthorRef(
+  value?: QuotationRecord["createdBy"] | null,
+) {
+  const author = value ?? getSignedInAuthorRef();
+  const id =
+    author?.id ?? author?.personId ?? author?.employeeId ?? author?.accountId;
+
+  return {
+    id,
+    accountId: author?.accountId ?? undefined,
+    employeeId: author?.employeeId ?? undefined,
+    personId: author?.personId ?? undefined,
+    name: author?.name ?? undefined,
+    email: author?.email ?? undefined,
+    avatarUrl: author?.avatarUrl ?? undefined,
+  };
+}
+
 function loadFromStorage(): QuotationRecord[] | null {
   if (typeof window === "undefined") return null;
 
@@ -115,6 +139,61 @@ function loadFromStorage(): QuotationRecord[] | null {
     console.warn("Failed to load quotations from storage:", error);
     return null;
   }
+}
+
+function loadUserCreatedFromStorage(): QuotationRecord[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = localStorage.getItem(USER_CREATED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as QuotationRecord[];
+  } catch (error) {
+    console.warn("Failed to load user-created quotations:", error);
+    return [];
+  }
+}
+
+function isSeedQuotationRecord(record: QuotationRecord) {
+  return database.some(
+    (seed) =>
+      String(seed.quotation.id) === String(record.quotation.id) &&
+      String(seed.quotation.quoteNumber ?? "") ===
+        String(record.quotation.quoteNumber ?? ""),
+  );
+}
+
+function saveUserCreatedToStorage(records: QuotationRecord[]) {
+  if (typeof window === "undefined") return;
+
+  const userCreated = records.filter((record) => !isSeedQuotationRecord(record));
+
+  try {
+    localStorage.setItem(
+      USER_CREATED_STORAGE_KEY,
+      JSON.stringify(userCreated),
+    );
+  } catch (error) {
+    console.warn("Failed to save user-created quotations:", error);
+  }
+}
+
+function mergeQuotationRecords(
+  baseRecords: QuotationRecord[],
+  userRecords: QuotationRecord[],
+) {
+  const byId = new Map<string, QuotationRecord>();
+
+  baseRecords.forEach((record) =>
+    byId.set(String(record.quotation.id), record),
+  );
+  userRecords.forEach((record) =>
+    byId.set(String(record.quotation.id), record),
+  );
+
+  return [...byId.values()];
 }
 
 function loadFollowUpDocumentsFromStorage<T>(
@@ -143,6 +222,7 @@ function saveToStorage(records: QuotationRecord[]) {
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    saveUserCreatedToStorage(records);
   } catch (error) {
     console.warn("Failed to save quotations to storage:", error);
   }
@@ -323,6 +403,23 @@ function sanitizeStoredRecord(record: QuotationRecord): QuotationRecord {
     cloned.approvalMode === "Request Approval"
       ? cloned.approvalRequestedAt?.trim() || null
       : null;
+  cloned.approvalStatus =
+    cloned.approvalStatus === "approved" || cloned.approvalStatus === "rejected"
+      ? cloned.approvalStatus
+      : cloned.approvalMode === "Request Approval"
+        ? "pending"
+        : null;
+  cloned.approvalApprovedAt = cloned.approvalApprovedAt?.trim() || null;
+  cloned.approvalApprovedBy =
+    cloned.approvalApprovedBy === null || cloned.approvalApprovedBy === undefined
+      ? null
+      : resolveEmployeePersonId(cloned.approvalApprovedBy);
+  cloned.approvalRejectedAt = cloned.approvalRejectedAt?.trim() || null;
+  cloned.approvalRejectedBy =
+    cloned.approvalRejectedBy === null || cloned.approvalRejectedBy === undefined
+      ? null
+      : resolveEmployeePersonId(cloned.approvalRejectedBy);
+  normalizeFinanceApprovalFields(cloned);
   cloned.quotation.convertedProformaId =
     cloned.quotation.convertedProformaId === null ||
     cloned.quotation.convertedProformaId === undefined
@@ -593,6 +690,7 @@ function normaliseQuotationRecord(
   const quotation: Partial<Quotation> = payload.quotation ?? {};
   const client = ensureClient(quotation.client);
   const total = Number(quotation.total) || 0;
+  const createdBy = normalizeFinanceAuthorRef(payload.createdBy ?? null);
 
   const record: QuotationRecord = {
     quotation: {
@@ -637,6 +735,13 @@ function normaliseQuotationRecord(
           ? null
           : Number(quotation.convertedInvoiceId),
     },
+    createdBy,
+    createdById:
+      payload.createdById ??
+      createdBy.personId ??
+      createdBy.employeeId ??
+      createdBy.id ??
+      null,
     paymentDetails: payload.paymentDetails
       ? clonePaymentDetails(payload.paymentDetails)
       : defaultPaymentDetails(total),
@@ -661,6 +766,25 @@ function normaliseQuotationRecord(
       payload.approvalMode === "Request Approval"
         ? payload.approvalRequestedAt?.trim() || null
         : null,
+    approvalStatus:
+      payload.approvalMode === "Request Approval"
+        ? payload.approvalStatus === "approved" ||
+          payload.approvalStatus === "rejected"
+          ? payload.approvalStatus
+          : "pending"
+        : null,
+    approvalApprovedAt: payload.approvalApprovedAt?.trim() || null,
+    approvalApprovedBy:
+      payload.approvalApprovedBy === null ||
+      payload.approvalApprovedBy === undefined
+        ? null
+        : resolveEmployeePersonId(payload.approvalApprovedBy),
+    approvalRejectedAt: payload.approvalRejectedAt?.trim() || null,
+    approvalRejectedBy:
+      payload.approvalRejectedBy === null ||
+      payload.approvalRejectedBy === undefined
+        ? null
+        : resolveEmployeePersonId(payload.approvalRejectedBy),
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
         ? resolveEmployeePersonId(payload.approverEmployeeId ?? null)
@@ -671,7 +795,7 @@ function normaliseQuotationRecord(
       payload.thanksNote?.trim() || buildQuotationThanksNote(config.legal),
   };
 
-  return syncQuotationFinancialState(record);
+  return syncQuotationFinancialState(normalizeFinanceApprovalFields(record));
 }
 
 function mergeQuotationRecord(
@@ -732,6 +856,15 @@ function mergeQuotationRecord(
     ...original,
     ...patch,
     quotation: mergedQuotation,
+    createdBy:
+      patch.createdBy ?? original.createdBy ?? normalizeFinanceAuthorRef(null),
+    createdById:
+      patch.createdById ??
+      original.createdById ??
+      original.createdBy?.personId ??
+      original.createdBy?.employeeId ??
+      original.createdBy?.id ??
+      null,
     paymentDetails: patch.paymentDetails
       ? clonePaymentDetails(patch.paymentDetails)
       : clonePaymentDetails(original.paymentDetails),
@@ -757,6 +890,30 @@ function mergeQuotationRecord(
           ? "Request Approval"
           : "Automatic",
     approvalRequestedAt: null,
+    approvalStatus:
+      patch.approvalStatus === undefined
+        ? original.approvalStatus ?? null
+        : patch.approvalStatus ?? null,
+    approvalApprovedAt:
+      patch.approvalApprovedAt === undefined
+        ? original.approvalApprovedAt?.trim() || null
+        : patch.approvalApprovedAt?.trim() || null,
+    approvalApprovedBy:
+      patch.approvalApprovedBy === undefined
+        ? original.approvalApprovedBy ?? null
+        : patch.approvalApprovedBy === null || patch.approvalApprovedBy === undefined
+          ? null
+          : resolveEmployeePersonId(patch.approvalApprovedBy),
+    approvalRejectedAt:
+      patch.approvalRejectedAt === undefined
+        ? original.approvalRejectedAt?.trim() || null
+        : patch.approvalRejectedAt?.trim() || null,
+    approvalRejectedBy:
+      patch.approvalRejectedBy === undefined
+        ? original.approvalRejectedBy ?? null
+        : patch.approvalRejectedBy === null || patch.approvalRejectedBy === undefined
+          ? null
+          : resolveEmployeePersonId(patch.approvalRejectedBy),
     approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
@@ -780,11 +937,18 @@ function mergeQuotationRecord(
         ? original.approvalRequestedAt?.trim() || null
         : patch.approvalRequestedAt?.trim() || null
       : null;
+  if (
+    merged.approvalMode === "Request Approval" &&
+    patch.approvalRequestedAt !== undefined &&
+    patch.approvalStatus === undefined
+  ) {
+    merged.approvalStatus = "pending";
+  }
   merged.quotation.quotationStatus = normaliseQuotationStatus(
     quotationPatch.quotationStatus ?? original.quotation.quotationStatus,
   );
 
-  return cloneQuotationRecord(syncQuotationFinancialState(merged));
+  return cloneQuotationRecord(syncQuotationFinancialState(normalizeFinanceApprovalFields(merged)));
 }
 
 const seedQuotations = () => cloneQuotationArray(database);
@@ -815,6 +979,23 @@ export const useQuotationsStore = defineStore("quotations", {
           (record) => String(record.quotation.id) === String(id),
         ) ?? null,
       ),
+    byRouteId: (state) => (id: number | string) => {
+      const rawId = String(id ?? "").trim();
+      const quoteNumber =
+        rawId.toLowerCase().startsWith("qt-") ? rawId : `QT-${rawId}`;
+      const record =
+        state.items.find((entry) => String(entry.quotation.id) === rawId) ??
+        state.items.find(
+          (entry) =>
+            String(entry.quotation.quoteNumber ?? "").trim().toLowerCase() ===
+              rawId.toLowerCase() ||
+            String(entry.quotation.quoteNumber ?? "").trim().toLowerCase() ===
+              quoteNumber.toLowerCase(),
+        ) ??
+        null;
+
+      return authorizeRecord("finance", record);
+    },
     clients: (state) => {
       const seen = new Set<string>();
 
@@ -916,15 +1097,16 @@ export const useQuotationsStore = defineStore("quotations", {
 
       const stored = loadFromStorage();
 
-      if (stored && stored.length) {
-        this.items = resequenceRevisions(
-          stored.map((record) => sanitizeStoredRecord(record)),
-        );
-      } else {
-        this.items = resequenceRevisions(
-          seedQuotations().map((record) => sanitizeStoredRecord(record)),
-        );
-      }
+      const baseRecords =
+        stored && stored.length ? stored : seedQuotations();
+      const mergedRecords = mergeQuotationRecords(
+        baseRecords,
+        loadUserCreatedFromStorage(),
+      );
+
+      this.items = resequenceRevisions(
+        mergedRecords.map((record) => sanitizeStoredRecord(record)),
+      );
 
       this.applyAutoCancellation();
       saveToStorage(this.items);
@@ -959,7 +1141,7 @@ export const useQuotationsStore = defineStore("quotations", {
       this.items.unshift(normalised);
       this.items = resequenceRevisions(this.items);
       this.persistItems();
-      const created = this.byId(id);
+      const created = this.byId(id) ?? cloneQuotationRecord(normalised);
 
       if (created?.quotation.dealId) {
         const dealsStore = useDealsStore();
@@ -990,7 +1172,27 @@ export const useQuotationsStore = defineStore("quotations", {
       );
       if (!isLatestRevisionRecord(this.items, this.items[index])) return null;
 
-      const updated = mergeQuotationRecord(this.items[index], patch);
+      const current = this.items[index];
+      const quotationPatch = patch.quotation ?? {};
+      const setsConvertedProforma =
+        quotationPatch.convertedProformaId !== undefined &&
+        quotationPatch.convertedProformaId !== null &&
+        String(quotationPatch.convertedProformaId) !==
+          String(current.quotation.convertedProformaId ?? "");
+      const setsConvertedInvoice =
+        quotationPatch.convertedInvoiceId !== undefined &&
+        quotationPatch.convertedInvoiceId !== null &&
+        String(quotationPatch.convertedInvoiceId) !==
+          String(current.quotation.convertedInvoiceId ?? "");
+
+      if (
+        (setsConvertedProforma || setsConvertedInvoice) &&
+        !canConvertFinanceDocument(current)
+      ) {
+        return null;
+      }
+
+      const updated = mergeQuotationRecord(current, patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
       this.persistItems();

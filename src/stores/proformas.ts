@@ -20,6 +20,11 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import {
+  canConvertFinanceDocument,
+  conversionNoteReferencesDocument,
+  normalizeFinanceApprovalFields,
+} from "@/utils/financeApproval";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -31,8 +36,9 @@ import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
+import { useQuotationsStore } from "@/stores/quotations";
 
-const STORAGE_KEY = "app.proformas.v4";
+const STORAGE_KEY = "app.proformas.v6";
 type ProformaPayload = Omit<Partial<ProformaRecord>, "quotation"> & {
   quotation?: Partial<Proforma>;
 };
@@ -345,6 +351,23 @@ function sanitizeStoredRecord(record: ProformaRecord): ProformaRecord {
     cloned.approvalMode === "Request Approval"
       ? cloned.approvalRequestedAt?.trim() || null
       : null;
+  cloned.approvalStatus =
+    cloned.approvalStatus === "approved" || cloned.approvalStatus === "rejected"
+      ? cloned.approvalStatus
+      : cloned.approvalMode === "Request Approval"
+        ? "pending"
+        : null;
+  cloned.approvalApprovedAt = cloned.approvalApprovedAt?.trim() || null;
+  cloned.approvalApprovedBy =
+    cloned.approvalApprovedBy === null || cloned.approvalApprovedBy === undefined
+      ? null
+      : resolveEmployeePersonId(cloned.approvalApprovedBy);
+  cloned.approvalRejectedAt = cloned.approvalRejectedAt?.trim() || null;
+  cloned.approvalRejectedBy =
+    cloned.approvalRejectedBy === null || cloned.approvalRejectedBy === undefined
+      ? null
+      : resolveEmployeePersonId(cloned.approvalRejectedBy);
+  normalizeFinanceApprovalFields(cloned);
   cloned.quotation.quotationStatus = normaliseProformaStatus(
     cloned.quotation.quotationStatus,
   );
@@ -649,6 +672,22 @@ function normaliseProformaRecord(
       payload.approvalMode === "Request Approval"
         ? payload.approvalRequestedAt?.trim() || null
         : null,
+    approvalStatus:
+      payload.approvalMode === "Request Approval"
+        ? payload.approvalStatus === "approved" || payload.approvalStatus === "rejected"
+          ? payload.approvalStatus
+          : "pending"
+        : null,
+    approvalApprovedAt: payload.approvalApprovedAt?.trim() || null,
+    approvalApprovedBy:
+      payload.approvalApprovedBy === null || payload.approvalApprovedBy === undefined
+        ? null
+        : resolveEmployeePersonId(payload.approvalApprovedBy),
+    approvalRejectedAt: payload.approvalRejectedAt?.trim() || null,
+    approvalRejectedBy:
+      payload.approvalRejectedBy === null || payload.approvalRejectedBy === undefined
+        ? null
+        : resolveEmployeePersonId(payload.approvalRejectedBy),
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
         ? resolveEmployeePersonId(payload.approverEmployeeId ?? null)
@@ -659,7 +698,7 @@ function normaliseProformaRecord(
       payload.thanksNote?.trim() || buildQuotationThanksNote(config.legal),
   };
 
-  return syncProformaPaymentState(record);
+  return syncProformaPaymentState(normalizeFinanceApprovalFields(record));
 }
 
 function mergeProformaRecord(
@@ -742,6 +781,30 @@ function mergeProformaRecord(
           ? "Request Approval"
           : "Automatic",
     approvalRequestedAt: null,
+    approvalStatus:
+      patch.approvalStatus === undefined
+        ? original.approvalStatus ?? null
+        : patch.approvalStatus ?? null,
+    approvalApprovedAt:
+      patch.approvalApprovedAt === undefined
+        ? original.approvalApprovedAt?.trim() || null
+        : patch.approvalApprovedAt?.trim() || null,
+    approvalApprovedBy:
+      patch.approvalApprovedBy === undefined
+        ? original.approvalApprovedBy ?? null
+        : patch.approvalApprovedBy === null || patch.approvalApprovedBy === undefined
+          ? null
+          : resolveEmployeePersonId(patch.approvalApprovedBy),
+    approvalRejectedAt:
+      patch.approvalRejectedAt === undefined
+        ? original.approvalRejectedAt?.trim() || null
+        : patch.approvalRejectedAt?.trim() || null,
+    approvalRejectedBy:
+      patch.approvalRejectedBy === undefined
+        ? original.approvalRejectedBy ?? null
+        : patch.approvalRejectedBy === null || patch.approvalRejectedBy === undefined
+          ? null
+          : resolveEmployeePersonId(patch.approvalRejectedBy),
     approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
@@ -765,11 +828,18 @@ function mergeProformaRecord(
         ? original.approvalRequestedAt?.trim() || null
         : patch.approvalRequestedAt?.trim() || null
       : null;
+  if (
+    merged.approvalMode === "Request Approval" &&
+    patch.approvalRequestedAt !== undefined &&
+    patch.approvalStatus === undefined
+  ) {
+    merged.approvalStatus = "pending";
+  }
   merged.quotation.quotationStatus = normaliseProformaStatus(
     quotationPatch.quotationStatus ?? original.quotation.quotationStatus,
   );
 
-  return cloneProformaRecord(syncProformaPaymentState(merged));
+  return cloneProformaRecord(syncProformaPaymentState(normalizeFinanceApprovalFields(merged)));
 }
 
 const seedProformas = () => cloneProformaArray(database);
@@ -865,6 +935,20 @@ export const useProformasStore = defineStore("proformas", {
     addProforma(payload: ProformaPayload) {
       requireCurrentUserPermission("finance", "create");
 
+      const quotationsStore = useQuotationsStore();
+      quotationsStore.init();
+      const sourceQuotation = quotationsStore.all.find((record) =>
+        conversionNoteReferencesDocument(
+          payload.note,
+          "quotation",
+          record.quotation.quoteNumber,
+        ),
+      );
+
+      if (sourceQuotation && !canConvertFinanceDocument(sourceQuotation)) {
+        return null;
+      }
+
       const incomingId =
         payload.quotation?.id && Number(payload.quotation.id) > 0
           ? Number(payload.quotation.id)
@@ -919,6 +1003,15 @@ export const useProformasStore = defineStore("proformas", {
         patch.convertedInvoiceId === undefined
           ? current.convertedInvoiceId
           : patch.convertedInvoiceId;
+      const setsConvertedInvoice =
+        patch.convertedInvoiceId !== undefined &&
+        patch.convertedInvoiceId !== null &&
+        String(patch.convertedInvoiceId) !== String(current.convertedInvoiceId ?? "");
+
+      if (setsConvertedInvoice && !canConvertFinanceDocument(current)) {
+        return null;
+      }
+
       if (
         isLockedProforma(this.items, current) &&
         String(nextConvertedInvoiceId ?? "") ===

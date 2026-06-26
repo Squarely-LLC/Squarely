@@ -69,9 +69,12 @@ const quotationRecord = computed(
   () =>
     embeddedPreviewPayload.value?.quotation ??
     draftPreview.value?.quotation ??
-    quotationsStore.byId(route.params.id),
+    quotationsStore.byRouteId(route.params.id),
 );
 const canReturnToEditor = computed(() => Boolean(draftPreview.value));
+const resolvedQuotationId = computed(
+  () => quotationRecord.value?.quotation.id ?? route.params.id,
+);
 const editRoute = computed(() => {
   if (draftPreview.value?.source === "add") {
     return {
@@ -82,7 +85,7 @@ const editRoute = computed(() => {
 
   return {
     name: "apps-quotation-edit-id" as const,
-    params: { id: route.params.id },
+    params: { id: resolvedQuotationId.value },
   };
 });
 const quotation = computed(() => quotationRecord.value?.quotation ?? null);

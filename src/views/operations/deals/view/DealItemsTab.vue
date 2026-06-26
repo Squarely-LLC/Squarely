@@ -84,6 +84,12 @@ import {
 } from "@/utils/documentSourceModes";
 import { saveFile } from "@/utils/fileStore";
 import {
+  canConvertFinanceDocument,
+  FINANCE_APPROVAL_CONVERSION_MESSAGE,
+  normalizeFinanceApprovalStatus,
+} from "@/utils/financeApproval";
+import { notifyFinanceApprovalRequest } from "@/utils/financeApprovalNotifications";
+import {
   buildQuotationPaymentDetails,
   buildQuotationSalesperson,
   buildQuotationThanksNote,
@@ -187,9 +193,6 @@ const canUseFinanceUpdate = computed(
 const canUseFinanceDelete = computed(
   () => Boolean(props.canDeleteFinance) && !props.hideFinancials,
 );
-const canUseFinanceApprove = computed(
-  () => Boolean(props.canApproveFinance) && !props.hideFinancials,
-);
 const canUseDocumentShare = computed(() => !props.hideFinancials);
 
 cataloguesStore.init();
@@ -236,11 +239,6 @@ const financeDeleteReason = computed(() =>
   props.hideFinancials
     ? "Financials are hidden for this role."
     : "You do not have permission to delete finance.",
-);
-const financeApproveReason = computed(() =>
-  props.hideFinancials
-    ? "Financials are hidden for this role."
-    : "You do not have permission to approve finance.",
 );
 const financeShareReason = computed(() =>
   props.hideFinancials
@@ -3544,7 +3542,10 @@ const isDocumentConversionBlocked = (record: DealDocumentPanelRecord) => {
   const status = normalizeDocumentStatus(record.status);
 
   return (
-    status === "canceled" || status === "lost" || isDocumentConverted(record)
+    status === "canceled" ||
+    status === "lost" ||
+    isDocumentConverted(record) ||
+    !canConvertFinanceDocument(record.record as any)
   );
 };
 
@@ -3571,6 +3572,7 @@ const getApprovalAction = (
   const document = getApprovalDocument(kind, record);
   const approvalMode = document?.approvalMode;
   const approvalRequestedAt = document?.approvalRequestedAt?.trim?.() || null;
+  const approvalStatus = normalizeFinanceApprovalStatus(document);
 
   if (approvalMode !== "Request Approval") {
     return {
@@ -3579,10 +3581,17 @@ const getApprovalAction = (
     };
   }
 
-  if (approvalRequestedAt) {
+  if (approvalStatus === "approved") {
     return {
       disabled: true,
-      title: "Approval Requested",
+      title: "Approved",
+    };
+  }
+
+  if (approvalStatus === "pending" && approvalRequestedAt) {
+    return {
+      disabled: false,
+      title: "Remind Approver",
     };
   }
 
@@ -3596,18 +3605,37 @@ const requestApproval = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
-  if (!canUseFinanceApprove.value) {
-    notifyFinanceDenied(financeApproveReason.value);
+  if (!canUseFinanceUpdate.value) {
+    notifyFinanceDenied(financeUpdateReason.value);
     return;
   }
 
   if (getApprovalAction(kind, record).disabled) return;
 
-  const patch = { approvalRequestedAt: new Date().toISOString() } as any;
+  const patch = {
+    approvalRequestedAt: new Date().toISOString(),
+    approvalStatus: "pending",
+    approvalApprovedAt: null,
+    approvalApprovedBy: null,
+    approvalRejectedAt: null,
+    approvalRejectedBy: null,
+  } as any;
 
-  if (kind === "quotation") quotationsStore.updateQuotation(record.id, patch);
-  else if (kind === "proforma") proformasStore.updateProforma(record.id, patch);
-  else invoicesStore.updateInvoice(record.id, patch);
+  const updated =
+    kind === "quotation"
+      ? quotationsStore.updateQuotation(record.id, patch)
+      : kind === "proforma"
+        ? proformasStore.updateProforma(record.id, patch)
+        : invoicesStore.updateInvoice(record.id, patch);
+
+  if (updated && (kind === "quotation" || kind === "proforma")) {
+    const approvalDocument = getApprovalDocument(kind, record);
+
+    notifyFinanceApprovalRequest(kind, updated, {
+      force: true,
+      reminder: Boolean(approvalDocument?.approvalRequestedAt),
+    });
+  }
 
   notifications.push("Approval requested.", "success", 2500);
 };
@@ -4319,6 +4347,12 @@ const convertQuotationToProforma = (
     },
   } as never);
 
+  if (!created) {
+    notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
+
+    return null;
+  }
+
   quotationsStore.updateQuotation(record.id, {
     ...record.record,
     quotation: {
@@ -4344,6 +4378,12 @@ const convertProformaRecordToInvoice = (record: DealDocumentPanelRecord) => {
     return null;
   }
 
+  if (!canConvertFinanceDocument(record.record as any)) {
+    notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
+
+    return null;
+  }
+
   if (isDocumentConversionBlocked(record)) return null;
 
   const created = invoicesStore.addInvoice({
@@ -4356,6 +4396,12 @@ const convertProformaRecordToInvoice = (record: DealDocumentPanelRecord) => {
       balance: record.total,
     },
   } as never);
+
+  if (!created) {
+    notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
+
+    return null;
+  }
 
   proformasStore.updateProforma(record.id, {
     ...record.record,
@@ -4477,6 +4523,12 @@ const requestQuotationConversion = (
   record: DealDocumentPanelRecord,
 ) => {
   if (!canStartFinanceCreateFlow()) return;
+
+  if (!canConvertFinanceDocument(record.record as any)) {
+    notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
+
+    return;
+  }
 
   if (isDocumentConversionBlocked(record)) {
     notifications.push("Quotation cannot be converted.", "warning", 3000);
@@ -9131,7 +9183,7 @@ const openEditTask = (taskId: number | string) => {
                                   </VListItem>
                                   <VListItem
                                     :disabled="
-                                      !canUseFinanceApprove ||
+                                      !canUseFinanceUpdate ||
                                       getApprovalAction(panel.key, record).disabled
                                     "
                                     @click="requestApproval(panel.key, record)"

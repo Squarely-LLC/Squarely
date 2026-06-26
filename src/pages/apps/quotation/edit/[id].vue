@@ -15,6 +15,10 @@ import {
     getQuotationCompanyAddressLines,
     getQuotationCompanyContactLines,
 } from "@/utils/quotationConfig";
+import {
+    applyFinanceApprovalRequestFields,
+    notifyFinanceApprovalRequest,
+} from "@/utils/financeApprovalNotifications";
 import { createQuotationPdfFile } from "@/utils/quotationPdf";
 import {
     clearQuotationPreviewDraft,
@@ -46,7 +50,7 @@ const sourceRecord =
   previewDraft?.source === "edit" &&
   String(previewDraft.quotation.quotation.id) === String(route.params.id)
     ? previewDraft.quotation
-    : quotationsStore.byId(route.params.id);
+    : quotationsStore.byRouteId(route.params.id);
 const quotationData = ref<QuotationData | null>(
   sourceRecord ? cloneQuotationRecord(sourceRecord) : null,
 );
@@ -607,12 +611,16 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  applyFinanceApprovalRequestFields(quotationData.value, sourceRecord);
 
   const updatedQuotation = quotationsStore.updateQuotation(
     quotationData.value.quotation.id,
     cloneQuotationRecord(quotationData.value),
   );
   if (!updatedQuotation) return;
+  notifyFinanceApprovalRequest("quotation", updatedQuotation, {
+    previousRecord: sourceRecord,
+  });
 
   notifications.push(
     `Quotation ${updatedQuotation.quotation.quoteNumber} updated successfully.`,

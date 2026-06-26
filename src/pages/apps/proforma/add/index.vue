@@ -18,18 +18,23 @@ import {
     loadDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
 import {
+  applyFinanceApprovalRequestFields,
+  notifyFinanceApprovalRequest,
+} from "@/utils/financeApprovalNotifications";
+import {
     clearProformaPreviewDraft,
     loadProformaPreviewDraft,
     saveProformaPreviewDraft,
 } from "@/utils/proformaPreviewDraft";
 import {
-    buildProformaNote,
+  buildProformaNote,
     buildQuotationPaymentDetails,
     buildQuotationSalesperson,
     buildQuotationThanksNote,
     formatCurrencyAmount,
     getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
+import { FINANCE_APPROVAL_CONVERSION_MESSAGE } from "@/utils/financeApproval";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import ProformaEditable from "@/views/apps/proforma/ProformaEditable.vue";
 import type {
@@ -98,6 +103,7 @@ const buildBlankQuotation = (): ProformaData => {
       linkedRecordType: null,
       source: "squarely",
       attachmentName: null,
+      attachmentFileKey: null,
       parentQuotationId: null,
       isRevision: false,
       revisionLabel: null,
@@ -172,7 +178,12 @@ const buildRevisionDraft = (parentId: number): ProformaData => {
     .toISOString()
     .slice(0, 10);
   revisionDraft.quotation.quotationStatus = "Not Paid";
-  revisionDraft.quotation.approvalRequestedAt = null;
+  revisionDraft.approvalRequestedAt = null;
+  revisionDraft.approvalStatus = null;
+  revisionDraft.approvalApprovedAt = null;
+  revisionDraft.approvalApprovedBy = null;
+  revisionDraft.approvalRejectedAt = null;
+  revisionDraft.approvalRejectedBy = null;
   revisionDraft.note = `${sourceRecord.note}\n${revisionLabel} draft created from ${baseQuoteNumber}.`;
 
   return revisionDraft;
@@ -198,7 +209,12 @@ const buildDuplicateDraft = (sourceId: number): ProformaData => {
   duplicateDraft.quotation.isRevision = false;
   duplicateDraft.quotation.revisionLabel = null;
   duplicateDraft.quotation.quotationStatus = "Not Paid";
-  duplicateDraft.quotation.approvalRequestedAt = null;
+  duplicateDraft.approvalRequestedAt = null;
+  duplicateDraft.approvalStatus = null;
+  duplicateDraft.approvalApprovedAt = null;
+  duplicateDraft.approvalApprovedBy = null;
+  duplicateDraft.approvalRejectedAt = null;
+  duplicateDraft.approvalRejectedBy = null;
   duplicateDraft.quotation.balance = 0;
   duplicateDraft.quotation.total = total;
   duplicateDraft.payments = [];
@@ -227,7 +243,6 @@ const buildInitialQuotation = (): ProformaData => {
 
   const dealDraft = loadDealDocumentDraft("proforma");
   if (route.query.dealDraft === "1" && dealDraft?.source === "deal") {
-    clearDealDocumentDraft("proforma");
     return cloneProformaRecord(dealDraft.quotation);
   }
 
@@ -415,6 +430,7 @@ const confirmLeave = async () => {
   if (!target) return;
 
   bypassUnsavedWarning.value = true;
+  if (isDealDraftRoute.value) clearDealDocumentDraft("proforma");
   await router.push(target);
 };
 
@@ -454,11 +470,16 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  applyFinanceApprovalRequestFields(quotationData.value);
 
   const created = proformasStore.addProforma(
     cloneProformaRecord(quotationData.value),
   );
-  if (!created) return;
+  if (!created) {
+    notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
+    return;
+  }
+  notifyFinanceApprovalRequest("proforma", created);
 
   notifications.push(
     `Proforma ${created.quotation.quoteNumber} saved successfully.`,

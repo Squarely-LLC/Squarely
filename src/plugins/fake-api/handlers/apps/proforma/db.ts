@@ -67,7 +67,19 @@ const buildStandaloneRecord = (
   status: ProformaRecord["quotation"]["quotationStatus"],
   avatar: string,
   overrides: Partial<ProformaRecord["quotation"]> &
-    Partial<Pick<ProformaRecord, "approvalMode" | "approvalRequestedAt" | "approverEmployeeId">> & {
+    Partial<
+      Pick<
+        ProformaRecord,
+        | "approvalMode"
+        | "approvalRequestedAt"
+        | "approvalStatus"
+        | "approvalApprovedAt"
+        | "approvalApprovedBy"
+        | "approvalRejectedAt"
+        | "approvalRejectedBy"
+        | "approverEmployeeId"
+      >
+    > & {
     client: ProformaRecord["quotation"]["client"];
   },
   payments: ProformaRecord["payments"] = [],
@@ -75,6 +87,11 @@ const buildStandaloneRecord = (
   const {
     approvalMode,
     approvalRequestedAt,
+    approvalStatus,
+    approvalApprovedAt,
+    approvalApprovedBy,
+    approvalRejectedAt,
+    approvalRejectedBy,
     approverEmployeeId,
     ...quotationOverrides
   } = overrides;
@@ -119,6 +136,12 @@ const buildStandaloneRecord = (
   paymentLink: null,
   approvalMode: approvalMode ?? "Automatic",
   approvalRequestedAt: approvalRequestedAt ?? null,
+  approvalStatus:
+    approvalMode === "Request Approval" ? approvalStatus ?? "pending" : null,
+  approvalApprovedAt: approvalApprovedAt ?? null,
+  approvalApprovedBy: approvalApprovedBy ?? null,
+  approvalRejectedAt: approvalRejectedAt ?? null,
+  approvalRejectedBy: approvalRejectedBy ?? null,
   approverEmployeeId: approverEmployeeId ?? null,
   salesperson: "Nour Khoury",
   thanksNote: "Thank you for considering Squarely.",
@@ -167,6 +190,11 @@ const toProformaRecord = (
   paymentLink: quotationRecord.paymentLink,
   approvalMode: quotationRecord.approvalMode,
   approvalRequestedAt: quotationRecord.approvalRequestedAt ?? null,
+  approvalStatus: quotationRecord.approvalStatus ?? null,
+  approvalApprovedAt: quotationRecord.approvalApprovedAt ?? null,
+  approvalApprovedBy: quotationRecord.approvalApprovedBy ?? null,
+  approvalRejectedAt: quotationRecord.approvalRejectedAt ?? null,
+  approvalRejectedBy: quotationRecord.approvalRejectedBy ?? null,
   approverEmployeeId: quotationRecord.approverEmployeeId,
   convertedInvoiceId: quotationRecord.quotation.convertedInvoiceId ?? null,
   salesperson: quotationRecord.salesperson,

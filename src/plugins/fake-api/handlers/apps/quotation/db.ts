@@ -105,7 +105,19 @@ const buildRecord = (
   status: QuotationRecord["quotation"]["quotationStatus"],
   avatar: string,
   overrides: Partial<QuotationRecord["quotation"]> &
-    Partial<Pick<QuotationRecord, "approvalMode" | "approvalRequestedAt" | "approverEmployeeId">> & {
+    Partial<
+      Pick<
+        QuotationRecord,
+        | "approvalMode"
+        | "approvalRequestedAt"
+        | "approvalStatus"
+        | "approvalApprovedAt"
+        | "approvalApprovedBy"
+        | "approvalRejectedAt"
+        | "approvalRejectedBy"
+        | "approverEmployeeId"
+      >
+    > & {
     client: QuotationRecord["quotation"]["client"];
     purchasedProducts?: QuotationRecord["purchasedProducts"];
   },
@@ -114,6 +126,11 @@ const buildRecord = (
     purchasedProducts: overridePurchasedProducts,
     approvalMode,
     approvalRequestedAt,
+    approvalStatus,
+    approvalApprovedAt,
+    approvalApprovedBy,
+    approvalRejectedAt,
+    approvalRejectedBy,
     approverEmployeeId,
     ...quotationOverrides
   } = overrides;
@@ -161,6 +178,12 @@ const buildRecord = (
     paymentLink: null,
     approvalMode: approvalMode ?? "Automatic",
     approvalRequestedAt: approvalRequestedAt ?? null,
+    approvalStatus:
+      approvalMode === "Request Approval" ? approvalStatus ?? "pending" : null,
+    approvalApprovedAt: approvalApprovedAt ?? null,
+    approvalApprovedBy: approvalApprovedBy ?? null,
+    approvalRejectedAt: approvalRejectedAt ?? null,
+    approvalRejectedBy: approvalRejectedBy ?? null,
     approverEmployeeId: approverEmployeeId ?? null,
     salesperson: "Nour Khoury",
     thanksNote: "Thank you for considering Squarely.",

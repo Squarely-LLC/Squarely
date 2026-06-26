@@ -83,9 +83,20 @@ export interface QuotationPaymentEntry {
 }
 
 export type QuotationApprovalMode = "Automatic" | "Request Approval";
+export type QuotationApprovalStatus = "pending" | "approved" | "rejected";
 
 export interface QuotationRecord {
   quotation: Quotation;
+  createdBy?: {
+    id?: number | string | null;
+    accountId?: number | string | null;
+    employeeId?: number | string | null;
+    personId?: number | string | null;
+    name?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  } | null;
+  createdById?: number | string | null;
   paymentDetails: PaymentDetails;
   payments: QuotationPaymentEntry[];
   purchasedProducts: PurchasedProduct[];
@@ -96,6 +107,11 @@ export interface QuotationRecord {
   paymentLink: string | null;
   approvalMode: QuotationApprovalMode;
   approvalRequestedAt?: string | null;
+  approvalStatus?: QuotationApprovalStatus | null;
+  approvalApprovedAt?: string | null;
+  approvalApprovedBy?: number | string | null;
+  approvalRejectedAt?: string | null;
+  approvalRejectedBy?: number | string | null;
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;

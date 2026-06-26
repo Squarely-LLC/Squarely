@@ -13,12 +13,14 @@ declare global {
   const DEMO_DATA_VERSION: typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION']
   const DEMO_DATA_VERSION_KEY: typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION_KEY']
   const EffectScope: typeof import('vue')['EffectScope']
+  const FINANCE_APPROVAL_CONVERSION_MESSAGE: typeof import('./src/utils/financeApproval')['FINANCE_APPROVAL_CONVERSION_MESSAGE']
   const PERMISSION_DENIED_MESSAGE: typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']
   const PermissionDeniedError: typeof import('./src/utils/authorization')['PermissionDeniedError']
   const ROLE_TEST_USER_PASSWORD: typeof import('./src/utils/seedIdentityGraph')['ROLE_TEST_USER_PASSWORD']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
+  const applyFinanceApprovalRequestFields: typeof import('./src/utils/financeApprovalNotifications')['applyFinanceApprovalRequestFields']
   const assertCanMutateResource: typeof import('./src/utils/authorization')['assertCanMutateResource']
   const assertSeedIntegrity: typeof import('./src/utils/seedIntegrity')['assertSeedIntegrity']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
@@ -45,6 +47,7 @@ declare global {
   const buildQuotationSalesperson: typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']
   const buildQuotationThanksNote: typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']
   const buildYearlyBillingPeriod: typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']
+  const canConvertFinanceDocument: typeof import('./src/utils/financeApproval')['canConvertFinanceDocument']
   const canCurrentUser: typeof import('./src/utils/authorization')['canCurrentUser']
   const canMutate: typeof import('./src/utils/permissionUi')['canMutate']
   const canReadResource: typeof import('./src/utils/authorization')['canReadResource']
@@ -62,6 +65,7 @@ declare global {
   const contactRequirementToFlags: typeof import('./src/utils/crmContactRequirement')['contactRequirementToFlags']
   const controlledComputed: typeof import('@vueuse/core')['controlledComputed']
   const controlledRef: typeof import('@vueuse/core')['controlledRef']
+  const conversionNoteReferencesDocument: typeof import('./src/utils/financeApproval')['conversionNoteReferencesDocument']
   const createApp: typeof import('vue')['createApp']
   const createEventHook: typeof import('@vueuse/core')['createEventHook']
   const createGenericProjection: typeof import('@vueuse/math')['createGenericProjection']
@@ -233,8 +237,11 @@ declare global {
   const normalizeAuthorRef: typeof import('./src/utils/currentAccount')['normalizeAuthorRef']
   const normalizeBillingPeriodKey: typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']
   const normalizeDocumentSourceModes: typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']
+  const normalizeFinanceApprovalFields: typeof import('./src/utils/financeApproval')['normalizeFinanceApprovalFields']
+  const normalizeFinanceApprovalStatus: typeof import('./src/utils/financeApproval')['normalizeFinanceApprovalStatus']
   const normalizeProjectCode: typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
+  const notifyFinanceApprovalRequest: typeof import('./src/utils/financeApprovalNotifications')['notifyFinanceApprovalRequest']
   const notifyMeetingAttendeesAdded: typeof import('./src/utils/meetingNotifications')['notifyMeetingAttendeesAdded']
   const notifyMeetingEvent: typeof import('./src/utils/meetingNotifications')['notifyMeetingEvent']
   const onActivated: typeof import('vue')['onActivated']
@@ -285,6 +292,7 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const requireCurrentUserPermission: typeof import('./src/utils/authorization')['requireCurrentUserPermission']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
+  const requiresFinanceApproval: typeof import('./src/utils/financeApproval')['requiresFinanceApproval']
   const resetAuthSessionState: typeof import('./src/utils/authSession')['resetAuthSessionState']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveContactRequirement: typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']
@@ -562,12 +570,14 @@ declare module 'vue' {
     readonly DEMO_DATA_VERSION: UnwrapRef<typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION']>
     readonly DEMO_DATA_VERSION_KEY: UnwrapRef<typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION_KEY']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly FINANCE_APPROVAL_CONVERSION_MESSAGE: UnwrapRef<typeof import('./src/utils/financeApproval')['FINANCE_APPROVAL_CONVERSION_MESSAGE']>
     readonly PERMISSION_DENIED_MESSAGE: UnwrapRef<typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']>
     readonly PermissionDeniedError: UnwrapRef<typeof import('./src/utils/authorization')['PermissionDeniedError']>
     readonly ROLE_TEST_USER_PASSWORD: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['ROLE_TEST_USER_PASSWORD']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
+    readonly applyFinanceApprovalRequestFields: UnwrapRef<typeof import('./src/utils/financeApprovalNotifications')['applyFinanceApprovalRequestFields']>
     readonly assertCanMutateResource: UnwrapRef<typeof import('./src/utils/authorization')['assertCanMutateResource']>
     readonly assertSeedIntegrity: UnwrapRef<typeof import('./src/utils/seedIntegrity')['assertSeedIntegrity']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
@@ -594,6 +604,7 @@ declare module 'vue' {
     readonly buildQuotationSalesperson: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationSalesperson']>
     readonly buildQuotationThanksNote: UnwrapRef<typeof import('./src/utils/quotationConfig')['buildQuotationThanksNote']>
     readonly buildYearlyBillingPeriod: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['buildYearlyBillingPeriod']>
+    readonly canConvertFinanceDocument: UnwrapRef<typeof import('./src/utils/financeApproval')['canConvertFinanceDocument']>
     readonly canCurrentUser: UnwrapRef<typeof import('./src/utils/authorization')['canCurrentUser']>
     readonly canMutate: UnwrapRef<typeof import('./src/utils/permissionUi')['canMutate']>
     readonly canReadResource: UnwrapRef<typeof import('./src/utils/authorization')['canReadResource']>
@@ -611,6 +622,7 @@ declare module 'vue' {
     readonly contactRequirementToFlags: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['contactRequirementToFlags']>
     readonly controlledComputed: UnwrapRef<typeof import('@vueuse/core')['controlledComputed']>
     readonly controlledRef: UnwrapRef<typeof import('@vueuse/core')['controlledRef']>
+    readonly conversionNoteReferencesDocument: UnwrapRef<typeof import('./src/utils/financeApproval')['conversionNoteReferencesDocument']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
     readonly createEventHook: UnwrapRef<typeof import('@vueuse/core')['createEventHook']>
     readonly createGenericProjection: UnwrapRef<typeof import('@vueuse/math')['createGenericProjection']>
@@ -783,8 +795,11 @@ declare module 'vue' {
     readonly normalizeAuthorRef: UnwrapRef<typeof import('./src/utils/currentAccount')['normalizeAuthorRef']>
     readonly normalizeBillingPeriodKey: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['normalizeBillingPeriodKey']>
     readonly normalizeDocumentSourceModes: UnwrapRef<typeof import('./src/utils/documentSourceModes')['normalizeDocumentSourceModes']>
+    readonly normalizeFinanceApprovalFields: UnwrapRef<typeof import('./src/utils/financeApproval')['normalizeFinanceApprovalFields']>
+    readonly normalizeFinanceApprovalStatus: UnwrapRef<typeof import('./src/utils/financeApproval')['normalizeFinanceApprovalStatus']>
     readonly normalizeProjectCode: UnwrapRef<typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
+    readonly notifyFinanceApprovalRequest: UnwrapRef<typeof import('./src/utils/financeApprovalNotifications')['notifyFinanceApprovalRequest']>
     readonly notifyMeetingAttendeesAdded: UnwrapRef<typeof import('./src/utils/meetingNotifications')['notifyMeetingAttendeesAdded']>
     readonly notifyMeetingEvent: UnwrapRef<typeof import('./src/utils/meetingNotifications')['notifyMeetingEvent']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
@@ -835,6 +850,7 @@ declare module 'vue' {
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly requireCurrentUserPermission: UnwrapRef<typeof import('./src/utils/authorization')['requireCurrentUserPermission']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
+    readonly requiresFinanceApproval: UnwrapRef<typeof import('./src/utils/financeApproval')['requiresFinanceApproval']>
     readonly resetAuthSessionState: UnwrapRef<typeof import('./src/utils/authSession')['resetAuthSessionState']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveContactRequirement: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']>

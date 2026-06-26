@@ -13,6 +13,10 @@ import {
 import { useReceiptsStore } from "@/stores/receipts";
 import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
+  applyFinanceApprovalRequestFields,
+  notifyFinanceApprovalRequest,
+} from "@/utils/financeApprovalNotifications";
+import {
   clearProformaPreviewDraft,
   loadProformaPreviewDraft,
   saveProformaPreviewDraft,
@@ -395,7 +399,7 @@ const recordQuotationPayment = (payment: ProformaPaymentInput) => {
   );
 };
 
-const createDraftQuotationPdfFile = (previewQuotation: QuotationData) =>
+const createDraftQuotationPdfFile = (previewQuotation: ProformaData) =>
   createQuotationPdfFile({
     quotationRecord: previewQuotation,
     companyName: configStore.legal?.companyName?.trim() || "Squarely",
@@ -625,12 +629,16 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  applyFinanceApprovalRequestFields(quotationData.value, sourceRecord);
 
   const updatedQuotation = proformasStore.updateProforma(
     quotationData.value.quotation.id,
     cloneProformaRecord(quotationData.value),
   );
   if (!updatedQuotation) return;
+  notifyFinanceApprovalRequest("proforma", updatedQuotation, {
+    previousRecord: sourceRecord,
+  });
 
   const originalPaymentIds = new Set(
     (sourceRecord?.payments ?? []).map((payment) => payment.id),

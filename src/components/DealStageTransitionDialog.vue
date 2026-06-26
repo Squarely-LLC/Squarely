@@ -26,7 +26,12 @@ const isAuthRoute = computed(() => {
     routeName.includes("reset-password")
   );
 });
-const canShowDialog = computed(() => isAuthenticated.value && !isAuthRoute.value);
+const routeDealId = computed(() =>
+  route.name === "operations-deals-view-id" ? String(route.params.id ?? "") : "",
+);
+const canShowDialog = computed(
+  () => isAuthenticated.value && !isAuthRoute.value && Boolean(routeDealId.value),
+);
 
 watch(
   canShowDialog,
@@ -37,7 +42,9 @@ watch(
 );
 
 const pendingDeal = computed(() =>
-  canShowDialog.value ? dealsStore.latestPendingStageDeal : null,
+  canShowDialog.value
+    ? dealsStore.byId(routeDealId.value)
+    : null,
 );
 const pendingTransition = computed(
   () => pendingDeal.value?.pendingStageTransition ?? null,

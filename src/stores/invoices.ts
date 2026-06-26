@@ -20,6 +20,10 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import {
+  canConvertFinanceDocument,
+  conversionNoteReferencesDocument,
+} from "@/utils/financeApproval";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -31,6 +35,8 @@ import { defineStore } from "pinia";
 import { toRaw } from "vue";
 import { useDealsStore } from "@/stores/deals";
 import { resolveEmployeePersonId } from "@/stores/people";
+import { useProformasStore } from "@/stores/proformas";
+import { useQuotationsStore } from "@/stores/quotations";
 
 const STORAGE_KEY = "app.invoices.v5";
 type InvoicePayload = Omit<Partial<InvoiceRecord>, "quotation"> & {
@@ -858,6 +864,32 @@ export const useInvoicesStore = defineStore("invoices", {
 
     addInvoice(payload: InvoicePayload) {
       requireCurrentUserPermission("finance", "create");
+
+      const quotationsStore = useQuotationsStore();
+      const proformasStore = useProformasStore();
+      quotationsStore.init();
+      proformasStore.init();
+      const sourceQuotation = quotationsStore.all.find((record) =>
+        conversionNoteReferencesDocument(
+          payload.note,
+          "quotation",
+          record.quotation.quoteNumber,
+        ),
+      );
+      const sourceProforma = proformasStore.all.find((record) =>
+        conversionNoteReferencesDocument(
+          payload.note,
+          "proforma",
+          record.quotation.quoteNumber,
+        ),
+      );
+
+      if (
+        (sourceQuotation && !canConvertFinanceDocument(sourceQuotation)) ||
+        (sourceProforma && !canConvertFinanceDocument(sourceProforma))
+      ) {
+        return null;
+      }
 
       const incomingId =
         payload.quotation?.id && Number(payload.quotation.id) > 0

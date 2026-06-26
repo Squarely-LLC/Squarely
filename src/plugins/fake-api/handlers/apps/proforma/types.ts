@@ -75,6 +75,7 @@ export interface ProformaPaymentEntry {
 }
 
 export type ProformaApprovalMode = "Automatic" | "Request Approval";
+export type ProformaApprovalStatus = "pending" | "approved" | "rejected";
 
 export interface ProformaRecord {
   quotation: Proforma;
@@ -89,6 +90,11 @@ export interface ProformaRecord {
   paymentLink: string | null;
   approvalMode: ProformaApprovalMode;
   approvalRequestedAt?: string | null;
+  approvalStatus?: ProformaApprovalStatus | null;
+  approvalApprovedAt?: string | null;
+  approvalApprovedBy?: number | string | null;
+  approvalRejectedAt?: string | null;
+  approvalRejectedBy?: number | string | null;
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;

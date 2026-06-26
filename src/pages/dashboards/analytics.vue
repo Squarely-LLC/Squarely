@@ -9,7 +9,6 @@ import AddMeetingDrawer, {
 } from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
 import MessageDrawer from "@/views/apps/todo/list/MessageDrawer.vue";
-import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
 import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -18,6 +17,7 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
+import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
 import { canMutate } from "@/utils/permissionUi";
 import { getContactAndEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
 import { formatSystemDate } from "@core/utils/formatters";
@@ -48,7 +48,6 @@ const notifications = useNotificationsStore();
 const quotationsStore = useQuotationsStore();
 const proformasStore = useProformasStore();
 const invoicesStore = useInvoicesStore();
-const dealsStore = useDealsStore();
 const router = useRouter();
 
 todosStore.init();
@@ -57,7 +56,6 @@ employeesStore.init();
 quotationsStore.init();
 proformasStore.init();
 invoicesStore.init();
-dealsStore.init();
 
 const isLeaveDrawerOpen = ref(false);
 const isRequestPickerOpen = ref(false);
@@ -386,7 +384,6 @@ const ownRequests = computed(() => {
   }));
 });
 
-const canApproveDeals = computed(() => canMutate("deals", "approve"));
 const canApproveFinance = computed(() => canMutate("finance", "approve"));
 const canApproveHr = computed(() => canMutate("hr", "approve") || canMutate("hr", "update"));
 
@@ -522,39 +519,47 @@ const workRows = computed(() => {
 
 const documentApprovalRows = computed(() => {
   const currentKeys = currentUserKeys.value;
-  const buildRows = (records: any[], kind: "quotation" | "proforma" | "invoice") =>
+  const buildRows = (records: any[], kind: "quotation" | "proforma") =>
     records
       .filter(
         (record: any) =>
           record.approvalMode === "Request Approval" &&
           record.approvalRequestedAt &&
+          normalizeFinanceApprovalStatus(record) === "pending" &&
           matchesScope(record.approverEmployeeId, currentKeys),
       )
       .map((record: any) => {
         const quotation = record.quotation ?? {};
+        const documentLabel = kind === "quotation" ? "QT" : "PF";
+        const documentNumber =
+          String(quotation.quoteNumber ?? "").trim() ||
+          `${documentLabel}-${quotation.id}`;
+        const clientName =
+          String(quotation.client?.name ?? quotation.client?.company ?? "").trim() ||
+          "Client";
+        const serviceName = String(quotation.service ?? "").trim();
         const routeName =
           kind === "quotation"
             ? "apps-quotation-preview-id"
-            : kind === "proforma"
-              ? "apps-proforma-preview-id"
-              : "apps-invoice-preview-id";
+            : "apps-proforma-preview-id";
 
         return {
           id: `${kind}-${quotation.id}`,
           kind,
-          title: `${kind[0].toUpperCase()}${kind.slice(1)} ${quotation.quoteNumber ?? quotation.id}`,
-          requester: record.salesperson || quotation.client?.name || "Finance",
+          title: `${documentLabel} ${documentNumber}`,
+          requester: serviceName ? `${clientName} - ${serviceName}` : clientName,
           status: quotation.quotationStatus || "Approval",
           date: record.approvalRequestedAt,
           route: { name: routeName, params: { id: quotation.id } },
           action: "open" as const,
+          recordId: quotation.id,
+          raw: record,
         };
       });
 
   return [
-    ...buildRows(quotationsStore.all, "quotation"),
-    ...buildRows(proformasStore.all, "proforma"),
-    ...buildRows(invoicesStore.all, "invoice"),
+    ...buildRows(quotationsStore.items, "quotation"),
+    ...buildRows(proformasStore.items, "proforma"),
   ];
 });
 
@@ -612,30 +617,13 @@ const hrApprovalRows = computed(() =>
   }),
 );
 
-const dealApprovalRows = computed(() => {
-  if (!canApproveDeals.value) return [];
-
-  return dealsStore.all
-    .filter((deal: any) => deal.pendingStageTransition)
-    .map((deal: any) => ({
-      id: `deal-${deal.id}`,
-      kind: "deal" as const,
-      title: `${deal.code || deal.name || `Deal #${deal.id}`} stage change`,
-      requester: deal.salesman || deal.salesperson || "Deal",
-      status: `To ${deal.pendingStageTransition?.targetStage ?? "next stage"}`,
-      date: deal.pendingStageTransition?.requestedAt ?? "",
-      dealId: deal.id,
-    }));
-});
-
 const approvalRows = computed(() => [
   ...(canApproveHr.value ? hrApprovalRows.value : []),
   ...(canApproveFinance.value ? documentApprovalRows.value : []),
-  ...dealApprovalRows.value,
 ]);
 
 const canSeeApprovalPanel = computed(
-  () => isAdminUser.value || canApproveHr.value || canApproveFinance.value || canApproveDeals.value,
+  () => isAdminUser.value || canApproveHr.value || canApproveFinance.value,
 );
 
 const showNeedApproval = computed(() => canSeeApprovalPanel.value || approvalRows.value.length > 0);
@@ -1034,10 +1022,42 @@ const rejectHrRequest = (row: any) => {
   notifications.push("Request rejected", "success", 2500);
 };
 
-const approveDealStage = (row: any) => {
-  const approved = dealsStore.approvePendingStageTransition(row.dealId);
-  if (approved) notifications.push("Deal stage approved", "success", 2500);
-  else notifications.push("Unable to approve deal stage", "error", 3000);
+const currentApproverId = computed(
+  () => identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
+);
+
+const approveFinanceApproval = (row: any) => {
+  const patch = {
+    approvalStatus: "approved",
+    approvalApprovedAt: new Date().toISOString(),
+    approvalApprovedBy: currentApproverId.value,
+    approvalRejectedAt: null,
+    approvalRejectedBy: null,
+  } as any;
+  const updated =
+    row.kind === "quotation"
+      ? quotationsStore.updateQuotation(row.recordId, patch)
+      : proformasStore.updateProforma(row.recordId, patch);
+
+  if (updated) notifications.push("Finance document approved", "success", 2500);
+  else notifications.push("Unable to approve finance document", "error", 3000);
+};
+
+const declineFinanceApproval = (row: any) => {
+  const patch = {
+    approvalStatus: "rejected",
+    approvalRejectedAt: new Date().toISOString(),
+    approvalRejectedBy: currentApproverId.value,
+    approvalApprovedAt: null,
+    approvalApprovedBy: null,
+  } as any;
+  const updated =
+    row.kind === "quotation"
+      ? quotationsStore.updateQuotation(row.recordId, patch)
+      : proformasStore.updateProforma(row.recordId, patch);
+
+  if (updated) notifications.push("Finance document declined", "success", 2500);
+  else notifications.push("Unable to decline finance document", "error", 3000);
 };
 
 const activityTimelineRows = computed(() => {
@@ -1087,7 +1107,7 @@ const activityTimelineRows = computed(() => {
     chip: "Approval",
     collaborators: [],
     date: approval.date,
-    color: approval.kind === "hr" ? "warning" : approval.kind === "deal" ? "primary" : "info",
+    color: approval.kind === "hr" ? "warning" : "info",
   }));
 
   return [
@@ -1527,10 +1547,10 @@ const personAvatar = (person: any) => {
                     <VAvatar
                       rounded
                       variant="tonal"
-                      :color="approval.kind === 'hr' ? 'warning' : approval.kind === 'deal' ? 'primary' : 'info'"
+                      :color="approval.kind === 'hr' ? 'warning' : 'info'"
                     >
                       <VIcon
-                        :icon="approval.kind === 'hr' ? 'tabler-user-check' : approval.kind === 'deal' ? 'tabler-arrows-right-left' : 'tabler-file-invoice'"
+                        :icon="approval.kind === 'hr' ? 'tabler-user-check' : 'tabler-file-invoice'"
                       />
                     </VAvatar>
                   </template>
@@ -1558,25 +1578,50 @@ const personAvatar = (person: any) => {
                         </VBtn>
                       </template>
 
-                      <VBtn
-                        v-else-if="approval.kind === 'deal'"
-                        size="small"
-                        variant="tonal"
-                        color="primary"
-                        @click="approveDealStage(approval)"
-                      >
-                        Approve
-                      </VBtn>
-
-                      <VBtn
-                        v-else
-                        size="small"
-                        variant="tonal"
-                        color="info"
-                        @click="openDocumentApproval(approval)"
-                      >
-                        Open
-                      </VBtn>
+                      <template v-else>
+                        <VTooltip text="Approve">
+                          <template #activator="{ props: tooltipProps }">
+                            <VBtn
+                              v-bind="tooltipProps"
+                              icon
+                              size="small"
+                              variant="text"
+                              color="success"
+                              @click="approveFinanceApproval(approval)"
+                            >
+                              <VIcon icon="tabler-check" />
+                            </VBtn>
+                          </template>
+                        </VTooltip>
+                        <VTooltip text="Decline">
+                          <template #activator="{ props: tooltipProps }">
+                            <VBtn
+                              v-bind="tooltipProps"
+                              icon
+                              size="small"
+                              variant="text"
+                              color="error"
+                              @click="declineFinanceApproval(approval)"
+                            >
+                              <VIcon icon="tabler-x" />
+                            </VBtn>
+                          </template>
+                        </VTooltip>
+                        <VTooltip text="Open">
+                          <template #activator="{ props: tooltipProps }">
+                            <VBtn
+                              v-bind="tooltipProps"
+                              icon
+                              size="small"
+                              variant="text"
+                              color="info"
+                              @click="openDocumentApproval(approval)"
+                            >
+                              <VIcon icon="tabler-external-link" />
+                            </VBtn>
+                          </template>
+                        </VTooltip>
+                      </template>
                     </div>
                   </template>
                 </VListItem>
