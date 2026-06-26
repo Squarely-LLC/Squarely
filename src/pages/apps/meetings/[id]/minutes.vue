@@ -13,6 +13,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
 import { getContactAndEmployeeRefs, getEmployeeRefs } from "@/utils/peopleOptions";
 import {
+  meetingNotificationEmployeeKey,
   notifyMeetingAttendeesAdded,
   notifyMeetingEvent,
 } from "@/utils/meetingNotifications";
@@ -239,16 +240,8 @@ function attendeeKey(attendee: any) {
 }
 
 function attendeeIdentityKeys(attendee: any) {
-  return [
-    attendee?.employeeId,
-    attendee?.personId,
-    attendee?.contactId,
-    attendee?.id,
-    attendee?.value,
-    attendee?.name,
-  ]
-    .filter((value) => value !== undefined && value !== null && value !== "")
-    .map((value) => String(value).trim().toLowerCase());
+  const employeeKey = meetingNotificationEmployeeKey(attendee);
+  return employeeKey ? [employeeKey] : [];
 }
 
 function resolveAttendeeKey(attendee: any) {

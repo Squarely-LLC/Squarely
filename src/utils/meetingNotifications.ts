@@ -24,6 +24,11 @@ const stripSelectionPrefix = (value: unknown) => {
   return match ? match[1].split("-")[0] : raw;
 };
 
+const normalizeText = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
 const targetForMeeting = (meeting: Pick<Meeting, "id">) => ({
   entityType: "meeting",
   entityId: meeting.id,
@@ -52,34 +57,7 @@ export function meetingNotificationRecipients(
   ].filter((entry) => Boolean(entry.ref)) as Array<{ ref: any; requestedBy: boolean }>;
 
   refs.forEach(({ ref, requestedBy }) => {
-    const roles = Array.isArray(ref?.roles) ? ref.roles : [];
-    const employeeLike =
-      requestedBy ||
-      roles.includes("employee") ||
-      ref?.type === "employee" ||
-      ref?.type === "employee_contact" ||
-      ref?.employeeId !== undefined;
-    const candidateIds = [
-      ref?.employeeId,
-      ref?.personId,
-      ref?.id,
-      ref?.contactId,
-      ref?.value,
-    ]
-      .filter((value) => value !== undefined && value !== null && value !== "")
-      .map(stripSelectionPrefix);
-
-    const person =
-      candidateIds
-        .map((id) => peopleStore.byId(id))
-        .find((entry) => entry?.hrProfile) ||
-      (employeeLike
-        ? peopleStore.hrPeople.find(
-            (entry) =>
-              entry.fullName.trim().toLowerCase() ===
-              String(ref?.name || ref?.title || "").trim().toLowerCase(),
-          )
-        : null);
+    const person = resolveMeetingNotificationPerson(ref, requestedBy);
 
     if (!person?.hrProfile) return;
 
@@ -94,6 +72,58 @@ export function meetingNotificationRecipients(
   });
 
   return [...recipients];
+}
+
+export function resolveMeetingNotificationPerson(ref: any, requestedBy = false) {
+  const peopleStore = usePeopleStore();
+  peopleStore.init();
+
+  const roles = Array.isArray(ref?.roles) ? ref.roles : [];
+  const type = String(ref?.type ?? "");
+  const employeeLike =
+    requestedBy ||
+    roles.includes("employee") ||
+    type === "employee" ||
+    type === "employee_contact" ||
+    ref?.employeeId !== undefined ||
+    ref?.personId !== undefined;
+
+  if (!employeeLike) return null;
+
+  const candidateIds = [
+    ref?.employeeId,
+    ref?.personId,
+    type === "employee" || type === "employee_contact" || requestedBy ? ref?.id : undefined,
+    ref?.value,
+  ]
+    .filter((value) => value !== undefined && value !== null && value !== "")
+    .map(stripSelectionPrefix);
+
+  const byId = candidateIds
+    .map((id) => peopleStore.byId(id))
+    .find((entry) => entry?.hrProfile);
+  if (byId) return byId;
+
+  const email = normalizeText(ref?.email);
+  if (email) {
+    const byEmail = peopleStore.hrPeople.find(
+      (entry) => normalizeText(entry.email) === email,
+    );
+    if (byEmail) return byEmail;
+  }
+
+  const name = normalizeText(ref?.name || ref?.title || ref?.fullName);
+  if (!name) return null;
+
+  return (
+    peopleStore.hrPeople.find((entry) => normalizeText(entry.fullName) === name) ||
+    null
+  );
+}
+
+export function meetingNotificationEmployeeKey(ref: any, requestedBy = false) {
+  const person = resolveMeetingNotificationPerson(ref, requestedBy);
+  return person?.hrProfile ? String(person.id) : null;
 }
 
 export function notifyMeetingEvent(

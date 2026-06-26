@@ -57,8 +57,8 @@ const scrollContentWidth = ref(0);
 const refAddSubject = ref<VForm>();
 const localSubjects = ref<MeetingMomSubject[]>([]);
 const isAddNewFormVisible = ref(false);
-const openNoteEditors = reactive(new Set<string>());
-const isNoteEditorOpen = computed(() => openNoteEditors.size > 0);
+const activeEditorKey = ref<string | null>(null);
+const isNoteEditorOpen = computed(() => Boolean(activeEditorKey.value));
 const subjectTitle = ref("");
 let resizeObserver: ResizeObserver | null = null;
 
@@ -144,10 +144,14 @@ function hideAddNewForm() {
   refAddSubject.value?.reset();
 }
 
-function setNoteEditorState(payload: { subjectId: string | number; open: boolean }) {
-  const key = String(payload.subjectId);
-  if (payload.open) openNoteEditors.add(key);
-  else openNoteEditors.delete(key);
+function requestNoteEditor(key: string) {
+  if (activeEditorKey.value && activeEditorKey.value !== key) return false;
+  activeEditorKey.value = key;
+  return true;
+}
+
+function releaseNoteEditor(key: string) {
+  if (activeEditorKey.value === key) activeEditorKey.value = null;
 }
 
 function updateScrollContentWidth() {
@@ -217,6 +221,8 @@ onClickOutside(refAddSubject, hideAddNewForm);
           :employee-options="employeeOptions"
           :drag-disabled="isNoteEditorOpen"
           :board-locked="isNoteEditorOpen"
+          :request-editor-open="requestNoteEditor"
+          :release-editor="releaseNoteEditor"
           @rename-subject="emit('renameSubject', $event)"
           @delete-subject="emit('deleteSubject', $event)"
           @save-note="emit('saveNote', $event)"
@@ -224,7 +230,6 @@ onClickOutside(refAddSubject, hideAddNewForm);
           @toggle-internal="emit('toggleInternal', $event)"
           @toggle-create-task="emit('toggleCreateTask', $event)"
           @update-notes-state="emit('updateNotesState', $event)"
-          @editor-state="setNoteEditorState"
         />
       </template>
     </div>

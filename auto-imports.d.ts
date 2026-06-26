@@ -226,6 +226,7 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const maskFinancialResource: typeof import('./src/utils/authorization')['maskFinancialResource']
+  const meetingNotificationEmployeeKey: typeof import('./src/utils/meetingNotifications')['meetingNotificationEmployeeKey']
   const meetingNotificationRecipients: typeof import('./src/utils/meetingNotifications')['meetingNotificationRecipients']
   const nextJobOrderSequence: typeof import('./src/utils/jobProjectCode')['nextJobOrderSequence']
   const nextTick: typeof import('vue')['nextTick']
@@ -289,6 +290,7 @@ declare global {
   const resolveContactRequirement: typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']
   const resolveDealDocumentBillingMode: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']
   const resolveDealDocumentBillingModeForItem: typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']
+  const resolveMeetingNotificationPerson: typeof import('./src/utils/meetingNotifications')['resolveMeetingNotificationPerson']
   const resolvePeopleSelection: typeof import('./src/utils/peopleOptions')['resolvePeopleSelection']
   const resolveQuotationLogoUrl: typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
@@ -774,6 +776,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly maskFinancialResource: UnwrapRef<typeof import('./src/utils/authorization')['maskFinancialResource']>
+    readonly meetingNotificationEmployeeKey: UnwrapRef<typeof import('./src/utils/meetingNotifications')['meetingNotificationEmployeeKey']>
     readonly meetingNotificationRecipients: UnwrapRef<typeof import('./src/utils/meetingNotifications')['meetingNotificationRecipients']>
     readonly nextJobOrderSequence: UnwrapRef<typeof import('./src/utils/jobProjectCode')['nextJobOrderSequence']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
@@ -837,6 +840,7 @@ declare module 'vue' {
     readonly resolveContactRequirement: UnwrapRef<typeof import('./src/utils/crmContactRequirement')['resolveContactRequirement']>
     readonly resolveDealDocumentBillingMode: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingMode']>
     readonly resolveDealDocumentBillingModeForItem: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['resolveDealDocumentBillingModeForItem']>
+    readonly resolveMeetingNotificationPerson: UnwrapRef<typeof import('./src/utils/meetingNotifications')['resolveMeetingNotificationPerson']>
     readonly resolvePeopleSelection: UnwrapRef<typeof import('./src/utils/peopleOptions')['resolvePeopleSelection']>
     readonly resolveQuotationLogoUrl: UnwrapRef<typeof import('./src/utils/quotationConfig')['resolveQuotationLogoUrl']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>

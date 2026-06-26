@@ -48,11 +48,15 @@ const props = withDefaults(
     employeeOptions?: EmployeeOption[];
     dragDisabled?: boolean;
     boardLocked?: boolean;
+    requestEditorOpen?: (key: string) => boolean;
+    releaseEditor?: (key: string) => void;
   }>(),
   {
     employeeOptions: () => [],
     dragDisabled: false,
     boardLocked: false,
+    requestEditorOpen: () => true,
+    releaseEditor: () => {},
   },
 );
 
@@ -64,7 +68,6 @@ const emit = defineEmits<{
   (e: "toggleInternal", value: MeetingMomNote): void;
   (e: "toggleCreateTask", value: MeetingMomNote): void;
   (e: "updateNotesState", value: { subjectId: string | number; ids: Array<string | number> }): void;
-  (e: "editorState", value: { subjectId: string | number; open: boolean }): void;
 }>();
 
 const refDropZone = ref<HTMLElement>();
@@ -81,6 +84,7 @@ const editingNoteId = ref<string | number | null>(null);
 const imagePreviewUrls = ref<Record<string, string>>({});
 const isCollaboratorPickerVisible = ref(false);
 const isLinkEditorVisible = ref(false);
+const activeLocalEditorKey = ref<string | null>(null);
 const hasOpenEditor = computed(() => isAddNewFormVisible.value);
 const isInteractionLocked = computed(() => props.boardLocked);
 
@@ -177,12 +181,6 @@ watch(
     void loadImagePreviews();
   },
   { immediate: true, deep: true },
-);
-
-watch(
-  isAddNewFormVisible,
-  (visible) => emit("editorState", { subjectId: props.subject.id, open: visible }),
-  { immediate: true },
 );
 
 function resolveNote(id: string | number) {
@@ -286,7 +284,10 @@ function resetEditorChrome() {
 }
 
 function openAddEditor() {
+  const editorKey = `${String(props.subject.id)}:add`;
   if (props.boardLocked && !hasOpenEditor.value) return;
+  if (!props.requestEditorOpen(editorKey)) return;
+  activeLocalEditorKey.value = editorKey;
   editingNoteId.value = null;
   resetDraft();
   resetEditorChrome();
@@ -295,7 +296,10 @@ function openAddEditor() {
 }
 
 function openEditEditor(note: MeetingMomNote) {
+  const editorKey = `${String(props.subject.id)}:note:${String(note.id)}`;
   if (props.boardLocked && !hasOpenEditor.value) return;
+  if (!props.requestEditorOpen(editorKey)) return;
+  activeLocalEditorKey.value = editorKey;
   editingNoteId.value = note.id;
   populateDraft(note);
   resetEditorChrome();
@@ -316,12 +320,15 @@ function openCollaboratorsEditor(note: MeetingMomNote) {
 }
 
 function closeEditor() {
+  const editorKey = activeLocalEditorKey.value;
   isAddNewFormVisible.value = false;
   editingNoteId.value = null;
+  activeLocalEditorKey.value = null;
   resetEditorChrome();
   resetDraft();
   const resetValidation = (refAddForm.value as any)?.resetValidation;
   if (typeof resetValidation === "function") resetValidation();
+  if (editorKey) props.releaseEditor(editorKey);
 }
 
 function focusNoteTextarea() {
