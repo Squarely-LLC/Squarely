@@ -85,7 +85,6 @@ const orderBy = ref<SortOrder | undefined>(selectedSort.value?.order);
 const selectedRows = ref<number[]>([]);
 
 const headers = [
-  { title: "Job Order Number", key: "jobOrderNumber" },
   { title: "Project Code", key: "code" },
   { title: "Description", key: "description", sortable: false },
   { title: "Delivery Date", key: "deliveryDate", sortable: false },
@@ -881,8 +880,8 @@ const updateItemsPerPage = (value: number | string) => {
         class="jobs-table"
         @update:options="updateOptions"
       >
-        <template #item.jobOrderNumber="{ item }">
-          <div class="job-order-cell d-flex align-center gap-1">
+        <template #item.code="{ item }">
+          <div class="job-code-cell d-flex align-center gap-1">
             <VBtn
               icon
               variant="text"
@@ -899,42 +898,37 @@ const updateItemsPerPage = (value: number | string) => {
             </VBtn>
             <RouterLink
               :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-              class="job-link font-weight-medium text-link"
+              class="job-code-link font-weight-medium text-link"
             >
-              {{ item.jobOrderNumber || "--" }}
+              {{ item.code || "--" }}
+              <VTooltip activator="parent" location="top">
+                {{ item.code || "--" }}
+              </VTooltip>
             </RouterLink>
           </div>
-        </template>
-
-        <template #item.code="{ item }">
-          <RouterLink
-            :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-            class="job-code-link font-weight-medium text-link"
-          >
-            {{ item.code || "--" }}
-            <VTooltip activator="parent" location="top">
-              {{ item.code || "--" }}
-            </VTooltip>
-          </RouterLink>
         </template>
 
         <template #item.description="{ item }">
           <div class="job-description-cell d-flex flex-column gap-1 py-2">
             <RouterLink
               :to="{ name: 'operations-jobs-view-id', params: { id: item.id } }"
-              class="job-client-link text-body-2 font-weight-medium text-link"
+              class="job-client-link font-weight-semibold text-link"
             >
               {{ relatedContactName(item) }}
               <VTooltip activator="parent" location="top">
                 {{ relatedContactName(item) }}
               </VTooltip>
             </RouterLink>
-            <span class="job-description-text text-high-emphasis">
-              {{ item.name }} | {{ item.type }} | Created:
-              {{ formatDate(item.createdAt) }}
+            <span class="job-description-line job-description-line--name">
+              {{ item.name }}
               <VTooltip activator="parent" location="top">
-                {{ item.name }} | {{ item.type }} | Created:
-                {{ formatDate(item.createdAt) }}
+                {{ item.name }}
+              </VTooltip>
+            </span>
+            <span class="job-description-line job-description-line--meta">
+              {{ item.type }} | Created: {{ formatDate(item.createdAt) }}
+              <VTooltip activator="parent" location="top">
+                {{ item.type }} | Created: {{ formatDate(item.createdAt) }}
               </VTooltip>
             </span>
           </div>
@@ -971,7 +965,7 @@ const updateItemsPerPage = (value: number | string) => {
               <VAvatar
                 v-for="collaboratorId in (item.collaborators || []).slice(0, 3)"
                 :key="`${item.id}-${collaboratorId}`"
-                :size="28"
+                :size="40"
                 :color="!getEmployeeEntry(collaboratorId)?.avatar ? 'primary' : undefined"
                 class="text-white font-weight-medium"
               >
@@ -989,13 +983,13 @@ const updateItemsPerPage = (value: number | string) => {
               <VAvatar
                 v-if="(item.collaborators || []).length > 3"
                 color="secondary"
-                :size="28"
+                :size="40"
                 class="text-white font-weight-medium"
               >
                 +{{ (item.collaborators || []).length - 3 }}
               </VAvatar>
             </div>
-            <IconBtn size="28" @click.stop="openCollaboratorDialog(item)">
+            <IconBtn @click.stop="openCollaboratorDialog(item)">
               <VIcon icon="tabler-plus" />
               <VTooltip activator="parent" location="top">
                 Add or remove collaborators
@@ -1019,11 +1013,11 @@ const updateItemsPerPage = (value: number | string) => {
 
         <template #item.actions="{ item }">
           <div class="job-actions-cell d-flex align-center">
-            <IconBtn size="30" @click="openEditDialog(item)">
+            <IconBtn @click="openEditDialog(item)">
               <VIcon icon="tabler-edit" />
               <VTooltip activator="parent" location="top">Edit</VTooltip>
             </IconBtn>
-            <VBtn icon variant="text" color="medium-emphasis" size="30">
+            <VBtn icon variant="text" color="medium-emphasis">
               <VIcon icon="tabler-dots-vertical" />
               <VMenu activator="parent">
                 <VList>
@@ -1255,72 +1249,76 @@ const updateItemsPerPage = (value: number | string) => {
 .jobs-table :deep(th),
 .jobs-table :deep(td) {
   overflow: hidden;
-  padding-block: 0.55rem !important;
-  padding-inline: 0.38rem !important;
+  padding-block: 0.72rem !important;
+  padding-inline: 0.45rem !important;
+  font-size: 0.88rem;
   vertical-align: middle;
   white-space: normal;
 }
 
 .jobs-table :deep(th:nth-child(1)),
 .jobs-table :deep(td:nth-child(1)) {
-  inline-size: 12.5%;
+  inline-size: 13%;
 }
 
 .jobs-table :deep(th:nth-child(2)),
 .jobs-table :deep(td:nth-child(2)) {
-  inline-size: 9.5%;
+  inline-size: 23%;
 }
 
 .jobs-table :deep(th:nth-child(3)),
 .jobs-table :deep(td:nth-child(3)) {
-  inline-size: 29%;
+  inline-size: 10%;
 }
 
 .jobs-table :deep(th:nth-child(4)),
 .jobs-table :deep(td:nth-child(4)) {
-  inline-size: 9%;
+  inline-size: 18%;
 }
 
 .jobs-table :deep(th:nth-child(5)),
 .jobs-table :deep(td:nth-child(5)) {
-  inline-size: 10%;
+  inline-size: 18%;
 }
 
 .jobs-table :deep(th:nth-child(6)),
 .jobs-table :deep(td:nth-child(6)) {
-  inline-size: 12.5%;
+  inline-size: 9%;
 }
 
 .jobs-table :deep(th:nth-child(7)),
 .jobs-table :deep(td:nth-child(7)) {
-  inline-size: 8.5%;
-}
-
-.jobs-table :deep(th:nth-child(8)),
-.jobs-table :deep(td:nth-child(8)) {
   inline-size: 9%;
   overflow: visible;
   text-align: center;
 }
 
-.jobs-table :deep(th:nth-child(8) .v-data-table-header__content) {
+.jobs-table :deep(th:nth-child(7) .v-data-table-header__content) {
   justify-content: center;
 }
 
 .jobs-table :deep(th) {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   line-height: 1.1;
   white-space: normal;
 }
 
-.job-order-cell,
+.job-code-cell,
 .job-progress-cell,
 .job-collaborators-cell,
 .job-actions-cell {
   min-inline-size: 0;
 }
 
-.job-link,
+.job-code-cell {
+  flex-wrap: nowrap;
+}
+
+.job-code-cell .job-code-link {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
 .job-code-link,
 .job-client-link {
   display: inline-block;
@@ -1336,19 +1334,33 @@ const updateItemsPerPage = (value: number | string) => {
   white-space: normal;
 }
 
-.job-description-text {
-  display: -webkit-box;
+.job-client-link {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.job-description-line {
+  display: block;
   overflow: hidden;
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
+  color: rgba(var(--v-theme-on-surface), 70%);
+  line-height: 1.28;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-description-line--name {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.job-description-line--meta {
+  font-size: 0.78rem;
 }
 
 .job-progress-cell :deep(.v-progress-linear) {
   flex: 1 1 auto;
-  min-inline-size: 42px;
-  max-inline-size: 76px;
+  min-inline-size: 88px;
+  max-inline-size: 140px;
 }
 
 .job-collaborators-cell :deep(.v-avatar) {
@@ -1361,16 +1373,15 @@ const updateItemsPerPage = (value: number | string) => {
 
 .job-status-chip :deep(.v-chip__content) {
   overflow: hidden;
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .job-actions-cell {
   flex-wrap: nowrap;
-  gap: 0.1rem;
   justify-content: center;
-  min-inline-size: 58px;
+  min-inline-size: 72px;
   inline-size: 100%;
   white-space: nowrap;
 }
@@ -1381,29 +1392,26 @@ const updateItemsPerPage = (value: number | string) => {
     padding-inline: 0.32rem !important;
   }
 
-  .job-order-cell {
+  .job-code-cell {
     gap: 0.1rem !important;
   }
 
-  .job-link,
   .job-code-link,
-  .job-client-link,
-  .job-description-text {
-    font-size: 0.76rem;
+  .job-client-link {
+    font-size: 0.9rem;
   }
 
-  .job-progress-cell :deep(.v-progress-linear) {
-    max-inline-size: 52px;
+  .job-description-line--name {
+    font-size: 0.78rem;
+  }
+
+  .job-description-line--meta {
+    font-size: 0.74rem;
   }
 
   .job-collaborators-cell :deep(.v-avatar) {
-    block-size: 24px !important;
-    inline-size: 24px !important;
-  }
-
-  .job-actions-cell :deep(.v-btn) {
-    block-size: 26px !important;
-    inline-size: 26px !important;
+    block-size: 40px !important;
+    inline-size: 40px !important;
   }
 }
 
