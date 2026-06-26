@@ -4,11 +4,23 @@ import AddAdvancesDrawer from "@/views/apps/hr/view/AddAdvancesDrawer.vue";
 import AddDeductionDrawer from "@/views/apps/hr/view/AddDeductionDrawer.vue";
 import AddLeaveDrawer from "@/views/apps/hr/view/AddLeaveDrawer.vue";
 import AddTimeAuLieuDrawer from "@/views/apps/hr/view/AddTimeAuLieuDrawer.vue";
+import AddMeetingDrawer, {
+  type NewMeetingPayload,
+} from "@/views/apps/todo/list/AddMeetingDrawer.vue";
+import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
+import MessageDrawer from "@/views/apps/todo/list/MessageDrawer.vue";
+import { useDealsStore } from "@/stores/deals";
 import { useEmployeesStore } from "@/stores/employees";
+import { useInvoicesStore } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { usePeopleStore } from "@/stores/people";
+import { useProformasStore } from "@/stores/proformas";
+import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
+import { canMutate } from "@/utils/permissionUi";
+import { getContactAndEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
+import { formatSystemDate } from "@core/utils/formatters";
 
 type DashboardRequestType = "Addition" | "Deduction" | "Advance" | "Time au Lieu";
 const requestTypes: DashboardRequestType[] = [
@@ -33,10 +45,19 @@ const todosStore = useTodos();
 const peopleStore = usePeopleStore();
 const employeesStore = useEmployeesStore();
 const notifications = useNotificationsStore();
+const quotationsStore = useQuotationsStore();
+const proformasStore = useProformasStore();
+const invoicesStore = useInvoicesStore();
+const dealsStore = useDealsStore();
+const router = useRouter();
 
 todosStore.init();
 peopleStore.init();
 employeesStore.init();
+quotationsStore.init();
+proformasStore.init();
+invoicesStore.init();
+dealsStore.init();
 
 const isLeaveDrawerOpen = ref(false);
 const isRequestPickerOpen = ref(false);
@@ -50,6 +71,17 @@ const selectedAdditionData = ref(null);
 const selectedDeductionData = ref(null);
 const selectedAdvanceData = ref(null);
 const selectedTimeAuLieuData = ref(null);
+const workScope = ref<"day" | "week">("day");
+const isEditTodoDrawerOpen = ref(false);
+const editingTodo = ref<any | null>(null);
+const isMessageDrawerOpen = ref(false);
+const messageDrawerTodo = ref<any | null>(null);
+const isMeetingDrawerOpen = ref(false);
+const editingMeeting = ref<any | null>(null);
+const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
+const isRowCollaboratorDialogVisible = ref(false);
+const rowCollaboratorTarget = ref<{ type: "task" | "meeting"; record: any } | null>(null);
+const rowCollaboratorValue = ref<Array<number | string>>([]);
 
 const identity = computed(() => getSignedInIdentity());
 
@@ -57,6 +89,21 @@ const normalizeKey = (value: unknown) =>
   value === undefined || value === null || value === ""
     ? ""
     : String(value).trim().toLowerCase();
+
+const isAdminUser = computed(() => {
+  const signedIn = identity.value as any;
+  const roleValues = [
+    signedIn.role,
+    signedIn.roles,
+    signedIn.permissions,
+    signedIn.email,
+  ];
+
+  return (
+    normalizeKey(signedIn.email) === "admin@demo.com" ||
+    roleValues.some((entry) => normalizeKey(entry).includes("admin"))
+  );
+});
 
 const addIdentityValue = (set: Set<string>, value: unknown) => {
   const key = normalizeKey(value);
@@ -251,6 +298,29 @@ const isBeforeToday = (value: any) => {
   return Boolean(key && key < todayKey.value);
 };
 
+const weekRange = computed(() => {
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = (day + 6) % 7;
+  const start = new Date(now);
+  start.setDate(now.getDate() - mondayOffset);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+});
+
+const isInSelectedScope = (value: any) => {
+  const date = value instanceof Date ? value : new Date(String(value || ""));
+  if (Number.isNaN(date.getTime())) return false;
+  if (workScope.value === "day") return isToday(date);
+
+  return date >= weekRange.value.start && date <= weekRange.value.end;
+};
+
 const isTaskCompleted = (task: any) =>
   task?.status === "completed" ||
   task?.status === "Completed" ||
@@ -296,6 +366,30 @@ const scopedRequests = computed(() =>
   }),
 );
 
+const ownRequests = computed(() => {
+  const own = currentPerson.value;
+  if (!own) return [];
+
+  const employee =
+    employeesStore.byId(own.id) ??
+    (own.legacyEmployeeId ? employeesStore.byId(own.legacyEmployeeId) : null) ??
+    own;
+
+  return (((employee as any).requests ?? []) as any[]).map((request: any) => ({
+    id: `hr-${employee.id}-${request.id}`,
+    type: request.type ?? "Request",
+    title: `${request.type ?? "Request"} request`,
+    status: request.status ?? "pending",
+    date: request.createdAt ?? request.startDate ?? request.date ?? "",
+    owner: employee.fullName ?? (employee as any).name ?? own.fullName ?? "Employee",
+    raw: request,
+  }));
+});
+
+const canApproveDeals = computed(() => canMutate("deals", "approve"));
+const canApproveFinance = computed(() => canMutate("finance", "approve"));
+const canApproveHr = computed(() => canMutate("hr", "approve") || canMutate("hr", "update"));
+
 const todaysTasks = computed(() =>
   scopedTasks.value.filter((task: any) => isToday(dateValue(task))),
 );
@@ -314,6 +408,242 @@ const todaysMeetings = computed(() =>
   scopedMeetings.value.filter(
     (meeting: any) => isToday(meeting.startAt) && !isMeetingCanceled(meeting),
   ),
+);
+
+const collaboratorOptions = computed(() => getContactAndEmployeeRefs());
+
+const personCanonicalKey = (value: any) => {
+  if (!value || typeof value !== "object") return normalizeKey(value);
+
+  return (
+    normalizeKey(value.employeeId) ||
+    normalizeKey(value.personId) ||
+    normalizeKey(value.contactId) ||
+    normalizeKey(value.id) ||
+    normalizeKey(value.value) ||
+    normalizeKey(value.email) ||
+    normalizeKey(value.name)
+  );
+};
+
+const dedupePeopleRefs = <T extends any>(items: T[]): T[] => {
+  const seen = new Set<string>();
+
+  return items.filter((item: any) => {
+    const key = personCanonicalKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+
+    return true;
+  });
+};
+
+const normalizedCollaboratorOptions = computed(() =>
+  dedupePeopleRefs(collaboratorOptions.value),
+);
+
+const resolveDashboardPerson = (value: any) => {
+  if (value && typeof value === "object" && value.name)
+    return resolvePeopleSelection(
+      value.id ?? value.employeeId ?? value.contactId ?? value.value,
+      normalizedCollaboratorOptions.value,
+      "Person",
+    );
+
+  return resolvePeopleSelection(value, normalizedCollaboratorOptions.value, "Person");
+};
+
+const normalizeDashboardPeople = (items: any[]) =>
+  dedupePeopleRefs(
+    (Array.isArray(items) ? items : [])
+      .map((entry) => resolveDashboardPerson(entry))
+      .filter((entry) => entry && entry.id),
+  );
+
+const formatDateTime = (value: any) => {
+  if (!value) return "--";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const workScopeLabel = computed(() => (workScope.value === "week" ? "My Week" : "My Day"));
+
+const workHeaders = [
+  { title: "Description", key: "description", sortable: false },
+  { title: "Collaborators", key: "collaborators", sortable: false },
+  { title: "Type", key: "type", sortable: false },
+  { title: "Time", key: "time", sortable: false },
+  { title: "Actions", key: "actions", sortable: false, align: "end" as const },
+];
+
+const workRows = computed(() => {
+  const tasks = scopedTasks.value
+    .filter((task: any) => isInSelectedScope(task.dueAt ?? task.date ?? task.startAt))
+    .map((task: any) => ({
+      id: `task-${task.id}`,
+      sortAt: task.dueAt ?? task.date ?? task.startAt ?? "",
+      description: task.title,
+      subtitle: task.notes ?? task.note ?? "Task",
+      collaborators: normalizeDashboardPeople(task.collaborators),
+      type: "Task",
+      typeColor: "primary",
+      time: task.dueAt ? formatDateTime(task.dueAt) : "--",
+      rawType: "task" as const,
+      raw: task,
+    }));
+
+  const meetings = scopedMeetings.value
+    .filter((meeting: any) => isInSelectedScope(meeting.startAt))
+    .map((meeting: any) => ({
+      id: `meeting-${meeting.id}`,
+      sortAt: meeting.startAt,
+      description: meeting.subject || meeting.title || "Meeting",
+      subtitle: meeting.type || meeting.meetingType || "Meeting",
+      collaborators: normalizeDashboardPeople(meeting.linkedTo),
+      type: "Meeting",
+      typeColor: "info",
+      time: formatDateTime(meeting.startAt),
+      rawType: "meeting" as const,
+      raw: meeting,
+    }));
+
+  return [...tasks, ...meetings].sort(
+    (a, b) => new Date(a.sortAt || 0).getTime() - new Date(b.sortAt || 0).getTime(),
+  );
+});
+
+const documentApprovalRows = computed(() => {
+  const currentKeys = currentUserKeys.value;
+  const buildRows = (records: any[], kind: "quotation" | "proforma" | "invoice") =>
+    records
+      .filter(
+        (record: any) =>
+          record.approvalMode === "Request Approval" &&
+          record.approvalRequestedAt &&
+          matchesScope(record.approverEmployeeId, currentKeys),
+      )
+      .map((record: any) => {
+        const quotation = record.quotation ?? {};
+        const routeName =
+          kind === "quotation"
+            ? "apps-quotation-preview-id"
+            : kind === "proforma"
+              ? "apps-proforma-preview-id"
+              : "apps-invoice-preview-id";
+
+        return {
+          id: `${kind}-${quotation.id}`,
+          kind,
+          title: `${kind[0].toUpperCase()}${kind.slice(1)} ${quotation.quoteNumber ?? quotation.id}`,
+          requester: record.salesperson || quotation.client?.name || "Finance",
+          status: quotation.quotationStatus || "Approval",
+          date: record.approvalRequestedAt,
+          route: { name: routeName, params: { id: quotation.id } },
+          action: "open" as const,
+        };
+      });
+
+  return [
+    ...buildRows(quotationsStore.all, "quotation"),
+    ...buildRows(proformasStore.all, "proforma"),
+    ...buildRows(invoicesStore.all, "invoice"),
+  ];
+});
+
+const ownDocumentRequests = computed(() => {
+  const keys = currentUserKeys.value;
+  const buildRows = (records: any[], kind: "quotation" | "proforma" | "invoice") =>
+    records
+      .filter((record: any) => {
+        if (!record.approvalRequestedAt) return false;
+        const possibleOwners = [
+          record.salesperson,
+          record.requestedBy,
+          record.createdBy,
+          record.quotation?.client?.name,
+        ];
+
+        return possibleOwners.some((owner) => matchesScope(owner, keys));
+      })
+      .map((record: any) => ({
+        id: `doc-request-${kind}-${record.quotation?.id}`,
+        type: kind,
+        title: `${kind[0].toUpperCase()}${kind.slice(1)} ${record.quotation?.quoteNumber ?? record.quotation?.id}`,
+        status: record.quotation?.quotationStatus ?? "Approval",
+        date: record.approvalRequestedAt,
+        owner: record.salesperson || "Finance",
+        raw: record,
+      }));
+
+  return [
+    ...buildRows(quotationsStore.all, "quotation"),
+    ...buildRows(proformasStore.all, "proforma"),
+    ...buildRows(invoicesStore.all, "invoice"),
+  ];
+});
+
+const hrApprovalRows = computed(() =>
+  directReports.value.flatMap((person: any) => {
+    const employee =
+      employeesStore.byId(person.id) ??
+      (person.legacyEmployeeId ? employeesStore.byId(person.legacyEmployeeId) : null) ??
+      person;
+
+    return (employee.requests ?? [])
+      .filter((request: any) => String(request.status ?? "").toLowerCase() === "pending")
+      .map((request: any) => ({
+        id: `hr-approval-${employee.id}-${request.id}`,
+        kind: "hr" as const,
+        title: `${request.type ?? "HR"} request`,
+        requester: employee.fullName ?? (employee as any).name ?? person.fullName ?? "Employee",
+        status: request.status ?? "pending",
+        date: request.createdAt ?? request.startDate ?? request.date ?? "",
+        employeeId: employee.id,
+        requestId: request.id,
+      }));
+  }),
+);
+
+const dealApprovalRows = computed(() => {
+  if (!canApproveDeals.value) return [];
+
+  return dealsStore.all
+    .filter((deal: any) => deal.pendingStageTransition)
+    .map((deal: any) => ({
+      id: `deal-${deal.id}`,
+      kind: "deal" as const,
+      title: `${deal.code || deal.name || `Deal #${deal.id}`} stage change`,
+      requester: deal.salesman || deal.salesperson || "Deal",
+      status: `To ${deal.pendingStageTransition?.targetStage ?? "next stage"}`,
+      date: deal.pendingStageTransition?.requestedAt ?? "",
+      dealId: deal.id,
+    }));
+});
+
+const approvalRows = computed(() => [
+  ...(canApproveHr.value ? hrApprovalRows.value : []),
+  ...(canApproveFinance.value ? documentApprovalRows.value : []),
+  ...dealApprovalRows.value,
+]);
+
+const canSeeApprovalPanel = computed(
+  () => isAdminUser.value || canApproveHr.value || canApproveFinance.value || canApproveDeals.value,
+);
+
+const showNeedApproval = computed(() => canSeeApprovalPanel.value || approvalRows.value.length > 0);
+
+const myRequestRows = computed(() =>
+  [...ownRequests.value, ...ownDocumentRequests.value]
+    .sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+    .slice(0, 6),
 );
 
 const completedTodaysMeetings = computed(() =>
@@ -523,6 +853,286 @@ const openRequestDrawer = (type: DashboardRequestType) => {
   if (type === "Time au Lieu") isTimeAuLieuDrawerOpen.value = true;
 };
 
+const currentAuthor = computed(() => ({
+  id: identity.value.personId ?? identity.value.employeeId ?? identity.value.id,
+  employeeId: identity.value.employeeId ?? undefined,
+  personId: identity.value.personId ?? undefined,
+  name: identity.value.name,
+  email: identity.value.email ?? undefined,
+  avatarUrl: identity.value.avatarUrl ?? undefined,
+}));
+
+const openTaskEdit = (task: any) => {
+  editingTodo.value = task;
+  isEditTodoDrawerOpen.value = true;
+};
+
+const saveEditedTask = (payload: any) => {
+  todosStore.updateTodo(payload.id, payload);
+  notifications.push("Task updated", "success", 2500);
+};
+
+const saveTaskSteps = (payload: any) => {
+  todosStore.updateTodo(payload.id, { steps: payload.steps } as any);
+  notifications.push("Subtasks updated", "success", 2500);
+};
+
+const openRowCollaboratorDialog = (item: any) => {
+  rowCollaboratorTarget.value = {
+    type: item.rawType === "meeting" ? "meeting" : "task",
+    record: item.raw,
+  };
+  rowCollaboratorValue.value = normalizeDashboardPeople(item.collaborators).map(
+    (collaborator: any) => collaborator.id,
+  );
+  isRowCollaboratorDialogVisible.value = true;
+};
+
+const saveRowCollaborators = () => {
+  const target = rowCollaboratorTarget.value;
+  if (!target) return;
+
+  const selected = normalizeDashboardPeople(
+    rowCollaboratorValue.value.map((id) => resolveDashboardPerson(id)),
+  );
+
+  if (target.type === "meeting") {
+    todosStore.updateMeeting(target.record.id, { linkedTo: selected } as any);
+    notifications.push("Meeting attendees updated", "success", 2500);
+  } else {
+    todosStore.updateTodo(target.record.id, { collaborators: selected } as any);
+    notifications.push("Task collaborators updated", "success", 2500);
+  }
+
+  rowCollaboratorTarget.value = null;
+  rowCollaboratorValue.value = [];
+  isRowCollaboratorDialogVisible.value = false;
+};
+
+const openTaskMessages = (task: any) => {
+  messageDrawerTodo.value = task;
+  isMessageDrawerOpen.value = true;
+};
+
+const addMessageToTodo = (payload: any) => {
+  const todo = todosStore.byId(payload.id);
+  const body = String(payload.body ?? "").trim();
+  if (!todo || !body) return;
+
+  const messages = Array.isArray((todo as any).messages)
+    ? [...(todo as any).messages]
+    : [];
+  messages.push({
+    id: payload.messageId ?? Date.now(),
+    author: payload.author ?? currentAuthor.value,
+    body,
+    createdAt: new Date().toISOString(),
+    isRead: true,
+    editedAt: null,
+  });
+  todosStore.updateTodo(payload.id, { messages } as any);
+  notifications.push("Message added", "success", 2500);
+};
+
+const editTodoMessage = (payload: any) => {
+  const todo = todosStore.byId(payload.id);
+  if (!todo) return;
+  const body = String(payload.body ?? "").trim();
+  if (!body) return;
+  const messages = Array.isArray((todo as any).messages)
+    ? (todo as any).messages.map((message: any) =>
+        String(message.id) === String(payload.messageId)
+          ? { ...message, body, editedAt: new Date().toISOString() }
+          : message,
+      )
+    : [];
+  todosStore.updateTodo(payload.id, { messages } as any);
+  notifications.push("Message updated", "success", 2500);
+};
+
+const toggleTodoMessageRead = (payload: any) => {
+  const todo = todosStore.byId(payload.id);
+  if (!todo) return;
+  const messages = Array.isArray((todo as any).messages)
+    ? (todo as any).messages.map((message: any) =>
+        String(message.id) === String(payload.messageId)
+          ? { ...message, isRead: payload.isRead }
+          : message,
+      )
+    : [];
+  todosStore.updateTodo(payload.id, { messages } as any);
+};
+
+const openMeetingMinutes = (meeting: any) => {
+  router.push({ name: "apps-meetings-id-minutes", params: { id: meeting.id } });
+};
+
+const openMeetingEdit = async (meeting: any) => {
+  editingMeeting.value = meeting;
+  isMeetingDrawerOpen.value = true;
+  await nextTick();
+  addMeetingRef.value?.openWith?.({
+    ...meeting,
+    drawerTitle: "Edit Meeting",
+    title: meeting.subject,
+    start: meeting.startAt,
+    initialStart: meeting.startAt,
+    durationMins: meeting.duration,
+    meetingType: meeting.type,
+    notes: meeting.note,
+  });
+};
+
+const saveMeeting = (payload: NewMeetingPayload) => {
+  if (editingMeeting.value?.id) {
+    todosStore.updateMeeting(editingMeeting.value.id, {
+      subject: payload.subject || payload.title,
+      title: payload.title,
+      startAt: payload.startAt || payload.start,
+      start: payload.start,
+      end: payload.end,
+      duration: payload.duration ?? payload.durationMins,
+      durationMins: payload.durationMins,
+      type: payload.type || payload.meetingType,
+      meetingType: payload.meetingType,
+      linkedTo: payload.linkedTo,
+      attendees: payload.attendees,
+      relatedTo: payload.relatedTo ?? null,
+      relatedToMany: payload.relatedToMany ?? [],
+      location: payload.location,
+      note: payload.note || payload.notes,
+      notes: payload.notes,
+    } as any);
+    notifications.push("Meeting updated", "success", 2500);
+  } else {
+    todosStore.addMeeting(payload as any);
+    notifications.push("Meeting created", "success", 2500);
+  }
+  editingMeeting.value = null;
+  isMeetingDrawerOpen.value = false;
+};
+
+const openDocumentApproval = (row: any) => {
+  if (row.route) router.push(row.route);
+};
+
+const approveHrRequest = (row: any) => {
+  employeesStore.updateRequest(row.employeeId, row.requestId, {
+    status: "approved",
+    approvedBy: identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
+    approvedAt: new Date().toISOString(),
+  } as any);
+  notifications.push("Request approved", "success", 2500);
+};
+
+const rejectHrRequest = (row: any) => {
+  employeesStore.updateRequest(row.employeeId, row.requestId, {
+    status: "rejected",
+    rejectedBy: identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
+    rejectedAt: new Date().toISOString(),
+  } as any);
+  notifications.push("Request rejected", "success", 2500);
+};
+
+const approveDealStage = (row: any) => {
+  const approved = dealsStore.approvePendingStageTransition(row.dealId);
+  if (approved) notifications.push("Deal stage approved", "success", 2500);
+  else notifications.push("Unable to approve deal stage", "error", 3000);
+};
+
+const activityTimelineRows = computed(() => {
+  const taskActivities = scopedTasks.value.map((task: any) => ({
+    id: `task-${task.id}`,
+    kind: "todo",
+    title: task.title,
+    body: task.notes ?? task.note ?? (task.status === "completed" ? "Task completed" : "Task due"),
+    chip: "To Do",
+    collaborators: normalizeDashboardPeople(task.collaborators),
+    date: task.updatedAt ?? task.dueAt ?? task.createdAt ?? "",
+    color: task.status === "completed" ? "success" : "primary",
+  }));
+
+  const meetingActivities = scopedMeetings.value.map((meeting: any) => ({
+    id: `meeting-${meeting.id}`,
+    kind: "meeting",
+    title: meeting.subject || "Meeting",
+    body: meeting.status || meeting.type || "Meeting",
+    chip: "Meeting",
+    collaborators: normalizeDashboardPeople(meeting.linkedTo),
+    date: meeting.updatedAt ?? meeting.startAt ?? "",
+    color: "success",
+  }));
+
+  const requestActivities = scopedRequests.value.map((request: any) => ({
+    id: `request-${request.employeeId}-${request.id}`,
+    kind: "request",
+    title: `${request.employeeName} · ${request.type}`,
+    body: `Status: ${request.status ?? "pending"}`,
+    chip: "Request",
+    collaborators: [],
+    date: request.createdAt ?? request.startDate ?? request.date ?? "",
+    color:
+      request.status === "approved"
+        ? "success"
+        : request.status === "rejected"
+          ? "error"
+          : "warning",
+  }));
+
+  const approvalActivities = approvalRows.value.map((approval: any) => ({
+    id: `approval-${approval.id}`,
+    kind: "approval",
+    title: approval.title,
+    body: `Needs approval · ${approval.requester}`,
+    chip: "Approval",
+    collaborators: [],
+    date: approval.date,
+    color: approval.kind === "hr" ? "warning" : approval.kind === "deal" ? "primary" : "info",
+  }));
+
+  return [
+    ...taskActivities,
+    ...meetingActivities,
+    ...requestActivities,
+    ...approvalActivities,
+  ]
+    .filter((entry) => entry.date)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 12);
+});
+
+const requestStatusColor = (status: unknown) => {
+  const normalized = normalizeKey(status);
+  if (normalized === "approved" || normalized === "completed") return "success";
+  if (normalized === "rejected" || normalized === "cancelled" || normalized === "canceled") return "error";
+  if (normalized === "pending") return "warning";
+
+  return "secondary";
+};
+
+const timelineChipColor = (kind: string) => {
+  if (kind === "meeting") return "success";
+  if (kind === "todo") return "warning";
+  if (kind === "request") return "primary";
+  if (kind === "approval") return "info";
+
+  return "secondary";
+};
+
+const personLabel = (person: any) => {
+  const resolved = resolveDashboardPerson(person);
+
+  return String(
+    resolved?.name ?? person?.name ?? person?.fullName ?? person?.title ?? person?.email ?? "User",
+  );
+};
+
+const personAvatar = (person: any) => {
+  const resolved = resolveDashboardPerson(person);
+
+  return resolved?.avatarUrl ?? person?.avatarUrl ?? person?.avatar ?? person?.photo ?? person?.image ?? null;
+};
+
 </script>
 
 <template>
@@ -646,6 +1256,408 @@ const openRequestDrawer = (type: DashboardRequestType) => {
       </VCol>
     </VRow>
 
+    <VRow class="dashboard-workspace align-stretch">
+      <VCol
+        cols="12"
+        md="8"
+      >
+        <VCard class="mb-6">
+          <VCardItem>
+            <div class="d-flex flex-wrap align-center justify-space-between gap-3">
+              <div>
+                <VMenu>
+                  <template #activator="{ props }">
+                    <VBtn
+                      v-bind="props"
+                      variant="text"
+                      class="px-0 text-h5 font-weight-medium"
+                      append-icon="tabler-chevron-down"
+                    >
+                      {{ workScopeLabel }}
+                    </VBtn>
+                  </template>
+                  <VList density="compact">
+                    <VListItem
+                      title="My Day"
+                      value="day"
+                      @click="workScope = 'day'"
+                    />
+                    <VListItem
+                      title="My Week"
+                      value="week"
+                      @click="workScope = 'week'"
+                    />
+                  </VList>
+                </VMenu>
+                <VCardSubtitle>Tasks and meetings in scope</VCardSubtitle>
+              </div>
+            </div>
+          </VCardItem>
+
+          <VDataTable
+            :headers="workHeaders"
+            :items="workRows"
+            :items-per-page="5"
+            density="comfortable"
+            class="dashboard-work-table"
+          >
+            <template #item.description="{ item }">
+              <div class="py-2">
+                <div class="font-weight-medium text-high-emphasis text-truncate">
+                  {{ item.description }}
+                </div>
+                <div class="text-caption text-medium-emphasis text-truncate">
+                  {{ item.subtitle }}
+                </div>
+              </div>
+            </template>
+
+            <template #item.collaborators="{ item }">
+              <div class="d-flex align-center gap-1">
+                <template
+                  v-for="collaborator in item.collaborators.slice(0, 3)"
+                  :key="`${item.id}-${personCanonicalKey(collaborator)}`"
+                >
+                  <VTooltip :text="personLabel(collaborator)">
+                    <template #activator="{ props }">
+                      <VAvatar
+                        v-bind="props"
+                        size="32"
+                        class="me-n2 dashboard-avatar"
+                        :image="personAvatar(collaborator)"
+                      >
+                        <span class="text-caption">{{ personLabel(collaborator).slice(0, 2).toUpperCase() }}</span>
+                      </VAvatar>
+                    </template>
+                  </VTooltip>
+                </template>
+                <VAvatar
+                  v-if="item.collaborators.length > 3"
+                  size="32"
+                  color="secondary"
+                  class="text-caption"
+                >
+                  +{{ item.collaborators.length - 3 }}
+                </VAvatar>
+                <span
+                  v-if="!item.collaborators.length"
+                  class="text-medium-emphasis"
+                >-</span>
+                <IconBtn
+                  size="small"
+                  @click.stop="openRowCollaboratorDialog(item)"
+                >
+                  <VIcon icon="tabler-plus" />
+                  <VTooltip activator="parent" location="top">
+                    Add or remove collaborators
+                  </VTooltip>
+                </IconBtn>
+              </div>
+            </template>
+
+            <template #item.type="{ item }">
+              <VChip
+                :color="item.typeColor"
+                size="small"
+                label
+              >
+                {{ item.type }}
+              </VChip>
+            </template>
+
+            <template #item.actions="{ item }">
+              <div class="d-flex justify-end gap-1">
+                <template v-if="item.rawType === 'task'">
+                  <VTooltip text="Edit task">
+                    <template #activator="{ props }">
+                      <VBtn
+                        v-bind="props"
+                        icon
+                        variant="text"
+                        size="small"
+                        color="secondary"
+                        @click="openTaskEdit(item.raw)"
+                      >
+                        <VIcon icon="tabler-edit" />
+                      </VBtn>
+                    </template>
+                  </VTooltip>
+                  <VTooltip text="Messages">
+                    <template #activator="{ props }">
+                      <VBtn
+                        v-bind="props"
+                        icon
+                        variant="text"
+                        size="small"
+                        color="secondary"
+                        @click="openTaskMessages(item.raw)"
+                      >
+                        <VIcon icon="tabler-message-circle" />
+                      </VBtn>
+                    </template>
+                  </VTooltip>
+                </template>
+
+                <template v-else>
+                  <VTooltip text="Minutes of Meeting">
+                    <template #activator="{ props }">
+                      <VBtn
+                        v-bind="props"
+                        icon
+                        variant="text"
+                        size="small"
+                        color="secondary"
+                        @click="openMeetingMinutes(item.raw)"
+                      >
+                        <VIcon icon="tabler-notes" />
+                      </VBtn>
+                    </template>
+                  </VTooltip>
+                  <VTooltip text="Edit meeting">
+                    <template #activator="{ props }">
+                      <VBtn
+                        v-bind="props"
+                        icon
+                        variant="text"
+                        size="small"
+                        color="secondary"
+                        @click="openMeetingEdit(item.raw)"
+                      >
+                        <VIcon icon="tabler-edit" />
+                      </VBtn>
+                    </template>
+                  </VTooltip>
+                </template>
+              </div>
+            </template>
+          </VDataTable>
+        </VCard>
+
+        <VRow>
+          <VCol
+            cols="12"
+            :md="showNeedApproval ? 6 : 12"
+          >
+            <VCard class="h-100">
+              <VCardItem>
+                <VCardTitle>My Requests</VCardTitle>
+                <VCardSubtitle>Requests and approvals you started</VCardSubtitle>
+              </VCardItem>
+              <VDivider />
+              <VList
+                v-if="myRequestRows.length"
+                lines="two"
+                class="py-0"
+              >
+                <VListItem
+                  v-for="request in myRequestRows"
+                  :key="request.id"
+                  :title="request.title"
+                  :subtitle="request.date ? formatSystemDate(request.date) : request.owner"
+                >
+                  <template #prepend>
+                    <VAvatar
+                      rounded
+                      variant="tonal"
+                      color="primary"
+                    >
+                      <VIcon icon="tabler-file-text" />
+                    </VAvatar>
+                  </template>
+                  <template #append>
+                    <VChip
+                      :color="requestStatusColor(request.status)"
+                      size="small"
+                      label
+                    >
+                      {{ request.status }}
+                    </VChip>
+                  </template>
+                </VListItem>
+              </VList>
+              <VCardText
+                v-else
+                class="text-medium-emphasis"
+              >
+                No requests found.
+              </VCardText>
+            </VCard>
+          </VCol>
+
+          <VCol
+            v-if="showNeedApproval"
+            cols="12"
+            md="6"
+          >
+            <VCard class="h-100">
+              <VCardItem>
+                <VCardTitle>Need Approval</VCardTitle>
+                <VCardSubtitle>Systemwide approvals assigned to you</VCardSubtitle>
+              </VCardItem>
+              <VDivider />
+              <VList
+                v-if="approvalRows.length"
+                lines="two"
+                class="py-0"
+              >
+                <VListItem
+                  v-for="approval in approvalRows"
+                  :key="approval.id"
+                  :title="approval.title"
+                  :subtitle="`${approval.requester} · ${approval.date ? formatSystemDate(approval.date) : 'Pending'}`"
+                >
+                  <template #prepend>
+                    <VAvatar
+                      rounded
+                      variant="tonal"
+                      :color="approval.kind === 'hr' ? 'warning' : approval.kind === 'deal' ? 'primary' : 'info'"
+                    >
+                      <VIcon
+                        :icon="approval.kind === 'hr' ? 'tabler-user-check' : approval.kind === 'deal' ? 'tabler-arrows-right-left' : 'tabler-file-invoice'"
+                      />
+                    </VAvatar>
+                  </template>
+
+                  <template #append>
+                    <div class="d-flex align-center gap-1">
+                      <template v-if="approval.kind === 'hr'">
+                        <VBtn
+                          icon
+                          size="small"
+                          variant="text"
+                          color="success"
+                          @click="approveHrRequest(approval)"
+                        >
+                          <VIcon icon="tabler-check" />
+                        </VBtn>
+                        <VBtn
+                          icon
+                          size="small"
+                          variant="text"
+                          color="error"
+                          @click="rejectHrRequest(approval)"
+                        >
+                          <VIcon icon="tabler-x" />
+                        </VBtn>
+                      </template>
+
+                      <VBtn
+                        v-else-if="approval.kind === 'deal'"
+                        size="small"
+                        variant="tonal"
+                        color="primary"
+                        @click="approveDealStage(approval)"
+                      >
+                        Approve
+                      </VBtn>
+
+                      <VBtn
+                        v-else
+                        size="small"
+                        variant="tonal"
+                        color="info"
+                        @click="openDocumentApproval(approval)"
+                      >
+                        Open
+                      </VBtn>
+                    </div>
+                  </template>
+                </VListItem>
+              </VList>
+              <VCardText
+                v-else
+                class="text-medium-emphasis"
+              >
+                No approvals currently assigned.
+              </VCardText>
+            </VCard>
+          </VCol>
+        </VRow>
+      </VCol>
+
+      <VCol
+        cols="12"
+        md="4"
+      >
+        <VCard class="dashboard-timeline-card h-100">
+          <VCardItem>
+            <VCardTitle>Activity Timeline</VCardTitle>
+            <VCardSubtitle>{{ canSeeTeam ? "Own and team activity" : "Your activity" }}</VCardSubtitle>
+          </VCardItem>
+          <VCardText>
+            <VTimeline
+              v-if="activityTimelineRows.length"
+              side="end"
+              align="start"
+              line-inset="8"
+              truncate-line="start"
+              density="compact"
+            >
+              <VTimelineItem
+                v-for="activity in activityTimelineRows"
+                :key="activity.id"
+                :dot-color="activity.color"
+                size="x-small"
+              >
+                <div class="d-flex justify-space-between align-center gap-2 flex-wrap mb-2">
+                  <div class="d-flex align-center">
+                    <span class="app-timeline-title">{{ activity.title }}</span>
+                    <VChip
+                      size="small"
+                      class="timeline-chip"
+                      :color="timelineChipColor(activity.kind)"
+                      density="compact"
+                    >
+                      {{ activity.chip }}
+                    </VChip>
+                  </div>
+                  <span class="app-timeline-meta">{{ formatSystemDate(activity.date) }}</span>
+                </div>
+                <div class="app-timeline-text mt-1">
+                  {{ activity.body }}
+                </div>
+                <div
+                  v-if="activity.collaborators.length"
+                  class="v-avatar-group demo-avatar-group mt-2"
+                >
+                  <template
+                    v-for="collaborator in activity.collaborators.slice(0, 4)"
+                    :key="`${activity.id}-${personCanonicalKey(collaborator)}`"
+                  >
+                    <VTooltip location="top">
+                      <template #activator="{ props }">
+                        <VAvatar
+                          v-bind="props"
+                          :size="32"
+                          :image="personAvatar(collaborator)"
+                        >
+                          <span class="text-caption">{{ personLabel(collaborator).slice(0, 2).toUpperCase() }}</span>
+                        </VAvatar>
+                      </template>
+                      {{ personLabel(collaborator) }}
+                    </VTooltip>
+                  </template>
+                  <VAvatar
+                    v-if="activity.collaborators.length > 4"
+                    :size="32"
+                    color="secondary"
+                  >
+                    +{{ activity.collaborators.length - 4 }}
+                  </VAvatar>
+                </div>
+              </VTimelineItem>
+            </VTimeline>
+            <div
+              v-else
+              class="text-medium-emphasis"
+            >
+              No activity in scope.
+            </div>
+          </VCardText>
+        </VCard>
+      </VCol>
+    </VRow>
+
     <VDialog
       v-model="isRequestPickerOpen"
       max-width="520"
@@ -674,6 +1686,47 @@ const openRequestDrawer = (type: DashboardRequestType) => {
             </VCol>
           </VRow>
         </VCardText>
+      </VCard>
+    </VDialog>
+
+    <VDialog
+      v-model="isRowCollaboratorDialogVisible"
+      max-width="560"
+    >
+      <DialogCloseBtn @click="isRowCollaboratorDialogVisible = false" />
+      <VCard class="pa-sm-8 pa-4">
+        <VCardTitle>
+          {{ rowCollaboratorTarget?.type === "meeting" ? "Meeting attendees" : "Task collaborators" }}
+        </VCardTitle>
+        <VCardText>
+          <AppSelect
+            v-model="rowCollaboratorValue"
+            label="Collaborators"
+            placeholder="Select people"
+            :items="normalizedCollaboratorOptions"
+            item-title="name"
+            item-value="id"
+            multiple
+            chips
+            closable-chips
+            clearable
+          />
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="tonal"
+            color="secondary"
+            @click="isRowCollaboratorDialogVisible = false"
+          >
+            Close
+          </VBtn>
+          <VBtn
+            color="primary"
+            @click="saveRowCollaborators"
+          >
+            Save
+          </VBtn>
+        </VCardActions>
       </VCard>
     </VDialog>
 
@@ -738,6 +1791,30 @@ const openRequestDrawer = (type: DashboardRequestType) => {
       @submit="submitTimeAuLieu"
       @close="selectedTimeAuLieuData = null"
     />
+
+    <EditToDoDrawer
+      v-model:is-drawer-open="isEditTodoDrawerOpen"
+      :todo="editingTodo"
+      :collaborators-options="normalizedCollaboratorOptions"
+      @save="saveEditedTask"
+      @save-steps="saveTaskSteps"
+    />
+
+    <MessageDrawer
+      v-model:is-drawer-open="isMessageDrawerOpen"
+      :todo="messageDrawerTodo"
+      :author="currentAuthor"
+      @send="addMessageToTodo"
+      @edit-message="editTodoMessage"
+      @toggle-read="toggleTodoMessageRead"
+    />
+
+    <AddMeetingDrawer
+      ref="addMeetingRef"
+      v-model="isMeetingDrawerOpen"
+      @save="saveMeeting"
+      @cancel="editingMeeting = null"
+    />
   </div>
 </template>
 
@@ -746,5 +1823,27 @@ const openRequestDrawer = (type: DashboardRequestType) => {
 
 .dashboard-stat {
   min-inline-size: 210px;
+}
+
+.dashboard-workspace {
+  .dashboard-work-table {
+    .v-data-table__td,
+    .v-data-table__th {
+      white-space: nowrap;
+    }
+
+    .v-data-table__td:first-child {
+      min-inline-size: 280px;
+      white-space: normal;
+    }
+  }
+
+  .dashboard-avatar {
+    border: 2px solid rgb(var(--v-theme-surface));
+  }
+
+  .dashboard-timeline-card {
+    min-block-size: 100%;
+  }
 }
 </style>

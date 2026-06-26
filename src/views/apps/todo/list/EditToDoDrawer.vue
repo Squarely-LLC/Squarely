@@ -122,18 +122,50 @@ const relatedOptions = computed(() => [
 const isRelatedToLocked = computed(() => false);
 
 /* ===== Helpers ===== */
+const normalizePeopleKey = (value: unknown) =>
+  value === null || value === undefined ? "" : String(value).trim().toLowerCase();
+
+const collaboratorKey = (value: any) =>
+  value && typeof value === "object"
+    ? normalizePeopleKey(value.employeeId) ||
+      normalizePeopleKey(value.contactId) ||
+      normalizePeopleKey(value.personId) ||
+      normalizePeopleKey(value.id) ||
+      normalizePeopleKey(value.value) ||
+      normalizePeopleKey(value.email) ||
+      normalizePeopleKey(value.name)
+    : normalizePeopleKey(value);
+
+const dedupeContactRefs = <T extends any>(items: T[]): T[] => {
+  const seen = new Set<string>();
+
+  return items.filter((item: any) => {
+    const key = collaboratorKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+
+    return true;
+  });
+};
+
+const normalizedCollaboratorOptions = computed(() =>
+  dedupeContactRefs(props.collaboratorsOptions),
+);
+
 const idToContact = computed(
-  () => new Map(props.collaboratorsOptions.map((c) => [c.id, c] as const)),
+  () => new Map(normalizedCollaboratorOptions.value.map((c) => [c.id, c] as const)),
 );
 const selectedCollaborators = computed<ContactRef[]>(
   () =>
-    selectedCollaboratorIds.value
+    dedupeContactRefs(
+      selectedCollaboratorIds.value
       .map(
         (id) =>
           idToContact.value.get(id) ||
-          resolvePeopleSelection(id, props.collaboratorsOptions, "Employee"),
+          resolvePeopleSelection(id, normalizedCollaboratorOptions.value, "Employee"),
       )
       .filter(Boolean) as ContactRef[],
+    ),
 );
 const initials = (n?: string) =>
   n ? (n.trim().match(/\b\w/g) || []).slice(0, 2).join("").toUpperCase() : "?";
@@ -310,7 +342,7 @@ function onStepEditDialogClose() {
 function loadFromToDo(t: ToDo) {
   syncingAttachmentInput.value = true;
   title.value = t.title ?? "";
-  selectedCollaboratorIds.value = (t.collaborators ?? []).map((c) => c.id);
+  selectedCollaboratorIds.value = dedupeContactRefs(t.collaborators ?? []).map((c) => c.id);
   const resolvedDueAt = t.dueAt ? new Date(t.dueAt).toISOString() : null;
   dueAt.value = resolvedDueAt;
   startAt.value = (t as any).startAt ?? null;
@@ -577,7 +609,7 @@ async function onSaveAll() {
                       v-model="selectedCollaboratorIds"
                       v-model:search="collabSearch"
                       class="todo-collaborators"
-                      :items="props.collaboratorsOptions"
+                      :items="normalizedCollaboratorOptions"
                       item-title="name"
                       item-value="id"
                       label="Assigned to"
@@ -919,7 +951,7 @@ async function onSaveAll() {
                       v-model="newDraft.collaborators"
                       v-model:search="newSearch"
                       class="todo-collaborators"
-                      :items="props.collaboratorsOptions"
+                      :items="normalizedCollaboratorOptions"
                       item-title="name"
                       return-object
                       label="Assigned to"
@@ -970,7 +1002,7 @@ async function onSaveAll() {
     <StepEditDialog
       v-model="StepEditDialogOpen"
       :step="StepEditDialogModel"
-      :collaborators-options="props.collaboratorsOptions"
+      :collaborators-options="normalizedCollaboratorOptions"
       title="Edit Subtask"
       @save="onStepEditDialogSave"
       @close="onStepEditDialogClose"
