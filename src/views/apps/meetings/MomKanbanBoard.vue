@@ -6,14 +6,35 @@ import MomKanbanSubject from "@/views/apps/meetings/MomKanbanSubject.vue";
 import { requiredValidator } from "@core/utils/validators";
 import { VForm } from "vuetify/components/VForm";
 
+type EmployeeOption = {
+  title: string;
+  value?: string | number;
+  avatarUrl?: string | null;
+};
+
+type MomNoteSavePayload = {
+  noteId?: string | number | null;
+  subjectId: string | number;
+  bodyHtml: string;
+  assignee: string;
+  dueAt: string | null;
+  createTask: boolean;
+  collaboratorIds: Array<string | number>;
+  attachments: MeetingMomNote["attachments"];
+  links: MeetingMomNote["links"];
+  internal: boolean;
+};
+
 const props = withDefaults(
   defineProps<{
     subjects: MeetingMomSubject[];
     notes: MeetingMomNote[];
+    employeeOptions?: EmployeeOption[];
     groupName?: string;
   }>(),
   {
     groupName: "meeting-mom",
+    employeeOptions: () => [],
   },
 );
 
@@ -21,11 +42,9 @@ const emit = defineEmits<{
   (e: "addSubject", value: string): void;
   (e: "renameSubject", value: { subjectId: string | number; title: string }): void;
   (e: "deleteSubject", value: MeetingMomSubject): void;
-  (e: "addNote", value: { subjectId: string | number; title: string }): void;
-  (e: "editNote", value: MeetingMomNote): void;
+  (e: "saveNote", value: MomNoteSavePayload): void;
   (e: "deleteNote", value: MeetingMomNote): void;
   (e: "toggleInternal", value: MeetingMomNote): void;
-  (e: "addCollaborators", value: MeetingMomNote): void;
   (e: "updateSubjectOrder", value: Array<string | number>): void;
   (e: "updateNotesState", value: { subjectId: string | number; ids: Array<string | number> }): void;
 }>();
@@ -35,6 +54,16 @@ const refAddSubject = ref<VForm>();
 const localSubjects = ref<MeetingMomSubject[]>([]);
 const isAddNewFormVisible = ref(false);
 const subjectTitle = ref("");
+
+function sameOrder(
+  left: Array<string | number>,
+  right: Array<string | number>,
+) {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => String(id) === String(right[index]))
+  );
+}
 
 function pinDefault(subjects: MeetingMomSubject[]) {
   const defaultSubject = subjects.find((subject) => String(subject.id) === "default");
@@ -67,9 +96,12 @@ watch(
       localSubjects.value = pinned;
       return;
     }
+    const nextIds = pinned.map((subject) => subject.id);
+    const propIds = pinDefault([...props.subjects]).map((subject) => subject.id);
+    if (sameOrder(nextIds, propIds)) return;
     emit(
       "updateSubjectOrder",
-      pinned.map((subject) => subject.id),
+      nextIds,
     );
   },
   { deep: true },
@@ -120,13 +152,12 @@ onClickOutside(refAddSubject, hideAddNewForm);
           :subject="subject"
           :note-ids="noteIdsForSubject(subject)"
           :notes="notes"
+          :employee-options="employeeOptions"
           @rename-subject="emit('renameSubject', $event)"
           @delete-subject="emit('deleteSubject', $event)"
-          @add-note="emit('addNote', $event)"
-          @edit-note="emit('editNote', $event)"
+          @save-note="emit('saveNote', $event)"
           @delete-note="emit('deleteNote', $event)"
           @toggle-internal="emit('toggleInternal', $event)"
-          @add-collaborators="emit('addCollaborators', $event)"
           @update-notes-state="emit('updateNotesState', $event)"
         />
       </template>
@@ -203,6 +234,11 @@ onClickOutside(refAddSubject, hideAddNewForm);
   }
 
   .add-new-form {
+    .v-field {
+      border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+      border-radius: vuetify.$border-radius-root;
+    }
+
     .v-field__field {
       border-radius: vuetify.$border-radius-root;
       background-color: rgb(var(--v-theme-surface));

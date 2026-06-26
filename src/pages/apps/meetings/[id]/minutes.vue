@@ -6,18 +6,16 @@ import type {
   MeetingMomNote,
   MeetingMomSubject,
   MeetingSentiment,
-  ToDoAttachment,
 } from "@/data/schema";
 import { useDealsStore } from "@/stores/deals";
 import { useJobsStore } from "@/stores/jobs";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useTodos } from "@/stores/todos";
-import { saveFile } from "@/utils/fileStore";
 import { getEmployeeRefs } from "@/utils/peopleOptions";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import MomKanbanBoard from "@/views/apps/meetings/MomKanbanBoard.vue";
 import { formatSystemDate, formatSystemDateTime } from "@core/utils/formatters";
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const route = useRoute();
@@ -34,9 +32,21 @@ jobsStore.init();
 const meetingId = computed(() => String(route.params.id || ""));
 const meeting = computed(() => todosStore.meetingById(meetingId.value) as Meeting | null);
 const emailDialog = ref<InstanceType<typeof EmailDialog> | null>(null);
-const fileInput = ref<HTMLInputElement | null>(null);
 
 const DEFAULT_SUBJECT_ID = "default";
+
+type MomNoteSavePayload = {
+  noteId?: string | number | null;
+  subjectId: string | number;
+  bodyHtml: string;
+  assignee: string;
+  dueAt: string | null;
+  createTask: boolean;
+  collaboratorIds: Array<string | number>;
+  attachments: MeetingMomNote["attachments"];
+  links: MeetingMomNote["links"];
+  internal: boolean;
+};
 
 const sentimentOptions = [
   { title: "Very Poor", value: "very_poor" },
@@ -47,22 +57,6 @@ const sentimentOptions = [
 ] as const;
 
 const employeeOptions = computed(() => getEmployeeRefs());
-
-const noteDialog = reactive({
-  open: false,
-  subjectId: DEFAULT_SUBJECT_ID as string | number,
-  noteId: null as string | number | null,
-  bodyHtml: "",
-  assignee: "",
-  dueAt: "",
-  createTask: false,
-  collaboratorIds: [] as Array<string | number>,
-  attachments: [] as ToDoAttachment[],
-  links: [] as ToDoAttachment[],
-  internal: false,
-  linkUrl: "",
-  linkName: "",
-});
 
 const completeDialog = reactive({
   open: false,
@@ -306,15 +300,6 @@ function avatarText(name?: string | null) {
   );
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 function addSubject(titleValue: string) {
   const title = titleValue.trim();
   if (!title) return;
@@ -380,32 +365,51 @@ function updateSubjectOrder(ids: Array<string | number>) {
   persistMom(nextMom);
 }
 
-function addInlineNote(payload: { subjectId: string | number; title: string }) {
-  const title = payload.title.trim();
-  if (!title) return;
+function selectedCollaborators(ids: Array<string | number>): ContactRef[] {
+  const selected = new Set(ids.map(String));
+  return employeeOptions.value
+    .filter(
+      (employee) =>
+        employee.value !== undefined && selected.has(String(employee.value)),
+    )
+    .map((employee) => ({
+      id: employee.value as string | number,
+      name: employee.title,
+      avatarUrl: employee.avatarUrl || null,
+    }));
+}
+
+function saveInlineNote(payload: MomNoteSavePayload) {
   const nextMom = cloneMom(mom.value);
   const now = nowIso();
+  const existing = notes.value.find((note) => String(note.id) === String(payload.noteId));
   const note: MeetingMomNote = {
-    id: makeId("note"),
+    id: payload.noteId || makeId("note"),
     subjectId: payload.subjectId,
-    bodyHtml: `<p>${escapeHtml(title)}</p>`,
-    assignee: "",
-    dueAt: null,
-    createTask: false,
-    collaborators: [],
-    attachments: [],
-    links: [],
-    internal: false,
-    generatedTaskId: null,
-    createdAt: now,
+    bodyHtml: payload.bodyHtml,
+    assignee: payload.assignee.trim(),
+    dueAt: payload.dueAt || null,
+    createTask: payload.createTask,
+    collaborators: selectedCollaborators(payload.collaboratorIds),
+    attachments: [...payload.attachments],
+    links: [...payload.links],
+    internal: payload.internal,
+    generatedTaskId: existing?.generatedTaskId || null,
+    createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
-  nextMom.notes.push(note);
-  nextMom.subjects = nextMom.subjects.map((subject) =>
-    String(subject.id) === String(payload.subjectId)
-      ? { ...subject, noteIds: [...(subject.noteIds || []), note.id], updatedAt: now }
-      : subject,
-  );
+
+  const index = nextMom.notes.findIndex((item) => String(item.id) === String(note.id));
+  if (index === -1) nextMom.notes.push(note);
+  else nextMom.notes.splice(index, 1, note);
+
+  nextMom.subjects = nextMom.subjects.map((subject) => {
+    const ids = nextMom.notes
+      .filter((note) => String(note.subjectId) === String(subject.id))
+      .map((note) => note.id);
+    return { ...subject, noteIds: ids };
+  });
+
   persistMom(syncSummary(nextMom));
 }
 
@@ -432,92 +436,6 @@ function updateNotesState(payload: {
   persistMom(syncSummary(nextMom));
 }
 
-function resetNoteDialog(subjectId: string | number = DEFAULT_SUBJECT_ID) {
-  Object.assign(noteDialog, {
-    open: true,
-    subjectId,
-    noteId: null,
-    bodyHtml: "",
-    assignee: "",
-    dueAt: "",
-    createTask: false,
-    collaboratorIds: [],
-    attachments: [],
-    links: [],
-    internal: false,
-    linkUrl: "",
-    linkName: "",
-  });
-}
-
-function editNote(note: MeetingMomNote) {
-  Object.assign(noteDialog, {
-    open: true,
-    subjectId: note.subjectId,
-    noteId: note.id,
-    bodyHtml: note.bodyHtml,
-    assignee: note.assignee || "",
-    dueAt: note.dueAt || "",
-    createTask: Boolean(note.createTask),
-    collaboratorIds: (note.collaborators || []).map((item) => item.id),
-    attachments: [...(note.attachments || [])],
-    links: [...(note.links || [])],
-    internal: Boolean(note.internal),
-    linkUrl: "",
-    linkName: "",
-  });
-}
-
-function selectedCollaborators(): ContactRef[] {
-  const selected = new Set(noteDialog.collaboratorIds.map(String));
-  return employeeOptions.value
-    .filter(
-      (employee) =>
-        employee.value !== undefined && selected.has(String(employee.value)),
-    )
-    .map((employee) => ({
-      id: employee.value as string | number,
-      name: employee.title,
-      avatarUrl: employee.avatarUrl || null,
-    }));
-}
-
-function saveNote() {
-  const nextMom = cloneMom(mom.value);
-  const now = nowIso();
-  const payload: MeetingMomNote = {
-    id: noteDialog.noteId || makeId("note"),
-    subjectId: noteDialog.subjectId,
-    bodyHtml: noteDialog.bodyHtml,
-    assignee: noteDialog.assignee.trim(),
-    dueAt: noteDialog.dueAt || null,
-    createTask: noteDialog.createTask,
-    collaborators: selectedCollaborators(),
-    attachments: [...noteDialog.attachments],
-    links: [...noteDialog.links],
-    internal: noteDialog.internal,
-    generatedTaskId:
-      notes.value.find((note) => String(note.id) === String(noteDialog.noteId))?.generatedTaskId || null,
-    createdAt:
-      notes.value.find((note) => String(note.id) === String(noteDialog.noteId))?.createdAt || now,
-    updatedAt: now,
-  };
-
-  const index = nextMom.notes.findIndex((note) => String(note.id) === String(payload.id));
-  if (index === -1) nextMom.notes.push(payload);
-  else nextMom.notes.splice(index, 1, payload);
-
-  nextMom.subjects = nextMom.subjects.map((subject) => {
-    const ids = nextMom.notes
-      .filter((note) => String(note.subjectId) === String(subject.id))
-      .map((note) => note.id);
-    return { ...subject, noteIds: ids };
-  });
-
-  noteDialog.open = false;
-  persistMom(syncSummary(nextMom));
-}
-
 function deleteNote(note: MeetingMomNote) {
   const nextMom = cloneMom(mom.value);
   nextMom.notes = nextMom.notes.filter((item) => String(item.id) !== String(note.id));
@@ -536,39 +454,6 @@ function toggleInternal(note: MeetingMomNote) {
       : item,
   );
   persistMom(nextMom);
-}
-
-function openAddCollaborators(note: MeetingMomNote) {
-  editNote(note);
-  nextTick(() => {
-    const picker = document.querySelector(".mom-note-collaborators input") as HTMLInputElement | null;
-    picker?.focus?.();
-  });
-}
-
-function addLink() {
-  const url = noteDialog.linkUrl.trim();
-  if (!url) return;
-  noteDialog.links.push({
-    type: "link",
-    name: noteDialog.linkName.trim() || url,
-    url,
-  });
-  noteDialog.linkUrl = "";
-  noteDialog.linkName = "";
-}
-
-async function onFilePicked(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  const fileKey = await saveFile(file);
-  noteDialog.attachments.push({
-    type: "file",
-    name: file.name,
-    fileKey,
-  });
-  input.value = "";
 }
 
 function markAttendance(attendee: ContactRef, attended: boolean) {
@@ -734,43 +619,44 @@ watch(
   </VCard>
 
   <div v-else class="mom-shell">
-    <VCard class="mom-summary-card">
-      <VCardItem>
-        <template #title>Meeting Summary</template>
-        <template #append>
-          <AppTextField
-            :model-value="formatMmSs(mom.durationSeconds)"
-            label="Duration"
-            placeholder="MM:SS"
-            density="compact"
-            class="mom-duration-field"
-            @update:model-value="onDurationChange"
-          />
-        </template>
-      </VCardItem>
-      <VCardText>
-        <TiptapEditor
-          :model-value="mom.summaryHtml || ''"
-          placeholder="Meeting summary"
-          @update:model-value="updateSummary"
-        />
-      </VCardText>
-    </VCard>
-
     <div class="mom-page">
       <div class="mom-main">
+        <VCard class="mom-summary-card mb-6">
+          <VCardItem>
+            <template #title>Meeting Summary</template>
+            <template #append>
+              <AppTextField
+                :model-value="formatMmSs(mom.durationSeconds)"
+                label="Duration"
+                placeholder="MM:SS"
+                density="compact"
+                class="mom-duration-field mom-bordered-field"
+                @update:model-value="onDurationChange"
+              />
+            </template>
+          </VCardItem>
+          <VCardText>
+            <div class="mom-bordered-editor">
+              <TiptapEditor
+                :model-value="mom.summaryHtml || ''"
+                placeholder="Meeting summary"
+                @update:model-value="updateSummary"
+              />
+            </div>
+          </VCardText>
+        </VCard>
+
         <MomKanbanBoard
           :subjects="subjects"
           :notes="notes"
+          :employee-options="employeeOptions"
           :group-name="`meeting-mom-${meeting.id}`"
           @add-subject="addSubject"
           @rename-subject="renameSubject"
           @delete-subject="removeSubject"
-          @add-note="addInlineNote"
-          @edit-note="editNote"
+          @save-note="saveInlineNote"
           @delete-note="deleteNote"
           @toggle-internal="toggleInternal"
-          @add-collaborators="openAddCollaborators"
           @update-subject-order="updateSubjectOrder"
           @update-notes-state="updateNotesState"
         />
@@ -948,74 +834,6 @@ watch(
     </div>
   </div>
 
-  <VDialog v-model="noteDialog.open" max-width="760" persistent>
-    <VCard>
-      <VCardItem :title="noteDialog.noteId ? 'Edit Note' : 'Add Note'" />
-      <VCardText>
-        <TiptapEditor v-model="noteDialog.bodyHtml" placeholder="Note" />
-        <VRow class="mt-3">
-          <VCol cols="12" md="6">
-            <AppTextField v-model="noteDialog.assignee" label="Assignee" />
-          </VCol>
-          <VCol cols="12" md="6">
-            <AppDateTimePicker
-              v-model="noteDialog.dueAt"
-              label="Due Date"
-              placeholder="YYYY-MM-DD HH:mm"
-              :config="{ enableTime: true, dateFormat: 'Y-m-d H:i' }"
-            />
-          </VCol>
-          <VCol cols="12">
-            <AppAutocomplete
-              v-model="noteDialog.collaboratorIds"
-              class="mom-note-collaborators"
-              :items="employeeOptions"
-              item-title="title"
-              item-value="value"
-              label="Collaborators"
-              multiple
-              chips
-              closable-chips
-            />
-          </VCol>
-          <VCol cols="12" class="d-flex align-center gap-3 flex-wrap">
-            <VSwitch v-model="noteDialog.createTask" label="Create Task" hide-details />
-            <VBtn variant="tonal" prepend-icon="tabler-paperclip" @click="fileInput?.click()">
-              Attachment
-            </VBtn>
-            <input ref="fileInput" type="file" class="d-none" @change="onFilePicked" />
-          </VCol>
-          <VCol cols="12" md="5">
-            <AppTextField v-model="noteDialog.linkName" label="Link Name" />
-          </VCol>
-          <VCol cols="12" md="5">
-            <AppTextField v-model="noteDialog.linkUrl" label="Link URL" />
-          </VCol>
-          <VCol cols="12" md="2" class="d-flex align-end">
-            <VBtn block variant="tonal" prepend-icon="tabler-link" @click="addLink">
-              Link
-            </VBtn>
-          </VCol>
-          <VCol v-if="noteDialog.attachments.length || noteDialog.links.length" cols="12">
-            <VChip
-              v-for="attachment in [...noteDialog.attachments, ...noteDialog.links]"
-              :key="`${attachment.type}-${attachment.name}-${attachment.url || attachment.fileKey}`"
-              class="me-1 mb-1"
-              size="small"
-            >
-              {{ attachment.name }}
-            </VChip>
-          </VCol>
-        </VRow>
-      </VCardText>
-      <VCardActions>
-        <VSpacer />
-        <VBtn variant="text" @click="noteDialog.open = false">Cancel</VBtn>
-        <VBtn color="primary" @click="saveNote">Save</VBtn>
-      </VCardActions>
-    </VCard>
-  </VDialog>
-
   <VDialog v-model="completeDialog.open" max-width="420" persistent>
     <VCard title="Complete Meeting">
       <VCardText>
@@ -1083,6 +901,28 @@ watch(
 
 .mom-duration-field {
   inline-size: 130px;
+}
+
+.mom-shell :deep(.v-field) {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+}
+
+.mom-bordered-editor {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.mom-bordered-editor :deep(.ProseMirror) {
+  min-block-size: 7rem;
+  padding: 0.75rem;
+}
+
+.mom-bordered-field :deep(.v-field) {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
 }
 
 .mom-side {
