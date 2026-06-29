@@ -1,6 +1,6 @@
 import type { DealBillingPeriod } from "@/plugins/fake-api/handlers/operations/deals/types";
 
-export type InvoiceStatus = "Not Paid" | "Paid" | "Partially Paid";
+export type InvoiceStatus = "Not Paid" | "Paid" | "Partially Paid" | "Canceled";
 
 export type LinkedRecordType = "deal" | "contract";
 

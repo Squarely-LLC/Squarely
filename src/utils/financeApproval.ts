@@ -10,6 +10,15 @@ export type FinanceApprovalRecord = {
   approvalRejectedBy?: number | string | null;
 };
 
+export type FinanceRevisionRecord = {
+  id?: number | string | null;
+  parentQuotationId?: number | string | null;
+  revisionLabel?: string | null;
+  quoteNumber?: string | null;
+  issuedDate?: string | null;
+  quotationStatus?: string | null;
+};
+
 export const FINANCE_APPROVAL_CONVERSION_MESSAGE =
   "Approval required before conversion";
 export const FINANCE_APPROVAL_PAYMENT_MESSAGE =
@@ -86,4 +95,59 @@ export function conversionNoteReferencesDocument(
     normalizedNumber &&
       normalizedNote.includes(`converted from ${kind} ${normalizedNumber}`),
   );
+}
+
+const getRevisionOrder = (record: FinanceRevisionRecord) => {
+  const labelMatch = record.revisionLabel?.match(/R(\d+)$/i);
+  if (labelMatch?.[1]) return Number(labelMatch[1]);
+
+  const numberMatch = record.quoteNumber?.match(/-R(\d+)$/i);
+  if (numberMatch?.[1]) return Number(numberMatch[1]);
+
+  return 0;
+};
+
+const compareRevisionRecordsNewestFirst = (
+  a: FinanceRevisionRecord,
+  b: FinanceRevisionRecord,
+) => {
+  const revisionDelta = getRevisionOrder(b) - getRevisionOrder(a);
+  if (revisionDelta !== 0) return revisionDelta;
+
+  const dateDelta =
+    new Date(b.issuedDate ?? "").getTime() -
+    new Date(a.issuedDate ?? "").getTime();
+  if (Number.isFinite(dateDelta) && dateDelta !== 0) return dateDelta;
+
+  return Number(b.id) - Number(a.id);
+};
+
+export function cancelOlderFinanceFamilyVersions<T extends FinanceRevisionRecord>(
+  records: T[],
+  approvedRecord: T,
+  cancelRecord: (record: T) => void,
+) {
+  const approvedId = String(approvedRecord.id ?? "");
+  if (!approvedId) return 0;
+
+  const rootId = String(approvedRecord.parentQuotationId ?? approvedRecord.id);
+  const family = records
+    .filter((record) => {
+      const recordId = String(record.id ?? "");
+      const recordRootId = String(record.parentQuotationId ?? record.id);
+
+      return recordId === rootId || recordRootId === rootId;
+    })
+    .sort(compareRevisionRecordsNewestFirst);
+
+  const latest = family[0];
+  if (!latest || String(latest.id ?? "") !== approvedId) return 0;
+
+  const olderVersions = family.filter(
+    (record) => String(record.id ?? "") !== approvedId,
+  );
+
+  olderVersions.forEach(cancelRecord);
+
+  return olderVersions.length;
 }

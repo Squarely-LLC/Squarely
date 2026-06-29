@@ -1424,13 +1424,13 @@ const onQuotationEmailSend = (payload: any) => {
   closeQuotationEmailDialog();
 };
 
-const getRevisionDisplayLabel = (revision: Quotation, index: number) => {
+const getRevisionDisplayLabel = (revision: Quotation) => {
   if (revision.revisionLabel?.trim()) return revision.revisionLabel.trim();
 
   const revisionMatch = revision.quoteNumber.match(/-R(\d+)$/i);
   if (revisionMatch?.[1]) return `R${revisionMatch[1]}`;
 
-  return `R${index + 1}`;
+  return "";
 };
 
 const computedMoreList = computed(() => {
@@ -1750,7 +1750,7 @@ watch(totalQuotations, (value) => {
                 v-if="hasRevisions(item)"
                 class="text-sm text-medium-emphasis"
               >
-                Revisions: {{ getRevisionCount(item) }}
+                Version history: {{ getRevisionCount(item) }}
               </span>
             </div>
           </div>
@@ -1791,12 +1791,12 @@ watch(totalQuotations, (value) => {
             <td :colspan="columns.length">
               <div class="quotation-expanded-inner">
                 <div class="quotation-expanded-header mb-2">
-                  <h6 class="text-h6 mb-0">Revisions</h6>
+                  <h6 class="text-h6 mb-0">Version history</h6>
                 </div>
 
                 <div class="d-flex flex-column gap-2">
                   <div
-                    v-for="(revision, revisionIndex) in getRevisions(item.id)"
+                    v-for="revision in getRevisions(item.id)"
                     :key="revision.id"
                     class="quotation-revision-card"
                   >
@@ -1809,10 +1809,13 @@ watch(totalQuotations, (value) => {
                           }"
                           class="text-link font-weight-medium"
                         >
-                          {{ getRevisionDisplayLabel(revision, revisionIndex) }}
-                        </RouterLink>
-                        <span class="text-sm text-medium-emphasis">
                           {{ revision.quoteNumber }}
+                        </RouterLink>
+                        <span
+                          v-if="getRevisionDisplayLabel(revision)"
+                          class="text-sm text-medium-emphasis"
+                        >
+                          {{ getRevisionDisplayLabel(revision) }}
                         </span>
                       </div>
 

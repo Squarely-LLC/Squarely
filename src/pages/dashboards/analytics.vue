@@ -17,7 +17,10 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
-import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
+import {
+  cancelOlderFinanceFamilyVersions,
+  normalizeFinanceApprovalStatus,
+} from "@/utils/financeApproval";
 import {
   dismissFinanceApprovalRequestNotifications,
   notifyFinanceApprovalDecision,
@@ -1120,6 +1123,27 @@ const currentApproverId = computed(
   () => identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
 );
 
+const cancelOlderApprovedFinanceVersions = (kind: string, updated: any) => {
+  const records =
+    kind === "quotation"
+      ? quotationsStore.all
+      : kind === "proforma"
+        ? proformasStore.all
+        : invoicesStore.all;
+
+  cancelOlderFinanceFamilyVersions(
+    records.map((record: any) => record.quotation),
+    updated.quotation,
+    (quotation: any) => {
+      const patch = { quotation: { quotationStatus: "Canceled" } };
+
+      if (kind === "quotation") quotationsStore.updateQuotation(quotation.id, patch);
+      else if (kind === "proforma") proformasStore.updateProforma(quotation.id, patch);
+      else invoicesStore.updateInvoice(quotation.id, patch);
+    },
+  );
+};
+
 const approveFinanceApproval = (row: any) => {
   const patch = {
     approvalStatus: "approved",
@@ -1136,6 +1160,7 @@ const approveFinanceApproval = (row: any) => {
         : invoicesStore.updateInvoice(row.recordId, patch);
 
   if (updated) {
+    cancelOlderApprovedFinanceVersions(row.kind, updated);
     dismissFinanceApprovalRequestNotifications(row.kind, updated);
     notifyFinanceApprovalDecision(row.kind, updated, "approved");
     notifications.push("Finance document approved", "success", 2500);

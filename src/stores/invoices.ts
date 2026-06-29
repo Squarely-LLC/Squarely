@@ -271,6 +271,7 @@ function normaliseInvoiceStatus(
 
   if (trimmed === "paid") return "Paid";
   if (trimmed === "partially paid") return "Partially Paid";
+  if (trimmed === "canceled" || trimmed === "cancelled") return "Canceled";
 
   return "Not Paid";
 }
@@ -573,6 +574,8 @@ function formatCurrencyAmount(value: number) {
 }
 
 function resolveInvoiceStatusFromBalance(record: InvoiceRecord): InvoiceStatus {
+  if (record.quotation.quotationStatus === "Canceled") return "Canceled";
+
   const total = Math.max(0, Number(record.quotation.total) || 0);
   const balance = Math.max(0, Number(record.quotation.balance) || 0);
 
