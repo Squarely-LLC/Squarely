@@ -182,10 +182,55 @@ const headers = [
 ];
 
 const allQuotationRecords = computed(() => quotationsStore.all);
+const allQuotationVersions = computed(() =>
+  allQuotationRecords.value.map((record) => record.quotation),
+);
+
+const getQuotationRootKey = (quotation: Quotation) =>
+  String(quotation.parentQuotationId ?? quotation.id);
+
+const getQuotationRevisionOrder = (quotation: Quotation) => {
+  const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
+  if (labelMatch?.[1]) return Number(labelMatch[1]);
+
+  const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
+  if (quoteMatch?.[1]) return Number(quoteMatch[1]);
+
+  return 0;
+};
+
+const compareQuotationsNewestFirst = (a: Quotation, b: Quotation) => {
+  const revisionDelta = getQuotationRevisionOrder(b) - getQuotationRevisionOrder(a);
+  if (revisionDelta !== 0) return revisionDelta;
+
+  const dateDelta =
+    new Date(b.issuedDate).getTime() - new Date(a.issuedDate).getTime();
+  if (dateDelta !== 0) return dateDelta;
+
+  return Number(b.id) - Number(a.id);
+};
+
+const quotationFamilyMap = computed(() => {
+  const map = new Map<string, Quotation[]>();
+
+  for (const quotation of allQuotationVersions.value) {
+    const rootKey = getQuotationRootKey(quotation);
+    const existing = map.get(rootKey) ?? [];
+    existing.push(quotation);
+    map.set(rootKey, existing);
+  }
+
+  for (const [rootKey, family] of map.entries()) {
+    map.set(rootKey, [...family].sort(compareQuotationsNewestFirst));
+  }
+
+  return map;
+});
+
 const allQuotations = computed(() =>
-  allQuotationRecords.value
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId),
+  Array.from(quotationFamilyMap.value.values())
+    .map((family) => family[0])
+    .filter((quotation): quotation is Quotation => Boolean(quotation)),
 );
 
 const ensurePreviewActionFrame = () => {
@@ -295,15 +340,18 @@ watch(
   { immediate: true },
 );
 const revisionMap = computed(() => {
-  const map = new Map<number, Quotation[]>();
+  const map = new Map<string, Quotation[]>();
 
-  for (const record of allQuotationRecords.value) {
-    const quotation = record.quotation;
-    if (!quotation.parentQuotationId) continue;
+  for (const family of quotationFamilyMap.value.values()) {
+    const latest = family[0];
+    if (!latest) continue;
 
-    const existing = map.get(quotation.parentQuotationId) ?? [];
-    existing.push(quotation);
-    map.set(quotation.parentQuotationId, existing);
+    map.set(
+      String(latest.id),
+      family
+        .filter((quotation) => String(quotation.id) !== String(latest.id))
+        .sort(compareQuotationsNewestFirst),
+    );
   }
 
   return map;
@@ -385,17 +433,32 @@ const filteredQuotations = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
 
   let records = allQuotations.value.filter((quotation) => {
-    const matchesQuery =
-      !query ||
-      quotation.client.name.toLowerCase().includes(query) ||
-      quotation.client.companyEmail.toLowerCase().includes(query) ||
-      quotation.quoteNumber.toLowerCase().includes(query) ||
-      quotation.service.toLowerCase().includes(query) ||
-      String(quotation.id).includes(query);
+    const family = getQuotationFamily(quotation);
+    const matchesQuery = !query || family.some((familyMember) => {
+      const client = familyMember.client as Quotation["client"] & {
+        company?: string | null;
+      };
+      const searchText = [
+        familyMember.id,
+        familyMember.quoteNumber,
+        familyMember.service,
+        client.name,
+        client.company,
+        client.companyEmail,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchText.includes(query);
+    });
 
     const matchesStatus =
       !selectedStatus.value ||
-      quotation.quotationStatus === selectedStatus.value;
+      family.some(
+        (familyMember) =>
+          familyMember.quotationStatus === selectedStatus.value,
+      );
 
     return matchesQuery && matchesStatus;
   });
@@ -438,32 +501,22 @@ const paginatedQuotations = computed(() => {
 });
 
 const hasRevisions = (quotation: Quotation) =>
-  (revisionMap.value.get(quotation.id) ?? []).length > 0;
+  (revisionMap.value.get(getQuotationRowKey(quotation)) ?? []).length > 0;
 
 const getRevisionCount = (quotation: Quotation) =>
-  (revisionMap.value.get(quotation.id) ?? []).length;
+  (revisionMap.value.get(getQuotationRowKey(quotation)) ?? []).length;
 
 const getQuotationFamily = (quotation: Quotation) => {
-  const rootId = quotation.parentQuotationId ?? quotation.id;
-
-  return allQuotationRecords.value
-    .map((record) => record.quotation)
-    .filter(
-      (candidate) =>
-        String(candidate.id) === String(rootId) ||
-        String(candidate.parentQuotationId ?? "") === String(rootId),
-    );
+  return quotationFamilyMap.value.get(getQuotationRootKey(quotation)) ?? [quotation];
 };
 
 const isOlderQuotationRevision = (quotation: Quotation) => {
   const family = getQuotationFamily(quotation);
   if (family.length <= 1) return false;
 
-  const latest = family.reduce((currentLatest, candidate) =>
-    Number(candidate.id) > Number(currentLatest.id) ? candidate : currentLatest,
-  );
+  const latest = family[0];
 
-  return String(latest.id) !== String(quotation.id);
+  return Boolean(latest) && String(latest.id) !== String(quotation.id);
 };
 
 const getQuotationLockReason = (quotation?: Quotation | null) => {
@@ -498,19 +551,7 @@ const toggleRow = (quotation: Quotation) => {
 };
 
 const getRevisions = (quotationId: number | string) =>
-  [...(revisionMap.value.get(Number(quotationId)) ?? [])].sort((a, b) => {
-    const getRevisionOrder = (quotation: Quotation) => {
-      const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
-      if (labelMatch?.[1]) return Number(labelMatch[1]);
-
-      const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
-      if (quoteMatch?.[1]) return Number(quoteMatch[1]);
-
-      return quotation.id;
-    };
-
-    return getRevisionOrder(a) - getRevisionOrder(b);
-  });
+  [...(revisionMap.value.get(String(quotationId)) ?? [])];
 
 const getContactId = (quotation: Quotation) => {
   const clientName = quotation.client.name.trim().toLowerCase();

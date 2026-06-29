@@ -119,10 +119,55 @@ const headers = [
 ];
 
 const allQuotationRecords = computed(() => quotationsStore.all);
+const allQuotationVersions = computed(() =>
+  allQuotationRecords.value.map((record) => record.quotation),
+);
+
+const getInvoiceRootKey = (quotation: Invoice) =>
+  String(quotation.parentQuotationId ?? quotation.id);
+
+const getInvoiceRevisionOrder = (quotation: Invoice) => {
+  const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
+  if (labelMatch?.[1]) return Number(labelMatch[1]);
+
+  const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
+  if (quoteMatch?.[1]) return Number(quoteMatch[1]);
+
+  return 0;
+};
+
+const compareInvoicesNewestFirst = (a: Invoice, b: Invoice) => {
+  const revisionDelta = getInvoiceRevisionOrder(b) - getInvoiceRevisionOrder(a);
+  if (revisionDelta !== 0) return revisionDelta;
+
+  const dateDelta =
+    new Date(b.issuedDate).getTime() - new Date(a.issuedDate).getTime();
+  if (dateDelta !== 0) return dateDelta;
+
+  return Number(b.id) - Number(a.id);
+};
+
+const invoiceFamilyMap = computed(() => {
+  const map = new Map<string, Invoice[]>();
+
+  for (const quotation of allQuotationVersions.value) {
+    const rootKey = getInvoiceRootKey(quotation);
+    const existing = map.get(rootKey) ?? [];
+    existing.push(quotation);
+    map.set(rootKey, existing);
+  }
+
+  for (const [rootKey, family] of map.entries()) {
+    map.set(rootKey, [...family].sort(compareInvoicesNewestFirst));
+  }
+
+  return map;
+});
+
 const allQuotations = computed(() =>
-  allQuotationRecords.value
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId),
+  Array.from(invoiceFamilyMap.value.values())
+    .map((family) => family[0])
+    .filter((quotation): quotation is Invoice => Boolean(quotation)),
 );
 
 const ensurePreviewActionFrame = () => {
@@ -232,15 +277,18 @@ watch(
   { immediate: true },
 );
 const revisionMap = computed(() => {
-  const map = new Map<number, Invoice[]>();
+  const map = new Map<string, Invoice[]>();
 
-  for (const record of allQuotationRecords.value) {
-    const quotation = record.quotation;
-    if (!quotation.parentQuotationId) continue;
+  for (const family of invoiceFamilyMap.value.values()) {
+    const latest = family[0];
+    if (!latest) continue;
 
-    const existing = map.get(quotation.parentQuotationId) ?? [];
-    existing.push(quotation);
-    map.set(quotation.parentQuotationId, existing);
+    map.set(
+      String(latest.id),
+      family
+        .filter((quotation) => String(quotation.id) !== String(latest.id))
+        .sort(compareInvoicesNewestFirst),
+    );
   }
 
   return map;
@@ -250,17 +298,32 @@ const filteredQuotations = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
 
   let records = allQuotations.value.filter((quotation) => {
-    const matchesQuery =
-      !query ||
-      quotation.client.name.toLowerCase().includes(query) ||
-      quotation.client.companyEmail.toLowerCase().includes(query) ||
-      quotation.quoteNumber.toLowerCase().includes(query) ||
-      quotation.service.toLowerCase().includes(query) ||
-      String(quotation.id).includes(query);
+    const family = getInvoiceFamily(quotation);
+    const matchesQuery = !query || family.some((familyMember) => {
+      const client = familyMember.client as Invoice["client"] & {
+        company?: string | null;
+      };
+      const searchText = [
+        familyMember.id,
+        familyMember.quoteNumber,
+        familyMember.service,
+        client.name,
+        client.company,
+        client.companyEmail,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchText.includes(query);
+    });
 
     const matchesStatus =
       !selectedStatus.value ||
-      quotation.quotationStatus === selectedStatus.value;
+      family.some(
+        (familyMember) =>
+          familyMember.quotationStatus === selectedStatus.value,
+      );
 
     return matchesQuery && matchesStatus;
   });
@@ -303,35 +366,28 @@ const paginatedQuotations = computed(() => {
 });
 
 const hasRevisions = (quotation: Invoice) =>
-  (revisionMap.value.get(quotation.id) ?? []).length > 0;
+  (revisionMap.value.get(getInvoiceRowKey(quotation)) ?? []).length > 0;
 
 const getRevisionCount = (quotation: Invoice) =>
-  (revisionMap.value.get(quotation.id) ?? []).length;
+  (revisionMap.value.get(getInvoiceRowKey(quotation)) ?? []).length;
+
+const getInvoiceFamily = (quotation: Invoice) =>
+  invoiceFamilyMap.value.get(getInvoiceRootKey(quotation)) ?? [quotation];
+
+const getInvoiceRowKey = (quotation: Invoice) => String(quotation.id);
 
 const isExpanded = (quotation: Invoice) =>
-  expanded.value.includes(String(quotation.id));
+  expanded.value.includes(getInvoiceRowKey(quotation));
 
 const toggleRow = (quotation: Invoice) => {
-  const id = String(quotation.id);
+  const id = getInvoiceRowKey(quotation);
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
 };
 
 const getRevisions = (quotationId: number | string) =>
-  [...(revisionMap.value.get(Number(quotationId)) ?? [])].sort((a, b) => {
-    const getRevisionOrder = (quotation: Invoice) => {
-      const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
-      if (labelMatch?.[1]) return Number(labelMatch[1]);
-
-      const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
-      if (quoteMatch?.[1]) return Number(quoteMatch[1]);
-
-      return quotation.id;
-    };
-
-    return getRevisionOrder(a) - getRevisionOrder(b);
-  });
+  [...(revisionMap.value.get(String(quotationId)) ?? [])];
 
 const getContactId = (quotation: Invoice) => {
   const clientName = quotation.client.name.trim().toLowerCase();
@@ -1003,7 +1059,7 @@ watch(totalQuotations, (value) => {
         :items-length="totalQuotations"
         :headers="headers"
         :items="paginatedQuotations"
-        item-value="id"
+        :item-value="getInvoiceRowKey"
         class="text-no-wrap"
         @update:options="updateOptions"
       >

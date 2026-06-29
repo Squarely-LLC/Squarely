@@ -138,10 +138,55 @@ const headers = [
 ];
 
 const allQuotationRecords = computed(() => quotationsStore.all);
+const allQuotationVersions = computed(() =>
+  allQuotationRecords.value.map((record) => record.quotation),
+);
+
+const getProformaRootKey = (quotation: Proforma) =>
+  String(quotation.parentQuotationId ?? quotation.id);
+
+const getProformaRevisionOrder = (quotation: Proforma) => {
+  const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
+  if (labelMatch?.[1]) return Number(labelMatch[1]);
+
+  const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
+  if (quoteMatch?.[1]) return Number(quoteMatch[1]);
+
+  return 0;
+};
+
+const compareProformasNewestFirst = (a: Proforma, b: Proforma) => {
+  const revisionDelta = getProformaRevisionOrder(b) - getProformaRevisionOrder(a);
+  if (revisionDelta !== 0) return revisionDelta;
+
+  const dateDelta =
+    new Date(b.issuedDate).getTime() - new Date(a.issuedDate).getTime();
+  if (dateDelta !== 0) return dateDelta;
+
+  return Number(b.id) - Number(a.id);
+};
+
+const proformaFamilyMap = computed(() => {
+  const map = new Map<string, Proforma[]>();
+
+  for (const quotation of allQuotationVersions.value) {
+    const rootKey = getProformaRootKey(quotation);
+    const existing = map.get(rootKey) ?? [];
+    existing.push(quotation);
+    map.set(rootKey, existing);
+  }
+
+  for (const [rootKey, family] of map.entries()) {
+    map.set(rootKey, [...family].sort(compareProformasNewestFirst));
+  }
+
+  return map;
+});
+
 const allQuotations = computed(() =>
-  allQuotationRecords.value
-    .map((record) => record.quotation)
-    .filter((quotation) => !quotation.parentQuotationId),
+  Array.from(proformaFamilyMap.value.values())
+    .map((family) => family[0])
+    .filter((quotation): quotation is Proforma => Boolean(quotation)),
 );
 
 const ensurePreviewActionFrame = () => {
@@ -251,15 +296,18 @@ watch(
   { immediate: true },
 );
 const revisionMap = computed(() => {
-  const map = new Map<number, Proforma[]>();
+  const map = new Map<string, Proforma[]>();
 
-  for (const record of allQuotationRecords.value) {
-    const quotation = record.quotation;
-    if (!quotation.parentQuotationId) continue;
+  for (const family of proformaFamilyMap.value.values()) {
+    const latest = family[0];
+    if (!latest) continue;
 
-    const existing = map.get(quotation.parentQuotationId) ?? [];
-    existing.push(quotation);
-    map.set(quotation.parentQuotationId, existing);
+    map.set(
+      String(latest.id),
+      family
+        .filter((quotation) => String(quotation.id) !== String(latest.id))
+        .sort(compareProformasNewestFirst),
+    );
   }
 
   return map;
@@ -311,17 +359,32 @@ const filteredQuotations = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
 
   let records = allQuotations.value.filter((quotation) => {
-    const matchesQuery =
-      !query ||
-      quotation.client.name.toLowerCase().includes(query) ||
-      quotation.client.companyEmail.toLowerCase().includes(query) ||
-      quotation.quoteNumber.toLowerCase().includes(query) ||
-      quotation.service.toLowerCase().includes(query) ||
-      String(quotation.id).includes(query);
+    const family = getProformaFamily(quotation);
+    const matchesQuery = !query || family.some((familyMember) => {
+      const client = familyMember.client as Proforma["client"] & {
+        company?: string | null;
+      };
+      const searchText = [
+        familyMember.id,
+        familyMember.quoteNumber,
+        familyMember.service,
+        client.name,
+        client.company,
+        client.companyEmail,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchText.includes(query);
+    });
 
     const matchesStatus =
       !selectedStatus.value ||
-      quotation.quotationStatus === selectedStatus.value;
+      family.some(
+        (familyMember) =>
+          familyMember.quotationStatus === selectedStatus.value,
+      );
 
     return matchesQuery && matchesStatus;
   });
@@ -364,10 +427,13 @@ const paginatedQuotations = computed(() => {
 });
 
 const hasRevisions = (quotation: Proforma) =>
-  (revisionMap.value.get(quotation.id) ?? []).length > 0;
+  (revisionMap.value.get(getProformaRowKey(quotation)) ?? []).length > 0;
 
 const getRevisionCount = (quotation: Proforma) =>
-  (revisionMap.value.get(quotation.id) ?? []).length;
+  (revisionMap.value.get(getProformaRowKey(quotation)) ?? []).length;
+
+const getProformaFamily = (quotation: Proforma) =>
+  proformaFamilyMap.value.get(getProformaRootKey(quotation)) ?? [quotation];
 
 const getProformaRowKey = (quotation: Proforma) => String(quotation.id);
 
@@ -382,19 +448,7 @@ const toggleRow = (quotation: Proforma) => {
 };
 
 const getRevisions = (quotationId: number | string) =>
-  [...(revisionMap.value.get(Number(quotationId)) ?? [])].sort((a, b) => {
-    const getRevisionOrder = (quotation: Proforma) => {
-      const labelMatch = quotation.revisionLabel?.match(/R(\d+)$/i);
-      if (labelMatch?.[1]) return Number(labelMatch[1]);
-
-      const quoteMatch = quotation.quoteNumber.match(/-R(\d+)$/i);
-      if (quoteMatch?.[1]) return Number(quoteMatch[1]);
-
-      return quotation.id;
-    };
-
-    return getRevisionOrder(a) - getRevisionOrder(b);
-  });
+  [...(revisionMap.value.get(String(quotationId)) ?? [])];
 
 const getContactId = (quotation: Proforma) => {
   const clientName = quotation.client.name.trim().toLowerCase();
