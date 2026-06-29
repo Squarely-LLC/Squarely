@@ -304,7 +304,7 @@ export function employeeToPerson(
         : undefined,
       gender: employee.gender || undefined,
     },
-    legacyEmployeeId: employee.id,
+    legacyEmployeeId: employee.legacyEmployeeId ?? employee.id,
     createdAt: employee.createdAt || now,
   };
 }
@@ -443,6 +443,7 @@ export function personToEmployee(person: PersonProperties): EmployeeProperties {
 
   return {
     id: person.id,
+    legacyEmployeeId: person.legacyEmployeeId,
     fullName: person.fullName,
     class: hr?.class,
     type: hr?.type,

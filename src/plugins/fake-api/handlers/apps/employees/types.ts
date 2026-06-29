@@ -305,6 +305,7 @@ export type EmployeeRequest =
 
 export interface EmployeeProperties {
   id: number;
+  legacyEmployeeId?: number | string;
   fullName: string;
   class?: EmployeeClass;
   type?: string;
