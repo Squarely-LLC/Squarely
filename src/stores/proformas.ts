@@ -25,6 +25,10 @@ import {
   conversionNoteReferencesDocument,
   normalizeFinanceApprovalFields,
 } from "@/utils/financeApproval";
+import {
+  applyStoredFinanceApprovalDecision,
+  persistFinanceApprovalDecision,
+} from "@/utils/financeApprovalDecisions";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -174,6 +178,9 @@ function saveToStorage(records: ProformaRecord[]) {
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    records.forEach((record) =>
+      persistFinanceApprovalDecision("proforma", record),
+    );
   } catch (error) {
     console.warn("Failed to save proformas to storage:", error);
   }
@@ -905,12 +912,22 @@ export const useProformasStore = defineStore("proformas", {
 
       if (stored && stored.length) {
         this.items = resequenceRevisions(
-          stored.map((record) => sanitizeStoredRecord(record)),
+          stored.map((record) =>
+            applyStoredFinanceApprovalDecision(
+              "proforma",
+              sanitizeStoredRecord(record),
+            ),
+          ),
         );
         saveToStorage(this.items);
       } else {
         this.items = resequenceRevisions(
-          seedProformas().map((record) => sanitizeStoredRecord(record)),
+          seedProformas().map((record) =>
+            applyStoredFinanceApprovalDecision(
+              "proforma",
+              sanitizeStoredRecord(record),
+            ),
+          ),
         );
         saveToStorage(this.items);
       }

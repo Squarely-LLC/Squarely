@@ -959,6 +959,7 @@ if (!isEmbeddedActionFrame) {
               variant="tonal"
               class="mb-4"
               :to="editRoute"
+              replace
             >
               Back
             </VBtn>
@@ -969,6 +970,7 @@ if (!isEmbeddedActionFrame) {
                 variant="tonal"
                 class="mb-4 flex-grow-1"
                 :to="editRoute"
+                :replace="canReturnToEditor"
               >
                 Edit
               </VBtn>

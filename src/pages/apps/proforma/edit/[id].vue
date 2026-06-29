@@ -311,7 +311,7 @@ const saveExternalQuotation = async () => {
     3500,
   );
   clearProformaPreviewDraft();
-  await router.push({
+  await router.replace({
     name: "apps-proforma-preview-id",
     params: { id: savedQuotation.quotation.id },
   });
@@ -663,7 +663,7 @@ const saveQuotation = () => {
   );
 
   clearProformaPreviewDraft();
-  router.push({
+  router.replace({
     name: "apps-proforma-preview-id",
     params: { id: quotationData.value.quotation.id },
   });

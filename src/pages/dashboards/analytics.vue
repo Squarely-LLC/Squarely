@@ -572,12 +572,43 @@ const workRows = computed(() => {
   );
 });
 
+const financeRecordId = (record: any) => record?.quotation?.id;
+
+const financeRevisionRootId = (record: any) =>
+  record?.quotation?.parentQuotationId ?? financeRecordId(record);
+
+const isLatestFinanceRevisionRecord = (record: any, records: any[]) => {
+  const rootId = financeRevisionRootId(record);
+  if (rootId === null || rootId === undefined || rootId === "") return true;
+
+  const family = records.filter((candidate: any) => {
+    const candidateId = financeRecordId(candidate);
+    const candidateParentId = candidate?.quotation?.parentQuotationId;
+
+    return (
+      String(candidateId) === String(rootId) ||
+      String(candidateParentId ?? "") === String(rootId)
+    );
+  });
+
+  if (family.length <= 1) return true;
+
+  const latest = family.reduce((currentLatest: any, candidate: any) =>
+    Number(financeRecordId(candidate)) > Number(financeRecordId(currentLatest))
+      ? candidate
+      : currentLatest,
+  );
+
+  return String(financeRecordId(latest)) === String(financeRecordId(record));
+};
+
 const documentApprovalRows = computed(() => {
   const currentKeys = currentUserKeys.value;
   const buildRows = (records: any[], kind: "quotation" | "proforma") =>
     records
       .filter(
         (record: any) =>
+          isLatestFinanceRevisionRecord(record, records) &&
           record.approvalMode === "Request Approval" &&
           record.approvalRequestedAt &&
           normalizeFinanceApprovalStatus(record) === "pending" &&

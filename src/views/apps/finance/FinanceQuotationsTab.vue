@@ -32,6 +32,7 @@ import {
   isDocumentSourceExternal,
   isDocumentSourceInternal,
 } from "@/utils/documentSourceModes";
+import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
@@ -670,6 +671,28 @@ const resolveStatusVariantAndIcon = (status: string) => {
 
 const resolveStatusLabel = (status: string) => {
   return status;
+};
+
+const resolveApprovalStatusDisplay = (quotation: Quotation) => {
+  const record = allQuotationRecords.value.find(
+    (entry) => String(entry.quotation.id) === String(quotation.id),
+  );
+
+  if (record?.approvalMode === "Request Approval") {
+    const approvalStatus = normalizeFinanceApprovalStatus(record);
+
+    if (approvalStatus === "approved")
+      return { label: "Approved", variant: "success" };
+    if (approvalStatus === "rejected")
+      return { label: "Declined", variant: "error" };
+
+    return { label: "Approval Requested", variant: "warning" };
+  }
+
+  return {
+    label: resolveStatusLabel(quotation.quotationStatus),
+    variant: resolveStatusVariantAndIcon(quotation.quotationStatus).variant,
+  };
 };
 
 const normalizeQuotationStatus = (status?: string | null) =>
@@ -1674,12 +1697,12 @@ watch(totalQuotations, (value) => {
 
         <template #item.status="{ item }">
           <VChip
-            :color="resolveStatusVariantAndIcon(item.quotationStatus).variant"
+            :color="resolveApprovalStatusDisplay(item).variant"
             label
             size="x-small"
             variant="tonal"
           >
-            {{ resolveStatusLabel(item.quotationStatus) }}
+            {{ resolveApprovalStatusDisplay(item).label }}
           </VChip>
         </template>
 
@@ -1735,15 +1758,13 @@ watch(totalQuotations, (value) => {
                       <div>
                         <VChip
                           :color="
-                            resolveStatusVariantAndIcon(
-                              revision.quotationStatus,
-                            ).variant
+                            resolveApprovalStatusDisplay(revision).variant
                           "
                           label
                           size="x-small"
                           variant="tonal"
                         >
-                          {{ resolveStatusLabel(revision.quotationStatus) }}
+                          {{ resolveApprovalStatusDisplay(revision).label }}
                         </VChip>
                       </div>
 

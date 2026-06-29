@@ -10,6 +10,7 @@ import {
   isDocumentSourceExternal,
   isDocumentSourceInternal,
 } from "@/utils/documentSourceModes";
+import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -28,7 +29,7 @@ import type { VForm } from "vuetify/components/VForm";
 
 const searchQuery = ref("");
 const selectedStatus = ref<ProformaStatus | null>(null);
-const selectedRows = ref<number[]>([]);
+const selectedRows = ref<string[]>([]);
 const userData = useCookie<Record<string, unknown> | null | undefined>(
   "userData",
 );
@@ -364,11 +365,13 @@ const hasRevisions = (quotation: Proforma) =>
 const getRevisionCount = (quotation: Proforma) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
+const getProformaRowKey = (quotation: Proforma) => String(quotation.id);
+
 const isExpanded = (quotation: Proforma) =>
-  expanded.value.includes(String(quotation.id));
+  expanded.value.includes(getProformaRowKey(quotation));
 
 const toggleRow = (quotation: Proforma) => {
-  const id = String(quotation.id);
+  const id = getProformaRowKey(quotation);
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -542,6 +545,28 @@ const resolveStatusVariantAndIcon = (status: string) => {
     return { variant: "info", icon: "tabler-file-dollar" };
 
   return { variant: "secondary", icon: "tabler-x" };
+};
+
+const resolveApprovalStatusDisplay = (quotation: Proforma) => {
+  const record = allQuotationRecords.value.find(
+    (entry) => String(entry.quotation.id) === String(quotation.id),
+  );
+
+  if (record?.approvalMode === "Request Approval") {
+    const approvalStatus = normalizeFinanceApprovalStatus(record);
+
+    if (approvalStatus === "approved")
+      return { label: "Approved", variant: "success" };
+    if (approvalStatus === "rejected")
+      return { label: "Declined", variant: "error" };
+
+    return { label: "Approval Requested", variant: "warning" };
+  }
+
+  return {
+    label: quotation.quotationStatus,
+    variant: resolveStatusVariantAndIcon(quotation.quotationStatus).variant,
+  };
 };
 
 const openExternalQuotationDialog = () => {
@@ -1102,7 +1127,7 @@ watch(totalQuotations, (value) => {
         :items-length="totalQuotations"
         :headers="headers"
         :items="paginatedQuotations"
-        item-value="id"
+        :item-value="getProformaRowKey"
         class="text-no-wrap"
         @update:options="updateOptions"
       >
@@ -1218,12 +1243,12 @@ watch(totalQuotations, (value) => {
 
         <template #item.status="{ item }">
           <VChip
-            :color="resolveStatusVariantAndIcon(item.quotationStatus).variant"
+            :color="resolveApprovalStatusDisplay(item).variant"
             label
             size="x-small"
             variant="tonal"
           >
-            {{ item.quotationStatus }}
+            {{ resolveApprovalStatusDisplay(item).label }}
           </VChip>
         </template>
 
@@ -1279,15 +1304,13 @@ watch(totalQuotations, (value) => {
                       <div>
                         <VChip
                           :color="
-                            resolveStatusVariantAndIcon(
-                              revision.quotationStatus,
-                            ).variant
+                            resolveApprovalStatusDisplay(revision).variant
                           "
                           label
                           size="x-small"
                           variant="tonal"
                         >
-                          {{ revision.quotationStatus }}
+                          {{ resolveApprovalStatusDisplay(revision).label }}
                         </VChip>
                       </div>
 

@@ -501,7 +501,7 @@ const saveQuotation = () => {
     return;
   }
 
-  router.push({
+  router.replace({
     name: "apps-proforma-preview-id",
     params: { id: created.quotation.id },
   });

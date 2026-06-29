@@ -27,6 +27,10 @@ import {
   canConvertFinanceDocument,
   normalizeFinanceApprovalFields,
 } from "@/utils/financeApproval";
+import {
+  applyStoredFinanceApprovalDecision,
+  persistFinanceApprovalDecision,
+} from "@/utils/financeApprovalDecisions";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -223,6 +227,9 @@ function saveToStorage(records: QuotationRecord[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
     saveUserCreatedToStorage(records);
+    records.forEach((record) =>
+      persistFinanceApprovalDecision("quotation", record),
+    );
   } catch (error) {
     console.warn("Failed to save quotations to storage:", error);
   }
@@ -1105,7 +1112,12 @@ export const useQuotationsStore = defineStore("quotations", {
       );
 
       this.items = resequenceRevisions(
-        mergedRecords.map((record) => sanitizeStoredRecord(record)),
+        mergedRecords.map((record) =>
+          applyStoredFinanceApprovalDecision(
+            "quotation",
+            sanitizeStoredRecord(record),
+          ),
+        ),
       );
 
       this.applyAutoCancellation();
