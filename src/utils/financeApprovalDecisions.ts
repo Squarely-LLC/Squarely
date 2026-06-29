@@ -3,7 +3,7 @@ import type { FinanceApprovalStatus } from "@/utils/financeApproval";
 const FINANCE_APPROVAL_DECISIONS_KEY =
   "squarely.finance-approval-decisions.v1";
 
-type FinanceApprovalDocumentKind = "quotation" | "proforma";
+type FinanceApprovalDocumentKind = "quotation" | "proforma" | "invoice";
 
 type FinanceApprovalDecision = {
   kind: FinanceApprovalDocumentKind;

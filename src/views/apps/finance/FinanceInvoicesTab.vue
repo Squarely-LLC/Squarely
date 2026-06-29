@@ -9,6 +9,7 @@ import {
   isDocumentSourceExternal,
   isDocumentSourceInternal,
 } from "@/utils/documentSourceModes";
+import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -27,7 +28,7 @@ import type { VForm } from "vuetify/components/VForm";
 
 const searchQuery = ref("");
 const selectedStatus = ref<InvoiceStatus | null>(null);
-const selectedRows = ref<number[]>([]);
+const selectedRows = ref<string[]>([]);
 const userData = useCookie<Record<string, unknown> | null | undefined>(
   "userData",
 );
@@ -35,7 +36,7 @@ const isCreateMenuOpen = ref(false);
 const isExternalQuotationDialogOpen = ref(false);
 const isDeleteQuotationDialogOpen = ref(false);
 const isSendQuotationDialogOpen = ref(false);
-const expanded = ref<number[]>([]);
+const expanded = ref<string[]>([]);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const isPreviewActionFrameReady = ref(false);
 const pendingPreviewAction = ref<{
@@ -308,10 +309,10 @@ const getRevisionCount = (quotation: Invoice) =>
   (revisionMap.value.get(quotation.id) ?? []).length;
 
 const isExpanded = (quotation: Invoice) =>
-  expanded.value.includes(quotation.id);
+  expanded.value.includes(String(quotation.id));
 
 const toggleRow = (quotation: Invoice) => {
-  const id = quotation.id;
+  const id = String(quotation.id);
   expanded.value = isExpanded(quotation)
     ? expanded.value.filter((value) => value !== id)
     : [...expanded.value, id];
@@ -485,6 +486,33 @@ const resolveStatusVariantAndIcon = (status: string) => {
     return { variant: "info", icon: "tabler-file-dollar" };
 
   return { variant: "secondary", icon: "tabler-x" };
+};
+
+const getInvoiceRecord = (invoice: Invoice | number | string) => {
+  const id =
+    typeof invoice === "object" && invoice !== null ? invoice.id : invoice;
+
+  return quotationsStore.byId(id) ?? null;
+};
+
+const resolveApprovalStatusDisplay = (invoice: Invoice) => {
+  const record = getInvoiceRecord(invoice);
+
+  if (record?.approvalMode === "Request Approval") {
+    const approvalStatus = normalizeFinanceApprovalStatus(record);
+
+    if (approvalStatus === "approved")
+      return { label: "Approved", variant: "success" };
+    if (approvalStatus === "rejected")
+      return { label: "Declined", variant: "error" };
+
+    return { label: "Approval Requested", variant: "warning" };
+  }
+
+  return {
+    label: invoice.quotationStatus,
+    variant: resolveStatusVariantAndIcon(invoice.quotationStatus).variant,
+  };
 };
 
 const openExternalQuotationDialog = () => {
@@ -704,7 +732,7 @@ const confirmDeleteQuotation = () => {
   }
 
   quotationsStore.removeInvoice(quotation.id);
-  expanded.value = expanded.value.filter((value) => value !== quotation.id);
+  expanded.value = expanded.value.filter((value) => value !== String(quotation.id));
   pushFinanceSuccess(`${quotation.quoteNumber} deleted successfully.`);
   closeDeleteQuotationDialog();
 };
@@ -1069,12 +1097,12 @@ watch(totalQuotations, (value) => {
 
         <template #item.status="{ item }">
           <VChip
-            :color="resolveStatusVariantAndIcon(item.quotationStatus).variant"
+            :color="resolveApprovalStatusDisplay(item).variant"
             label
             size="x-small"
             variant="tonal"
           >
-            {{ item.quotationStatus }}
+            {{ resolveApprovalStatusDisplay(item).label }}
           </VChip>
         </template>
 
@@ -1129,16 +1157,12 @@ watch(totalQuotations, (value) => {
 
                       <div>
                         <VChip
-                          :color="
-                            resolveStatusVariantAndIcon(
-                              revision.quotationStatus,
-                            ).variant
-                          "
+                          :color="resolveApprovalStatusDisplay(revision).variant"
                           label
                           size="x-small"
                           variant="tonal"
                         >
-                          {{ revision.quotationStatus }}
+                          {{ resolveApprovalStatusDisplay(revision).label }}
                         </VChip>
                       </div>
 

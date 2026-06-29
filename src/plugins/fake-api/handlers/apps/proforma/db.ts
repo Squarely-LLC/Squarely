@@ -3,8 +3,22 @@ import { db as contactsDb } from "../contact/db";
 import type { ContactProperties } from "../contact/types";
 import { database as quotationDatabase } from "../quotation/db";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  buildProformaNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  formatCurrencyAmount,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
+} from "@/utils/quotationConfig";
 
 const year = new Date().getFullYear();
+const appConfig = loadActiveAppConfigurations();
+const proformaPrefix = getDocumentSequencePrefix("proforma", appConfig);
+
+const formatProformaNumber = (id: number, revisionLabel?: string | null) =>
+  `${proformaPrefix}${id}${revisionLabel ? `-${revisionLabel}` : ""}`;
 
 const defaultPurchasedProducts = (
   total = 2720,
@@ -102,7 +116,7 @@ const buildStandaloneRecord = (
   return {
     quotation: {
     id,
-    quoteNumber: `PF-${id}`,
+    quoteNumber: formatProformaNumber(id),
     issuedDate: `${year}-04-0${(id % 7) + 1}`,
     dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
     service: "Architectural design services",
@@ -120,16 +134,14 @@ const buildStandaloneRecord = (
     total,
     balance: Math.max(total - paid, 0),
   },
-  paymentDetails: {
-    totalDue: `$${total.toLocaleString()}`,
-    bankName: "Byblos Bank",
-    country: "Lebanon",
-    iban: "LB12345678901234567890123456",
-    swiftCode: "BYBALBBX",
-  },
+  paymentDetails: buildQuotationPaymentDetails(
+    total,
+    appConfig.legal,
+    appConfig.financial,
+  ),
   payments,
   purchasedProducts,
-  note: "Pricing is valid for 14 days from the issue date.",
+  note: buildProformaNote(appConfig.financial, 14),
   showClientNote: true,
   totalFx: null,
   paymentMethod: "Bank Transfer",
@@ -143,12 +155,10 @@ const buildStandaloneRecord = (
   approvalRejectedAt: approvalRejectedAt ?? null,
   approvalRejectedBy: approvalRejectedBy ?? null,
   approverEmployeeId: approverEmployeeId ?? null,
-  salesperson: "Nour Khoury",
-  thanksNote: "Thank you for considering Squarely.",
+  salesperson: buildQuotationSalesperson(appConfig.legal),
+  thanksNote: buildQuotationThanksNote(appConfig.legal),
   };
 };
-const toProformaQuoteNumber = (quoteNumber: string) =>
-  quoteNumber.replace(/^QT-/, "PF-");
 
 const toProformaAttachmentName = (attachmentName: string | null) => {
   if (!attachmentName) return null;
@@ -166,8 +176,9 @@ const toProformaRecord = (
     id:
       quotationRecord.quotation.convertedProformaId ??
       quotationRecord.quotation.id,
-    quoteNumber: toProformaQuoteNumber(
-      `QT-${quotationRecord.quotation.convertedProformaId ?? quotationRecord.quotation.id}`,
+    quoteNumber: formatProformaNumber(
+      quotationRecord.quotation.convertedProformaId ??
+        quotationRecord.quotation.id,
     ),
     quotationStatus: "Not Paid",
     balance: quotationRecord.quotation.total,
@@ -177,7 +188,10 @@ const toProformaRecord = (
   },
   paymentDetails: {
     ...quotationRecord.paymentDetails,
-    totalDue: `$${Number(quotationRecord.quotation.total || 0).toLocaleString()}`,
+    totalDue: formatCurrencyAmount(
+      quotationRecord.quotation.total,
+      appConfig.financial,
+    ),
   },
   payments: [],
   purchasedProducts: quotationRecord.purchasedProducts.map((product) => ({
@@ -237,7 +251,7 @@ const standaloneRecords: ProformaRecord[] = [
     attachmentName: "peakfit-proforma.pdf",
   }),
   buildStandaloneRecord(6211, "Not Paid", getSeedAvatar(5), {
-    quoteNumber: "PF-6202-R1",
+    quoteNumber: formatProformaNumber(6202, "R1"),
     total: 7350,
     client: getSeedClient(5),
     service: "Retail branch design package - revision 1",

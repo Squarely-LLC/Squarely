@@ -130,19 +130,45 @@ function normalizeFinanceAuthorRef(
   };
 }
 
-function loadFromStorage(): QuotationRecord[] | null {
+function loadRecordsFromStorageKey(key: string): QuotationRecord[] | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
     return parsed as QuotationRecord[];
   } catch (error) {
-    console.warn("Failed to load quotations from storage:", error);
+    console.warn(`Failed to load quotations from ${key}:`, error);
     return null;
   }
+}
+
+const storageVersionNumber = (key: string) => {
+  const match = key.match(/\.v(\d+)$/i);
+
+  return match?.[1] ? Number(match[1]) : 0;
+};
+
+function legacyStorageKeys(prefix: string, currentKey: string) {
+  if (typeof window === "undefined") return [];
+
+  return Object.keys(localStorage)
+    .filter((key) => key.startsWith(prefix) && key !== currentKey)
+    .sort((left, right) => storageVersionNumber(right) - storageVersionNumber(left));
+}
+
+function loadFromStorage(): QuotationRecord[] | null {
+  const current = loadRecordsFromStorageKey(STORAGE_KEY);
+  if (current) return current;
+
+  for (const key of legacyStorageKeys("app.quotations.", STORAGE_KEY)) {
+    const legacy = loadRecordsFromStorageKey(key);
+    if (legacy?.length) return legacy;
+  }
+
+  return null;
 }
 
 function loadUserCreatedFromStorage(): QuotationRecord[] {
@@ -1092,15 +1118,6 @@ export const useQuotationsStore = defineStore("quotations", {
 
     init(force = false) {
       if (this.initialized && !force) return;
-
-      // Migrate: remove all older storage versions
-      if (typeof window !== "undefined") {
-        for (const key of Object.keys(localStorage)) {
-          if (key.startsWith("app.quotations.") && key !== STORAGE_KEY) {
-            localStorage.removeItem(key);
-          }
-        }
-      }
 
       const stored = loadFromStorage();
 

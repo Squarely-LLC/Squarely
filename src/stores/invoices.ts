@@ -24,6 +24,10 @@ import {
   canConvertFinanceDocument,
   conversionNoteReferencesDocument,
 } from "@/utils/financeApproval";
+import {
+  applyStoredFinanceApprovalDecision,
+  persistFinanceApprovalDecision,
+} from "@/utils/financeApprovalDecisions";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -172,25 +176,54 @@ function triggerInvoiceSequenceCleanup(invoiceIds: Array<number | string>) {
     });
 }
 
-function loadFromStorage(): InvoiceRecord[] | null {
+function loadRecordsFromStorageKey(key: string): InvoiceRecord[] | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
     return parsed as InvoiceRecord[];
   } catch (error) {
-    console.warn("Failed to load invoices from storage:", error);
+    console.warn(`Failed to load invoices from ${key}:`, error);
     return null;
   }
+}
+
+const storageVersionNumber = (key: string) => {
+  const match = key.match(/\.v(\d+)$/i);
+
+  return match?.[1] ? Number(match[1]) : 0;
+};
+
+function legacyStorageKeys(prefix: string, currentKey: string) {
+  if (typeof window === "undefined") return [];
+
+  return Object.keys(localStorage)
+    .filter((key) => key.startsWith(prefix) && key !== currentKey)
+    .sort((left, right) => storageVersionNumber(right) - storageVersionNumber(left));
+}
+
+function loadFromStorage(): InvoiceRecord[] | null {
+  const current = loadRecordsFromStorageKey(STORAGE_KEY);
+  if (current) return current;
+
+  for (const key of legacyStorageKeys("app.invoices.", STORAGE_KEY)) {
+    const legacy = loadRecordsFromStorageKey(key);
+    if (legacy?.length) return legacy;
+  }
+
+  return null;
 }
 
 function saveToStorage(records: InvoiceRecord[]) {
   if (typeof window === "undefined") return;
 
   try {
+    records.forEach((record) =>
+      persistFinanceApprovalDecision("invoice", record),
+    );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   } catch (error) {
     console.warn("Failed to save invoices to storage:", error);
@@ -357,6 +390,22 @@ function sanitizeStoredRecord(record: InvoiceRecord): InvoiceRecord {
     cloned.approvalMode === "Request Approval"
       ? cloned.approvalRequestedAt?.trim() || null
       : null;
+  cloned.approvalStatus =
+    cloned.approvalStatus === "approved" || cloned.approvalStatus === "rejected"
+      ? cloned.approvalStatus
+      : cloned.approvalMode === "Request Approval"
+        ? "pending"
+        : null;
+  cloned.approvalApprovedAt = cloned.approvalApprovedAt?.trim() || null;
+  cloned.approvalApprovedBy =
+    cloned.approvalApprovedBy === null || cloned.approvalApprovedBy === undefined
+      ? null
+      : resolveEmployeePersonId(cloned.approvalApprovedBy);
+  cloned.approvalRejectedAt = cloned.approvalRejectedAt?.trim() || null;
+  cloned.approvalRejectedBy =
+    cloned.approvalRejectedBy === null || cloned.approvalRejectedBy === undefined
+      ? null
+      : resolveEmployeePersonId(cloned.approvalRejectedBy);
   cloned.quotation.quotationStatus = normaliseInvoiceStatus(
     cloned.quotation.quotationStatus,
   );
@@ -655,6 +704,25 @@ function normaliseInvoiceRecord(
       payload.approvalMode === "Request Approval"
         ? payload.approvalRequestedAt?.trim() || null
         : null,
+    approvalStatus:
+      payload.approvalMode === "Request Approval"
+        ? payload.approvalStatus === "approved" ||
+          payload.approvalStatus === "rejected"
+          ? payload.approvalStatus
+          : "pending"
+        : null,
+    approvalApprovedAt: payload.approvalApprovedAt?.trim() || null,
+    approvalApprovedBy:
+      payload.approvalApprovedBy === null ||
+      payload.approvalApprovedBy === undefined
+        ? null
+        : resolveEmployeePersonId(payload.approvalApprovedBy),
+    approvalRejectedAt: payload.approvalRejectedAt?.trim() || null,
+    approvalRejectedBy:
+      payload.approvalRejectedBy === null ||
+      payload.approvalRejectedBy === undefined
+        ? null
+        : resolveEmployeePersonId(payload.approvalRejectedBy),
     approverEmployeeId:
       payload.approvalMode === "Request Approval"
         ? resolveEmployeePersonId(payload.approverEmployeeId ?? null)
@@ -742,6 +810,30 @@ function mergeInvoiceRecord(
           ? "Request Approval"
           : "Automatic",
     approvalRequestedAt: null,
+    approvalStatus:
+      patch.approvalStatus === undefined
+        ? original.approvalStatus ?? null
+        : patch.approvalStatus ?? null,
+    approvalApprovedAt:
+      patch.approvalApprovedAt === undefined
+        ? original.approvalApprovedAt?.trim() || null
+        : patch.approvalApprovedAt?.trim() || null,
+    approvalApprovedBy:
+      patch.approvalApprovedBy === undefined
+        ? original.approvalApprovedBy ?? null
+        : patch.approvalApprovedBy === null || patch.approvalApprovedBy === undefined
+          ? null
+          : resolveEmployeePersonId(patch.approvalApprovedBy),
+    approvalRejectedAt:
+      patch.approvalRejectedAt === undefined
+        ? original.approvalRejectedAt?.trim() || null
+        : patch.approvalRejectedAt?.trim() || null,
+    approvalRejectedBy:
+      patch.approvalRejectedBy === undefined
+        ? original.approvalRejectedBy ?? null
+        : patch.approvalRejectedBy === null || patch.approvalRejectedBy === undefined
+          ? null
+          : resolveEmployeePersonId(patch.approvalRejectedBy),
     approverEmployeeId: null,
     salesperson: patch.salesperson ?? original.salesperson,
     thanksNote: patch.thanksNote ?? original.thanksNote,
@@ -765,6 +857,40 @@ function mergeInvoiceRecord(
         ? original.approvalRequestedAt?.trim() || null
         : patch.approvalRequestedAt?.trim() || null
       : null;
+  if (merged.approvalMode !== "Request Approval") {
+    merged.approvalStatus = null;
+    merged.approvalApprovedAt = null;
+    merged.approvalApprovedBy = null;
+    merged.approvalRejectedAt = null;
+    merged.approvalRejectedBy = null;
+  } else if (
+    patch.approvalRequestedAt !== undefined &&
+    patch.approvalStatus === undefined
+  ) {
+    merged.approvalStatus = "pending";
+    merged.approvalApprovedAt = null;
+    merged.approvalApprovedBy = null;
+    merged.approvalRejectedAt = null;
+    merged.approvalRejectedBy = null;
+  } else {
+    merged.approvalStatus =
+      merged.approvalStatus === "approved" || merged.approvalStatus === "rejected"
+        ? merged.approvalStatus
+        : "pending";
+
+    if (merged.approvalStatus === "approved") {
+      merged.approvalRejectedAt = null;
+      merged.approvalRejectedBy = null;
+    } else if (merged.approvalStatus === "rejected") {
+      merged.approvalApprovedAt = null;
+      merged.approvalApprovedBy = null;
+    } else {
+      merged.approvalApprovedAt = null;
+      merged.approvalApprovedBy = null;
+      merged.approvalRejectedAt = null;
+      merged.approvalRejectedBy = null;
+    }
+  }
   merged.quotation.quotationStatus = normaliseInvoiceStatus(
     quotationPatch.quotationStatus ?? original.quotation.quotationStatus,
   );
@@ -822,25 +948,26 @@ export const useInvoicesStore = defineStore("invoices", {
     init(force = false) {
       if (this.initialized && !force) return;
 
-      // Migrate: remove all older storage versions
-      if (typeof window !== "undefined") {
-        for (const key of Object.keys(localStorage)) {
-          if (key.startsWith("app.invoices.") && key !== STORAGE_KEY) {
-            localStorage.removeItem(key);
-          }
-        }
-      }
-
       const stored = loadFromStorage();
 
       if (stored && stored.length) {
         this.items = resequenceRevisions(
-          stored.map((record) => sanitizeStoredRecord(record)),
+          stored.map((record) =>
+            applyStoredFinanceApprovalDecision(
+              "invoice",
+              sanitizeStoredRecord(record),
+            ),
+          ),
         );
         saveToStorage(this.items);
       } else {
         this.items = resequenceRevisions(
-          seedInvoices().map((record) => sanitizeStoredRecord(record)),
+          seedInvoices().map((record) =>
+            applyStoredFinanceApprovalDecision(
+              "invoice",
+              sanitizeStoredRecord(record),
+            ),
+          ),
         );
         saveToStorage(this.items);
       }

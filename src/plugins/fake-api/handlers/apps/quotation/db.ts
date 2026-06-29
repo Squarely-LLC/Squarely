@@ -2,8 +2,21 @@ import type { QuotationRecord } from "@db/apps/quotation/types";
 import { db as contactsDb } from "../contact/db";
 import type { ContactProperties } from "../contact/types";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  buildQuotationNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
+} from "@/utils/quotationConfig";
 
 const year = new Date().getFullYear();
+const appConfig = loadActiveAppConfigurations();
+const quotationPrefix = getDocumentSequencePrefix("quotation", appConfig);
+
+const formatQuotationNumber = (id: number, revisionLabel?: string | null) =>
+  `${quotationPrefix}${id}${revisionLabel ? `-${revisionLabel}` : ""}`;
 
 const defaultPurchasedProducts = (
   total = 2720,
@@ -142,7 +155,7 @@ const buildRecord = (
   return {
     quotation: {
       id,
-      quoteNumber: `QT-${id}`,
+      quoteNumber: formatQuotationNumber(id),
       issuedDate: `${year}-04-0${(id % 7) + 1}`,
       dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
       service: "Architectural design services",
@@ -162,16 +175,14 @@ const buildRecord = (
       ...quotationOverrides,
       total,
     },
-    paymentDetails: {
-      totalDue: `$${total.toLocaleString()}`,
-      bankName: "Byblos Bank",
-      country: "Lebanon",
-      iban: "LB12345678901234567890123456",
-      swiftCode: "BYBALBBX",
-    },
+    paymentDetails: buildQuotationPaymentDetails(
+      total,
+      appConfig.legal,
+      appConfig.financial,
+    ),
     payments: [],
     purchasedProducts,
-    note: "Pricing is valid for 14 days from the issue date.",
+    note: buildQuotationNote(appConfig.financial, 14),
     showClientNote: true,
     totalFx: null,
     paymentMethod: "Bank Transfer",
@@ -185,8 +196,8 @@ const buildRecord = (
     approvalRejectedAt: approvalRejectedAt ?? null,
     approvalRejectedBy: approvalRejectedBy ?? null,
     approverEmployeeId: approverEmployeeId ?? null,
-    salesperson: "Nour Khoury",
-    thanksNote: "Thank you for considering Squarely.",
+    salesperson: buildQuotationSalesperson(appConfig.legal),
+    thanksNote: buildQuotationThanksNote(appConfig.legal),
   };
 };
 
@@ -235,7 +246,7 @@ export const database: QuotationRecord[] = [
     purchasedProducts: periodPurchasedProducts(),
   }),
   buildRecord(6111, "Approval", getSeedAvatar(5), {
-    quoteNumber: "QT-6102-R1",
+    quoteNumber: formatQuotationNumber(6102, "R1"),
     total: 7350,
     client: getSeedClient(5),
     service: "Retail branch design package - revision 1",

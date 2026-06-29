@@ -1,10 +1,9 @@
 export const DEMO_DATA_VERSION_KEY = "app.demo-data.version";
-export const DEMO_DATA_VERSION = "2026-06-module-backed-task-seeds";
+export const DEMO_DATA_VERSION = "2026-06-29-stable-local-demo-v1";
 
 const DEMO_STORAGE_PREFIXES = [
   "app.account-roles.",
   "app.catalogue-tables.",
-  "app.configurations.",
   "app.contacts.",
   "app.credit-notes.",
   "app.deals.",
@@ -31,15 +30,15 @@ const DEMO_STORAGE_PREFIXES = [
   "app.todos.",
 ] as const;
 
+const DEMO_STORAGE_KEYS = [
+  "squarely.finance-approval-decisions.v1",
+  "squarely.user-created.quotations.v1",
+] as const;
+
 const shouldResetKey = (key: string) =>
   key !== DEMO_DATA_VERSION_KEY &&
-  DEMO_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
-
-const clearCookie = (name: string) => {
-  document.cookie = `${encodeURIComponent(
-    name,
-  )}=; Max-Age=0; path=/; SameSite=Lax`;
-};
+  (DEMO_STORAGE_KEYS.includes(key as (typeof DEMO_STORAGE_KEYS)[number]) ||
+    DEMO_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix)));
 
 export const ensureCleanDemoDataVersion = () => {
   if (typeof window === "undefined") return false;
@@ -52,9 +51,6 @@ export const ensureCleanDemoDataVersion = () => {
   });
 
   window.localStorage.setItem(DEMO_DATA_VERSION_KEY, DEMO_DATA_VERSION);
-  clearCookie("accessToken");
-  clearCookie("userAbilityRules");
-  clearCookie("userData");
 
   return true;
 };

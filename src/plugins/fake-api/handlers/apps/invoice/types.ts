@@ -75,6 +75,7 @@ export interface InvoicePaymentEntry {
 }
 
 export type InvoiceApprovalMode = "Automatic" | "Request Approval";
+export type InvoiceApprovalStatus = "pending" | "approved" | "rejected";
 
 export interface InvoiceRecord {
   quotation: Invoice;
@@ -88,6 +89,11 @@ export interface InvoiceRecord {
   paymentLink: string | null;
   approvalMode: InvoiceApprovalMode;
   approvalRequestedAt?: string | null;
+  approvalStatus?: InvoiceApprovalStatus | null;
+  approvalApprovedAt?: string | null;
+  approvalApprovedBy?: number | string | null;
+  approvalRejectedAt?: string | null;
+  approvalRejectedBy?: number | string | null;
   approverEmployeeId: number | string | null;
   salesperson: string;
   thanksNote: string;

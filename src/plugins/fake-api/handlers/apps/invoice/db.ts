@@ -3,8 +3,22 @@ import { db as contactsDb } from "../contact/db";
 import type { ContactProperties } from "../contact/types";
 import { database as quotationDatabase } from "../quotation/db";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
+import {
+  buildDocumentNote,
+  buildQuotationPaymentDetails,
+  buildQuotationSalesperson,
+  buildQuotationThanksNote,
+  formatCurrencyAmount,
+  getDocumentSequencePrefix,
+  loadActiveAppConfigurations,
+} from "@/utils/quotationConfig";
 
 const year = new Date().getFullYear();
+const appConfig = loadActiveAppConfigurations();
+const invoicePrefix = getDocumentSequencePrefix("invoice", appConfig);
+
+const formatInvoiceNumber = (id: number, revisionLabel?: string | null) =>
+  `${invoicePrefix}${id}${revisionLabel ? `-${revisionLabel}` : ""}`;
 
 const defaultPurchasedProducts = (
   total = 2720,
@@ -67,7 +81,19 @@ const buildStandaloneRecord = (
   status: InvoiceRecord["quotation"]["quotationStatus"],
   avatar: string,
   overrides: Partial<InvoiceRecord["quotation"]> &
-    Partial<Pick<InvoiceRecord, "approvalMode" | "approvalRequestedAt" | "approverEmployeeId">> & {
+    Partial<
+      Pick<
+        InvoiceRecord,
+        | "approvalMode"
+        | "approvalRequestedAt"
+        | "approvalStatus"
+        | "approvalApprovedAt"
+        | "approvalApprovedBy"
+        | "approvalRejectedAt"
+        | "approvalRejectedBy"
+        | "approverEmployeeId"
+      >
+    > & {
     client: InvoiceRecord["quotation"]["client"];
   },
   payments: InvoiceRecord["payments"] = [],
@@ -75,6 +101,11 @@ const buildStandaloneRecord = (
   const {
     approvalMode,
     approvalRequestedAt,
+    approvalStatus,
+    approvalApprovedAt,
+    approvalApprovedBy,
+    approvalRejectedAt,
+    approvalRejectedBy,
     approverEmployeeId,
     ...quotationOverrides
   } = overrides;
@@ -85,7 +116,7 @@ const buildStandaloneRecord = (
   return {
     quotation: {
     id,
-    quoteNumber: `INV-${id}`,
+    quoteNumber: formatInvoiceNumber(id),
     issuedDate: `${year}-04-0${(id % 7) + 1}`,
     dueDate: `${year}-04-${String((id % 7) + 12).padStart(2, "0")}`,
     service: "Architectural design services",
@@ -103,29 +134,31 @@ const buildStandaloneRecord = (
     total,
     balance: Math.max(total - paid, 0),
   },
-  paymentDetails: {
-    totalDue: `$${total.toLocaleString()}`,
-    bankName: "Byblos Bank",
-    country: "Lebanon",
-    iban: "LB12345678901234567890123456",
-    swiftCode: "BYBALBBX",
-  },
+  paymentDetails: buildQuotationPaymentDetails(
+    total,
+    appConfig.legal,
+    appConfig.financial,
+  ),
   payments,
   purchasedProducts,
-  note: "Pricing is valid for 14 days from the issue date.",
+  note: buildDocumentNote(appConfig.financial, "invoice", 30),
   showClientNote: true,
   totalFx: null,
   paymentMethod: "Bank Transfer",
   paymentLink: null,
   approvalMode: approvalMode ?? "Automatic",
   approvalRequestedAt: approvalRequestedAt ?? null,
+  approvalStatus:
+    approvalMode === "Request Approval" ? approvalStatus ?? "pending" : null,
+  approvalApprovedAt: approvalApprovedAt ?? null,
+  approvalApprovedBy: approvalApprovedBy ?? null,
+  approvalRejectedAt: approvalRejectedAt ?? null,
+  approvalRejectedBy: approvalRejectedBy ?? null,
   approverEmployeeId: approverEmployeeId ?? null,
-  salesperson: "Nour Khoury",
-  thanksNote: "Thank you for considering Squarely.",
+  salesperson: buildQuotationSalesperson(appConfig.legal),
+  thanksNote: buildQuotationThanksNote(appConfig.legal),
   };
 };
-const toInvoiceQuoteNumber = (quoteNumber: string) =>
-  quoteNumber.replace(/^QT-/, "INV-");
 
 const toInvoiceAttachmentName = (attachmentName: string | null) => {
   if (!attachmentName) return null;
@@ -143,8 +176,9 @@ const toInvoiceRecord = (
     id:
       quotationRecord.quotation.convertedInvoiceId ??
       quotationRecord.quotation.id,
-    quoteNumber: toInvoiceQuoteNumber(
-      `QT-${quotationRecord.quotation.convertedInvoiceId ?? quotationRecord.quotation.id}`,
+    quoteNumber: formatInvoiceNumber(
+      quotationRecord.quotation.convertedInvoiceId ??
+        quotationRecord.quotation.id,
     ),
     quotationStatus: "Not Paid",
     balance: quotationRecord.quotation.total,
@@ -154,7 +188,10 @@ const toInvoiceRecord = (
   },
   paymentDetails: {
     ...quotationRecord.paymentDetails,
-    totalDue: `$${Number(quotationRecord.quotation.total || 0).toLocaleString()}`,
+    totalDue: formatCurrencyAmount(
+      quotationRecord.quotation.total,
+      appConfig.financial,
+    ),
   },
   payments: [],
   purchasedProducts: quotationRecord.purchasedProducts.map((product) => ({
@@ -167,6 +204,11 @@ const toInvoiceRecord = (
   paymentLink: quotationRecord.paymentLink,
   approvalMode: quotationRecord.approvalMode,
   approvalRequestedAt: quotationRecord.approvalRequestedAt ?? null,
+  approvalStatus: quotationRecord.approvalStatus ?? null,
+  approvalApprovedAt: quotationRecord.approvalApprovedAt ?? null,
+  approvalApprovedBy: quotationRecord.approvalApprovedBy ?? null,
+  approvalRejectedAt: quotationRecord.approvalRejectedAt ?? null,
+  approvalRejectedBy: quotationRecord.approvalRejectedBy ?? null,
   approverEmployeeId: quotationRecord.approverEmployeeId,
   salesperson: quotationRecord.salesperson,
   thanksNote: quotationRecord.thanksNote,
@@ -221,7 +263,7 @@ const standaloneRecords: InvoiceRecord[] = [
     },
   ]),
   buildStandaloneRecord(6311, "Paid", getSeedAvatar(5), {
-    quoteNumber: "INV-6302-R1",
+    quoteNumber: formatInvoiceNumber(6302, "R1"),
     total: 7350,
     client: getSeedClient(5),
     service: "Retail branch execution invoice - revision 1",

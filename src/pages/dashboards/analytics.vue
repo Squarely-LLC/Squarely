@@ -604,7 +604,7 @@ const isLatestFinanceRevisionRecord = (record: any, records: any[]) => {
 
 const documentApprovalRows = computed(() => {
   const currentKeys = currentUserKeys.value;
-  const buildRows = (records: any[], kind: "quotation" | "proforma") =>
+  const buildRows = (records: any[], kind: "quotation" | "proforma" | "invoice") =>
     records
       .filter(
         (record: any) =>
@@ -616,7 +616,8 @@ const documentApprovalRows = computed(() => {
       )
       .map((record: any) => {
         const quotation = record.quotation ?? {};
-        const documentLabel = kind === "quotation" ? "QT" : "PF";
+        const documentLabel =
+          kind === "quotation" ? "QT" : kind === "proforma" ? "PF" : "INV";
         const documentNumber =
           String(quotation.quoteNumber ?? "").trim() ||
           `${documentLabel}-${quotation.id}`;
@@ -627,7 +628,9 @@ const documentApprovalRows = computed(() => {
         const routeName =
           kind === "quotation"
             ? "apps-quotation-preview-id"
-            : "apps-proforma-preview-id";
+            : kind === "proforma"
+              ? "apps-proforma-preview-id"
+              : "apps-invoice-preview-id";
 
         return {
           id: `${kind}-${quotation.id}`,
@@ -646,6 +649,7 @@ const documentApprovalRows = computed(() => {
   return [
     ...buildRows(quotationsStore.items, "quotation"),
     ...buildRows(proformasStore.items, "proforma"),
+    ...buildRows(invoicesStore.items, "invoice"),
   ];
 });
 
@@ -1123,7 +1127,9 @@ const approveFinanceApproval = (row: any) => {
   const updated =
     row.kind === "quotation"
       ? quotationsStore.updateQuotation(row.recordId, patch)
-      : proformasStore.updateProforma(row.recordId, patch);
+      : row.kind === "proforma"
+        ? proformasStore.updateProforma(row.recordId, patch)
+        : invoicesStore.updateInvoice(row.recordId, patch);
 
   if (updated) notifications.push("Finance document approved", "success", 2500);
   else notifications.push("Unable to approve finance document", "error", 3000);
@@ -1140,7 +1146,9 @@ const declineFinanceApproval = (row: any) => {
   const updated =
     row.kind === "quotation"
       ? quotationsStore.updateQuotation(row.recordId, patch)
-      : proformasStore.updateProforma(row.recordId, patch);
+      : row.kind === "proforma"
+        ? proformasStore.updateProforma(row.recordId, patch)
+        : invoicesStore.updateInvoice(row.recordId, patch);
 
   if (updated) notifications.push("Finance document declined", "success", 2500);
   else notifications.push("Unable to decline finance document", "error", 3000);
