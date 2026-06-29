@@ -678,7 +678,7 @@ const openPreview = async () => {
     quotation: previewQuotation,
   });
 
-  await router.push({
+  await router.replace({
     name: "apps-proforma-preview-id",
     params: { id: previewQuotation.quotation.id },
     query: { draft: "1", source: "edit" },

@@ -31,6 +31,10 @@ import {
   getDocumentSequencePrefix,
 } from "@/utils/quotationConfig";
 import { FINANCE_APPROVAL_CONVERSION_MESSAGE } from "@/utils/financeApproval";
+import {
+  applyFinanceApprovalRequestFields,
+  notifyFinanceApprovalRequest,
+} from "@/utils/financeApprovalNotifications";
 import { getQuotationGrandTotal } from "@/utils/quotationPricing";
 import InvoiceEditable from "@/views/apps/invoice/InvoiceEditable.vue";
 import type { InvoiceData, PurchasedProduct } from "@/views/apps/invoice/types";
@@ -452,6 +456,7 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  applyFinanceApprovalRequestFields(quotationData.value);
 
   const created = invoicesStore.addInvoice(
     cloneInvoiceRecord(quotationData.value),
@@ -460,6 +465,7 @@ const saveQuotation = () => {
     notifications.push(FINANCE_APPROVAL_CONVERSION_MESSAGE, "error", 3500);
     return;
   }
+  notifyFinanceApprovalRequest("invoice", created);
 
   notifications.push(
     `Invoice ${created.quotation.quoteNumber} saved successfully.`,
@@ -481,7 +487,7 @@ const saveQuotation = () => {
     return;
   }
 
-  router.push({
+  router.replace({
     name: "apps-invoice-preview-id",
     params: { id: created.quotation.id },
   });
@@ -523,7 +529,7 @@ const openPreview = async () => {
   });
 
   bypassUnsavedWarning.value = true;
-  await router.push({
+  await router.replace({
     name: "apps-invoice-preview-id",
     params: { id: previewDraft.quotation.id },
     query: { draft: "1", source: "add" },

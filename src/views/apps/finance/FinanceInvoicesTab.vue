@@ -501,10 +501,20 @@ const resolveApprovalStatusDisplay = (invoice: Invoice) => {
   if (record?.approvalMode === "Request Approval") {
     const approvalStatus = normalizeFinanceApprovalStatus(record);
 
-    if (approvalStatus === "approved")
-      return { label: "Approved", variant: "success" };
     if (approvalStatus === "rejected")
       return { label: "Declined", variant: "error" };
+    if (approvalStatus === "approved") {
+      const hasPayments = (record.payments ?? []).length > 0;
+
+      if (hasPayments) {
+        return {
+          label: invoice.quotationStatus,
+          variant: resolveStatusVariantAndIcon(invoice.quotationStatus).variant,
+        };
+      }
+
+      return { label: "Approved", variant: "success" };
+    }
 
     return { label: "Approval Requested", variant: "warning" };
   }

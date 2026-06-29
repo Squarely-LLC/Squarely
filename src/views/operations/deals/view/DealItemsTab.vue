@@ -3633,7 +3633,7 @@ const requestApproval = (
         ? proformasStore.updateProforma(record.id, patch)
         : invoicesStore.updateInvoice(record.id, patch);
 
-  if (updated && (kind === "quotation" || kind === "proforma")) {
+  if (updated) {
     const approvalDocument = getApprovalDocument(kind, record);
 
     notifyFinanceApprovalRequest(kind, updated, {

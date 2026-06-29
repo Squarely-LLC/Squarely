@@ -487,7 +487,7 @@ const saveQuotation = () => {
     return;
   }
 
-  router.push({
+  router.replace({
     name: "apps-quotation-preview-id",
     params: { id: created.quotation.id },
   });
@@ -529,7 +529,7 @@ const openPreview = async () => {
   });
 
   bypassUnsavedWarning.value = true;
-  await router.push({
+  await router.replace({
     name: "apps-quotation-preview-id",
     params: { id: previewDraft.quotation.id },
     query: { draft: "1", source: "add" },

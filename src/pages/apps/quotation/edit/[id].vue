@@ -301,7 +301,7 @@ const saveExternalQuotation = async () => {
     3500,
   );
   clearQuotationPreviewDraft();
-  await router.push({
+  await router.replace({
     name: "apps-quotation-preview-id",
     params: { id: savedQuotation.quotation.id },
   });
@@ -629,7 +629,7 @@ const saveQuotation = () => {
   );
 
   clearQuotationPreviewDraft();
-  router.push({
+  router.replace({
     name: "apps-quotation-preview-id",
     params: { id: quotationData.value.quotation.id },
   });
@@ -644,7 +644,7 @@ const openPreview = async () => {
     quotation: previewQuotation,
   });
 
-  await router.push({
+  await router.replace({
     name: "apps-quotation-preview-id",
     params: { id: previewQuotation.quotation.id },
     query: { draft: "1", source: "edit" },

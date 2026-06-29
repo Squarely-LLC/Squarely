@@ -15,6 +15,10 @@ import {
   FINANCE_APPROVAL_PAYMENT_MESSAGE,
   canRecordInvoicePayment,
 } from "@/utils/financeApproval";
+import {
+  applyFinanceApprovalRequestFields,
+  notifyFinanceApprovalRequest,
+} from "@/utils/financeApprovalNotifications";
 import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
   clearInvoicePreviewDraft,
@@ -308,7 +312,7 @@ const saveExternalQuotation = async () => {
     3500,
   );
   clearInvoicePreviewDraft();
-  await router.push({
+  await router.replace({
     name: "apps-invoice-preview-id",
     params: { id: savedQuotation.quotation.id },
   });
@@ -640,6 +644,7 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  applyFinanceApprovalRequestFields(quotationData.value, sourceRecord);
   const originalPaymentIds = new Set(
     (sourceRecord?.payments ?? []).map((payment) => payment.id),
   );
@@ -657,6 +662,9 @@ const saveQuotation = () => {
     cloneInvoiceRecord(quotationData.value),
   );
   if (!updatedQuotation) return;
+  notifyFinanceApprovalRequest("invoice", updatedQuotation, {
+    previousRecord: sourceRecord,
+  });
 
   updatedQuotation.payments
     .filter((payment) => !originalPaymentIds.has(payment.id))
@@ -678,7 +686,7 @@ const saveQuotation = () => {
   );
 
   clearInvoicePreviewDraft();
-  router.push({
+  router.replace({
     name: "apps-invoice-preview-id",
     params: { id: quotationData.value.quotation.id },
   });
@@ -693,7 +701,7 @@ const openPreview = async () => {
     quotation: previewQuotation,
   });
 
-  await router.push({
+  await router.replace({
     name: "apps-invoice-preview-id",
     params: { id: previewQuotation.quotation.id },
     query: { draft: "1", source: "edit" },

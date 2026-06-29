@@ -29,6 +29,7 @@ import {
   applyStoredFinanceApprovalDecision,
   persistFinanceApprovalDecision,
 } from "@/utils/financeApprovalDecisions";
+import { getSignedInAuthorRef } from "@/utils/currentAccount";
 import { normalizeRichText } from "@/utils/richText";
 import {
   authorizeRecord,
@@ -111,6 +112,22 @@ export function cloneInvoiceRecord(record: InvoiceRecord): InvoiceRecord {
 
 function cloneInvoiceArray(records: InvoiceRecord[]) {
   return records.map((record) => cloneInvoiceRecord(record));
+}
+
+function normalizeFinanceAuthorRef(value?: InvoiceRecord["createdBy"] | null) {
+  const author = value ?? getSignedInAuthorRef();
+  const id =
+    author?.id ?? author?.personId ?? author?.employeeId ?? author?.accountId;
+
+  return {
+    id,
+    accountId: author?.accountId ?? undefined,
+    employeeId: author?.employeeId ?? undefined,
+    personId: author?.personId ?? undefined,
+    name: author?.name ?? undefined,
+    email: author?.email ?? undefined,
+    avatarUrl: author?.avatarUrl ?? undefined,
+  };
 }
 
 function triggerReceiptReconciliation() {
@@ -647,6 +664,7 @@ function normaliseInvoiceRecord(
   const quotation: Partial<Invoice> = payload.quotation ?? {};
   const client = ensureClient(quotation.client);
   const total = Number(quotation.total) || 0;
+  const createdBy = normalizeFinanceAuthorRef(payload.createdBy ?? null);
 
   const record: InvoiceRecord = {
     quotation: {
@@ -681,6 +699,13 @@ function normaliseInvoiceRecord(
       isRevision: quotation.isRevision ?? false,
       revisionLabel: normaliseRevisionLabel(quotation.revisionLabel),
     },
+    createdBy,
+    createdById:
+      payload.createdById ??
+      createdBy.personId ??
+      createdBy.employeeId ??
+      createdBy.id ??
+      null,
     paymentDetails: payload.paymentDetails
       ? clonePaymentDetails(payload.paymentDetails)
       : defaultPaymentDetails(total),
@@ -783,6 +808,15 @@ function mergeInvoiceRecord(
     ...original,
     ...patch,
     quotation: mergedQuotation,
+    createdBy:
+      patch.createdBy ?? original.createdBy ?? normalizeFinanceAuthorRef(null),
+    createdById:
+      patch.createdById ??
+      original.createdById ??
+      original.createdBy?.personId ??
+      original.createdBy?.employeeId ??
+      original.createdBy?.id ??
+      null,
     paymentDetails: patch.paymentDetails
       ? clonePaymentDetails(patch.paymentDetails)
       : clonePaymentDetails(original.paymentDetails),

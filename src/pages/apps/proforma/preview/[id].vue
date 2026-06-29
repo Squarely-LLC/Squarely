@@ -959,7 +959,7 @@ if (!isEmbeddedActionFrame) {
               variant="tonal"
               class="mb-4"
               :to="editRoute"
-              replace
+              :replace="canReturnToEditor"
             >
               Back
             </VBtn>

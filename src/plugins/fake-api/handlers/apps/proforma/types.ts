@@ -79,6 +79,16 @@ export type ProformaApprovalStatus = "pending" | "approved" | "rejected";
 
 export interface ProformaRecord {
   quotation: Proforma;
+  createdBy?: {
+    id?: number | string | null;
+    accountId?: number | string | null;
+    employeeId?: number | string | null;
+    personId?: number | string | null;
+    name?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  } | null;
+  createdById?: number | string | null;
   paymentDetails: PaymentDetails;
   payments: ProformaPaymentEntry[];
   purchasedProducts: PurchasedProduct[];

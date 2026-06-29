@@ -18,6 +18,10 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
 import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
+import {
+  dismissFinanceApprovalRequestNotifications,
+  notifyFinanceApprovalDecision,
+} from "@/utils/financeApprovalNotifications";
 import { canMutate } from "@/utils/permissionUi";
 import { getContactAndEmployeeRefs, resolvePeopleSelection } from "@/utils/peopleOptions";
 import { formatSystemDate } from "@core/utils/formatters";
@@ -1131,8 +1135,11 @@ const approveFinanceApproval = (row: any) => {
         ? proformasStore.updateProforma(row.recordId, patch)
         : invoicesStore.updateInvoice(row.recordId, patch);
 
-  if (updated) notifications.push("Finance document approved", "success", 2500);
-  else notifications.push("Unable to approve finance document", "error", 3000);
+  if (updated) {
+    dismissFinanceApprovalRequestNotifications(row.kind, updated);
+    notifyFinanceApprovalDecision(row.kind, updated, "approved");
+    notifications.push("Finance document approved", "success", 2500);
+  } else notifications.push("Unable to approve finance document", "error", 3000);
 };
 
 const declineFinanceApproval = (row: any) => {
@@ -1150,8 +1157,11 @@ const declineFinanceApproval = (row: any) => {
         ? proformasStore.updateProforma(row.recordId, patch)
         : invoicesStore.updateInvoice(row.recordId, patch);
 
-  if (updated) notifications.push("Finance document declined", "success", 2500);
-  else notifications.push("Unable to decline finance document", "error", 3000);
+  if (updated) {
+    dismissFinanceApprovalRequestNotifications(row.kind, updated);
+    notifyFinanceApprovalDecision(row.kind, updated, "rejected");
+    notifications.push("Finance document declined", "success", 2500);
+  } else notifications.push("Unable to decline finance document", "error", 3000);
 };
 
 const activityTimelineRows = computed(() => {
