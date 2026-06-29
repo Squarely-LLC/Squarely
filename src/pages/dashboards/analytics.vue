@@ -17,6 +17,7 @@ import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
+import { getCurrentUserRole } from "@/utils/authorization";
 import {
   cancelOlderFinanceFamilyVersions,
   normalizeFinanceApprovalStatus,
@@ -92,6 +93,7 @@ const dashboardTimelineCardRef = ref<any | null>(null);
 const dashboardTimelineHeight = ref<number | null>(null);
 
 const identity = computed(() => getSignedInIdentity());
+const currentRole = computed(() => getCurrentUserRole());
 
 let dashboardResizeObserver: ResizeObserver | null = null;
 
@@ -164,6 +166,14 @@ const isAdminUser = computed(() => {
     roleValues.some((entry) => normalizeKey(entry).includes("admin"))
   );
 });
+
+const isSuperAdminUser = computed(
+  () =>
+    currentRole.value?.name === "Account Owner / Super Admin" ||
+    normalizeKey((identity.value as any).role) ===
+      normalizeKey("Account Owner / Super Admin") ||
+    normalizeKey(identity.value.email) === "admin@demo.com",
+);
 
 const addIdentityValue = (set: Set<string>, value: unknown) => {
   const key = normalizeKey(value);
@@ -619,7 +629,8 @@ const documentApprovalRows = computed(() => {
           record.approvalMode === "Request Approval" &&
           record.approvalRequestedAt &&
           normalizeFinanceApprovalStatus(record) === "pending" &&
-          matchesScope(record.approverEmployeeId, currentKeys),
+          (isSuperAdminUser.value ||
+            matchesScope(record.approverEmployeeId, currentKeys)),
       )
       .map((record: any) => {
         const quotation = record.quotation ?? {};
@@ -692,27 +703,33 @@ const ownDocumentRequests = computed(() => {
   ];
 });
 
-const hrApprovalRows = computed(() =>
-  directReports.value.flatMap((person: any) => {
-    const employee =
-      employeesStore.byId(person.id) ??
-      (person.legacyEmployeeId ? employeesStore.byId(person.legacyEmployeeId) : null) ??
-      person;
+const hrApprovalRows = computed(() => {
+  const employees = isSuperAdminUser.value
+    ? employeesStore.all
+    : directReports.value.map(
+        (person: any) =>
+          employeesStore.byId(person.id) ??
+          (person.legacyEmployeeId
+            ? employeesStore.byId(person.legacyEmployeeId)
+            : null) ??
+          person,
+      );
 
-    return (employee.requests ?? [])
+  return employees.flatMap((employee: any) =>
+    (employee.requests ?? [])
       .filter((request: any) => String(request.status ?? "").toLowerCase() === "pending")
       .map((request: any) => ({
         id: `hr-approval-${employee.id}-${request.id}`,
         kind: "hr" as const,
         title: `${request.type ?? "HR"} request`,
-        requester: employee.fullName ?? (employee as any).name ?? person.fullName ?? "Employee",
+        requester: employee.fullName ?? (employee as any).name ?? "Employee",
         status: request.status ?? "pending",
         date: request.createdAt ?? request.startDate ?? request.date ?? "",
         employeeId: employee.id,
         requestId: request.id,
-      }));
-  }),
-);
+      })),
+  );
+});
 
 const approvalRows = computed(() => [
   ...(canApproveHr.value ? hrApprovalRows.value : []),
@@ -1135,7 +1152,7 @@ const cancelOlderApprovedFinanceVersions = (kind: string, updated: any) => {
     records.map((record: any) => record.quotation),
     updated.quotation,
     (quotation: any) => {
-      const patch = { quotation: { quotationStatus: "Canceled" } };
+      const patch = { quotation: { quotationStatus: "Canceled" } } as any;
 
       if (kind === "quotation") quotationsStore.updateQuotation(quotation.id, patch);
       else if (kind === "proforma") proformasStore.updateProforma(quotation.id, patch);

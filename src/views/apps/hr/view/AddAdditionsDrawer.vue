@@ -21,9 +21,11 @@ const props = withDefaults(
   defineProps<{
     additionData?: AdditionPayload | null;
     isDrawerOpen: boolean;
+    titleOverride?: string;
   }>(),
   {
     additionData: null,
+    titleOverride: "",
   },
 );
 
@@ -83,7 +85,7 @@ const toIsoDateString = (value: any): string | null => {
 };
 
 const drawerTitle = computed(() =>
-  props.additionData ? "Edit Addition" : "Add Addition",
+  props.titleOverride || (props.additionData ? "Edit Addition" : "Add Addition"),
 );
 
 const datePickerConfig = computed(() => ({

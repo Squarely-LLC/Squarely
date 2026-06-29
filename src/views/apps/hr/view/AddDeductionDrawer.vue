@@ -19,9 +19,11 @@ const props = withDefaults(
   defineProps<{
     deductionData?: DeductionPayload | null;
     isDrawerOpen: boolean;
+    titleOverride?: string;
   }>(),
   {
     deductionData: null,
+    titleOverride: "",
   },
 );
 
@@ -72,7 +74,7 @@ const toIsoDateString = (value: any): string | null => {
 };
 
 const drawerTitle = computed(() =>
-  props.deductionData ? "Edit Deduction" : "Add Deduction",
+  props.titleOverride || (props.deductionData ? "Edit Deduction" : "Add Deduction"),
 );
 
 const datePickerConfig = computed(() => ({
