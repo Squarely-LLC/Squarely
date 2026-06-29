@@ -91,7 +91,7 @@ let dashboardResizeObserver: ResizeObserver | null = null;
 const updateDashboardTimelineHeight = () => {
   if (typeof window === "undefined") return;
 
-  if (window.innerWidth < 960) {
+  if (window.innerWidth < 768) {
     dashboardTimelineHeight.value = null;
 
     return;
@@ -1334,6 +1334,7 @@ const personAvatar = (person: any) => {
     <VRow class="dashboard-workspace align-stretch">
       <VCol
         cols="12"
+        sm="8"
         md="8"
       >
         <div ref="dashboardLeftStackRef">
@@ -1696,6 +1697,7 @@ const personAvatar = (person: any) => {
 
       <VCol
         cols="12"
+        sm="4"
         md="4"
         class="dashboard-timeline-col"
       >
@@ -2097,7 +2099,7 @@ const personAvatar = (person: any) => {
     }
   }
 
-  @media (max-width: 959.98px) {
+  @media (max-width: 767.98px) {
     .dashboard-timeline-card {
       block-size: auto;
       max-block-size: clamp(18rem, calc(100vh - 12rem), 34rem);
