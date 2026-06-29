@@ -39,6 +39,7 @@ import DebitNoteUpsertDrawer, {
 } from "@/views/apps/finance/DebitNoteUpsertDrawer.vue";
 import FinanceDebitNotesTab from "@/views/apps/finance/FinanceDebitNotesTab.vue";
 import FinanceInvoicesTab from "@/views/apps/finance/FinanceInvoicesTab.vue";
+import FinancePayrollTab from "@/views/apps/finance/FinancePayrollTab.vue";
 import FinanceProformasTab from "@/views/apps/finance/FinanceProformasTab.vue";
 import FinanceQuotationsTab from "@/views/apps/finance/FinanceQuotationsTab.vue";
 import FinanceReceiptsTab from "@/views/apps/finance/FinanceReceiptsTab.vue";
@@ -356,12 +357,27 @@ const closeDebitNoteDrawer = () => {
   editingDebitNoteId.value = null;
 };
 
+const toDebitNotePayload = (
+  payload: DebitNoteDrawerSubmitPayload,
+): Partial<DebitNoteRecord> => ({
+  linkedInvoiceId: payload.linkedInvoiceId,
+  linkedInvoiceNumber: payload.linkedInvoiceNumber,
+  clientName: payload.clientName,
+  issuedDate: payload.issuedDate,
+  amount: payload.amount,
+  reason: payload.reason,
+  note: payload.note,
+  status: payload.status,
+});
+
 const saveDebitNote = (payload: DebitNoteDrawerSubmitPayload) => {
+  const notePayload = toDebitNotePayload(payload);
+
   if (payload.id) {
-    debitNotesStore.updateNote(payload.id, payload);
+    debitNotesStore.updateNote(payload.id, notePayload);
     notifications.push("Debit note updated successfully.", "success", 3500);
   } else {
-    debitNotesStore.addNote(payload);
+    debitNotesStore.addNote(notePayload);
     notifications.push("Debit note created successfully.", "success", 3500);
   }
 
@@ -383,12 +399,27 @@ const closeCreditNoteDrawer = () => {
   editingCreditNoteId.value = null;
 };
 
+const toCreditNotePayload = (
+  payload: CreditNoteDrawerSubmitPayload,
+): Partial<CreditNoteRecord> => ({
+  linkedInvoiceId: payload.linkedInvoiceId,
+  linkedInvoiceNumber: payload.linkedInvoiceNumber,
+  clientName: payload.clientName,
+  issuedDate: payload.issuedDate,
+  amount: payload.amount,
+  reason: payload.reason,
+  note: payload.note,
+  status: payload.status,
+});
+
 const saveCreditNote = (payload: CreditNoteDrawerSubmitPayload) => {
+  const notePayload = toCreditNotePayload(payload);
+
   if (payload.id) {
-    creditNotesStore.updateNote(payload.id, payload);
+    creditNotesStore.updateNote(payload.id, notePayload);
     notifications.push("Credit note updated successfully.", "success", 3500);
   } else {
-    creditNotesStore.addNote(payload);
+    creditNotesStore.addNote(notePayload);
     notifications.push("Credit note created successfully.", "success", 3500);
   }
 
@@ -632,6 +663,7 @@ watch(
             @create-receipt="openCreateReceiptDrawer"
             @edit-receipt="openEditReceiptDrawer"
           />
+          <FinancePayrollTab v-else-if="tabItem.key === 'payroll'" />
 
           <VCard v-else>
             <VCardText class="pa-6">
