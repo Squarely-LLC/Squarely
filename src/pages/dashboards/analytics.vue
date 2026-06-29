@@ -80,8 +80,63 @@ const addMeetingRef = ref<InstanceType<typeof AddMeetingDrawer> | null>(null);
 const isRowCollaboratorDialogVisible = ref(false);
 const rowCollaboratorTarget = ref<{ type: "task" | "meeting"; record: any } | null>(null);
 const rowCollaboratorValue = ref<Array<number | string>>([]);
+const dashboardLeftStackRef = ref<HTMLElement | null>(null);
+const dashboardTimelineCardRef = ref<any | null>(null);
+const dashboardTimelineHeight = ref<number | null>(null);
 
 const identity = computed(() => getSignedInIdentity());
+
+let dashboardResizeObserver: ResizeObserver | null = null;
+
+const updateDashboardTimelineHeight = () => {
+  if (typeof window === "undefined") return;
+
+  if (window.innerWidth < 960) {
+    dashboardTimelineHeight.value = null;
+
+    return;
+  }
+
+  const leftStack = dashboardLeftStackRef.value;
+  const timelineCard = (dashboardTimelineCardRef.value?.$el ??
+    dashboardTimelineCardRef.value) as HTMLElement | null;
+
+  if (!leftStack || !timelineCard) return;
+
+  const leftHeight = leftStack.getBoundingClientRect().height;
+  const timelineTop = timelineCard.getBoundingClientRect().top;
+  const availableHeight = Math.max(320, window.innerHeight - timelineTop - 32);
+
+  dashboardTimelineHeight.value = Math.max(0, Math.min(leftHeight, availableHeight));
+};
+
+const dashboardTimelineStyle = computed(() =>
+  dashboardTimelineHeight.value
+    ? {
+        blockSize: `${dashboardTimelineHeight.value}px`,
+        maxBlockSize: `${dashboardTimelineHeight.value}px`,
+      }
+    : undefined,
+);
+
+onMounted(() => {
+  updateDashboardTimelineHeight();
+
+  if (typeof ResizeObserver !== "undefined" && dashboardLeftStackRef.value) {
+    dashboardResizeObserver = new ResizeObserver(() => updateDashboardTimelineHeight());
+    dashboardResizeObserver.observe(dashboardLeftStackRef.value);
+  }
+
+  window.addEventListener("resize", updateDashboardTimelineHeight);
+});
+
+onBeforeUnmount(() => {
+  dashboardResizeObserver?.disconnect();
+  dashboardResizeObserver = null;
+
+  if (typeof window !== "undefined")
+    window.removeEventListener("resize", updateDashboardTimelineHeight);
+});
 
 const normalizeKey = (value: unknown) =>
   value === undefined || value === null || value === ""
@@ -1276,51 +1331,52 @@ const personAvatar = (person: any) => {
       </VCol>
     </VRow>
 
-    <VRow class="dashboard-workspace align-start">
+    <VRow class="dashboard-workspace align-stretch">
       <VCol
         cols="12"
         md="8"
       >
-        <VCard class="mb-6">
-          <VCardItem>
-            <div class="d-flex flex-wrap align-center justify-space-between gap-3">
-              <div>
-                <VMenu>
-                  <template #activator="{ props }">
-                    <VBtn
-                      v-bind="props"
-                      variant="text"
-                      class="px-0 text-h5 font-weight-medium"
-                      append-icon="tabler-chevron-down"
-                    >
-                      {{ workScopeLabel }}
-                    </VBtn>
-                  </template>
-                  <VList density="compact">
-                    <VListItem
-                      title="My Day"
-                      value="day"
-                      @click="workScope = 'day'"
-                    />
-                    <VListItem
-                      title="My Week"
-                      value="week"
-                      @click="workScope = 'week'"
-                    />
-                  </VList>
-                </VMenu>
-                <VCardSubtitle>Tasks and meetings in scope</VCardSubtitle>
+        <div ref="dashboardLeftStackRef">
+          <VCard class="mb-6">
+            <VCardItem>
+              <div class="d-flex flex-wrap align-center justify-space-between gap-3">
+                <div>
+                  <VMenu>
+                    <template #activator="{ props }">
+                      <VBtn
+                        v-bind="props"
+                        variant="text"
+                        class="px-0 text-h5 font-weight-medium"
+                        append-icon="tabler-chevron-down"
+                      >
+                        {{ workScopeLabel }}
+                      </VBtn>
+                    </template>
+                    <VList density="compact">
+                      <VListItem
+                        title="My Day"
+                        value="day"
+                        @click="workScope = 'day'"
+                      />
+                      <VListItem
+                        title="My Week"
+                        value="week"
+                        @click="workScope = 'week'"
+                      />
+                    </VList>
+                  </VMenu>
+                  <VCardSubtitle>Tasks and meetings in scope</VCardSubtitle>
+                </div>
               </div>
-            </div>
-          </VCardItem>
+            </VCardItem>
 
-          <VDataTable
-            :headers="workHeaders"
-            :items="workRows"
-            :items-per-page="5"
-            density="comfortable"
-            class="dashboard-work-table"
-          >
+            <VDataTable
+              :headers="workHeaders"
+              :items="workRows"
+              :items-per-page="5"
+              density="comfortable"
+              class="dashboard-work-table"
+            >
             <template #item.description="{ item }">
               <div class="py-2">
                 <div class="font-weight-medium text-high-emphasis text-truncate">
@@ -1467,10 +1523,10 @@ const personAvatar = (person: any) => {
                 </template>
               </div>
             </template>
-          </VDataTable>
-        </VCard>
+            </VDataTable>
+          </VCard>
 
-        <VRow>
+          <VRow>
           <VCol
             cols="12"
             :md="showNeedApproval ? 6 : 12"
@@ -1634,14 +1690,20 @@ const personAvatar = (person: any) => {
               </VCardText>
             </VCard>
           </VCol>
-        </VRow>
+          </VRow>
+        </div>
       </VCol>
 
       <VCol
         cols="12"
         md="4"
+        class="dashboard-timeline-col"
       >
-        <VCard class="dashboard-timeline-card">
+        <VCard
+          ref="dashboardTimelineCardRef"
+          class="dashboard-timeline-card"
+          :style="dashboardTimelineStyle"
+        >
           <VCardItem>
             <VCardTitle>Activity Timeline</VCardTitle>
             <VCardSubtitle>{{ canSeeTeam ? "Own and team activity" : "Your activity" }}</VCardSubtitle>
@@ -1959,12 +2021,17 @@ const personAvatar = (person: any) => {
     }
   }
 
+  .dashboard-timeline-col {
+    display: flex;
+    min-block-size: 0;
+  }
+
   .dashboard-timeline-card {
     display: flex;
     flex-direction: column;
-    block-size: clamp(14rem, calc(100vh - 23rem), 34rem);
+    block-size: 100%;
+    inline-size: 100%;
     min-block-size: 0;
-    max-block-size: clamp(14rem, calc(100vh - 23rem), 34rem);
     overflow: hidden;
   }
 
@@ -2020,15 +2087,20 @@ const personAvatar = (person: any) => {
 
   @media (max-height: 820px) {
     .dashboard-timeline-card {
-      block-size: clamp(12rem, calc(100vh - 24rem), 29rem);
       max-block-size: clamp(12rem, calc(100vh - 24rem), 29rem);
     }
   }
 
   @media (max-height: 700px) {
     .dashboard-timeline-card {
-      block-size: clamp(10rem, calc(100vh - 21rem), 23rem);
       max-block-size: clamp(10rem, calc(100vh - 21rem), 23rem);
+    }
+  }
+
+  @media (max-width: 959.98px) {
+    .dashboard-timeline-card {
+      block-size: auto;
+      max-block-size: clamp(18rem, calc(100vh - 12rem), 34rem);
     }
   }
 }
