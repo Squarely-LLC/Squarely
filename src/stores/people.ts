@@ -704,7 +704,9 @@ export const usePeopleStore = defineStore("people", {
     patchEmployee(id: number | string, patch: Partial<EmployeeProperties>) {
       this.init();
       const index = this.items.findIndex(
-        (person) => String(person.id) === String(id),
+        (person) =>
+          String(person.id) === String(id) ||
+          String(person.legacyEmployeeId) === String(id),
       );
       if (index === -1) return null;
 

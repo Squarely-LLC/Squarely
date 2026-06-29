@@ -9,7 +9,7 @@ import type {
 import { useEmployeesStore } from "@/stores/employees";
 import { useNotificationsStore } from "@/stores/notifications";
 import type { PropType } from "vue";
-import { computed, defineComponent, ref, watch } from "vue";
+import { computed, defineComponent, ref, toRaw, watch } from "vue";
 import AddAdditionsDrawer from "./AddAdditionsDrawer.vue";
 import AddAdvancesDrawer from "./AddAdvancesDrawer.vue";
 import AddDeductionDrawer from "./AddDeductionDrawer.vue";
@@ -70,33 +70,84 @@ const openAddTimeAuLieuDrawer = () => {
   isAddTimeAuLieuOpen.value = true;
 };
 
+const requestCloneFields = [
+  "id",
+  "type",
+  "typeId",
+  "status",
+  "createdAt",
+  "approvedBy",
+  "approvedAt",
+  "rejectedBy",
+  "rejectedAt",
+  "rejectionReason",
+  "startDate",
+  "returnDate",
+  "requestedDays",
+  "deductible",
+  "deductionAmount",
+  "reason",
+  "attachmentFile",
+  "attachmentLink",
+  "date",
+  "period",
+  "periodId",
+  "additionType",
+  "deductionType",
+  "advanceType",
+  "amount",
+  "payBackInMonths",
+  "startOfPaymentPeriod",
+  "numberOfDays",
+  "relatedTo",
+  "relatedType",
+  "relatedId",
+  "notes",
+  "note",
+];
+
+const clonePlainRequest = (request: any) => {
+  const raw = toRaw(request);
+
+  try {
+    return JSON.parse(JSON.stringify(raw));
+  } catch {
+    return requestCloneFields.reduce((clone, key) => {
+      const value = raw?.[key];
+      if (value !== undefined) (clone as any)[key] = value;
+
+      return clone;
+    }, {} as Record<string, any>);
+  }
+};
+
 const openEditLeave = (request: any) => {
   if (!request || request.type !== "Leave") return;
-  selectedLeaveData.value = structuredClone(request);
+  selectedLeaveData.value = clonePlainRequest(request);
   isAddLeaveOpen.value = true;
 };
 
 const openEditAddition = (request: any) => {
   if (!request || request.type !== "Addition") return;
-  selectedAdditionData.value = structuredClone(request);
+  selectedAdditionData.value = clonePlainRequest(request);
   isAddAdditionsOpen.value = true;
 };
 
 const openEditDeduction = (request: any) => {
   if (!request || request.type !== "Deduction") return;
-  selectedDeductionData.value = structuredClone(request);
+  selectedDeductionData.value = clonePlainRequest(request);
   isAddDeductionOpen.value = true;
 };
 
 const openEditAdvance = (request: any) => {
   if (!request || request.type !== "Advance") return;
-  selectedAdvanceData.value = structuredClone(request);
+  selectedAdvanceData.value = clonePlainRequest(request);
   isAddAdvancesOpen.value = true;
 };
 
 const openEditTimeAuLieu = (request: any) => {
   if (!request || request.type !== "Time au Lieu") return;
-  selectedTimeAuLieuData.value = structuredClone(request);
+  selectedTimeAuLieuData.value = clonePlainRequest(request);
   isAddTimeAuLieuOpen.value = true;
 };
 
@@ -706,7 +757,7 @@ const formattedRequests = computed(() => {
     amount: getRequestAmount(request),
     period: getRequestPeriod(request),
     status: request.status,
-    rawData: request,
+    rawData: clonePlainRequest(request),
   }));
   console.log("✨ FORMATTED REQUESTS:", formatted.length, formatted);
   return formatted;

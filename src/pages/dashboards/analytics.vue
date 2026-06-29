@@ -15,6 +15,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { usePeopleStore } from "@/stores/people";
 import { useProformasStore } from "@/stores/proformas";
 import { useQuotationsStore } from "@/stores/quotations";
+import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import { getSignedInIdentity } from "@/utils/currentAccount";
 import { getCurrentUserRole } from "@/utils/authorization";
@@ -56,6 +57,7 @@ const notifications = useNotificationsStore();
 const quotationsStore = useQuotationsStore();
 const proformasStore = useProformasStore();
 const invoicesStore = useInvoicesStore();
+const systemNotificationsStore = useSystemNotificationsStore();
 const router = useRouter();
 
 todosStore.init();
@@ -64,6 +66,7 @@ employeesStore.init();
 quotationsStore.init();
 proformasStore.init();
 invoicesStore.init();
+systemNotificationsStore.init();
 
 const isLeaveDrawerOpen = ref(false);
 const isRequestPickerOpen = ref(false);
@@ -91,6 +94,8 @@ const rowCollaboratorValue = ref<Array<number | string>>([]);
 const dashboardLeftStackRef = ref<HTMLElement | null>(null);
 const dashboardTimelineCardRef = ref<any | null>(null);
 const dashboardTimelineHeight = ref<number | null>(null);
+const handledApprovalIds = ref<string[]>([]);
+const processingApprovalIds = ref<string[]>([]);
 
 const identity = computed(() => getSignedInIdentity());
 const currentRole = computed(() => getCurrentUserRole());
@@ -321,6 +326,34 @@ const matchesScope = (value: any, keys = scopedIdentityKeys.value) => {
   const valueKeys = collectRefKeys(value);
 
   return [...valueKeys].some((key) => keys.has(key));
+};
+
+const isApprovalHandled = (id: unknown) =>
+  handledApprovalIds.value.includes(String(id));
+
+const markApprovalHandled = (id: unknown) => {
+  const key = String(id);
+  if (!handledApprovalIds.value.includes(key))
+    handledApprovalIds.value = [...handledApprovalIds.value, key];
+};
+
+const isApprovalProcessing = (id: unknown) =>
+  processingApprovalIds.value.includes(String(id));
+
+const startApprovalProcessing = (id: unknown) => {
+  const key = String(id);
+  if (processingApprovalIds.value.includes(key)) return false;
+
+  processingApprovalIds.value = [...processingApprovalIds.value, key];
+
+  return true;
+};
+
+const stopApprovalProcessing = (id: unknown) => {
+  const key = String(id);
+  processingApprovalIds.value = processingApprovalIds.value.filter(
+    (entry) => entry !== key,
+  );
 };
 
 const taskBelongsToScope = (task: any) =>
@@ -673,18 +706,58 @@ const documentApprovalRows = computed(() => {
 
 const ownDocumentRequests = computed(() => {
   const keys = currentUserKeys.value;
+  const requesterValues = (record: any) => {
+    const requestedBy =
+      record.requestedBy && typeof record.requestedBy === "object"
+        ? record.requestedBy
+        : null;
+    const createdBy =
+      record.createdBy && typeof record.createdBy === "object" ? record.createdBy : null;
+
+    return [
+      record.requestedByEmployeeId,
+      record.requestedById,
+      requestedBy?.employeeId,
+      requestedBy?.personId,
+      requestedBy?.id,
+      requestedBy?.accountId,
+      requestedBy?.email,
+      requestedBy?.name,
+      requestedBy?.fullName,
+      record.createdById,
+      record.createdByEmployeeId,
+      record.createdByPersonId,
+      createdBy?.employeeId,
+      createdBy?.personId,
+      createdBy?.id,
+      createdBy?.accountId,
+      createdBy?.email,
+      createdBy?.name,
+      createdBy?.fullName,
+    ];
+  };
+  const requesterLabel = (record: any) => {
+    const requestedBy =
+      record.requestedBy && typeof record.requestedBy === "object"
+        ? record.requestedBy
+        : null;
+    const createdBy =
+      record.createdBy && typeof record.createdBy === "object" ? record.createdBy : null;
+
+    return (
+      requestedBy?.name ||
+      requestedBy?.fullName ||
+      createdBy?.name ||
+      createdBy?.fullName ||
+      "Finance"
+    );
+  };
   const buildRows = (records: any[], kind: "quotation" | "proforma" | "invoice") =>
     records
       .filter((record: any) => {
         if (!record.approvalRequestedAt) return false;
-        const possibleOwners = [
-          record.salesperson,
-          record.requestedBy,
-          record.createdBy,
-          record.quotation?.client?.name,
-        ];
 
-        return possibleOwners.some((owner) => matchesScope(owner, keys));
+        return requesterValues(record).some((owner) => matchesScope(owner, keys));
       })
       .map((record: any) => ({
         id: `doc-request-${kind}-${record.quotation?.id}`,
@@ -692,7 +765,7 @@ const ownDocumentRequests = computed(() => {
         title: `${kind[0].toUpperCase()}${kind.slice(1)} ${record.quotation?.quoteNumber ?? record.quotation?.id}`,
         status: record.quotation?.quotationStatus ?? "Approval",
         date: record.approvalRequestedAt,
-        owner: record.salesperson || "Finance",
+        owner: requesterLabel(record),
         raw: record,
       }));
 
@@ -727,14 +800,17 @@ const hrApprovalRows = computed(() => {
         date: request.createdAt ?? request.startDate ?? request.date ?? "",
         employeeId: employee.id,
         requestId: request.id,
+        raw: request,
       })),
   );
 });
 
-const approvalRows = computed(() => [
-  ...(canApproveHr.value ? hrApprovalRows.value : []),
-  ...(canApproveFinance.value ? documentApprovalRows.value : []),
-]);
+const approvalRows = computed(() =>
+  [
+    ...(canApproveHr.value ? hrApprovalRows.value : []),
+    ...(canApproveFinance.value ? documentApprovalRows.value : []),
+  ].filter((row: any) => !isApprovalHandled(row.id)),
+);
 
 const canSeeApprovalPanel = computed(
   () => isAdminUser.value || canApproveHr.value || canApproveFinance.value,
@@ -1118,22 +1194,181 @@ const openDocumentApproval = (row: any) => {
   if (row.route) router.push(row.route);
 };
 
+const requestPeriodLabel = (request: any) => {
+  const period =
+    request?.period ||
+    request?.periodLabel ||
+    request?.periodKey ||
+    request?.startOfPaymentPeriod ||
+    request?.date ||
+    request?.startDate ||
+    request?.createdAt;
+
+  if (!period) return "";
+
+  return String(period);
+};
+
+const dismissHrApprovalRequestNotifications = (row: any) => {
+  const ids = systemNotificationsStore.items
+    .filter((notification) => {
+      if (!["payroll-approval", "hr-approval", "hr-request-approval"].includes(String(notification.type)))
+        return false;
+
+      const target = notification.target;
+      if (!target) return false;
+
+      const queryEmployeeId = target.query?.employeeId;
+      const queryRequestId = target.query?.requestId;
+      const entityId = String(target.entityId ?? "");
+      const queryMatches =
+        queryEmployeeId !== undefined &&
+        queryRequestId !== undefined &&
+        String(queryEmployeeId) === String(row.employeeId) &&
+        String(queryRequestId) === String(row.requestId);
+      const entityMatches = entityId.includes(`:${row.employeeId}:${row.requestId}`);
+
+      return queryMatches || entityMatches;
+    })
+    .map((notification) => notification.id);
+
+  if (ids.length) systemNotificationsStore.removeMany(ids);
+};
+
+const notifyHrApprovalDecision = (
+  row: any,
+  request: any,
+  decision: "approved" | "declined",
+) => {
+  const typeLabel = request?.type ?? row.title?.replace(/\s+request$/i, "") ?? "Request";
+  const period = requestPeriodLabel(request);
+  const periodText = period ? ` (${period})` : "";
+
+  systemNotificationsStore.addNotification({
+    recipientEmployeeId: row.employeeId,
+    title: `Request ${decision}: ${typeLabel}`,
+    body: `${typeLabel} request${periodText} was ${decision} by the approver.`,
+    type: "hr-approval-decision",
+    target: {
+      entityType: "hr-request",
+      entityId: `${row.employeeId}:${row.requestId}`,
+      path: `/apps/hr/view/${row.employeeId}`,
+      query: { tab: "requests" },
+    },
+  });
+};
+
+const resolveHrApprovalTarget = (row: any) => {
+  const candidates = [
+    employeesStore.byId(row.employeeId),
+    ...employeesStore.items.filter(
+      (employee: any) =>
+        String(employee.id) === String(row.employeeId) ||
+        String((employee as any).legacyEmployeeId) === String(row.employeeId),
+    ),
+    ...employeesStore.items.filter((employee: any) =>
+      (employee.requests ?? []).some(
+        (request: any) => String(request.id) === String(row.requestId),
+      ),
+    ),
+  ].filter(Boolean);
+
+  for (const employee of candidates as any[]) {
+    const request = (employee.requests ?? []).find(
+      (entry: any) => String(entry.id) === String(row.requestId),
+    );
+    if (request) return { employee, request };
+  }
+
+  return null;
+};
+
 const approveHrRequest = (row: any) => {
-  employeesStore.updateRequest(row.employeeId, row.requestId, {
-    status: "approved",
-    approvedBy: identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
-    approvedAt: new Date().toISOString(),
-  } as any);
-  notifications.push("Request approved", "success", 2500);
+  if (!startApprovalProcessing(row.id)) return;
+
+  try {
+    const target = resolveHrApprovalTarget(row);
+    if (!target) {
+      notifications.push("Unable to find request", "error", 3000);
+
+      return;
+    }
+
+    if (String(target.request.status ?? "").toLowerCase() !== "pending") {
+      markApprovalHandled(row.id);
+
+      return;
+    }
+
+    const updated = employeesStore.updateRequest(target.employee.id, row.requestId, {
+      status: "approved",
+      approvedBy: identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
+      approvedAt: new Date().toISOString(),
+    } as any);
+
+    if (!updated) {
+      notifications.push("Unable to approve request", "error", 3000);
+
+      return;
+    }
+
+    employeesStore.refresh();
+    markApprovalHandled(row.id);
+    dismissHrApprovalRequestNotifications(row);
+    dismissHrApprovalRequestNotifications({ ...row, employeeId: target.employee.id });
+    notifyHrApprovalDecision(
+      { ...row, employeeId: target.employee.id },
+      updated,
+      "approved",
+    );
+    notifications.push("Request approved", "success", 2500);
+  } finally {
+    stopApprovalProcessing(row.id);
+  }
 };
 
 const rejectHrRequest = (row: any) => {
-  employeesStore.updateRequest(row.employeeId, row.requestId, {
-    status: "rejected",
-    rejectedBy: identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
-    rejectedAt: new Date().toISOString(),
-  } as any);
-  notifications.push("Request rejected", "success", 2500);
+  if (!startApprovalProcessing(row.id)) return;
+
+  try {
+    const target = resolveHrApprovalTarget(row);
+    if (!target) {
+      notifications.push("Unable to find request", "error", 3000);
+
+      return;
+    }
+
+    if (String(target.request.status ?? "").toLowerCase() !== "pending") {
+      markApprovalHandled(row.id);
+
+      return;
+    }
+
+    const updated = employeesStore.updateRequest(target.employee.id, row.requestId, {
+      status: "rejected",
+      rejectedBy: identity.value.employeeId ?? identity.value.personId ?? identity.value.id,
+      rejectedAt: new Date().toISOString(),
+    } as any);
+
+    if (!updated) {
+      notifications.push("Unable to decline request", "error", 3000);
+
+      return;
+    }
+
+    employeesStore.refresh();
+    markApprovalHandled(row.id);
+    dismissHrApprovalRequestNotifications(row);
+    dismissHrApprovalRequestNotifications({ ...row, employeeId: target.employee.id });
+    notifyHrApprovalDecision(
+      { ...row, employeeId: target.employee.id },
+      updated,
+      "declined",
+    );
+    notifications.push("Request declined", "success", 2500);
+  } finally {
+    stopApprovalProcessing(row.id);
+  }
 };
 
 const currentApproverId = computed(
@@ -1162,6 +1397,8 @@ const cancelOlderApprovedFinanceVersions = (kind: string, updated: any) => {
 };
 
 const approveFinanceApproval = (row: any) => {
+  if (!startApprovalProcessing(row.id)) return;
+
   const patch = {
     approvalStatus: "approved",
     approvalApprovedAt: new Date().toISOString(),
@@ -1169,22 +1406,30 @@ const approveFinanceApproval = (row: any) => {
     approvalRejectedAt: null,
     approvalRejectedBy: null,
   } as any;
-  const updated =
-    row.kind === "quotation"
-      ? quotationsStore.updateQuotation(row.recordId, patch)
-      : row.kind === "proforma"
-        ? proformasStore.updateProforma(row.recordId, patch)
-        : invoicesStore.updateInvoice(row.recordId, patch);
 
-  if (updated) {
-    cancelOlderApprovedFinanceVersions(row.kind, updated);
-    dismissFinanceApprovalRequestNotifications(row.kind, updated);
-    notifyFinanceApprovalDecision(row.kind, updated, "approved");
-    notifications.push("Finance document approved", "success", 2500);
-  } else notifications.push("Unable to approve finance document", "error", 3000);
+  try {
+    const updated =
+      row.kind === "quotation"
+        ? quotationsStore.updateQuotation(row.recordId, patch)
+        : row.kind === "proforma"
+          ? proformasStore.updateProforma(row.recordId, patch)
+          : invoicesStore.updateInvoice(row.recordId, patch);
+
+    if (updated && normalizeFinanceApprovalStatus(updated) !== "pending") {
+      markApprovalHandled(row.id);
+      cancelOlderApprovedFinanceVersions(row.kind, updated);
+      dismissFinanceApprovalRequestNotifications(row.kind, updated);
+      notifyFinanceApprovalDecision(row.kind, updated, "approved");
+      notifications.push("Finance document approved", "success", 2500);
+    } else notifications.push("Unable to approve finance document", "error", 3000);
+  } finally {
+    stopApprovalProcessing(row.id);
+  }
 };
 
 const declineFinanceApproval = (row: any) => {
+  if (!startApprovalProcessing(row.id)) return;
+
   const patch = {
     approvalStatus: "rejected",
     approvalRejectedAt: new Date().toISOString(),
@@ -1192,18 +1437,24 @@ const declineFinanceApproval = (row: any) => {
     approvalApprovedAt: null,
     approvalApprovedBy: null,
   } as any;
-  const updated =
-    row.kind === "quotation"
-      ? quotationsStore.updateQuotation(row.recordId, patch)
-      : row.kind === "proforma"
-        ? proformasStore.updateProforma(row.recordId, patch)
-        : invoicesStore.updateInvoice(row.recordId, patch);
 
-  if (updated) {
-    dismissFinanceApprovalRequestNotifications(row.kind, updated);
-    notifyFinanceApprovalDecision(row.kind, updated, "rejected");
-    notifications.push("Finance document declined", "success", 2500);
-  } else notifications.push("Unable to decline finance document", "error", 3000);
+  try {
+    const updated =
+      row.kind === "quotation"
+        ? quotationsStore.updateQuotation(row.recordId, patch)
+        : row.kind === "proforma"
+          ? proformasStore.updateProforma(row.recordId, patch)
+          : invoicesStore.updateInvoice(row.recordId, patch);
+
+    if (updated && normalizeFinanceApprovalStatus(updated) !== "pending") {
+      markApprovalHandled(row.id);
+      dismissFinanceApprovalRequestNotifications(row.kind, updated);
+      notifyFinanceApprovalDecision(row.kind, updated, "rejected");
+      notifications.push("Finance document declined", "success", 2500);
+    } else notifications.push("Unable to decline finance document", "error", 3000);
+  } finally {
+    stopApprovalProcessing(row.id);
+  }
 };
 
 const activityTimelineRows = computed(() => {
@@ -1711,6 +1962,8 @@ const personAvatar = (person: any) => {
                           size="small"
                           variant="text"
                           color="success"
+                          :disabled="isApprovalProcessing(approval.id)"
+                          :loading="isApprovalProcessing(approval.id)"
                           @click="approveHrRequest(approval)"
                         >
                           <VIcon icon="tabler-check" />
@@ -1720,6 +1973,8 @@ const personAvatar = (person: any) => {
                           size="small"
                           variant="text"
                           color="error"
+                          :disabled="isApprovalProcessing(approval.id)"
+                          :loading="isApprovalProcessing(approval.id)"
                           @click="rejectHrRequest(approval)"
                         >
                           <VIcon icon="tabler-x" />
@@ -1735,6 +1990,8 @@ const personAvatar = (person: any) => {
                               size="small"
                               variant="text"
                               color="success"
+                              :disabled="isApprovalProcessing(approval.id)"
+                              :loading="isApprovalProcessing(approval.id)"
                               @click="approveFinanceApproval(approval)"
                             >
                               <VIcon icon="tabler-check" />
@@ -1749,6 +2006,8 @@ const personAvatar = (person: any) => {
                               size="small"
                               variant="text"
                               color="error"
+                              :disabled="isApprovalProcessing(approval.id)"
+                              :loading="isApprovalProcessing(approval.id)"
                               @click="declineFinanceApproval(approval)"
                             >
                               <VIcon icon="tabler-x" />

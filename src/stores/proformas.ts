@@ -810,8 +810,7 @@ function mergeProformaRecord(
     ...original,
     ...patch,
     quotation: mergedQuotation,
-    createdBy:
-      patch.createdBy ?? original.createdBy ?? normalizeFinanceAuthorRef(null),
+    createdBy: patch.createdBy === undefined ? original.createdBy ?? null : patch.createdBy,
     createdById:
       patch.createdById ??
       original.createdById ??

@@ -14,6 +14,7 @@ import {
   type PayrollLineAdjustment,
   type PayrollPaymentStatus,
 } from "@/stores/payrolls";
+import { usePeopleStore } from "@/stores/people";
 import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { getSignedInAuthorRef } from "@/utils/currentAccount";
 import { saveFile } from "@/utils/fileStore";
@@ -58,14 +59,17 @@ type PendingPayrollRequest = {
   requestType: string;
   amount: number;
   managerIds: Array<number | string>;
+  managerNames: string[];
 };
 
 const employeesStore = useEmployeesStore();
 const payrollsStore = usePayrollsStore();
+const peopleStore = usePeopleStore();
 const systemNotificationsStore = useSystemNotificationsStore();
 const notifications = useNotificationsStore();
 
 employeesStore.init();
+peopleStore.init();
 payrollsStore.init();
 systemNotificationsStore.init();
 
@@ -93,6 +97,19 @@ const paymentAmount = ref<number | string>("");
 const paymentAttachment = ref<File | null>(null);
 
 const currentAuthor = computed<ContactRef>(() => getSignedInAuthorRef());
+
+const resolveEmployeeName = (employeeId: number | string) => {
+  const employee =
+    employeesStore.items.find((entry) => String(entry.id) === String(employeeId)) ??
+    employeesStore.byId(employeeId);
+  const person = peopleStore.hrPeople.find(
+    (entry) =>
+      String(entry.id) === String(employeeId) ||
+      String(entry.legacyEmployeeId) === String(employeeId),
+  );
+
+  return employee?.fullName || person?.fullName || "";
+};
 
 const formatMoney = (amount: number) =>
   `$${Number(amount || 0).toLocaleString(undefined, {
@@ -440,6 +457,9 @@ const getPendingPayrollRequests = (periodKey: string): PendingPayrollRequest[] =
           requestType: getRequestLabel(request),
           amount: getRequestAmount(request),
           managerIds: employee.employment?.reportToIds ?? [],
+          managerNames: (employee.employment?.reportToIds ?? [])
+            .map((managerId) => resolveEmployeeName(managerId))
+            .filter(Boolean),
         })),
     );
 
@@ -809,6 +829,9 @@ const createManagerNotificationsForRequest = (
     requestType: label,
     amount,
     managerIds: employee.employment?.reportToIds ?? [],
+    managerNames: (employee.employment?.reportToIds ?? [])
+      .map((managerId) => resolveEmployeeName(managerId))
+      .filter(Boolean),
   };
   notifyManagersForPendingRequests([pending], periodKey);
 };
@@ -1382,7 +1405,7 @@ const payrollActions = (row: PayrollTableRow) => [
                 <td>{{ request.employeeName }}</td>
                 <td>{{ request.requestType }}</td>
                 <td class="text-end">{{ formatMoney(request.amount) }}</td>
-                <td>{{ request.managerIds.join(", ") || "No manager" }}</td>
+                <td>{{ request.managerNames.join(", ") || "No manager" }}</td>
               </tr>
             </tbody>
           </VTable>

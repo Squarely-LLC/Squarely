@@ -113,7 +113,11 @@ export const useEmployeesStore = defineStore("employees", {
     updateEmployee(id: number | string, patch: Partial<EmployeeProperties>) {
       const peopleStore = usePeopleStore();
       peopleStore.init();
-      const current = this.items.find((employee) => String(employee.id) === String(id));
+      const current = this.items.find(
+        (employee) =>
+          String(employee.id) === String(id) ||
+          String((employee as any).legacyEmployeeId) === String(id),
+      );
       requireCurrentUserPermission(
         "hr",
         "update",
@@ -210,7 +214,8 @@ export const useEmployeesStore = defineStore("employees", {
         String(entry.id) === String(requestId) ? { ...entry, ...patch } : entry,
       ) as EmployeeRequest[];
 
-      this.updateEmployee(employeeId, { requests });
+      const updatedEmployee = this.updateEmployee(employeeId, { requests });
+      if (!updatedEmployee) return null;
 
       return requests.find((entry) => String(entry.id) === String(requestId));
     },
