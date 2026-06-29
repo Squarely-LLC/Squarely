@@ -708,8 +708,8 @@ if (!isEmbeddedActionFrame) {
                 >
                   {{ line }}
                 </div>
-                <div v-if="legalConfiguration?.trn" class="text-body-2 mt-1">
-                  TRN: {{ legalConfiguration.trn }}
+                <div v-if="legalConfiguration?.crn" class="text-body-2 mt-1">
+                  CRN: {{ legalConfiguration.crn }}
                 </div>
               </div>
             </div>
