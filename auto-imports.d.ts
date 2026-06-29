@@ -14,6 +14,7 @@ declare global {
   const DEMO_DATA_VERSION_KEY: typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION_KEY']
   const EffectScope: typeof import('vue')['EffectScope']
   const FINANCE_APPROVAL_CONVERSION_MESSAGE: typeof import('./src/utils/financeApproval')['FINANCE_APPROVAL_CONVERSION_MESSAGE']
+  const FINANCE_APPROVAL_PAYMENT_MESSAGE: typeof import('./src/utils/financeApproval')['FINANCE_APPROVAL_PAYMENT_MESSAGE']
   const PERMISSION_DENIED_MESSAGE: typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']
   const PermissionDeniedError: typeof import('./src/utils/authorization')['PermissionDeniedError']
   const ROLE_TEST_USER_PASSWORD: typeof import('./src/utils/seedIdentityGraph')['ROLE_TEST_USER_PASSWORD']
@@ -21,6 +22,7 @@ declare global {
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
   const applyFinanceApprovalRequestFields: typeof import('./src/utils/financeApprovalNotifications')['applyFinanceApprovalRequestFields']
+  const applyStoredFinanceApprovalDecision: typeof import('./src/utils/financeApprovalDecisions')['applyStoredFinanceApprovalDecision']
   const assertCanMutateResource: typeof import('./src/utils/authorization')['assertCanMutateResource']
   const assertSeedIntegrity: typeof import('./src/utils/seedIntegrity')['assertSeedIntegrity']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
@@ -51,6 +53,7 @@ declare global {
   const canCurrentUser: typeof import('./src/utils/authorization')['canCurrentUser']
   const canMutate: typeof import('./src/utils/permissionUi')['canMutate']
   const canReadResource: typeof import('./src/utils/authorization')['canReadResource']
+  const canRecordInvoicePayment: typeof import('./src/utils/financeApproval')['canRecordInvoicePayment']
   const clearDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']
   const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
@@ -271,6 +274,7 @@ declare global {
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
   const permissionDeniedResponse: typeof import('./src/utils/authorization')['permissionDeniedResponse']
   const permissionDisabledReason: typeof import('./src/utils/permissionUi')['permissionDisabledReason']
+  const persistFinanceApprovalDecision: typeof import('./src/utils/financeApprovalDecisions')['persistFinanceApprovalDecision']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const provide: typeof import('vue')['provide']
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
@@ -571,6 +575,7 @@ declare module 'vue' {
     readonly DEMO_DATA_VERSION_KEY: UnwrapRef<typeof import('./src/utils/demoDataReset')['DEMO_DATA_VERSION_KEY']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly FINANCE_APPROVAL_CONVERSION_MESSAGE: UnwrapRef<typeof import('./src/utils/financeApproval')['FINANCE_APPROVAL_CONVERSION_MESSAGE']>
+    readonly FINANCE_APPROVAL_PAYMENT_MESSAGE: UnwrapRef<typeof import('./src/utils/financeApproval')['FINANCE_APPROVAL_PAYMENT_MESSAGE']>
     readonly PERMISSION_DENIED_MESSAGE: UnwrapRef<typeof import('./src/utils/authorization')['PERMISSION_DENIED_MESSAGE']>
     readonly PermissionDeniedError: UnwrapRef<typeof import('./src/utils/authorization')['PermissionDeniedError']>
     readonly ROLE_TEST_USER_PASSWORD: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['ROLE_TEST_USER_PASSWORD']>
@@ -578,6 +583,7 @@ declare module 'vue' {
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
     readonly applyFinanceApprovalRequestFields: UnwrapRef<typeof import('./src/utils/financeApprovalNotifications')['applyFinanceApprovalRequestFields']>
+    readonly applyStoredFinanceApprovalDecision: UnwrapRef<typeof import('./src/utils/financeApprovalDecisions')['applyStoredFinanceApprovalDecision']>
     readonly assertCanMutateResource: UnwrapRef<typeof import('./src/utils/authorization')['assertCanMutateResource']>
     readonly assertSeedIntegrity: UnwrapRef<typeof import('./src/utils/seedIntegrity')['assertSeedIntegrity']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
@@ -608,6 +614,7 @@ declare module 'vue' {
     readonly canCurrentUser: UnwrapRef<typeof import('./src/utils/authorization')['canCurrentUser']>
     readonly canMutate: UnwrapRef<typeof import('./src/utils/permissionUi')['canMutate']>
     readonly canReadResource: UnwrapRef<typeof import('./src/utils/authorization')['canReadResource']>
+    readonly canRecordInvoicePayment: UnwrapRef<typeof import('./src/utils/financeApproval')['canRecordInvoicePayment']>
     readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
@@ -829,6 +836,7 @@ declare module 'vue' {
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly permissionDeniedResponse: UnwrapRef<typeof import('./src/utils/authorization')['permissionDeniedResponse']>
     readonly permissionDisabledReason: UnwrapRef<typeof import('./src/utils/permissionUi')['permissionDisabledReason']>
+    readonly persistFinanceApprovalDecision: UnwrapRef<typeof import('./src/utils/financeApprovalDecisions')['persistFinanceApprovalDecision']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>

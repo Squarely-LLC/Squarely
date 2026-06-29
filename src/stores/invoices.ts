@@ -21,6 +21,7 @@ import {
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
 import {
+  canRecordInvoicePayment,
   canConvertFinanceDocument,
   conversionNoteReferencesDocument,
 } from "@/utils/financeApproval";
@@ -1071,7 +1072,15 @@ export const useInvoicesStore = defineStore("invoices", {
       );
       if (!isLatestRevisionRecord(this.items, this.items[index])) return null;
 
-      const updated = mergeInvoiceRecord(this.items[index], patch);
+      const current = this.items[index];
+      const changesPayments =
+        patch.payments !== undefined &&
+        JSON.stringify(ensurePayments(patch.payments)) !==
+          JSON.stringify(ensurePayments(current.payments));
+
+      if (changesPayments && !canRecordInvoicePayment(current)) return null;
+
+      const updated = mergeInvoiceRecord(current, patch);
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
       this.persistItems();
@@ -1082,6 +1091,7 @@ export const useInvoicesStore = defineStore("invoices", {
     recordPayment(id: number | string, payment: InvoicePaymentInput) {
       const current = this.byId(id);
       if (!current) return null;
+      if (!canRecordInvoicePayment(current)) return null;
 
       const updated = applyInvoicePayment(current, payment);
       const nextRecord = this.updateInvoice(id, updated);

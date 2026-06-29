@@ -32,7 +32,11 @@ import {
   isDocumentSourceExternal,
   isDocumentSourceInternal,
 } from "@/utils/documentSourceModes";
-import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
+import {
+  FINANCE_APPROVAL_CONVERSION_MESSAGE,
+  canConvertFinanceDocument,
+  normalizeFinanceApprovalStatus,
+} from "@/utils/financeApproval";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import { avatarText, formatSystemDate } from "@core/utils/formatters";
 import type {
@@ -705,6 +709,20 @@ const isQuotationClosedForConversion = (status?: string | null) =>
     normalizeQuotationStatus(status),
   );
 
+const isQuotationConversionBlocked = (record: QuotationRecord | null) =>
+  !record ||
+  isQuotationClosedForConversion(record.quotation.quotationStatus) ||
+  !canConvertFinanceDocument(record);
+
+const notifyQuotationConversionBlocked = (record: QuotationRecord | null) => {
+  if (record && !canConvertFinanceDocument(record)) {
+    pushFinanceWarning(FINANCE_APPROVAL_CONVERSION_MESSAGE);
+    return;
+  }
+
+  pushFinanceWarning("Quotation cannot be converted.");
+};
+
 const pendingQuotationConversionRecord = computed(() =>
   pendingQuotationConversionId.value === null
     ? null
@@ -1098,10 +1116,8 @@ const performQuotationConversion = (
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return null;
 
-  if (quotationRecord.quotation.quotationStatus === "Converted") {
-    pushFinanceSuccess(
-      `${quotationRecord.quotation.quoteNumber} is already converted.`,
-    );
+  if (isQuotationConversionBlocked(quotationRecord)) {
+    notifyQuotationConversionBlocked(quotationRecord);
     return null;
   }
 
@@ -1118,8 +1134,19 @@ const performQuotationConversion = (
     quotationRecord,
     products,
   );
+
+  if (!createdProforma) {
+    pushFinanceWarning(FINANCE_APPROVAL_CONVERSION_MESSAGE);
+    return null;
+  }
+
   const createdInvoice =
     kind === "invoice" ? createInvoiceFromProforma(createdProforma) : null;
+
+  if (kind === "invoice" && !createdInvoice) {
+    pushFinanceWarning(FINANCE_APPROVAL_CONVERSION_MESSAGE);
+    return null;
+  }
 
   quotationsStore.updateQuotation(quotationId, {
     quotation: {
@@ -1145,6 +1172,11 @@ const openQuotationConversionFlow = (
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
 
+  if (isQuotationConversionBlocked(quotationRecord)) {
+    notifyQuotationConversionBlocked(quotationRecord);
+    return;
+  }
+
   if (hasQuotationPhaseOrPeriodLines(quotationRecord)) {
     const options = getQuotationConversionOptionsForRecord(quotationRecord);
     pendingQuotationConversionId.value = quotationId;
@@ -1165,18 +1197,8 @@ const requestQuotationConversion = (
   const quotationRecord = quotationsStore.byId(quotationId);
   if (!quotationRecord) return;
 
-  if (quotationRecord.quotation.quotationStatus === "Converted") {
-    pushFinanceSuccess(
-      `${quotationRecord.quotation.quoteNumber} is already converted.`,
-    );
-    return;
-  }
-
-  if (
-    isQuotationClosedForConversion(quotationRecord.quotation.quotationStatus)
-  ) {
-    pushFinanceWarning("Quotation cannot be converted.");
-
+  if (isQuotationConversionBlocked(quotationRecord)) {
+    notifyQuotationConversionBlocked(quotationRecord);
     return;
   }
 
@@ -1396,6 +1418,9 @@ const computedMoreList = computed(() => {
             title: "Convert to Proforma",
             value: "convert-to-proforma",
             prependIcon: "tabler-file-dollar",
+            disabled: isQuotationConversionBlocked(
+              quotationsStore.byId(paramId),
+            ),
             onClick: () => convertQuotationToProforma(paramId),
           },
         ]
@@ -1406,6 +1431,9 @@ const computedMoreList = computed(() => {
             title: "Convert to Tax invoice",
             value: "convert-to-tax-invoice",
             prependIcon: "tabler-file-invoice",
+            disabled: isQuotationConversionBlocked(
+              quotationsStore.byId(paramId),
+            ),
             onClick: () => convertQuotationToInvoice(paramId),
           },
         ]

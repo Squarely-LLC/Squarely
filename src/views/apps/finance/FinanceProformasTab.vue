@@ -10,7 +10,11 @@ import {
   isDocumentSourceExternal,
   isDocumentSourceInternal,
 } from "@/utils/documentSourceModes";
-import { normalizeFinanceApprovalStatus } from "@/utils/financeApproval";
+import {
+  FINANCE_APPROVAL_CONVERSION_MESSAGE,
+  canConvertFinanceDocument,
+  normalizeFinanceApprovalStatus,
+} from "@/utils/financeApproval";
 import { saveFile } from "@/utils/fileStore";
 import {
   buildQuotationPaymentDetails,
@@ -569,6 +573,18 @@ const resolveApprovalStatusDisplay = (quotation: Proforma) => {
   };
 };
 
+const isProformaConversionBlocked = (record: ProformaRecord | null) =>
+  !record || Boolean(record.convertedInvoiceId) || !canConvertFinanceDocument(record);
+
+const notifyProformaConversionBlocked = (record: ProformaRecord | null) => {
+  if (record && !canConvertFinanceDocument(record)) {
+    pushFinanceWarning(FINANCE_APPROVAL_CONVERSION_MESSAGE);
+    return;
+  }
+
+  pushFinanceWarning("Proforma cannot be converted.");
+};
+
 const openExternalQuotationDialog = () => {
   isCreateMenuOpen.value = false;
   isExternalQuotationFormValid.value = false;
@@ -743,6 +759,11 @@ const convertProformaToInvoice = (quotationId: number) => {
   const proformaRecord = quotationsStore.byId(quotationId);
   if (!proformaRecord) return;
 
+  if (isProformaConversionBlocked(proformaRecord)) {
+    notifyProformaConversionBlocked(proformaRecord);
+    return;
+  }
+
   const created = invoicesStore.addInvoice({
     quotation: {
       issuedDate: proformaRecord.quotation.issuedDate,
@@ -784,6 +805,9 @@ const convertProformaToInvoice = (quotationId: number) => {
     quotationsStore.updateProforma(quotationId, {
       convertedInvoiceId: created.quotation.id,
     });
+  } else {
+    pushFinanceWarning(FINANCE_APPROVAL_CONVERSION_MESSAGE);
+    return;
   }
 
   pushFinanceSuccess(
@@ -968,7 +992,7 @@ const computedMoreList = computed(() => {
                 title: "Convert to Tax invoice",
                 value: "convert-to-tax-invoice",
                 prependIcon: "tabler-file-invoice",
-                disabled: Boolean(proformaRecord?.convertedInvoiceId),
+                disabled: isProformaConversionBlocked(proformaRecord ?? null),
                 onClick: () => convertProformaToInvoice(paramId),
               },
             ]

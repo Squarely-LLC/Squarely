@@ -12,6 +12,8 @@ export type FinanceApprovalRecord = {
 
 export const FINANCE_APPROVAL_CONVERSION_MESSAGE =
   "Approval required before conversion";
+export const FINANCE_APPROVAL_PAYMENT_MESSAGE =
+  "Approval required before payment";
 
 export function requiresFinanceApproval(record: FinanceApprovalRecord | null | undefined) {
   return record?.approvalMode === "Request Approval";
@@ -35,6 +37,10 @@ export function normalizeFinanceApprovalStatus(
 
 export function canConvertFinanceDocument(record: FinanceApprovalRecord | null | undefined) {
   return !requiresFinanceApproval(record) || normalizeFinanceApprovalStatus(record) === "approved";
+}
+
+export function canRecordInvoicePayment(record: FinanceApprovalRecord | null | undefined) {
+  return canConvertFinanceDocument(record);
 }
 
 export function normalizeFinanceApprovalFields<T extends FinanceApprovalRecord>(

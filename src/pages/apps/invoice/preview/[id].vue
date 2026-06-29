@@ -12,6 +12,10 @@ import { useReceiptsStore } from "@/stores/receipts";
 import { createPdfFileFromElement } from "@/utils/domPdf";
 import { getFileObjectUrl, getFileRecord } from "@/utils/fileStore";
 import {
+    FINANCE_APPROVAL_PAYMENT_MESSAGE,
+    canRecordInvoicePayment,
+} from "@/utils/financeApproval";
+import {
     loadInvoicePreviewDraft,
     saveInvoicePreviewDraft,
 } from "@/utils/invoicePreviewDraft";
@@ -494,6 +498,10 @@ const shareQuotationWithOthers = async () => {
 const recordQuotationPayment = (payment: InvoicePaymentInput) => {
   const currentRecord = quotationRecord.value;
   if (!currentRecord) return;
+  if (!canRecordInvoicePayment(currentRecord)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
 
   const updatedRecord = applyInvoicePayment(currentRecord, payment);
 
@@ -513,15 +521,23 @@ const recordQuotationPayment = (payment: InvoicePaymentInput) => {
     return;
   }
 
-  invoicesStore.updateInvoice(updatedRecord.quotation.id, updatedRecord);
-  const recordedPayment = updatedRecord.payments.at(-1);
+  const persistedRecord = invoicesStore.recordPayment(
+    currentRecord.quotation.id,
+    payment,
+  );
+  if (!persistedRecord) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
+
+  const recordedPayment = persistedRecord.payments.at(-1);
   if (recordedPayment) {
     receiptsStore.addReceiptFromLinkedPayment({
       documentType: "invoice",
-      documentId: updatedRecord.quotation.id,
-      documentNumber: updatedRecord.quotation.quoteNumber,
-      client: updatedRecord.quotation.client,
-      avatar: updatedRecord.quotation.avatar,
+      documentId: persistedRecord.quotation.id,
+      documentNumber: persistedRecord.quotation.quoteNumber,
+      client: persistedRecord.quotation.client,
+      avatar: persistedRecord.quotation.avatar,
       payment: recordedPayment,
     });
   }
@@ -530,6 +546,17 @@ const recordQuotationPayment = (payment: InvoicePaymentInput) => {
     "success",
     3500,
   );
+};
+
+const openAddPaymentDrawer = () => {
+  const currentRecord = quotationRecord.value;
+  if (!currentRecord) return;
+  if (!canRecordInvoicePayment(currentRecord)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
+
+  isAddPaymentSidebarVisible.value = true;
 };
 
 const subtotal = computed(() => getQuotationSubtotal(purchasedProducts.value));
@@ -1050,7 +1077,7 @@ if (!isEmbeddedActionFrame) {
               block
               prepend-icon="tabler-currency-dollar"
               color="success"
-              @click="isAddPaymentSidebarVisible = true"
+              @click="openAddPaymentDrawer"
             >
               Add Receipt
             </VBtn>

@@ -84,8 +84,10 @@ import {
 } from "@/utils/documentSourceModes";
 import { saveFile } from "@/utils/fileStore";
 import {
+  canRecordInvoicePayment,
   canConvertFinanceDocument,
   FINANCE_APPROVAL_CONVERSION_MESSAGE,
+  FINANCE_APPROVAL_PAYMENT_MESSAGE,
   normalizeFinanceApprovalStatus,
 } from "@/utils/financeApproval";
 import { notifyFinanceApprovalRequest } from "@/utils/financeApprovalNotifications";
@@ -3552,7 +3554,10 @@ const isDocumentConversionBlocked = (record: DealDocumentPanelRecord) => {
 const canPayDocument = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
-) => kind === "invoice" && !isDocumentPaid(record) && record.balance > 0;
+) =>
+  kind === "invoice" &&
+  !isDocumentPaid(record) &&
+  record.balance > 0;
 
 const getApprovalDocument = (
   kind: DealPreviewKind,
@@ -4576,6 +4581,10 @@ const openDocumentPayment = (
     notifyFinanceDenied(financeUpdateReason.value);
     return;
   }
+  if (!canRecordInvoicePayment(record.record as any)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
 
   selectedPaymentDocument.value = { id: record.id, kind };
   invoicePaymentDrawerOpen.value = true;
@@ -4597,9 +4606,19 @@ const saveInvoicePayment = (payment: InvoicePaymentInput) => {
     notifyFinanceDenied(financeUpdateReason.value);
     return;
   }
+  const paymentRecord = selectedPaymentRecord.value;
+  if (!paymentRecord || !canRecordInvoicePayment(paymentRecord.record as any)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
 
   const updated = invoicesStore.recordPayment(target.id, payment);
   const latestPayment = updated?.payments?.at(-1);
+
+  if (!updated) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
 
   if (updated && latestPayment) {
     receiptsStore.addReceiptFromLinkedPayment({

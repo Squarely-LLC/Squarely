@@ -11,6 +11,10 @@ import {
 } from "@/stores/invoices";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useReceiptsStore } from "@/stores/receipts";
+import {
+  FINANCE_APPROVAL_PAYMENT_MESSAGE,
+  canRecordInvoicePayment,
+} from "@/utils/financeApproval";
 import { getFileObjectUrl, getFileRecord, saveFile } from "@/utils/fileStore";
 import {
   clearInvoicePreviewDraft,
@@ -383,6 +387,10 @@ const buildPreviewQuotationDraft = () => {
 
 const recordQuotationPayment = (payment: InvoicePaymentInput) => {
   if (!quotationData.value) return;
+  if (!canRecordInvoicePayment(quotationData.value)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
 
   quotationData.value = applyInvoicePayment(quotationData.value, payment);
   notifications.push(
@@ -390,6 +398,16 @@ const recordQuotationPayment = (payment: InvoicePaymentInput) => {
     "success",
     3500,
   );
+};
+
+const openAddPaymentDrawer = () => {
+  if (!quotationData.value) return;
+  if (!canRecordInvoicePayment(quotationData.value)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
+
+  isAddPaymentSidebarActive.value = true;
 };
 
 const createDraftQuotationPdfFile = (previewQuotation: InvoiceData) =>
@@ -622,6 +640,17 @@ const saveQuotation = () => {
     quotationData.value.approvalMode === "Request Approval"
       ? (quotationData.value.approverEmployeeId ?? null)
       : null;
+  const originalPaymentIds = new Set(
+    (sourceRecord?.payments ?? []).map((payment) => payment.id),
+  );
+  const hasNewPayments = quotationData.value.payments.some(
+    (payment) => !originalPaymentIds.has(payment.id),
+  );
+
+  if (hasNewPayments && !canRecordInvoicePayment(quotationData.value)) {
+    notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
+    return;
+  }
 
   const updatedQuotation = invoicesStore.updateInvoice(
     quotationData.value.quotation.id,
@@ -629,9 +658,6 @@ const saveQuotation = () => {
   );
   if (!updatedQuotation) return;
 
-  const originalPaymentIds = new Set(
-    (sourceRecord?.payments ?? []).map((payment) => payment.id),
-  );
   updatedQuotation.payments
     .filter((payment) => !originalPaymentIds.has(payment.id))
     .forEach((payment) => {
@@ -938,7 +964,7 @@ onBeforeUnmount(() => {
             block
             color="success"
             prepend-icon="tabler-currency-dollar"
-            @click="isAddPaymentSidebarActive = true"
+            @click="openAddPaymentDrawer"
           >
             Add Receipt
           </VBtn>
