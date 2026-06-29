@@ -367,7 +367,6 @@ export const getCurrentTeamMemberIds = () => {
   const personRefs = (person: any) =>
     uniqueValues([
       person.id,
-      person.legacyEmployeeId,
       person.employeeId,
       person.email,
       person.fullName,
@@ -424,7 +423,6 @@ const loadPeopleForAuth = () => {
 
   return employeesDb.users.map((employee) => ({
     ...employee,
-    legacyEmployeeId: employee.id,
     hrProfile: { employment: employee.employment },
   }));
 };

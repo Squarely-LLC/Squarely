@@ -2,6 +2,7 @@ import figma from "@images/icons/project-icons/figma.png";
 import sketch from "@images/icons/project-icons/sketch.png";
 import vue from "@images/icons/project-icons/vue.png";
 import type { JobProperties } from "./types";
+import { seedEmployeeId } from "@/utils/seedIdentityGraph";
 
 interface DB {
   jobs: JobProperties[];
@@ -23,8 +24,12 @@ export const db: DB = {
       type: "Other",
       flag: "High",
       relatedTo: 3,
-      projectManagerId: 7,
-      collaborators: [7, 8, 5],
+      projectManagerId: seedEmployeeId.karim,
+      collaborators: [
+        seedEmployeeId.karim,
+        seedEmployeeId.sara,
+        seedEmployeeId.omar,
+      ],
       note: "Fast turnaround requested for workplace planning and activation.",
       stakeholders: [
         { id: 1, contactId: 3, role: "Client" },
@@ -96,8 +101,12 @@ export const db: DB = {
       type: "Stands & Events",
       flag: "High",
       relatedTo: 5,
-      projectManagerId: 7,
-      collaborators: [7, 8, 4],
+      projectManagerId: seedEmployeeId.karim,
+      collaborators: [
+        seedEmployeeId.karim,
+        seedEmployeeId.sara,
+        seedEmployeeId.nour,
+      ],
       note: "Design and delivery of an expo stand with lighting and visitor-flow coordination.",
       stakeholders: [
         { id: 1, contactId: 5, role: "Client" },
@@ -159,8 +168,12 @@ export const db: DB = {
       type: "Interior",
       flag: "Normal",
       relatedTo: 1,
-      projectManagerId: 5,
-      collaborators: [5, 6, 10],
+      projectManagerId: seedEmployeeId.omar,
+      collaborators: [
+        seedEmployeeId.omar,
+        seedEmployeeId.rania,
+        seedEmployeeId.layla,
+      ],
       note: "Residential renovation currently awaiting project-owner kickoff.",
       stakeholders: [
         { id: 1, contactId: 1, role: "Client" },

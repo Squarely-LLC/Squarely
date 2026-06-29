@@ -38,16 +38,7 @@ export const useEmployeesStore = defineStore("employees", {
       const direct = state.items.find(
         (employee) => String(employee.id) === String(id),
       );
-      if (direct) return authorizeRecord("hr", direct);
-
-      const peopleStore = usePeopleStore();
-      peopleStore.init();
-
-      const legacyMatch = peopleStore.hrPeople.find(
-        (person) => String(person.legacyEmployeeId) === String(id),
-      );
-
-      return legacyMatch ? authorizeRecord("hr", personToEmployee(legacyMatch)) : null;
+      return authorizeRecord("hr", direct ?? null);
     },
     search:
       (state) =>
@@ -114,9 +105,7 @@ export const useEmployeesStore = defineStore("employees", {
       const peopleStore = usePeopleStore();
       peopleStore.init();
       const current = this.items.find(
-        (employee) =>
-          String(employee.id) === String(id) ||
-          String((employee as any).legacyEmployeeId) === String(id),
+        (employee) => String(employee.id) === String(id),
       );
       requireCurrentUserPermission(
         "hr",

@@ -103,9 +103,7 @@ const resolveEmployeeName = (employeeId: number | string) => {
     employeesStore.items.find((entry) => String(entry.id) === String(employeeId)) ??
     employeesStore.byId(employeeId);
   const person = peopleStore.hrPeople.find(
-    (entry) =>
-      String(entry.id) === String(employeeId) ||
-      String(entry.legacyEmployeeId) === String(employeeId),
+    (entry) => String(entry.id) === String(employeeId),
   );
 
   return employee?.fullName || person?.fullName || "";

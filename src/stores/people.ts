@@ -81,7 +81,6 @@ export interface PersonProperties {
   crmProfile?: PersonCrmProfile;
   hrProfile?: PersonHrProfile;
   legacyContactId?: number | string;
-  legacyEmployeeId?: number | string;
   createdAt?: string;
 }
 
@@ -304,7 +303,6 @@ export function employeeToPerson(
         : undefined,
       gender: employee.gender || undefined,
     },
-    legacyEmployeeId: employee.legacyEmployeeId ?? employee.id,
     createdAt: employee.createdAt || now,
   };
 }
@@ -346,7 +344,6 @@ const mergeShared = (
   crmProfile: existing.crmProfile ?? incoming.crmProfile,
   hrProfile: existing.hrProfile ?? incoming.hrProfile,
   legacyContactId: existing.legacyContactId ?? incoming.legacyContactId,
-  legacyEmployeeId: existing.legacyEmployeeId ?? incoming.legacyEmployeeId,
 });
 
 const applyContactUpdate = (
@@ -399,7 +396,6 @@ const applyEmployeeUpdate = (
   records: incoming.records,
   transactions: incoming.transactions,
   hrProfile: incoming.hrProfile,
-  legacyEmployeeId: incoming.legacyEmployeeId ?? existing.legacyEmployeeId,
   createdAt: existing.createdAt || incoming.createdAt,
 });
 
@@ -443,7 +439,6 @@ export function personToEmployee(person: PersonProperties): EmployeeProperties {
 
   return {
     id: person.id,
-    legacyEmployeeId: person.legacyEmployeeId,
     fullName: person.fullName,
     class: hr?.class,
     type: hr?.type,
@@ -486,7 +481,6 @@ function mergePeopleSources(
 ) {
   const people: PersonProperties[] = [];
   const keyToPersonId = new Map<string, number>();
-  const employeeIdToPersonId = new Map<string, number>();
 
   const rememberKeys = (person: PersonProperties) => {
     const email = normalizeEmail(person.email);
@@ -538,40 +532,10 @@ function mergePeopleSources(
       people.push(person);
     }
 
-    if (employee.id !== undefined && employee.id !== null) {
-      employeeIdToPersonId.set(String(employee.id), assignedId);
-    }
     rememberKeys(people.find((item) => item.id === assignedId) ?? person);
   });
 
-  const remapEmployeeId = (value: number | string) =>
-    employeeIdToPersonId.get(String(value)) ?? value;
-
-  const remapOptionalEmployeeId = (value: number | string | undefined) => {
-    if (value === undefined || value === null) return value;
-
-    return remapEmployeeId(value);
-  };
-
-  people.forEach((person) => {
-    const employment = person.hrProfile?.employment;
-
-    if (employment?.reportToIds?.length) {
-      employment.reportToIds = employment.reportToIds.map(remapEmployeeId);
-    }
-
-    person.hrProfile?.requests?.forEach((request) => {
-      if ("approvedBy" in request) {
-        request.approvedBy = remapOptionalEmployeeId(request.approvedBy);
-      }
-
-      if ("rejectedBy" in request) {
-        request.rejectedBy = remapOptionalEmployeeId(request.rejectedBy);
-      }
-    });
-  });
-
-  return { people: clonePeopleArray(people), employeeIdToPersonId };
+  return { people: clonePeopleArray(people) };
 }
 
 const loadInitialPeople = () => {
@@ -705,9 +669,7 @@ export const usePeopleStore = defineStore("people", {
     patchEmployee(id: number | string, patch: Partial<EmployeeProperties>) {
       this.init();
       const index = this.items.findIndex(
-        (person) =>
-          String(person.id) === String(id) ||
-          String(person.legacyEmployeeId) === String(id),
+        (person) => String(person.id) === String(id),
       );
       if (index === -1) return null;
 
@@ -771,9 +733,7 @@ export function resolveEmployeePersonId<
   peopleStore.init();
 
   const person = peopleStore.hrPeople.find(
-    (entry) =>
-      String(entry.id) === String(value) ||
-      String(entry.legacyEmployeeId) === String(value),
+    (entry) => String(entry.id) === String(value),
   );
 
   return (person?.id ?? value) as T;

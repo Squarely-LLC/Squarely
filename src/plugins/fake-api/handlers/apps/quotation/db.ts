@@ -10,6 +10,7 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import { seedEmployeeId } from "@/utils/seedIdentityGraph";
 
 const year = new Date().getFullYear();
 const appConfig = loadActiveAppConfigurations();
@@ -216,7 +217,7 @@ export const database: QuotationRecord[] = [
     dealId: 2,
     linkedRecordType: "deal",
     approvalMode: "Request Approval",
-    approverEmployeeId: 1,
+    approverEmployeeId: seedEmployeeId.lina,
     approvalRequestedAt: "2026-06-26T09:30:00Z",
   }),
   buildRecord(6104, "Converted", getSeedAvatar(10), {
@@ -256,7 +257,7 @@ export const database: QuotationRecord[] = [
     isRevision: true,
     revisionLabel: "R1",
     approvalMode: "Request Approval",
-    approverEmployeeId: 1,
+    approverEmployeeId: seedEmployeeId.lina,
     approvalRequestedAt: "2026-06-26T10:15:00Z",
   }),
 ];

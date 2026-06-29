@@ -228,12 +228,7 @@ const currentPerson = computed(() => {
 
   return (
     peopleStore.hrPeople.find((person: any) =>
-      [
-        person.id,
-        person.employeeId,
-        person.personId,
-        person.legacyEmployeeId,
-      ]
+      [person.id, person.employeeId, person.personId]
         .map((entry) => normalizeKey(entry))
         .some((entry) => directCandidates.includes(entry)),
     ) ??
@@ -273,7 +268,6 @@ const currentUserKeys = computed(() => {
     signedIn.email,
     signedIn.name,
     currentPerson.value?.id,
-    currentPerson.value?.legacyEmployeeId,
     currentPerson.value?.email,
     (currentPerson.value as any)?.name,
     currentPerson.value?.fullName,
@@ -309,7 +303,6 @@ const scopedIdentityKeys = computed(() => {
     directReports.value.forEach((person: any) => {
       [
         person.id,
-        person.legacyEmployeeId,
         person.employeeId,
         person.personId,
         person.email,
@@ -451,10 +444,7 @@ const scopedMeetings = computed(() =>
 
 const scopedRequests = computed(() =>
   dashboardPeople.value.flatMap((person: any) => {
-    const employee =
-      employeesStore.byId(person.id) ??
-      (person.legacyEmployeeId ? employeesStore.byId(person.legacyEmployeeId) : null) ??
-      person;
+    const employee = employeesStore.byId(person.id) ?? person;
 
     return (employee.requests ?? []).map((request: any) => ({
       ...request,
@@ -474,9 +464,7 @@ const ownRequests = computed(() => {
   if (!own) return [];
 
   const employee =
-    employeesStore.byId(own.id) ??
-    (own.legacyEmployeeId ? employeesStore.byId(own.legacyEmployeeId) : null) ??
-    own;
+    employeesStore.byId(own.id) ?? own;
 
   return (((employee as any).requests ?? []) as any[]).map((request: any) => ({
     id: `hr-${employee.id}-${request.id}`,
@@ -779,14 +767,7 @@ const ownDocumentRequests = computed(() => {
 const hrApprovalRows = computed(() => {
   const employees = isSuperAdminUser.value
     ? employeesStore.all
-    : directReports.value.map(
-        (person: any) =>
-          employeesStore.byId(person.id) ??
-          (person.legacyEmployeeId
-            ? employeesStore.byId(person.legacyEmployeeId)
-            : null) ??
-          person,
-      );
+    : directReports.value.map((person: any) => employeesStore.byId(person.id) ?? person);
 
   return employees.flatMap((employee: any) =>
     (employee.requests ?? [])
@@ -1262,9 +1243,7 @@ const resolveHrApprovalTarget = (row: any) => {
   const candidates = [
     employeesStore.byId(row.employeeId),
     ...employeesStore.items.filter(
-      (employee: any) =>
-        String(employee.id) === String(row.employeeId) ||
-        String((employee as any).legacyEmployeeId) === String(row.employeeId),
+      (employee: any) => String(employee.id) === String(row.employeeId),
     ),
     ...employeesStore.items.filter((employee: any) =>
       (employee.requests ?? []).some(

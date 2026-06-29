@@ -23,9 +23,22 @@ export type SeedIdentity = {
   reportToIds: number[];
 };
 
+export const seedEmployeeId = {
+  lina: 101,
+  farah: 102,
+  maya: 103,
+  nour: 104,
+  omar: 105,
+  rania: 106,
+  karim: 107,
+  sara: 108,
+  imad: 109,
+  layla: 110,
+} as const;
+
 export const seedIdentities: SeedIdentity[] = [
   {
-    id: 1,
+    id: seedEmployeeId.lina,
     roleId: "account-owner-super-admin",
     roleName: "Account Owner / Super Admin",
     fullName: "Lina Haddad",
@@ -35,10 +48,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Executive",
     worksInSales: true,
     isSalesTeamMember: true,
-    reportToIds: [],
+    reportToIds: [seedEmployeeId.maya],
   },
   {
-    id: 2,
+    id: seedEmployeeId.farah,
     roleId: "admin",
     roleName: "Admin",
     fullName: "Farah Mansour",
@@ -48,10 +61,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Operations",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [1],
+    reportToIds: [seedEmployeeId.lina],
   },
   {
-    id: 3,
+    id: seedEmployeeId.maya,
     roleId: "hr-manager",
     roleName: "HR Manager",
     fullName: "Maya Rahal",
@@ -61,10 +74,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "HR",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [1],
+    reportToIds: [seedEmployeeId.lina],
   },
   {
-    id: 4,
+    id: seedEmployeeId.nour,
     roleId: "hr-executive",
     roleName: "HR Executive",
     fullName: "Nour Yazbek",
@@ -74,10 +87,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "HR",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [3],
+    reportToIds: [seedEmployeeId.maya],
   },
   {
-    id: 5,
+    id: seedEmployeeId.omar,
     roleId: "sales-manager",
     roleName: "Sales Manager",
     fullName: "Omar Nasser",
@@ -87,10 +100,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Sales",
     worksInSales: true,
     isSalesTeamMember: true,
-    reportToIds: [1],
+    reportToIds: [seedEmployeeId.lina],
   },
   {
-    id: 6,
+    id: seedEmployeeId.rania,
     roleId: "sales-executive",
     roleName: "Sales Executive",
     fullName: "Rania Abdul",
@@ -100,10 +113,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Sales",
     worksInSales: true,
     isSalesTeamMember: true,
-    reportToIds: [5],
+    reportToIds: [seedEmployeeId.omar],
   },
   {
-    id: 7,
+    id: seedEmployeeId.karim,
     roleId: "operation-manager",
     roleName: "Operation Manager",
     fullName: "Karim Haddad",
@@ -113,10 +126,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Operations",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [2],
+    reportToIds: [seedEmployeeId.farah],
   },
   {
-    id: 8,
+    id: seedEmployeeId.sara,
     roleId: "operation-executive",
     roleName: "Operation Executive",
     fullName: "Sara Mansour",
@@ -126,10 +139,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Operations",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [7],
+    reportToIds: [seedEmployeeId.karim],
   },
   {
-    id: 9,
+    id: seedEmployeeId.imad,
     roleId: "auditor",
     roleName: "Auditor",
     fullName: "Imad Khoury",
@@ -139,10 +152,10 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Finance",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [1],
+    reportToIds: [seedEmployeeId.lina],
   },
   {
-    id: 10,
+    id: seedEmployeeId.layla,
     roleId: "finance-executive",
     roleName: "Finance Executive",
     fullName: "Layla Saab",
@@ -152,7 +165,7 @@ export const seedIdentities: SeedIdentity[] = [
     department: "Finance",
     worksInSales: false,
     isSalesTeamMember: false,
-    reportToIds: [9],
+    reportToIds: [seedEmployeeId.imad],
   },
 ];
 

@@ -482,8 +482,8 @@ const ensureLinkedUsers = (state: AccountRoleState): AccountRoleState => ({
 
     return {
       ...user,
-      employeeId: user.employeeId ?? identity.id,
-      personId: user.personId ?? identity.id,
+      employeeId: identity.id,
+      personId: identity.id,
       avatar: user.avatar || identity.avatar,
     };
   }),

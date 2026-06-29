@@ -12,6 +12,7 @@ import {
   getDocumentSequencePrefix,
   loadActiveAppConfigurations,
 } from "@/utils/quotationConfig";
+import { seedEmployeeId } from "@/utils/seedIdentityGraph";
 
 const year = new Date().getFullYear();
 const appConfig = loadActiveAppConfigurations();
@@ -238,7 +239,7 @@ const standaloneRecords: ProformaRecord[] = [
     dealId: 2,
     linkedRecordType: "deal",
     approvalMode: "Request Approval",
-    approverEmployeeId: 1,
+    approverEmployeeId: seedEmployeeId.lina,
     approvalRequestedAt: "2026-06-26T10:45:00Z",
   }),
   buildStandaloneRecord(6203, "Not Paid", "", {

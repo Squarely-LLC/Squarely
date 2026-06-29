@@ -358,7 +358,9 @@ export const handlerAppsEmployees = [
 
     const newEmployee = {
       ...restPayload,
-      id: db.users.length + 1,
+      id:
+        Math.max(100, ...db.users.map((employee) => Number(employee.id) || 0)) +
+        1,
       accounting,
     };
 

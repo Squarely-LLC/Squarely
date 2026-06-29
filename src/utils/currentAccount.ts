@@ -2,6 +2,7 @@ import type {
   PeopleContactRef,
   PeopleSelectOption,
 } from "@/utils/peopleOptions";
+import { seedIdentityByEmail } from "@/utils/seedIdentityGraph";
 
 export const currentUserData = () => useCookie<any>("userData").value;
 
@@ -31,19 +32,31 @@ const isPlaceholderAuthor = (value: any) => {
 
 export const getSignedInIdentity = (): SignedInIdentity => {
   const user = currentUserData() ?? {};
-  const accountId = user.id ?? user.accountId ?? user.employeeId ?? "me";
+  const seededIdentity =
+    user.email
+      ? seedIdentityByEmail.get(String(user.email).trim().toLowerCase())
+      : null;
+  const employeeId = seededIdentity?.id ?? user.employeeId ?? null;
+  const personId = seededIdentity?.id ?? user.personId ?? null;
+  const accountId = user.id ?? user.accountId ?? employeeId ?? "me";
   const name =
-    String(user.fullName ?? user.name ?? user.username ?? user.email ?? "User")
-      .trim() || "User";
+    String(
+      seededIdentity?.fullName ??
+        user.fullName ??
+        user.name ??
+        user.username ??
+        user.email ??
+        "User",
+    ).trim() || "User";
 
   return {
-    id: user.personId ?? user.employeeId ?? accountId,
+    id: personId ?? employeeId ?? accountId,
     accountId,
-    employeeId: user.employeeId ?? null,
-    personId: user.personId ?? null,
+    employeeId,
+    personId,
     name,
-    email: user.email ?? null,
-    avatarUrl: user.avatar ?? user.avatarUrl ?? null,
+    email: seededIdentity?.email ?? user.email ?? null,
+    avatarUrl: seededIdentity?.avatar ?? user.avatar ?? user.avatarUrl ?? null,
   };
 };
 

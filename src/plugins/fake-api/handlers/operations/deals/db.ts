@@ -1,4 +1,5 @@
 import type { DealProperties, DealSalesTaskTemplate } from "./types";
+import { seedEmployeeId } from "@/utils/seedIdentityGraph";
 
 interface DB {
   deals: DealProperties[];
@@ -39,13 +40,17 @@ export const db: DB = {
       projectName: "Jumeirah Boutique Launch",
       relatedTo: 1,
       linkedJobId: null,
-      salesman: 6,
+      salesman: seedEmployeeId.rania,
       type: "Retail",
       estimatedDeliveryDate: "2026-05-20",
       stage: "Negotation",
       important: true,
       location: "Dubai",
-      collaborators: [5, 6, 7],
+      collaborators: [
+        seedEmployeeId.omar,
+        seedEmployeeId.rania,
+        seedEmployeeId.karim,
+      ],
       note: "Client wants phased delivery around store launch.",
       customFieldValues: {
         additional_field_1: 15880,
@@ -212,7 +217,7 @@ export const db: DB = {
       projectName: "Riyadh North Showroom",
       relatedTo: 5,
       linkedJobId: null,
-      salesman: 5,
+      salesman: seedEmployeeId.omar,
       type: "Wholesale",
       estimatedDeliveryDate: "2026-06-05",
       stage: "Pre-Sale",
@@ -224,7 +229,7 @@ export const db: DB = {
       },
       important: false,
       location: "Riyadh",
-      collaborators: [7, 8],
+      collaborators: [seedEmployeeId.karim, seedEmployeeId.sara],
       note: "Pending final material palette approval.",
       customFieldValues: {
         additional_field_1: 4280,
@@ -338,13 +343,17 @@ export const db: DB = {
       projectName: "June Activation Package",
       relatedTo: 3,
       linkedJobId: null,
-      salesman: 5,
+      salesman: seedEmployeeId.omar,
       type: "Retail",
       estimatedDeliveryDate: "2026-05-12",
       stage: "Active",
       important: true,
       location: "Online",
-      collaborators: [5, 6, 10],
+      collaborators: [
+        seedEmployeeId.omar,
+        seedEmployeeId.rania,
+        seedEmployeeId.layla,
+      ],
       note: "Fast turnaround requested for June activation.",
       customFieldValues: {
         additional_field_1: 7680,

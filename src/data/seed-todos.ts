@@ -1,6 +1,7 @@
 import { db } from "@/plugins/fake-api/handlers/apps/contact/db";
 import { db as employeesDb } from "@/plugins/fake-api/handlers/apps/employees/db";
 import { db as dealsDb } from "@/plugins/fake-api/handlers/operations/deals/db";
+import { seedEmployeeId } from "@/utils/seedIdentityGraph";
 import type { ContactRef, Meeting, ToDo } from "./schema";
 
 export const nowISO = () => new Date().toISOString();
@@ -49,46 +50,32 @@ const C: Record<string, ContactRef> = new Proxy(
   },
 ) as Record<string, ContactRef>;
 
-const employeePersonIdByLegacyId: Record<number, number> = {
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  5: 5,
-  6: 6,
-  7: 7,
-  8: 8,
-  9: 9,
-  10: 10,
-};
-
-const employeeRef = (legacyEmployeeId: number): ContactRef => {
+const employeeRef = (employeeId: number): ContactRef => {
   const employee = employeesDb.users.find(
-    (user) => Number(user.id) === Number(legacyEmployeeId),
+    (user) => Number(user.id) === Number(employeeId),
   );
-  const personId =
-    employeePersonIdByLegacyId[legacyEmployeeId] ?? legacyEmployeeId;
 
   return employee
     ? {
-        id: personId,
+        id: employeeId,
         name: employee.fullName,
         avatarUrl: employee.picture || undefined,
       }
-    : { id: personId, name: `Person #${personId}` };
+    : { id: employeeId, name: `Employee #${employeeId}` };
 };
 
 const E = {
-  lina: employeeRef(1),
-  farah: employeeRef(2),
-  daniel: employeeRef(3),
-  rana: employeeRef(4),
-  salesManager: employeeRef(5),
-  salesExecutive: employeeRef(6),
-  operationManager: employeeRef(7),
-  operationExecutive: employeeRef(8),
-  auditor: employeeRef(9),
-  financeExecutive: employeeRef(10),
+  lina: employeeRef(seedEmployeeId.lina),
+  farah: employeeRef(seedEmployeeId.farah),
+  hrManager: employeeRef(seedEmployeeId.maya),
+  hrExecutive: employeeRef(seedEmployeeId.nour),
+  nour: employeeRef(seedEmployeeId.nour),
+  salesManager: employeeRef(seedEmployeeId.omar),
+  salesExecutive: employeeRef(seedEmployeeId.rania),
+  operationManager: employeeRef(seedEmployeeId.karim),
+  operationExecutive: employeeRef(seedEmployeeId.sara),
+  auditor: employeeRef(seedEmployeeId.imad),
+  financeExecutive: employeeRef(seedEmployeeId.layla),
 };
 
 // shared meeting time helpers
@@ -248,7 +235,7 @@ export const SeedTodos: ToDo[] = [
   {
     id: 563,
     title: "Collect event site readiness checklist",
-    collaborators: [E.lina, E.rana],
+    collaborators: [E.lina, E.nour],
     dueAt: dateOnlyISO(1),
     afterWhen: "+1 day",
     startTrigger: { type: "time", goalId: null, taskId: null },

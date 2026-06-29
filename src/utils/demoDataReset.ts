@@ -1,5 +1,5 @@
 export const DEMO_DATA_VERSION_KEY = "app.demo-data.version";
-export const DEMO_DATA_VERSION = "2026-06-29-hr-reportsto-employees-v4";
+export const DEMO_DATA_VERSION = "2026-06-30-clean-hr-employees-v1";
 
 const DEMO_STORAGE_PREFIXES = [
   "app.account-roles.",

@@ -927,13 +927,7 @@ const reportsToManagers = computed(() => {
 
   return allIds
     .map((managerId) => {
-      const manager =
-        employeesStore.byId(managerId) ??
-        employeesStore.items.find(
-          (employee: any) =>
-            String(employee.id) === String(managerId) ||
-            String(employee.legacyEmployeeId) === String(managerId),
-        );
+      const manager = employeesStore.byId(managerId);
       return manager
         ? { id: manager.id, name: manager.fullName, picture: manager.picture }
         : null;

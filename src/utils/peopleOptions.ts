@@ -90,8 +90,7 @@ const optionFromPerson = (
   avatarUrl: person.picture ?? null,
   contactId:
     person.legacyContactId ?? (person.crmProfile ? person.id : undefined),
-  employeeId:
-    person.legacyEmployeeId ?? (person.hrProfile ? person.id : undefined),
+  employeeId: person.hrProfile ? person.id : undefined,
 });
 
 export const getContactRefs = () =>
