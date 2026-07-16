@@ -8951,6 +8951,12 @@ const openEditTask = (taskId: number | string) => {
                           <div class="item-card-title item-card-title--phase">
                             {{ section.name }}
                           </div>
+                          <span
+                            class="item-card-row-separator"
+                            aria-hidden="true"
+                          >
+                            |
+                          </span>
                           <VChip
                             color="secondary"
                             size="x-small"
@@ -9114,6 +9120,12 @@ const openEditTask = (taskId: number | string) => {
                                     </div>
                                   </template>
                                 </VTooltip>
+                                <span
+                                  class="item-card-row-separator"
+                                  aria-hidden="true"
+                                >
+                                  |
+                                </span>
                                 <VChip
                                   color="primary"
                                   size="x-small"
@@ -9591,8 +9603,14 @@ const openEditTask = (taskId: number | string) => {
                   >
                     <strong class="items-overview__preview-title">
                       {{ panel.title }}
+                      <span
+                        class="item-card-row-separator"
+                        aria-hidden="true"
+                      >
+                        |
+                      </span>
                       <span class="items-overview__preview-meta">
-                        | {{ panel.summary }}
+                        {{ panel.summary }}
                       </span>
                     </strong>
 
@@ -12263,14 +12281,13 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .item-type-chip {
-  position: relative;
   background: transparent !important;
   box-shadow: none !important;
   gap: 0.4rem;
   margin-inline-start: 0.2rem;
   min-block-size: auto;
   opacity: 1 !important;
-  padding-inline-start: 0.85rem;
+  padding-inline-start: 0;
 }
 
 .item-type-chip :deep(.v-chip__underlay) {
@@ -12279,18 +12296,6 @@ const openEditTask = (taskId: number | string) => {
 
 .item-type-chip:hover {
   opacity: 1 !important;
-}
-
-.item-type-chip::before {
-  position: absolute;
-  border-radius: 999px;
-  background: currentcolor;
-  block-size: 1rem;
-  content: "";
-  inline-size: 0.25rem;
-  inset-block-start: 50%;
-  inset-inline-start: 0.2rem;
-  transform: translateY(-50%);
 }
 
 .item-type-chip--phase {
