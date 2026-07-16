@@ -348,23 +348,16 @@ function jobReference() {
       </template>
 
       <template #append>
-        <VBtnToggle
+        <AppSelect
           v-model="stageFilter"
           class="activity-stage-filter"
-          color="primary"
+          :items="stageOptions"
+          item-title="label"
+          item-value="key"
+          label="Stage"
           density="compact"
-          mandatory
-          divided
-        >
-          <VBtn
-            v-for="stage in stageOptions"
-            :key="stage.key"
-            :value="stage.key"
-            size="small"
-          >
-            {{ stage.label }}
-          </VBtn>
-        </VBtnToggle>
+          hide-details
+        />
       </template>
     </VCardItem>
 
@@ -641,8 +634,8 @@ function jobReference() {
 <style scoped>
 .activity-card {
   display: flex;
-  min-block-size: 42rem;
-  block-size: calc(100vh - 10rem);
+  min-block-size: calc(100vh - 8rem);
+  block-size: calc(100vh - 8rem);
   flex-direction: column;
 }
 
@@ -651,8 +644,7 @@ function jobReference() {
 }
 
 .activity-stage-filter {
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  inline-size: 13rem;
   max-inline-size: 100%;
 }
 
@@ -798,13 +790,13 @@ function jobReference() {
 
 @media (max-width: 959px) {
   .activity-card {
-    block-size: auto;
-    min-block-size: 36rem;
+    block-size: calc(100vh - 7rem);
+    min-block-size: calc(100vh - 7rem);
   }
 
   .activity-stage-filter {
-    justify-content: flex-start;
     margin-block-start: 0.75rem;
+    inline-size: 100%;
   }
 
   .activity-overview-grid,
