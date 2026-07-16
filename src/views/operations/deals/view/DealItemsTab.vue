@@ -2625,9 +2625,13 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
   };
 };
 
+const isPeriodDrivenHeaderItem = (
+  item?: DealItem | DealItemWithPlan | null,
+) => isRetainerParentDealItem(item) || isRecurrentParentDealItem(item);
+
 const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item)
-    return [] as Array<{ label: "Start Date" | "End Date"; value: string }>;
+    return [] as Array<{ label: "Start date" | "End date"; value: string }>;
 
   const rawStartDate = isRetainerCatalogueType(item.catalogueType)
     ? item.retainerStartDate
@@ -2642,14 +2646,20 @@ const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
 
   const startDate = formatDocumentDate(rawStartDate);
   const endDate = formatDocumentDate(rawEndDate);
-  const fields: Array<{ label: "Start Date" | "End Date"; value: string }> = [];
+  const fields: Array<{ label: "Start date" | "End date"; value: string }> = [];
 
   if (startDate !== "--") {
-    fields.push({ label: "Start Date", value: startDate });
+    fields.push({ label: "Start date", value: startDate });
   }
 
   if (endDate !== "--") {
-    fields.push({ label: "End Date", value: endDate });
+    fields.push({
+      label: "End date",
+      value:
+        startDate !== "--" && endDate === startDate
+          ? "same as start"
+          : endDate,
+    });
   }
 
   return fields;
@@ -2760,6 +2770,9 @@ const itemAmount = (item: DealItem) =>
     getItemEffectiveQuantity(item),
     item.discountPercent || 0,
   );
+
+const itemDiscountedUnitPrice = (item: DealItem) =>
+  calculateAmount(item.unitPrice, 1, item.discountPercent || 0);
 
 const goalAmount = (goal: DerivedGoal) =>
   calculateAmount(goal.price, goal.quantity, goal.discountPercent || 0);
@@ -7942,15 +7955,26 @@ const openEditTask = (taskId: number | string) => {
                               </div>
                             </template>
                           </VTooltip>
+                        </div>
 
-                          <span
-                            class="item-card-row-separator"
-                            aria-hidden="true"
+                        <div
+                          v-if="getItemDateFields(item).length"
+                          class="item-card-date-row text-body-2"
+                        >
+                          <template
+                            v-for="field in getItemDateFields(item)"
+                            :key="field.label"
                           >
-                            |
-                          </span>
+                            <span class="item-card-date-row__group">
+                              {{ field.label }}:
+                              <strong>{{ field.value }}</strong>
+                            </span>
+                          </template>
+                        </div>
+
+                        <div class="item-card-inline-metrics">
                           <span class="item-card-inline-metrics__group">
-                            {{ getItemDisplayMetric(item).label }} :
+                            {{ getItemDisplayMetric(item).label }}:
                             <strong>{{
                               getItemDisplayMetric(item).value
                             }}</strong>
@@ -7962,33 +7986,23 @@ const openEditTask = (taskId: number | string) => {
                             |
                           </span>
                           <span class="item-card-inline-metrics__group">
-                            UP:
+                            Price:
                             <strong>{{
-                              formatDealMoney(item.unitPrice)
+                              formatDealMoney(itemDiscountedUnitPrice(item))
                             }}</strong>
                           </span>
-                        </div>
-
-                        <div
-                          v-if="getItemDateFields(item).length"
-                          class="item-card-date-row text-body-2 text-medium-emphasis"
-                        >
-                          <template
-                            v-for="(field, index) in getItemDateFields(item)"
-                            :key="`${field.label}-${index}`"
+                          <span
+                            class="item-card-row-separator"
+                            aria-hidden="true"
                           >
-                            <span class="item-card-date-row__group">
-                              {{ field.label }}:
-                              <strong>{{ field.value }}</strong>
-                            </span>
-                            <span
-                              v-if="index < getItemDateFields(item).length - 1"
-                              class="item-card-row-separator"
-                              aria-hidden="true"
-                            >
-                              |
-                            </span>
-                          </template>
+                            |
+                          </span>
+                          <span class="item-card-inline-metrics__group">
+                            Amount:
+                            <strong>{{
+                              formatDealMoney(itemAmount(item))
+                            }}</strong>
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -8016,12 +8030,6 @@ const openEditTask = (taskId: number | string) => {
                     </div>
                   </div>
 
-                  <div class="item-card-amount">
-                    <span>Amount</span>
-                    <strong>{{
-                      formatDealMoney(itemAmount(item))
-                    }}</strong>
-                  </div>
                 </div>
 
                 <div
@@ -11579,10 +11587,7 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .item-card-content {
-  display: grid;
-  align-items: center;
-  column-gap: 0.75rem;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: block;
 }
 
 .item-card-main {
@@ -11627,8 +11632,9 @@ const openEditTask = (taskId: number | string) => {
 
 .item-card-title {
   flex: 0 1 auto;
+  color: rgb(var(--v-theme-on-surface));
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1.25;
   min-inline-size: 0;
 }
@@ -11677,17 +11683,19 @@ const openEditTask = (taskId: number | string) => {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: 0.875rem;
   gap: 0.35rem;
   line-height: 1.4;
 }
 
 .item-card-inline-metrics {
-  margin-block-start: 0;
+  margin-block-start: 0.35rem;
 }
 
 .item-card-date-row {
+  align-items: flex-start;
+  flex-direction: column;
   margin-block-start: 0.35rem;
 }
 
@@ -11696,7 +11704,7 @@ const openEditTask = (taskId: number | string) => {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: baseline;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: 0.875rem;
   font-weight: 400;
   gap: 0.25rem;
@@ -11708,44 +11716,8 @@ const openEditTask = (taskId: number | string) => {
 .item-card-date-row__group strong {
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: inherit;
-  font-weight: 700;
+  font-weight: 500;
   line-height: inherit;
-}
-
-.item-card-amount {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.08);
-  min-inline-size: 5.75rem;
-  padding-block: 0.5rem;
-  padding-inline: 0.75rem;
-  text-align: center;
-}
-
-.item-card-amount span,
-.item-card-amount strong {
-  display: block;
-  white-space: nowrap;
-}
-
-.item-card-amount span {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.15;
-  text-transform: uppercase;
-}
-
-.item-card-amount strong {
-  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 0.9rem;
-  line-height: 1.25;
-  margin-block-start: 0.1rem;
 }
 
 .product-metrics {
@@ -12322,15 +12294,6 @@ const openEditTask = (taskId: number | string) => {
   .item-card-header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .item-card-content {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 0.75rem;
-  }
-
-  .item-card-amount {
-    min-inline-size: 100%;
   }
 
   .item-card-row-separator {
