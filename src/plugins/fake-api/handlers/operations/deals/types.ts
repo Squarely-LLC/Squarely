@@ -112,6 +112,7 @@ export interface DealNote {
   body: string;
   createdAt: string;
   authorName?: string | null;
+  stage?: string | null;
 }
 
 export type DealStageLifecycleEvent =

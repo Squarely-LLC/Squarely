@@ -70,7 +70,6 @@ import DealUpsertDialog from "@/views/operations/deals/list/DealUpsertDialog.vue
 import DealCommunicationTab from "@/views/operations/deals/view/DealCommunicationTab.vue";
 import DealDocumentsTab from "@/views/operations/deals/view/DealDocumentsTab.vue";
 import DealItemsTab from "@/views/operations/deals/view/DealItemsTab.vue";
-import DealNotesTab from "@/views/operations/deals/view/DealNotesTab.vue";
 import DealSummaryCard from "@/views/operations/deals/view/DealSummaryCard.vue";
 
 const route = useRoute("operations-deals-view-id");
@@ -136,12 +135,11 @@ const noteDraft = ref("");
 const isCollaboratorDialogVisible = ref(false);
 const collaboratorDialogValue = ref<Array<number | string>>([]);
 
-const tabKeys = ["items", "activity", "documents", "notes"] as const;
+const tabKeys = ["items", "activity", "documents"] as const;
 const tabs = [
   { icon: "tabler-package", title: "Items" },
   { icon: "tabler-message", title: "Activity" },
   { icon: "tabler-folder", title: "Documents" },
-  { icon: "tabler-notes", title: "Notes" },
 ] as const;
 
 type ExecutionPreviewTaskKind = "sales" | "milestone" | "goal";
@@ -1194,7 +1192,9 @@ const resolveDeal = () => {
 const setTabFromQuery = () => {
   const rawQueryTab = String(route.query.tab || tabKeys[0]);
   const queryTab =
-    rawQueryTab === "communication" || rawQueryTab === "timeline"
+    rawQueryTab === "communication" ||
+    rawQueryTab === "timeline" ||
+    rawQueryTab === "notes"
       ? "activity"
       : rawQueryTab;
   const index = (tabKeys as readonly string[]).indexOf(queryTab);
@@ -1897,6 +1897,7 @@ const saveDealNote = () => {
         body,
         createdAt,
         authorName,
+        stage: deal.value.stage || "Created",
       },
     ],
   });
@@ -1908,7 +1909,7 @@ const saveDealNote = () => {
 
   deal.value = cloneDeal(updated);
   closeAddNoteDialog();
-  dealTab.value = tabKeys.indexOf("notes");
+  dealTab.value = tabKeys.indexOf("activity");
   notifications.push("Note added", "success", 2500);
 };
 
@@ -2962,6 +2963,7 @@ watch(
           <VWindowItem>
             <DealCommunicationTab
               :deal="deal"
+              :collaborators="dealEmployeeCollaborators"
               :hide-financials="hideDealFinancials"
             />
           </VWindowItem>
@@ -2976,10 +2978,6 @@ watch(
               :task-create-disabled-reason="taskCreateDisabledReason"
               @open-add-todo="handleDocumentTodoRequest"
             />
-          </VWindowItem>
-
-          <VWindowItem>
-            <DealNotesTab :deal="deal" />
           </VWindowItem>
         </VWindow>
       </VCol>

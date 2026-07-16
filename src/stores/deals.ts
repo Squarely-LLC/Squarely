@@ -728,7 +728,7 @@ function sanitizeDeals(deals: DealProperties[]) {
     salesTasks: normalizeSalesTasks(deal.salesTasks),
     documents: normalizeDocuments(deal.documents),
     financials: normalizeFinancials(deal.financials),
-    notes: normalizeNotes(deal.notes),
+    notes: normalizeNotes(deal.notes, deal.stage),
   }));
 }
 
@@ -776,8 +776,13 @@ function normalizeFinancials(
   }));
 }
 
-function normalizeNotes(notes: DealNote[] | undefined | null): DealNote[] {
+function normalizeNotes(
+  notes: DealNote[] | undefined | null,
+  fallbackStage?: string | null,
+): DealNote[] {
   if (!Array.isArray(notes)) return [];
+
+  const normalizedFallbackStage = normalizeDealStageValue(fallbackStage);
 
   return notes
     .map((note, index) => ({
@@ -787,6 +792,7 @@ function normalizeNotes(notes: DealNote[] | undefined | null): DealNote[] {
       body: String(note.body ?? "").trim(),
       createdAt: note.createdAt || new Date().toISOString(),
       authorName: note.authorName ? String(note.authorName).trim() : null,
+      stage: normalizeDealStageValue(note.stage) || normalizedFallbackStage,
     }))
     .filter((note) => note.body);
 }
@@ -823,7 +829,7 @@ function normaliseDeal(
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
     stageManuallyManaged: false,
     pendingStageTransition: null,
-    notes: normalizeNotes(payload.notes),
+    notes: normalizeNotes(payload.notes, payload.stage),
     items: normalizeItems(payload.items),
     salesTasks: normalizeSalesTasks(payload.salesTasks),
     documents: normalizeDocuments(payload.documents),
@@ -904,8 +910,8 @@ function mergeDeal(
         : normalizePendingStageTransition(patch.pendingStageTransition),
     notes:
       patch.notes === undefined
-        ? normalizeNotes(original.notes)
-        : normalizeNotes(patch.notes),
+        ? normalizeNotes(original.notes, original.stage)
+        : normalizeNotes(patch.notes, patch.stage ?? original.stage),
     items:
       patch.items === undefined
         ? normalizeItems(original.items)

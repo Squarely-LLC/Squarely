@@ -62,12 +62,14 @@ export const db: DB = {
           body: "Client approved the commercial direction and requested the decorative primer as a visible line item.",
           authorName: "Lina Haddad",
           createdAt: "2026-04-11T08:45:00Z",
+          stage: "Negotation",
         },
         {
           id: "deal-1-note-2",
           body: "Production drawing must be checked before procurement starts.",
           authorName: "Maya Rahal",
           createdAt: "2026-04-12T14:20:00Z",
+          stage: "Negotation",
         },
       ],
       items: [
@@ -241,6 +243,7 @@ export const db: DB = {
           body: "Maintenance scope split into mobilization and preventive maintenance phases for staged billing.",
           authorName: "Karim Haddad",
           createdAt: "2026-04-15T10:05:00Z",
+          stage: "Pre-Sale",
         },
       ],
       items: [
@@ -365,6 +368,7 @@ export const db: DB = {
           body: "Retainer and recurrent rows include billable period metadata so document generation can bill one month at a time.",
           authorName: "Layla Saab",
           createdAt: "2026-04-19T12:30:00Z",
+          stage: "Active",
         },
       ],
       items: [
