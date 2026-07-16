@@ -12,6 +12,7 @@ import { computed, ref } from "vue";
 type StageKey = "created" | "negotation" | "active" | "canceled" | "lost";
 
 type NoteActivity = {
+  authorAvatarUrl: string | null;
   id: string;
   title: string;
   body: string;
@@ -124,6 +125,22 @@ function initials(name?: string | null) {
       .join("")
       .toUpperCase() || "?"
   );
+}
+
+function findCollaboratorByName(name?: string | null) {
+  const normalized = String(name ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  return (
+    props.collaborators?.find(
+      (collaborator) =>
+        String(collaborator.name ?? "").trim().toLowerCase() === normalized,
+    ) ?? null
+  );
+}
+
+function noteAvatarUrl(authorName?: string | null) {
+  return findCollaboratorByName(authorName)?.avatarUrl ?? null;
 }
 
 const linkedJob = computed(() => {
@@ -315,6 +332,7 @@ const jobProgress = computed(() => {
 
 const noteActivities = computed<NoteActivity[]>(() =>
   (props.deal.notes || []).map((note) => ({
+    authorAvatarUrl: noteAvatarUrl(note.authorName),
     id: `note-${note.id}`,
     title: note.authorName || "Note",
     body: note.body || "",
@@ -394,8 +412,8 @@ function jobReference() {
           <div class="deal-stage-section">
             <div class="deal-stage-section__heading">
               <div>
-                <div class="deal-stage-section__title">{{ stage.label }}</div>
-                <div class="deal-stage-section__meta">
+                <div class="app-timeline-title">{{ stage.label }}</div>
+                <div class="app-timeline-meta">
                   {{ stage.notes.length }} note{{ stage.notes.length === 1 ? "" : "s" }}
                 </div>
               </div>
@@ -406,19 +424,28 @@ function jobReference() {
 
             <VCard
               v-if="stage.key === 'created'"
-              variant="tonal"
-              class="activity-entry"
+              class="activity-entry mb-4"
             >
+              <VCardItem class="pb-4">
+                <VCardTitle class="app-timeline-title activity-entry__title">
+                  Created overview
+                </VCardTitle>
+              </VCardItem>
               <VCardText>
-                <div class="activity-entry__title">Created overview</div>
                 <div class="activity-overview-grid">
-                  <div>
-                    <span>Date created</span>
-                    <strong>{{ formatDisplayDate(deal.createdAt) }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-calendar-plus" size="20" />
+                    <span>
+                      <span>Date created</span>
+                      <strong>{{ formatDisplayDate(deal.createdAt) }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Expected close date</span>
-                    <strong>{{ formatDisplayDate(deal.estimatedDeliveryDate) }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-calendar-due" size="20" />
+                    <span>
+                      <span>Expected close date</span>
+                      <strong>{{ formatDisplayDate(deal.estimatedDeliveryDate) }}</strong>
+                    </span>
                   </div>
                 </div>
 
@@ -476,23 +503,35 @@ function jobReference() {
 
             <VCard
               v-if="stage.key === 'created'"
-              variant="tonal"
-              class="activity-entry"
+              class="activity-entry mb-4"
             >
+              <VCardItem class="pb-4">
+                <VCardTitle class="app-timeline-title activity-entry__title">
+                  Pre-sale activities
+                </VCardTitle>
+              </VCardItem>
               <VCardText>
-                <div class="activity-entry__title">Pre-sale activities</div>
                 <div class="activity-count-grid">
-                  <div>
-                    <span>Tasks</span>
-                    <strong>{{ dealTaskTodos.length }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-list-check" size="20" />
+                    <span>
+                      <span>Tasks</span>
+                      <strong>{{ dealTaskTodos.length }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Calls</span>
-                    <strong>{{ callCount }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-phone-call" size="20" />
+                    <span>
+                      <span>Calls</span>
+                      <strong>{{ callCount }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Meetings</span>
-                    <strong>{{ meetingCount }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-users-group" size="20" />
+                    <span>
+                      <span>Meetings</span>
+                      <strong>{{ meetingCount }}</strong>
+                    </span>
                   </div>
                 </div>
               </VCardText>
@@ -500,35 +539,56 @@ function jobReference() {
 
             <VCard
               v-if="stage.key === 'negotation'"
-              variant="tonal"
-              class="activity-entry"
+              class="activity-entry mb-4"
             >
+              <VCardItem class="pb-4">
+                <VCardTitle class="app-timeline-title activity-entry__title">
+                  Negotation summary
+                </VCardTitle>
+              </VCardItem>
               <VCardText>
-                <div class="activity-entry__title">Negotation summary</div>
                 <div class="activity-count-grid">
-                  <div>
-                    <span>Items</span>
-                    <strong>{{ rootItems.length }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-package" size="20" />
+                    <span>
+                      <span>Items</span>
+                      <strong>{{ rootItems.length }}</strong>
+                    </span>
                   </div>
-                  <div v-if="phaseCount">
-                    <span>Phases</span>
-                    <strong>{{ phaseCount }}</strong>
+                  <div v-if="phaseCount" class="activity-metric">
+                    <VIcon icon="tabler-layers-subtract" size="20" />
+                    <span>
+                      <span>Phases</span>
+                      <strong>{{ phaseCount }}</strong>
+                    </span>
                   </div>
-                  <div v-if="periodCount">
-                    <span>Periods</span>
-                    <strong>{{ periodCount }}</strong>
+                  <div v-if="periodCount" class="activity-metric">
+                    <VIcon icon="tabler-calendar-time" size="20" />
+                    <span>
+                      <span>Periods</span>
+                      <strong>{{ periodCount }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Tasks</span>
-                    <strong>{{ dealTaskTodos.length }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-list-check" size="20" />
+                    <span>
+                      <span>Tasks</span>
+                      <strong>{{ dealTaskTodos.length }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Calls</span>
-                    <strong>{{ callCount }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-phone-call" size="20" />
+                    <span>
+                      <span>Calls</span>
+                      <strong>{{ callCount }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Meetings</span>
-                    <strong>{{ meetingCount }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-users-group" size="20" />
+                    <span>
+                      <span>Meetings</span>
+                      <strong>{{ meetingCount }}</strong>
+                    </span>
                   </div>
                 </div>
               </VCardText>
@@ -536,43 +596,64 @@ function jobReference() {
 
             <VCard
               v-if="stage.key === 'active'"
-              variant="tonal"
-              class="activity-entry"
+              class="activity-entry mb-4"
             >
-              <VCardText>
+              <VCardItem class="pb-4">
                 <div class="activity-entry__header">
-                  <div class="activity-entry__title">Active work summary</div>
+                  <VCardTitle class="app-timeline-title activity-entry__title pa-0">
+                    Active work summary
+                  </VCardTitle>
                   <VChip size="small" color="success" label>
                     {{ jobReference() }}
                   </VChip>
                 </div>
+              </VCardItem>
 
+              <VCardText>
                 <div class="activity-count-grid mt-3">
-                  <div>
-                    <span>Items</span>
-                    <strong>{{ rootItems.length }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-package" size="20" />
+                    <span>
+                      <span>Items</span>
+                      <strong>{{ rootItems.length }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Active for</span>
-                    <strong>{{ formatDays(activeDays) }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-briefcase" size="20" />
+                    <span>
+                      <span>Active for</span>
+                      <strong>{{ formatDays(activeDays) }}</strong>
+                    </span>
                   </div>
-                  <div v-if="phaseCount">
-                    <span>Phases</span>
-                    <strong>{{ phaseCount }}</strong>
+                  <div v-if="phaseCount" class="activity-metric">
+                    <VIcon icon="tabler-layers-subtract" size="20" />
+                    <span>
+                      <span>Phases</span>
+                      <strong>{{ phaseCount }}</strong>
+                    </span>
                   </div>
-                  <div v-if="periodCount">
-                    <span>Periods</span>
-                    <strong>{{ periodCount }}</strong>
+                  <div v-if="periodCount" class="activity-metric">
+                    <VIcon icon="tabler-calendar-time" size="20" />
+                    <span>
+                      <span>Periods</span>
+                      <strong>{{ periodCount }}</strong>
+                    </span>
                   </div>
-                  <div>
-                    <span>Estimated end date</span>
-                    <strong>{{ formatDisplayDate(linkedJob?.endDate || deal.estimatedDeliveryDate) }}</strong>
+                  <div class="activity-metric">
+                    <VIcon icon="tabler-calendar-check" size="20" />
+                    <span>
+                      <span>Estimated end date</span>
+                      <strong>{{ formatDisplayDate(linkedJob?.endDate || deal.estimatedDeliveryDate) }}</strong>
+                    </span>
                   </div>
                 </div>
 
                 <div class="activity-progress mt-4">
                   <div class="activity-progress__label">
-                    <span>Job progress</span>
+                    <span class="activity-metric activity-metric--inline">
+                      <VIcon icon="tabler-progress-check" size="20" />
+                      <span>Job progress</span>
+                    </span>
                     <strong>{{ jobProgress }}%</strong>
                   </div>
                   <VProgressLinear
@@ -585,41 +666,57 @@ function jobReference() {
               </VCardText>
             </VCard>
 
-            <VCard variant="tonal" class="activity-entry activity-entry--duration">
-              <VCardText>
+            <VCard class="activity-entry activity-entry--duration mb-4">
+              <VCardItem class="pb-4">
                 <template v-if="stage.key === 'active'">
-                  <div class="activity-entry__title">
+                  <VCardTitle class="app-timeline-title activity-entry__title">
                     Converted to active on {{ formatDisplayDate(activeConvertedAt) }}
-                  </div>
-                  <div class="activity-entry__meta mt-1">
+                  </VCardTitle>
+                  <VCardSubtitle class="app-timeline-meta activity-entry__meta px-0">
                     Days since: {{ formatDays(activeDays) }}
-                  </div>
+                  </VCardSubtitle>
                 </template>
                 <template v-else>
-                  <div class="activity-entry__title">Time in phase</div>
-                  <div class="activity-entry__meta mt-1">
+                  <VCardTitle class="app-timeline-title activity-entry__title">
+                    Time in phase
+                  </VCardTitle>
+                  <VCardSubtitle class="app-timeline-meta activity-entry__meta px-0">
                     Days spent in this phase:
                     {{ formatDays(stageDurationDays(stage.key)) }}
-                  </div>
+                  </VCardSubtitle>
                 </template>
-              </VCardText>
+              </VCardItem>
             </VCard>
 
             <VCard
               v-for="note in stage.notes"
               :key="note.id"
-              variant="tonal"
-              class="activity-entry activity-entry--note"
+              class="activity-entry activity-entry--note mb-4"
             >
-              <VCardText>
-                <div class="activity-entry__header">
-                  <div class="activity-entry__title">{{ note.title }}</div>
-                  <span class="activity-entry__time">
-                    {{ formatDisplayDate(note.date) }}
-                  </span>
+              <VCardItem class="pb-4">
+                <div class="activity-note-header">
+                  <VAvatar size="38" color="secondary" variant="tonal">
+                    <VImg
+                      v-if="note.authorAvatarUrl"
+                      :src="note.authorAvatarUrl"
+                    />
+                    <span v-else class="text-xs font-weight-medium">
+                      {{ initials(note.title) }}
+                    </span>
+                  </VAvatar>
+                  <div class="activity-note-header__text">
+                    <VCardTitle class="app-timeline-title activity-entry__title pa-0">
+                      {{ note.title }}
+                    </VCardTitle>
+                    <span class="app-timeline-meta activity-entry__time">
+                      {{ formatDisplayDate(note.date) }}
+                    </span>
+                  </div>
                 </div>
+              </VCardItem>
 
-                <div class="activity-entry__body">
+              <VCardText>
+                <div class="app-timeline-text activity-entry__body">
                   {{ note.body }}
                 </div>
               </VCardText>
@@ -636,6 +733,10 @@ function jobReference() {
   display: flex;
   min-block-size: calc(100vh - 8rem);
   block-size: calc(100vh - 8rem);
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
   flex-direction: column;
 }
 
@@ -652,6 +753,7 @@ function jobReference() {
   overflow: auto;
   flex: 1 1 auto;
   min-block-size: 0;
+  padding-block-start: 1rem;
   padding-inline-end: 0.5rem;
   scrollbar-color: rgba(0 0 0 / 12%) transparent;
   scrollbar-width: thin;
@@ -679,6 +781,7 @@ function jobReference() {
 
 .deal-stage-timeline {
   min-block-size: 0;
+  padding-block-start: 0.5rem;
 }
 
 .v-timeline-avatar-wrapper {
@@ -689,6 +792,7 @@ function jobReference() {
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
+  overflow: visible;
   padding-block-end: 1rem;
 }
 
@@ -707,22 +811,45 @@ function jobReference() {
   justify-content: space-between;
 }
 
-.deal-stage-section__title,
-.activity-entry__title {
-  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-weight: 500;
+.deal-stage-section__heading {
+  flex-wrap: wrap;
+  margin: 0;
 }
 
-.deal-stage-section__meta,
-.activity-entry__meta,
-.activity-entry__time,
-.activity-entry__body,
 .activity-overview-grid span,
 .activity-count-grid span,
 .activity-collaborators > span,
 .activity-progress__label span {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.8125rem;
+}
+
+.activity-metric {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-inline-size: 0;
+}
+
+.activity-metric > .v-icon {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-primary), 0.96);
+  margin-block-start: 0.15rem;
+}
+
+.activity-metric > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-inline-size: 0;
+}
+
+.activity-metric--inline {
+  align-items: center;
+  flex-direction: row;
+}
+
+.activity-metric--inline > .v-icon {
+  margin-block-start: 0;
 }
 
 .activity-entry {
@@ -741,6 +868,19 @@ function jobReference() {
   margin-block-start: 0.5rem;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.activity-note-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-inline-size: 0;
+}
+
+.activity-note-header__text {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
 }
 
 .activity-overview-grid,
