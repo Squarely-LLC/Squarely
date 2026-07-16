@@ -387,6 +387,10 @@ const createDraftItemFormRef = ref<VForm>();
 const editLineFormRef = ref<VForm>();
 const externalDocumentFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
+const activePeriodActionPanel = ref<{
+  itemId: number | string;
+  sectionId: string;
+} | null>(null);
 const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
 const selectedCatalogueItemId = ref<string | null>(null);
 const selectedCreateItemType = ref<CatalogueItemType | null>(null);
@@ -5164,25 +5168,11 @@ const shouldRenderPeriodTimeline = (item: DealItemWithPlan) =>
 
 type PeriodTimelineSectionStatus =
   | "not-invoiced"
+  | "proforma"
   | "invoiced"
   | "paid"
   | "overdue"
   | "missed";
-
-const getPeriodTimelineStatusColor = (status: PeriodTimelineSectionStatus) => {
-  switch (status) {
-    case "paid":
-      return "rgb(var(--v-theme-success))";
-    case "overdue":
-      return "rgb(var(--v-theme-error))";
-    case "missed":
-      return "rgb(var(--v-theme-warning))";
-    case "invoiced":
-      return "rgb(var(--v-theme-primary))";
-    default:
-      return "rgba(var(--v-theme-on-surface), 0.18)";
-  }
-};
 
 const getPeriodTimelineStatusLabel = (status: PeriodTimelineSectionStatus) => {
   switch (status) {
@@ -5192,10 +5182,12 @@ const getPeriodTimelineStatusLabel = (status: PeriodTimelineSectionStatus) => {
       return "Invoiced - Overdue";
     case "missed":
       return "Missed period";
+    case "proforma":
+      return "Proforma";
     case "invoiced":
       return "Invoiced";
     default:
-      return "Not invoiced";
+      return "No proforma or invoice";
   }
 };
 
@@ -5217,34 +5209,17 @@ const isInvoiceStoreRecordOverdue = (record: any) => {
   return dueDate.getTime() < today.getTime();
 };
 
-const resolvePeriodTimelineInvoiceStatus = (
+const resolvePeriodTimelineDocumentStatus = (
+  hasProforma: boolean,
   hasInvoice: boolean,
   matchingInvoices: any[],
 ): PeriodTimelineSectionStatus => {
-  if (!hasInvoice) return "not-invoiced";
+  if (!hasInvoice) return hasProforma ? "proforma" : "not-invoiced";
   if (!matchingInvoices.length) return "invoiced";
   if (matchingInvoices.every(isInvoiceStoreRecordPaid)) return "paid";
   if (matchingInvoices.some(isInvoiceStoreRecordOverdue)) return "overdue";
 
   return "invoiced";
-};
-
-const getPeriodTimelineTrackBackground = (item: DealItemWithPlan) => {
-  const sections = item.derivedSections;
-  if (!sections.length) return "rgba(var(--v-theme-on-surface), 0.1)";
-
-  const segmentWidth = 100 / sections.length;
-  const stops = sections.flatMap((section, index) => {
-    const start = segmentWidth * index;
-    const end = segmentWidth * (index + 1);
-    const color = getPeriodTimelineStatusColor(
-      getResolvedPeriodTimelineSectionStatus(item, section),
-    );
-
-    return [`${color} ${start}%`, `${color} ${end}%`];
-  });
-
-  return `linear-gradient(90deg, ${stops.join(", ")})`;
 };
 
 const getPeriodTimelineSectionStatusClass = (
@@ -5254,6 +5229,36 @@ const getPeriodTimelineSectionStatusClass = (
   `period-timeline__step--${getResolvedPeriodTimelineSectionStatus(parentItem, section)}`;
 
 const getPeriodStepLabel = (index: number) => `P${index + 1}`;
+
+const getActivePeriodSectionIndex = (item: DealItemWithPlan) =>
+  item.derivedSections.findIndex(
+    (section) =>
+      activePeriodActionPanel.value?.itemId === item.id &&
+      activePeriodActionPanel.value?.sectionId === section.id,
+  );
+
+const getPeriodActionPanelArrowLeft = (item: DealItemWithPlan) => {
+  const sectionIndex = getActivePeriodSectionIndex(item);
+  if (sectionIndex < 0 || !item.derivedSections.length) return "50%";
+
+  return `${((sectionIndex + 0.5) / item.derivedSections.length) * 100}%`;
+};
+
+const togglePeriodActionPanel = (
+  item: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const isActive =
+    activePeriodActionPanel.value?.itemId === item.id &&
+    activePeriodActionPanel.value?.sectionId === section.id;
+
+  activePeriodActionPanel.value = isActive
+    ? null
+    : {
+        itemId: item.id,
+        sectionId: section.id,
+      };
+};
 
 const resolveGoalBillingPeriodKey = (
   selectableItem: DealDocumentSelectableItem | null,
@@ -5291,11 +5296,13 @@ const getGoalInvoiceState = (
 
   const selectableItem = findGoalSelectableItem(parentItem, goal);
   const selectionKey = selectableItem?.selectionKey;
-  if (!selectionKey) return "Not invoiced";
+  if (!selectionKey) return "No proforma or invoice";
 
   const billingPeriodKey = resolveSelectableItemBillingPeriodKey(selectionKey);
   const usageKey = buildDealDocumentUsageKey(selectionKey, billingPeriodKey);
-  if (!usageKey) return "Not invoiced";
+  if (!usageKey) return "No proforma or invoice";
+
+  const usage = getDocumentUsage(selectionKey, billingPeriodKey);
 
   const matchingInvoices = invoicesStore.items.filter((record) => {
     if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
@@ -5314,19 +5321,12 @@ const getGoalInvoiceState = (
   });
 
   return getPeriodTimelineStatusLabel(
-    resolvePeriodTimelineInvoiceStatus(
-      matchingInvoices.length > 0,
+    resolvePeriodTimelineDocumentStatus(
+      usage.proformaCount > 0,
+      usage.invoiceCount > 0,
       matchingInvoices,
     ),
   );
-
-  if (!matchingInvoices.length) return "Not invoiced";
-
-  const isPaid = matchingInvoices.some(
-    (record) => String(record.quotation.quotationStatus) === "Paid",
-  );
-
-  return isPaid ? "Invoiced - Paid" : "Invoiced - Unpaid";
 };
 
 const getPeriodTimelineSectionStatus = (
@@ -5360,7 +5360,8 @@ const getPeriodTimelineSectionStatus = (
       });
     });
 
-    return resolvePeriodTimelineInvoiceStatus(
+    return resolvePeriodTimelineDocumentStatus(
+      usage.proformaCount > 0,
       usage.invoiceCount > 0,
       matchingInvoices,
     );
@@ -5371,6 +5372,7 @@ const getPeriodTimelineSectionStatus = (
   );
 
   const hasInvoice = usageByGoal.some((usage) => usage.invoiceCount > 0);
+  const hasProforma = usageByGoal.some((usage) => usage.proformaCount > 0);
   const periodKey = getDealBillingPeriodKey(section.billingPeriod);
 
   const matchingInvoices = invoicesStore.items.filter((record) => {
@@ -5391,7 +5393,11 @@ const getPeriodTimelineSectionStatus = (
     });
   });
 
-  return resolvePeriodTimelineInvoiceStatus(hasInvoice, matchingInvoices);
+  return resolvePeriodTimelineDocumentStatus(
+    hasProforma,
+    hasInvoice,
+    matchingInvoices,
+  );
 };
 
 const getResolvedPeriodTimelineSectionStatus = (
@@ -5418,6 +5424,7 @@ const getResolvedPeriodTimelineSectionStatus = (
     .some(
       (candidate) =>
         getPeriodTimelineSectionStatus(parentItem, candidate) === "invoiced" ||
+        getPeriodTimelineSectionStatus(parentItem, candidate) === "proforma" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "paid" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "overdue",
     );
@@ -5432,75 +5439,6 @@ const getSectionInvoiceState = (
   return getPeriodTimelineStatusLabel(
     getResolvedPeriodTimelineSectionStatus(parentItem, section),
   );
-
-  if (!section.billingPeriod) return null;
-
-  const periodDrivenSectionBillingKey = isPeriodDrivenParentDealItem(parentItem)
-    ? getDealBillingPeriodKey(section.billingPeriod)
-    : "";
-
-  if (periodDrivenSectionBillingKey) {
-    const usage = getDocumentUsage(
-      `item-${parentItem.id}`,
-      periodDrivenSectionBillingKey,
-    );
-
-    if (!usage.invoiceCount) return "Not invoiced";
-
-    const matchingInvoices = invoicesStore.items.filter((record) => {
-      if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
-        return false;
-
-      return record.purchasedProducts.some((product) => {
-        const billingKey = resolveStoredBillingPeriodKey(product);
-        const selectionKey = resolveProductSelectionKey(product);
-
-        return (
-          billingKey === periodDrivenSectionBillingKey &&
-          selectionKey === `item-${parentItem.id}`
-        );
-      });
-    });
-
-    const isPaid = matchingInvoices.some(
-      (record) => String(record.quotation.quotationStatus) === "Paid",
-    );
-
-    return isPaid ? "Invoiced - Paid" : "Invoiced - Unpaid";
-  }
-
-  const usageByGoal = section.goals.map((goal) =>
-    getGoalDocumentUsage(parentItem, goal, section.billingPeriod),
-  );
-
-  const hasInvoice = usageByGoal.some((usage) => usage.invoiceCount > 0);
-  if (!hasInvoice) return "Not invoiced";
-
-  const periodKey = getDealBillingPeriodKey(section.billingPeriod);
-
-  const matchingInvoices = invoicesStore.items.filter((record) => {
-    if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
-      return false;
-
-    return record.purchasedProducts.some((product) => {
-      const billingKey = resolveStoredBillingPeriodKey(product);
-      if (billingKey !== periodKey) return false;
-
-      const selectionKey = resolveProductSelectionKey(product);
-
-      return section.goals.some((goal) => {
-        const selectableItem = findGoalSelectableItem(parentItem, goal);
-
-        return selectableItem?.selectionKey === selectionKey;
-      });
-    });
-  });
-
-  const isPaid = matchingInvoices.some(
-    (record) => String(record.quotation.quotationStatus) === "Paid",
-  );
-
-  return isPaid ? "Invoiced - Paid" : "Invoiced - Unpaid";
 };
 
 const getSectionSelectableItems = (
@@ -8259,12 +8197,6 @@ const openEditTask = (taskId: number | string) => {
                               </div>
                             </div>
 
-                            <div
-                              v-if="goal.note"
-                              class="item-card-note text-body-2 text-medium-emphasis"
-                            >
-                              {{ goal.note }}
-                            </div>
                           </div>
 
                           <div class="goal-card-actions">
@@ -8308,13 +8240,6 @@ const openEditTask = (taskId: number | string) => {
                   </div>
 
                   <div
-                    class="period-timeline__track"
-                    :style="{
-                      background: getPeriodTimelineTrackBackground(item),
-                    }"
-                  />
-
-                  <div
                     class="period-timeline__steps"
                     :style="{
                       '--period-count': item.derivedSections.length,
@@ -8328,157 +8253,181 @@ const openEditTask = (taskId: number | string) => {
                         getPeriodTimelineSectionStatusClass(item, section)
                       "
                     >
-                      <VMenu location="bottom">
-                        <template #activator="{ props: menuProps }">
-                          <button
-                            v-bind="menuProps"
-                            type="button"
-                            class="period-timeline__button"
-                          >
-                            <span>
-                              <span class="period-timeline__dot" />
-                              <span class="period-timeline__label">
-                                {{ getPeriodStepLabel(sectionIndex) }}
-                              </span>
-                            </span>
-                          </button>
-                        </template>
-
-                        <VList class="period-action-menu">
-                          <div class="period-action-menu__info">
-                            <VIcon
-                              icon="tabler-info-circle"
-                              size="16"
-                              class="period-action-menu__info-icon"
-                            />
-                            <div class="period-action-menu__info-copy">
-                              <div class="period-action-menu__info-title">
-                                Period {{ sectionIndex + 1 }}
-                              </div>
-                              <div
-                                v-if="section.billingPeriod"
-                                class="period-action-menu__dates"
-                              >
-                                <span>
-                                  Start Date:
-                                  <strong>{{
-                                    formatDocumentDate(
-                                      section.billingPeriod.startDate,
-                                    )
-                                  }}</strong>
-                                </span>
-                                <span
-                                  class="period-action-menu__date-separator"
-                                >
-                                  |
-                                </span>
-                                <span>
-                                  End Date:
-                                  <strong>{{
-                                    formatDocumentDate(
-                                      section.billingPeriod.endDate,
-                                    )
-                                  }}</strong>
-                                </span>
-                              </div>
-                              <div class="period-action-menu__info-status">
-                                {{
-                                  getSectionInvoiceState(item, section) ||
-                                  "Not invoiced"
-                                }}
-                              </div>
-                            </div>
-                          </div>
-                          <VDivider class="my-1" />
-                          <VListItem
-                            v-if="canCreateDocumentSource('proforma')"
-                            :disabled="
-                              isSectionDocumentActionDisabled(
-                                'proforma',
-                                item,
-                                section,
-                              )
-                            "
-                            @click="
-                              openSectionDocumentPage('proforma', item, section)
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-file-certificate" />
-                            </template>
-                            <VListItemTitle>Create Proforma</VListItemTitle>
-                          </VListItem>
-                          <VListItem
-                            v-if="canCreateDocumentSource('invoice')"
-                            :disabled="
-                              isSectionDocumentActionDisabled(
-                                'invoice',
-                                item,
-                                section,
-                              )
-                            "
-                            @click="
-                              openSectionDocumentPage('invoice', item, section)
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-file-invoice" />
-                            </template>
-                            <VListItemTitle>Create Invoice</VListItemTitle>
-                          </VListItem>
-                          <VDivider />
-                          <VListItem
-                            v-if="canAttachDocumentSource('proforma')"
-                            :disabled="
-                              isSectionDocumentActionDisabled(
-                                'proforma',
-                                item,
-                                section,
-                              )
-                            "
-                            @click="
-                              openSectionExternalDocumentDialog(
-                                'proforma',
-                                item,
-                                section,
-                              )
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-paperclip" />
-                            </template>
-                            <VListItemTitle>
-                              Attach External Proforma
-                            </VListItemTitle>
-                          </VListItem>
-                          <VListItem
-                            v-if="canAttachDocumentSource('invoice')"
-                            :disabled="
-                              isSectionDocumentActionDisabled(
-                                'invoice',
-                                item,
-                                section,
-                              )
-                            "
-                            @click="
-                              openSectionExternalDocumentDialog(
-                                'invoice',
-                                item,
-                                section,
-                              )
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-paperclip" />
-                            </template>
-                            <VListItemTitle>
-                              Attach External Invoice
-                            </VListItemTitle>
-                          </VListItem>
-                        </VList>
-                      </VMenu>
+                      <button
+                        type="button"
+                        class="period-timeline__button"
+                        :aria-expanded="
+                          activePeriodActionPanel?.itemId === item.id &&
+                          activePeriodActionPanel?.sectionId === section.id
+                        "
+                        @click.stop="togglePeriodActionPanel(item, section)"
+                      >
+                        <span class="period-timeline__segment" />
+                        <span class="period-timeline__button-content">
+                          <span class="period-timeline__dot" />
+                          <span class="period-timeline__label">
+                            {{ getPeriodStepLabel(sectionIndex) }}
+                          </span>
+                        </span>
+                      </button>
                     </div>
                   </div>
+
+                  <template
+                    v-for="activeSection in item.derivedSections.filter(
+                      (section) =>
+                        activePeriodActionPanel?.itemId === item.id &&
+                        activePeriodActionPanel?.sectionId === section.id,
+                    )"
+                    :key="`period-action-panel-${activeSection.id}`"
+                  >
+                    <VList
+                      class="period-action-panel"
+                      :style="{
+                        '--period-panel-arrow-left':
+                          getPeriodActionPanelArrowLeft(item),
+                      }"
+                    >
+                      <div class="period-action-panel__info">
+                        <VIcon
+                          icon="tabler-info-circle"
+                          size="16"
+                          class="period-action-panel__info-icon"
+                        />
+                        <div class="period-action-panel__info-copy">
+                          <div class="period-action-panel__info-title">
+                            Period {{ getActivePeriodSectionIndex(item) + 1 }}
+                          </div>
+                          <div
+                            v-if="activeSection.billingPeriod"
+                            class="period-action-panel__dates"
+                          >
+                            <span>
+                              Start Date:
+                              <strong>{{
+                                formatDocumentDate(
+                                  activeSection.billingPeriod.startDate,
+                                )
+                              }}</strong>
+                            </span>
+                            <span
+                              class="period-action-panel__date-separator"
+                            >
+                              |
+                            </span>
+                            <span>
+                              End Date:
+                              <strong>{{
+                                formatDocumentDate(
+                                  activeSection.billingPeriod.endDate,
+                                )
+                              }}</strong>
+                            </span>
+                          </div>
+                          <div class="period-action-panel__info-status">
+                            {{
+                              getSectionInvoiceState(item, activeSection) ||
+                              "No proforma or invoice"
+                            }}
+                          </div>
+                        </div>
+                      </div>
+                      <VDivider class="my-1" />
+                      <VListItem
+                        v-if="canCreateDocumentSource('proforma')"
+                        :disabled="
+                          isSectionDocumentActionDisabled(
+                            'proforma',
+                            item,
+                            activeSection,
+                          )
+                        "
+                        @click="
+                          openSectionDocumentPage(
+                            'proforma',
+                            item,
+                            activeSection,
+                          )
+                        "
+                      >
+                        <template #prepend>
+                          <VIcon icon="tabler-file-certificate" />
+                        </template>
+                        <VListItemTitle>Create Proforma</VListItemTitle>
+                      </VListItem>
+                      <VListItem
+                        v-if="canCreateDocumentSource('invoice')"
+                        :disabled="
+                          isSectionDocumentActionDisabled(
+                            'invoice',
+                            item,
+                            activeSection,
+                          )
+                        "
+                        @click="
+                          openSectionDocumentPage(
+                            'invoice',
+                            item,
+                            activeSection,
+                          )
+                        "
+                      >
+                        <template #prepend>
+                          <VIcon icon="tabler-file-invoice" />
+                        </template>
+                        <VListItemTitle>Create Invoice</VListItemTitle>
+                      </VListItem>
+                      <VDivider />
+                      <VListItem
+                        v-if="canAttachDocumentSource('proforma')"
+                        :disabled="
+                          isSectionDocumentActionDisabled(
+                            'proforma',
+                            item,
+                            activeSection,
+                          )
+                        "
+                        @click="
+                          openSectionExternalDocumentDialog(
+                            'proforma',
+                            item,
+                            activeSection,
+                          )
+                        "
+                      >
+                        <template #prepend>
+                          <VIcon icon="tabler-paperclip" />
+                        </template>
+                        <VListItemTitle>
+                          Attach External Proforma
+                        </VListItemTitle>
+                      </VListItem>
+                      <VListItem
+                        v-if="canAttachDocumentSource('invoice')"
+                        :disabled="
+                          isSectionDocumentActionDisabled(
+                            'invoice',
+                            item,
+                            activeSection,
+                          )
+                        "
+                        @click="
+                          openSectionExternalDocumentDialog(
+                            'invoice',
+                            item,
+                            activeSection,
+                          )
+                        "
+                      >
+                        <template #prepend>
+                          <VIcon icon="tabler-paperclip" />
+                        </template>
+                        <VListItemTitle>
+                          Attach External Invoice
+                        </VListItemTitle>
+                      </VListItem>
+                    </VList>
+                  </template>
                 </div>
 
                 <div
@@ -11350,6 +11299,7 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .period-timeline {
+  position: relative;
   inline-size: 100%;
   padding-block: 0.3rem 0.15rem;
 }
@@ -11357,9 +11307,9 @@ const openEditTask = (taskId: number | string) => {
 .period-timeline__services {
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(var(--v-theme-primary), 0.14);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.05);
+  background: rgba(var(--v-theme-surface), 0.12);
   gap: 0.45rem;
   margin-block-end: 0.9rem;
   padding-block: 0.6rem;
@@ -11381,31 +11331,16 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .period-timeline__service-row {
+  background: rgba(var(--v-theme-surface), 0.12) !important;
   inline-size: 100%;
   padding-block: 0.65rem;
   padding-inline: 0.75rem;
 }
 
-.period-timeline__track {
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-on-surface), 0.1);
-  block-size: 4px;
-  transition: background 0.2s ease;
-}
-
-.period-timeline__progress {
-  border-radius: inherit;
-  background: rgb(var(--v-theme-primary));
-  block-size: 100%;
-  transition: inline-size 0.2s ease;
-}
-
 .period-timeline__steps {
   display: grid;
-  gap: 0.15rem;
+  gap: 0.45rem;
   grid-template-columns: repeat(var(--period-count), minmax(0, 1fr));
-  margin-block-start: 0.55rem;
 }
 
 .period-timeline__step {
@@ -11414,6 +11349,7 @@ const openEditTask = (taskId: number | string) => {
 
 .period-timeline__button {
   display: flex;
+  flex-direction: column;
   padding: 0;
   border: 0;
   background: transparent;
@@ -11424,13 +11360,22 @@ const openEditTask = (taskId: number | string) => {
   min-inline-size: 0;
 }
 
-.period-timeline__button > span {
+.period-timeline__segment {
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.18);
+  block-size: 0.28rem;
+  inline-size: 100%;
+  transition: background 0.2s ease;
+}
+
+.period-timeline__button-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.3rem;
   inline-size: 100%;
   min-inline-size: 0;
+  margin-block-start: 0.45rem;
 }
 
 .period-timeline__dot {
@@ -11456,13 +11401,34 @@ const openEditTask = (taskId: number | string) => {
   color: rgb(var(--v-theme-primary));
 }
 
+.period-timeline__step--invoiced .period-timeline__segment {
+  background: rgb(var(--v-theme-primary));
+}
+
 .period-timeline__step--invoiced .period-timeline__dot {
   border-color: rgb(var(--v-theme-primary));
   background: rgb(var(--v-theme-primary));
 }
 
+.period-timeline__step--proforma .period-timeline__button {
+  color: rgb(var(--v-theme-info));
+}
+
+.period-timeline__step--proforma .period-timeline__segment {
+  background: rgb(var(--v-theme-info));
+}
+
+.period-timeline__step--proforma .period-timeline__dot {
+  border-color: rgb(var(--v-theme-info));
+  background: rgb(var(--v-theme-info));
+}
+
 .period-timeline__step--paid .period-timeline__button {
   color: rgb(var(--v-theme-success));
+}
+
+.period-timeline__step--paid .period-timeline__segment {
+  background: rgb(var(--v-theme-success));
 }
 
 .period-timeline__step--paid .period-timeline__dot {
@@ -11474,6 +11440,10 @@ const openEditTask = (taskId: number | string) => {
   color: rgb(var(--v-theme-error));
 }
 
+.period-timeline__step--overdue .period-timeline__segment {
+  background: rgb(var(--v-theme-error));
+}
+
 .period-timeline__step--overdue .period-timeline__dot {
   border-color: rgb(var(--v-theme-error));
   background: rgb(var(--v-theme-error));
@@ -11483,31 +11453,55 @@ const openEditTask = (taskId: number | string) => {
   color: rgb(var(--v-theme-warning));
 }
 
+.period-timeline__step--missed .period-timeline__segment {
+  background: rgb(var(--v-theme-warning));
+}
+
 .period-timeline__step--missed .period-timeline__dot {
   border-color: rgb(var(--v-theme-warning));
   background: rgb(var(--v-theme-warning));
 }
 
-.period-action-menu__info {
+.period-action-panel {
+  overflow: visible;
+  position: relative;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface));
+  inline-size: 100%;
+  margin-block-start: 0.85rem;
+}
+
+.period-action-panel::before {
+  position: absolute;
+  z-index: 1;
+  border-inline: 0.45rem solid transparent;
+  border-block-end: 0.45rem solid rgb(var(--v-theme-surface));
+  content: "";
+  inset-block-start: -0.42rem;
+  inset-inline-start: var(--period-panel-arrow-left, 50%);
+  transform: translateX(-50%);
+}
+
+.period-action-panel__info {
   display: flex;
   align-items: flex-start;
   gap: 0.55rem;
-  max-inline-size: 16rem;
   padding-block: 0.55rem 0.45rem;
   padding-inline: 1rem;
 }
 
-.period-action-menu__info-icon {
+.period-action-panel__info-icon {
   flex: 0 0 auto;
   color: rgb(var(--v-theme-primary));
   margin-block-start: 0.1rem;
 }
 
-.period-action-menu__info-copy {
+.period-action-panel__info-copy {
   min-inline-size: 0;
 }
 
-.period-action-menu__info-title {
+.period-action-panel__info-title {
   overflow: hidden;
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: 0.82rem;
@@ -11517,7 +11511,7 @@ const openEditTask = (taskId: number | string) => {
   white-space: nowrap;
 }
 
-.period-action-menu__dates {
+.period-action-panel__dates {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -11528,23 +11522,25 @@ const openEditTask = (taskId: number | string) => {
   margin-block-start: 0.2rem;
 }
 
-.period-action-menu__dates span {
+.period-action-panel__dates span {
   white-space: nowrap;
 }
 
-.period-action-menu__dates strong {
+.period-action-panel__dates strong {
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: inherit;
   font-weight: 700;
   line-height: inherit;
 }
 
-.period-action-menu__date-separator {
+.period-action-panel__date-separator {
   color: rgb(var(--v-theme-primary));
+  font-size: 0.82rem;
   font-weight: 700;
+  line-height: 1;
 }
 
-.period-action-menu__info-status {
+.period-action-panel__info-status {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.75rem;
   line-height: 1.35;
