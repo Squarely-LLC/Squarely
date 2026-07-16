@@ -254,7 +254,7 @@ export const db: ConfigDB = {
         'Pre-Sale',
         'Negotation',
         'Active',
-        'Closed',
+        'Lost',
       ],
       dealAlert: { enabled: true, days: 5 },
     },

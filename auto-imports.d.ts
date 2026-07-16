@@ -54,6 +54,7 @@ declare global {
   const canMutate: typeof import('./src/utils/permissionUi')['canMutate']
   const canReadResource: typeof import('./src/utils/authorization')['canReadResource']
   const canRecordInvoicePayment: typeof import('./src/utils/financeApproval')['canRecordInvoicePayment']
+  const cancelOlderFinanceFamilyVersions: typeof import('./src/utils/financeApproval')['cancelOlderFinanceFamilyVersions']
   const clearDealDocumentDraft: typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']
   const clearInvoicePreviewDraft: typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']
   const clearProformaPreviewDraft: typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']
@@ -99,6 +100,7 @@ declare global {
   const defineStore: typeof import('pinia')['defineStore']
   const deleteFile: typeof import('./src/utils/fileStore')['deleteFile']
   const deriveSuggestedJobStatus: typeof import('./src/utils/jobTaskRules')['deriveSuggestedJobStatus']
+  const dismissFinanceApprovalRequestNotifications: typeof import('./src/utils/financeApprovalNotifications')['dismissFinanceApprovalRequestNotifications']
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
@@ -244,6 +246,7 @@ declare global {
   const normalizeFinanceApprovalStatus: typeof import('./src/utils/financeApproval')['normalizeFinanceApprovalStatus']
   const normalizeProjectCode: typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']
   const normalizeRichText: typeof import('./src/utils/richText')['normalizeRichText']
+  const notifyFinanceApprovalDecision: typeof import('./src/utils/financeApprovalNotifications')['notifyFinanceApprovalDecision']
   const notifyFinanceApprovalRequest: typeof import('./src/utils/financeApprovalNotifications')['notifyFinanceApprovalRequest']
   const notifyMeetingAttendeesAdded: typeof import('./src/utils/meetingNotifications')['notifyMeetingAttendeesAdded']
   const notifyMeetingEvent: typeof import('./src/utils/meetingNotifications')['notifyMeetingEvent']
@@ -319,6 +322,7 @@ declare global {
   const saveQuotationPreviewDraft: typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']
   const seedAccountRoleState: typeof import('./src/utils/accountRoles')['seedAccountRoleState']
   const seedAuthorRef: typeof import('./src/utils/seedIdentityGraph')['seedAuthorRef']
+  const seedEmployeeId: typeof import('./src/utils/seedIdentityGraph')['seedEmployeeId']
   const seedEmployeeIds: typeof import('./src/utils/seedIdentityGraph')['seedEmployeeIds']
   const seedIdentities: typeof import('./src/utils/seedIdentityGraph')['seedIdentities']
   const seedIdentityByEmail: typeof import('./src/utils/seedIdentityGraph')['seedIdentityByEmail']
@@ -615,6 +619,7 @@ declare module 'vue' {
     readonly canMutate: UnwrapRef<typeof import('./src/utils/permissionUi')['canMutate']>
     readonly canReadResource: UnwrapRef<typeof import('./src/utils/authorization')['canReadResource']>
     readonly canRecordInvoicePayment: UnwrapRef<typeof import('./src/utils/financeApproval')['canRecordInvoicePayment']>
+    readonly cancelOlderFinanceFamilyVersions: UnwrapRef<typeof import('./src/utils/financeApproval')['cancelOlderFinanceFamilyVersions']>
     readonly clearDealDocumentDraft: UnwrapRef<typeof import('./src/utils/dealDocumentDraft')['clearDealDocumentDraft']>
     readonly clearInvoicePreviewDraft: UnwrapRef<typeof import('./src/utils/invoicePreviewDraft')['clearInvoicePreviewDraft']>
     readonly clearProformaPreviewDraft: UnwrapRef<typeof import('./src/utils/proformaPreviewDraft')['clearProformaPreviewDraft']>
@@ -660,6 +665,7 @@ declare module 'vue' {
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
     readonly deleteFile: UnwrapRef<typeof import('./src/utils/fileStore')['deleteFile']>
     readonly deriveSuggestedJobStatus: UnwrapRef<typeof import('./src/utils/jobTaskRules')['deriveSuggestedJobStatus']>
+    readonly dismissFinanceApprovalRequestNotifications: UnwrapRef<typeof import('./src/utils/financeApprovalNotifications')['dismissFinanceApprovalRequestNotifications']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
@@ -806,6 +812,7 @@ declare module 'vue' {
     readonly normalizeFinanceApprovalStatus: UnwrapRef<typeof import('./src/utils/financeApproval')['normalizeFinanceApprovalStatus']>
     readonly normalizeProjectCode: UnwrapRef<typeof import('./src/utils/jobProjectCode')['normalizeProjectCode']>
     readonly normalizeRichText: UnwrapRef<typeof import('./src/utils/richText')['normalizeRichText']>
+    readonly notifyFinanceApprovalDecision: UnwrapRef<typeof import('./src/utils/financeApprovalNotifications')['notifyFinanceApprovalDecision']>
     readonly notifyFinanceApprovalRequest: UnwrapRef<typeof import('./src/utils/financeApprovalNotifications')['notifyFinanceApprovalRequest']>
     readonly notifyMeetingAttendeesAdded: UnwrapRef<typeof import('./src/utils/meetingNotifications')['notifyMeetingAttendeesAdded']>
     readonly notifyMeetingEvent: UnwrapRef<typeof import('./src/utils/meetingNotifications')['notifyMeetingEvent']>
@@ -881,6 +888,7 @@ declare module 'vue' {
     readonly saveQuotationPreviewDraft: UnwrapRef<typeof import('./src/utils/quotationPreviewDraft')['saveQuotationPreviewDraft']>
     readonly seedAccountRoleState: UnwrapRef<typeof import('./src/utils/accountRoles')['seedAccountRoleState']>
     readonly seedAuthorRef: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedAuthorRef']>
+    readonly seedEmployeeId: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedEmployeeId']>
     readonly seedEmployeeIds: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedEmployeeIds']>
     readonly seedIdentities: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedIdentities']>
     readonly seedIdentityByEmail: UnwrapRef<typeof import('./src/utils/seedIdentityGraph')['seedIdentityByEmail']>

@@ -45,8 +45,10 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
+  (e: "back"): void;
   (e: "edit"): void;
   (e: "execute"): void;
+  (e: "toggle-important"): void;
   (e: "open-add-task"): void;
   (e: "open-add-email"): void;
   (e: "open-add-meeting"): void;
@@ -112,26 +114,43 @@ const fallbackContactIcon = computed(() =>
   displayContact.value.type === "Entity" ? "tabler-building" : "tabler-user",
 );
 
-const timelineStages = computed(() =>
-  (props.stageOptions || []).filter((stage) => String(stage || "").trim()),
-);
+const normalizeStageKey = (stage?: string | null) => {
+  const normalized = String(stage ?? "")
+    .trim()
+    .toLowerCase();
 
-const currentStageIndex = computed(() =>
-  timelineStages.value.findIndex(
-    (stage) =>
-      stage.trim().toLowerCase() ===
-      String(props.deal.stage || "")
-        .trim()
-        .toLowerCase(),
-  ),
-);
+  if (normalized === "closed") return "lost";
+  if (normalized.includes("negotiat") || normalized.includes("negotat"))
+    return "negotiation";
+  if (normalized.includes("pre") && normalized.includes("sale"))
+    return "pre-sale";
+  if (normalized === "active" || normalized === "lost") return normalized;
 
-const stageProgressPercent = computed(() => {
-  if (timelineStages.value.length <= 1)
-    return currentStageIndex.value >= 0 ? 100 : 0;
-  if (currentStageIndex.value < 0) return 0;
+  return normalized;
+};
 
-  return (currentStageIndex.value / (timelineStages.value.length - 1)) * 100;
+const findStageLabel = (key: "pre-sale" | "negotiation") =>
+  (props.stageOptions || []).find((stage) => normalizeStageKey(stage) === key);
+
+const currentStageKey = computed(() => normalizeStageKey(props.deal.stage));
+
+const timelineStages = computed(() => {
+  const finalStage = currentStageKey.value === "lost" ? "Lost" : "Active";
+
+  return [
+    findStageLabel("pre-sale") || "Pre-Sale",
+    findStageLabel("negotiation") || "Negotation",
+    finalStage,
+  ];
+});
+
+const currentStageIndex = computed(() => {
+  if (currentStageKey.value === "lost" || currentStageKey.value === "active")
+    return 2;
+  if (currentStageKey.value === "negotiation") return 1;
+  if (currentStageKey.value === "pre-sale") return 0;
+
+  return -1;
 });
 </script>
 
@@ -212,7 +231,41 @@ const stageProgressPercent = computed(() => {
 
   <template v-else>
     <VCard>
-      <VCardText class="text-center pt-12">
+      <VCardText class="text-center pt-4">
+        <div class="summary-card-header">
+          <VBtn
+            variant="text"
+            color="secondary"
+            class="summary-back-btn"
+            @click="emit('back')"
+          >
+            <VIcon start icon="tabler-chevron-left" />
+            Back to deals table
+          </VBtn>
+
+          <VTooltip
+            :text="canEdit ? (deal.important ? 'Remove favorite' : 'Favorite') : editDisabledReason || defaultDisabledReason"
+            location="top"
+          >
+            <template #activator="{ props: tooltipProps }">
+              <span v-bind="tooltipProps" class="d-inline-flex">
+                <VBtn
+                  icon
+                  variant="text"
+                  :color="deal.important ? 'warning' : 'secondary'"
+                  aria-label="Toggle favorite"
+                  :disabled="!canEdit"
+                  @click="canEdit ? emit('toggle-important') : undefined"
+                >
+                  <VIcon
+                    :icon="deal.important ? 'tabler-star-filled' : 'tabler-star'"
+                  />
+                </VBtn>
+              </span>
+            </template>
+          </VTooltip>
+        </div>
+
         <VAvatar
           rounded
           :size="100"
@@ -342,15 +395,8 @@ const stageProgressPercent = computed(() => {
         </div>
 
         <div v-if="timelineStages.length" class="stage-timeline mt-6">
-          <div class="stage-timeline__track">
-            <div
-              class="stage-timeline__progress"
-              :style="{ inlineSize: `${stageProgressPercent}%` }"
-            />
-          </div>
-
           <div
-            class="stage-timeline__steps"
+            class="stage-timeline__segments"
             :style="{ gridTemplateColumns: `repeat(${timelineStages.length}, minmax(0, 1fr))` }"
           >
             <div
@@ -363,7 +409,7 @@ const stageProgressPercent = computed(() => {
                 'stage-timeline__step--current': index === currentStageIndex,
               }"
             >
-              <span class="stage-timeline__dot" />
+              <span class="stage-timeline__bar" />
               <span class="stage-timeline__label">{{ stage }}</span>
             </div>
           </div>
@@ -560,6 +606,20 @@ const stageProgressPercent = computed(() => {
   margin-inline: auto;
 }
 
+.summary-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-block-end: 1.75rem;
+  min-inline-size: 0;
+}
+
+.summary-back-btn {
+  padding-inline-start: 0;
+  min-inline-size: 0;
+}
+
 .summary-action-btn {
   padding: 0;
   border-radius: 0.75rem;
@@ -580,24 +640,9 @@ const stageProgressPercent = computed(() => {
   padding-block-end: 0.15rem;
 }
 
-.stage-timeline__track {
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-on-surface), 0.1);
-  block-size: 4px;
-}
-
-.stage-timeline__progress {
-  border-radius: inherit;
-  background: rgb(var(--v-theme-primary));
-  block-size: 100%;
-  transition: inline-size 0.2s ease;
-}
-
-.stage-timeline__steps {
+.stage-timeline__segments {
   display: grid;
-  gap: 0.2rem;
-  margin-block-start: 0.65rem;
+  gap: 0.45rem;
   inline-size: 100%;
 }
 
@@ -610,12 +655,12 @@ const stageProgressPercent = computed(() => {
   min-inline-size: 0;
 }
 
-.stage-timeline__dot {
-  border: 2px solid rgba(var(--v-theme-on-surface), 0.18);
+.stage-timeline__bar {
   border-radius: 999px;
-  background: rgb(var(--v-theme-surface));
-  block-size: 0.7rem;
-  inline-size: 0.7rem;
+  background: rgba(var(--v-theme-on-surface), 0.12);
+  block-size: 0.35rem;
+  inline-size: 100%;
+  transition: background-color 0.2s ease;
 }
 
 .stage-timeline__label {
@@ -634,9 +679,8 @@ const stageProgressPercent = computed(() => {
   color: rgb(var(--v-theme-primary));
 }
 
-.stage-timeline__step--complete .stage-timeline__dot,
-.stage-timeline__step--current .stage-timeline__dot {
-  border-color: rgb(var(--v-theme-primary));
+.stage-timeline__step--complete .stage-timeline__bar,
+.stage-timeline__step--current .stage-timeline__bar {
   background: rgb(var(--v-theme-primary));
 }
 
@@ -681,6 +725,14 @@ const stageProgressPercent = computed(() => {
 }
 
 @media (max-width: 960px) {
+  .summary-card-header {
+    align-items: flex-start;
+  }
+
+  .summary-back-btn {
+    white-space: normal;
+  }
+
   .summary-actions {
     flex-wrap: wrap;
     justify-content: center;

@@ -1693,6 +1693,30 @@ const openEditDialog = () => {
   isDealEditDialogVisible.value = true;
 };
 
+const goBackToDealsTable = () => {
+  void router.push({ name: "operations-deals-list" });
+};
+
+const toggleDealImportant = () => {
+  if (!deal.value) return;
+  if (!canUpdateDeal.value) {
+    notifyDealUpdateDenied();
+    return;
+  }
+
+  const updated = dealsStore.updateDeal(deal.value.id, {
+    important: !deal.value.important,
+  });
+  if (!updated) return;
+
+  deal.value = cloneDeal(updated);
+  notifications.push(
+    updated.important ? "Marked as favorite" : "Removed from favorites",
+    "success",
+    2500,
+  );
+};
+
 const openAddNoteDialog = () => {
   if (!canUpdateDeal.value) {
     notifyDealUpdateDenied();
@@ -2688,7 +2712,9 @@ watch(
           :can-add-note="canUpdateDeal"
           :note-disabled-reason="dealUpdateDisabledReason"
           :hide-financials="hideDealFinancials"
+          @back="goBackToDealsTable"
           @edit="openEditDialog"
+          @toggle-important="toggleDealImportant"
           @open-add-task="handleAddTaskFromCommunication"
           @open-add-email="openEmail"
           @open-add-meeting="handleAddMeetingFromCommunication"

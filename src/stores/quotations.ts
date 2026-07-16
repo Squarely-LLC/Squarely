@@ -1104,7 +1104,7 @@ export const useQuotationsStore = defineStore("quotations", {
           canceledDealIds.forEach((dealId) => {
             dealsStore.triggerLifecycleStageTransition(
               dealId,
-              "Closed",
+              "Lost",
               "Quotation canceled",
               "quotation-canceled",
             );
@@ -1224,6 +1224,28 @@ export const useQuotationsStore = defineStore("quotations", {
       this.items.splice(index, 1, updated);
       this.items = resequenceRevisions(this.items);
       this.persistItems();
+      const previousStatus = normaliseQuotationStatus(
+        current.quotation.quotationStatus,
+      );
+      const nextStatus = normaliseQuotationStatus(
+        updated.quotation.quotationStatus,
+      );
+
+      if (
+        updated.quotation.dealId &&
+        previousStatus !== nextStatus &&
+        (nextStatus === "Lost" || nextStatus === "Canceled")
+      ) {
+        const dealsStore = useDealsStore();
+        dealsStore.init();
+        dealsStore.triggerLifecycleStageTransition(
+          updated.quotation.dealId,
+          "Lost",
+          nextStatus === "Lost" ? "Quotation lost" : "Quotation canceled",
+          "quotation-canceled",
+        );
+      }
+
       return this.byId(id);
     },
 

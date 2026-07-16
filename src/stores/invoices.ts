@@ -1135,7 +1135,7 @@ export const useInvoicesStore = defineStore("invoices", {
       if (nextRecord?.quotation.dealId) {
         const dealsStore = useDealsStore();
         dealsStore.init();
-        void dealsStore.reevaluateDealClosureFromInvoices(
+        void dealsStore.reevaluateDealFinalInvoiceStateFromInvoices(
           nextRecord.quotation.dealId,
         );
       }

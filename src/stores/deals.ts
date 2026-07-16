@@ -28,7 +28,7 @@ import {
 
 const STORAGE_KEY = "app.deals.v7";
 const DEFAULT_DEAL_PREFIX = "DL";
-const DEFAULT_DEAL_STAGES = ["Pre-Sale", "Negotation", "Active", "Closed"];
+const DEFAULT_DEAL_STAGES = ["Pre-Sale", "Negotation", "Active", "Lost"];
 
 function normalizeLookupKey(value: unknown) {
   return value === undefined || value === null || value === ""
@@ -226,6 +226,11 @@ function normalizeString(value: unknown): string | null {
   return trimmed || null;
 }
 
+function normalizeDealStageValue(value: unknown): string | null {
+  const stage = normalizeString(value);
+  return stage?.toLowerCase() === "closed" ? "Lost" : stage;
+}
+
 function normalizeDateString(value: unknown): string | null {
   return normalizeString(value);
 }
@@ -261,7 +266,7 @@ function findConfiguredStage(stageName: string) {
 }
 
 function resolveCanonicalStage(
-  stageName: "Pre-Sale" | "Negotation" | "Active" | "Closed",
+  stageName: "Pre-Sale" | "Negotation" | "Active" | "Lost",
 ) {
   return (
     findConfiguredStage(stageName) ??
@@ -661,7 +666,7 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
     salesman: normalizeSalesman(deal.salesman, deal.collaborators),
     type: normalizeString(deal.type),
     estimatedDeliveryDate: normalizeDateString(deal.estimatedDeliveryDate),
-    stage: normalizeString(deal.stage),
+    stage: normalizeDealStageValue(deal.stage),
     important: Boolean(deal.important),
     location: normalizeString(deal.location),
     collaborators: normalizeCollaborators(deal.collaborators),
@@ -770,7 +775,7 @@ function normaliseDeal(
     salesman: normalizeSalesman(payload.salesman, payload.collaborators),
     type: normalizeString(payload.type),
     estimatedDeliveryDate: normalizeDateString(payload.estimatedDeliveryDate),
-    stage: normalizeString(payload.stage),
+    stage: normalizeDealStageValue(payload.stage),
     important: Boolean(payload.important),
     location: normalizeString(payload.location),
     collaborators: normalizeCollaborators(payload.collaborators),
@@ -829,7 +834,9 @@ function mergeDeal(
         : normalizeSalesman(patch.salesman, patch.collaborators),
     type: patch.type === undefined ? original.type : patch.type?.trim() || null,
     stage:
-      patch.stage === undefined ? original.stage : patch.stage?.trim() || null,
+      patch.stage === undefined
+        ? normalizeDealStageValue(original.stage)
+        : normalizeDealStageValue(patch.stage),
     location:
       patch.location === undefined
         ? original.location
@@ -997,7 +1004,7 @@ export const useDealsStore = defineStore("deals", {
     },
 
     updateDealStageManually(id: number | string, stage: string | null) {
-      const normalizedStage = normalizeString(stage);
+      const normalizedStage = normalizeDealStageValue(stage);
       if (!normalizedStage) return null;
 
       return this.updateDeal(id, {
@@ -1009,7 +1016,7 @@ export const useDealsStore = defineStore("deals", {
 
     triggerLifecycleStageTransition(
       id: number | string | null | undefined,
-      targetStageName: "Negotation" | "Active" | "Closed",
+      targetStageName: "Negotation" | "Active" | "Lost",
       reason: string,
       event: DealStageLifecycleEvent,
     ) {
@@ -1060,7 +1067,7 @@ export const useDealsStore = defineStore("deals", {
       );
     },
 
-    async reevaluateDealClosureFromInvoices(
+    reevaluateDealFinalInvoiceStateFromInvoices(
       id: number | string | null | undefined,
     ) {
       if (id === null || id === undefined || id === "") return null;
@@ -1069,28 +1076,7 @@ export const useDealsStore = defineStore("deals", {
         this.items.find((deal) => String(deal.id) === String(id)) ?? null;
       if (!currentDeal) return null;
 
-      const { useInvoicesStore } = await import("@/stores/invoices");
-      const invoicesStore = useInvoicesStore();
-      invoicesStore.init();
-
-      const linkedInvoices = invoicesStore.all.filter(
-        (record) => String(record.quotation.dealId ?? "") === String(id),
-      );
-
-      if (!linkedInvoices.length) return currentDeal;
-
-      const allInvoicesPaid = linkedInvoices.every(
-        (record) => record.quotation.quotationStatus === "Paid",
-      );
-
-      if (!allInvoicesPaid) return currentDeal;
-
-      return this.triggerLifecycleStageTransition(
-        id,
-        "Closed",
-        "All invoices paid",
-        "invoice-payment-updated",
-      );
+      return currentDeal;
     },
 
     approvePendingStageTransition(id: number | string) {

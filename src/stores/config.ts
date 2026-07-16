@@ -62,7 +62,8 @@ const normalizeConfigurations = (
     "On Hold",
     "Completed",
   ];
-  const defaultDealStages = ["Pre-Sale", "Negotation", "Active", "Closed"];
+  const oldDefaultDealStages = ["Pre-Sale", "Negotation", "Active", "Closed"];
+  const defaultDealStages = ["Pre-Sale", "Negotation", "Active", "Lost"];
   const defaultJobStatuses = [
     "New",
     "Pending",
@@ -94,6 +95,10 @@ const normalizeConfigurations = (
     (configuredDealStages.length === previousDefaultDealStages.length &&
       configuredDealStages.every(
         (stage, index) => stage === previousDefaultDealStages[index],
+      )) ||
+    (configuredDealStages.length === oldDefaultDealStages.length &&
+      configuredDealStages.every(
+        (stage, index) => stage === oldDefaultDealStages[index],
       ))
       ? defaultDealStages
       : configuredDealStages.length
