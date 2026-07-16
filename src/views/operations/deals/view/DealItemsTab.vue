@@ -340,7 +340,6 @@ interface DealDocumentContainer {
 interface DealDocumentPanelRecord {
   id: number | string;
   balance: number;
-  clientAvatar: string;
   clientName: string;
   dueDate: string;
   issuedDate: string;
@@ -3515,7 +3514,6 @@ const sortDealDocumentRecords = <T extends DealDocumentContainer>(
 
 const getDealDocumentClientDisplay = (record: DealDocumentContainer) => {
   const client = (record.quotation.client ?? {}) as {
-    avatar?: string | null;
     company?: string | null;
     name?: string | null;
   };
@@ -3525,7 +3523,6 @@ const getDealDocumentClientDisplay = (record: DealDocumentContainer) => {
     `Deal #${props.deal.id}`;
 
   return {
-    avatar: String(client.avatar ?? "").trim(),
     name:
       String(client.name ?? "").trim() ||
       String(client.company ?? "").trim() ||
@@ -3540,7 +3537,6 @@ const mapDealDocumentPanelRecord = <T extends DealDocumentContainer>(
 
   return {
     balance: getDealDocumentBalance(record),
-    clientAvatar: clientDisplay.avatar,
     clientName: clientDisplay.name,
     dueDate: record.quotation.dueDate,
     id: record.quotation.id,
@@ -3557,18 +3553,6 @@ const normalizeDocumentStatus = (value?: string | null) =>
   String(value || "")
     .trim()
     .toLowerCase();
-
-const getDocumentClientInitials = (record: DealDocumentPanelRecord) => {
-  const words = record.clientName
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (!words.length) return "D";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-
-  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
-};
 
 const getDocumentStatusDisplay = (
   kind: DealPreviewKind,
@@ -4593,7 +4577,6 @@ const toDealDocumentPanelRecord = (
 
   return {
     balance: getDealDocumentBalance(record),
-    clientAvatar: clientDisplay.avatar,
     clientName: clientDisplay.name,
     dueDate: record.quotation.dueDate,
     id: record.quotation.id,
@@ -9807,19 +9790,6 @@ const openEditTask = (taskId: number | string) => {
                             class="items-overview__document-client"
                             role="cell"
                           >
-                            <VAvatar
-                              size="34"
-                              :color="record.clientAvatar ? undefined : 'primary'"
-                              :variant="record.clientAvatar ? undefined : 'tonal'"
-                            >
-                              <VImg
-                                v-if="record.clientAvatar"
-                                :src="record.clientAvatar"
-                              />
-                              <span v-else>
-                                {{ getDocumentClientInitials(record) }}
-                              </span>
-                            </VAvatar>
                             <span class="items-overview__document-client-text">
                               <span class="items-overview__document-client-name">
                                 {{ record.clientName }}
@@ -13000,7 +12970,6 @@ const openEditTask = (taskId: number | string) => {
   display: inline-flex;
   align-items: center;
   min-inline-size: 0;
-  gap: 0.65rem;
 }
 
 .items-overview__document-client-text {
