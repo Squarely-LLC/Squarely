@@ -5978,6 +5978,18 @@ const selectableGroups = computed(() => {
     }
   >();
 
+  const sortEnabledItemsFirst = (items: DealDocumentSelectableItem[]) =>
+    items.sort((left, right) => {
+      const leftDisabled = isSelectionDocumentActionDisabled(left.selectionKey);
+      const rightDisabled = isSelectionDocumentActionDisabled(
+        right.selectionKey,
+      );
+
+      if (leftDisabled === rightDisabled) return 0;
+
+      return leftDisabled ? 1 : -1;
+    });
+
   for (const item of filteredSelectableDocumentItems.value) {
     const description =
       item.groupKey === "billable-root"
@@ -5999,7 +6011,10 @@ const selectableGroups = computed(() => {
     });
   }
 
-  return Array.from(groups.values());
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    items: sortEnabledItemsFirst([...group.items]),
+  }));
 });
 
 const selectedDocumentItems = computed(() => {
@@ -8320,7 +8335,7 @@ const openEditTask = (taskId: number | string) => {
           v-model="expandedItems"
           variant="accordion"
           multiple
-          class="expansion-panels-width-border milestone-panels"
+          class="milestone-panels"
         >
           <VExpansionPanel
             v-for="item in dealItemsWithPlan"
@@ -11057,14 +11072,14 @@ const openEditTask = (taskId: number | string) => {
 
   <VDialog v-model="billingPeriodDialogVisible" max-width="640">
     <DialogCloseBtn @click="billingPeriodDialogVisible = false" />
-    <VCard>
+    <VCard class="deal-document-flow-card">
       <VCardItem>
         <VCardTitle>Select Billing Period</VCardTitle>
       </VCardItem>
 
       <VDivider />
 
-      <VCardText class="d-flex flex-column gap-4">
+      <VCardText class="deal-document-flow-card__body d-flex flex-column gap-4">
         <div class="text-sm text-medium-emphasis">
           {{
             isMultiPeriodBillingSelection
@@ -11285,7 +11300,7 @@ const openEditTask = (taskId: number | string) => {
 
       <VDivider />
 
-      <VCardActions class="justify-end pa-4">
+      <VCardActions class="deal-document-flow-card__actions justify-end pa-4">
         <VBtn variant="text" @click="resetDocumentWorkflowState"> Cancel </VBtn>
         <VBtn
           color="primary"
@@ -11300,14 +11315,14 @@ const openEditTask = (taskId: number | string) => {
 
   <VDialog v-model="selectionDialogVisible" max-width="760">
     <DialogCloseBtn @click="selectionDialogVisible = false" />
-    <VCard>
+    <VCard class="deal-document-flow-card">
       <VCardItem>
         <VCardTitle>{{ selectionDialogTitle }}</VCardTitle>
       </VCardItem>
 
       <VDivider />
 
-      <VCardText>
+      <VCardText class="deal-document-flow-card__body">
         <div class="text-sm text-medium-emphasis mb-4">
           {{ selectionDialogIntro }}
         </div>
@@ -11460,7 +11475,7 @@ const openEditTask = (taskId: number | string) => {
 
       <VDivider />
 
-      <VCardActions class="justify-end pa-4">
+      <VCardActions class="deal-document-flow-card__actions justify-end pa-4">
         <VBtn variant="text" @click="closeSelectionDialog"> Cancel </VBtn>
         <VBtn
           color="primary"
@@ -11826,6 +11841,23 @@ const openEditTask = (taskId: number | string) => {
 .deal-item-modal-note :deep(textarea) {
   min-block-size: 100%;
   resize: vertical;
+}
+
+.deal-document-flow-card {
+  display: flex;
+  flex-direction: column;
+  max-block-size: calc(100dvh - 3rem);
+}
+
+.deal-document-flow-card__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.deal-document-flow-card__actions {
+  flex: 0 0 auto;
+  background: rgb(var(--v-theme-surface));
 }
 
 @media (max-width: 959px) {
@@ -12496,7 +12528,6 @@ const openEditTask = (taskId: number | string) => {
 .items-card-summary__rows {
   display: flex;
   flex-direction: column;
-  border-block-start: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   gap: 0.35rem;
   inline-size: min(100%, 16rem);
   padding-block-start: 0.875rem;
