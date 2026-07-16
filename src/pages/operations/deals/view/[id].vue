@@ -6,7 +6,6 @@ import { requiredValidator } from "@/@core/utils/validators";
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { ContactRef, ToDo } from "@/data/schema";
 import type { InvoiceRecord } from "@/plugins/fake-api/handlers/apps/invoice/types";
-import type { ProformaRecord } from "@/plugins/fake-api/handlers/apps/proforma/types";
 import type {
   CatalogueJobConfigTask,
   CatalogueRecord,
@@ -38,14 +37,7 @@ import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import {
   getDealRetainerServiceLines,
-  getQuotationTopLevelDealItems,
 } from "@/utils/dealDocumentDraft";
-import {
-  getDealDocumentBalance,
-  getDealDocumentPaid,
-  getDealDocumentTotal,
-  getDealItemsGrandTotal,
-} from "@/utils/dealBilling";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import {
   getContactAndEmployeeRefs,
@@ -71,7 +63,6 @@ import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
 import DealUpsertDialog from "@/views/operations/deals/list/DealUpsertDialog.vue";
-import DealBillingSummaryCard from "@/views/operations/deals/view/DealBillingSummaryCard.vue";
 import DealCommunicationTab from "@/views/operations/deals/view/DealCommunicationTab.vue";
 import DealDocumentsTab from "@/views/operations/deals/view/DealDocumentsTab.vue";
 import DealItemsTab from "@/views/operations/deals/view/DealItemsTab.vue";
@@ -130,6 +121,7 @@ const showImmediateDueOptionOnEdit = ref(false);
 const isEditTodoDrawerVisible = ref(false);
 const isExecutePreviewDialogVisible = ref(false);
 const isExecutingDeal = ref(false);
+const executeWorkMode = ref<"start" | "update">("start");
 const executePreviewError = ref<string | null>(null);
 const executePreview = ref<DealExecutionPreview | null>(null);
 const selectedJobOwnerId = ref<number | null>(null);
@@ -728,12 +720,13 @@ const mergeJobDocuments = (
 const buildExecutionPreview = (
   currentDeal: DealProperties,
   executedAt: string,
+  rootItemsOverride?: DealItem[],
 ): DealExecutionPreview => {
   const milestones: ExecutionPreviewMilestone[] = [];
   const generalTasks: ExecutionPreviewTask[] = [];
-  const rootItems = (currentDeal.items || []).filter(
-    (item) => !item.parentItemId,
-  );
+  const rootItems =
+    rootItemsOverride ??
+    (currentDeal.items || []).filter((item) => !item.parentItemId);
   const dealReference =
     currentDeal.code?.trim() ||
     currentDeal.name?.trim() ||
@@ -1136,6 +1129,7 @@ const buildExecutionPreview = (
 const closeExecutePreviewDialog = () => {
   isExecutePreviewDialogVisible.value = false;
   isExecutingDeal.value = false;
+  executeWorkMode.value = "start";
   executePreview.value = null;
   executePreviewError.value = null;
   selectedJobOwnerId.value = null;
@@ -1291,9 +1285,7 @@ const dealEmployeeCollaborators = computed(
 
 const employeeOptions = computed(() => getEmployeeRefs());
 
-type DealBillingDocument = InvoiceRecord | ProformaRecord;
-
-const isCurrentDealBillingDocument = (record: DealBillingDocument) => {
+const isCurrentDealInvoice = (record: InvoiceRecord) => {
   if (!deal.value) return false;
   if (String(record.quotation?.dealId ?? "") !== String(deal.value.id))
     return false;
@@ -1305,62 +1297,91 @@ const isCurrentDealBillingDocument = (record: DealBillingDocument) => {
   );
 };
 
-const dealBillingDocuments = computed<DealBillingDocument[]>(() => [
-  ...invoicesStore.items.filter(isCurrentDealBillingDocument),
-]);
-
-const dealProformaBillingAmount = computed(() =>
-  proformasStore.items
-    .filter(isCurrentDealBillingDocument)
-    .reduce((sum, record) => sum + getDealDocumentTotal(record), 0),
+const currentDealInvoices = computed(() =>
+  invoicesStore.items.filter(isCurrentDealInvoice),
 );
 
-const dealProformaBillingCount = computed(
-  () => proformasStore.items.filter(isCurrentDealBillingDocument).length,
+const dealRootItems = computed(() =>
+  (deal.value?.items || []).filter((item) => !item.parentItemId),
 );
 
-const dealBillingPaid = computed(() =>
-  dealBillingDocuments.value.reduce(
-    (sum, record) => sum + getDealDocumentPaid(record),
-    0,
-  ),
-);
+const linkedJobDealItemIds = computed(() => {
+  const ids = new Set<string>();
+  (linkedJob.value?.goals || []).forEach((goal) => {
+    const sourceId = goal.source?.dealItemId;
+    if (sourceId !== null && sourceId !== undefined && sourceId !== "")
+      ids.add(String(sourceId));
+  });
 
-const dealBillingUnpaid = computed(() =>
-  dealBillingDocuments.value.reduce(
-    (sum, record) => sum + getDealDocumentBalance(record),
-    0,
-  ),
-);
+  return ids;
+});
 
-const getDealItemBillingQuantity = (item: DealItem) => {
-  if (!item.parentItemId && item.catalogueType === "Retainer Service")
-    return Math.max(Number(item.retainerPeriods ?? 1), 1);
-  if (!item.parentItemId && item.catalogueType === "Reccurent Service")
-    return Math.max(Number(item.recurrentPeriods ?? 1), 1);
+const newWorkRootItems = computed(() => {
+  if (!linkedJob.value) return dealRootItems.value;
 
-  return Number(item.quantity ?? 1);
-};
-
-const dealBillingGrossTotal = computed(() => {
-  if (!deal.value) return 0;
-
-  return getDealItemsGrandTotal(
-    getQuotationTopLevelDealItems(deal.value.items || [], (id, typeHint) =>
-      cataloguesStore.recordById(id, typeHint),
-    ),
-    getDealItemBillingQuantity,
+  return dealRootItems.value.filter(
+    (item) => !linkedJobDealItemIds.value.has(String(item.id)),
   );
 });
 
-const dealBillingToBeInvoiced = computed(() =>
-  Math.max(
-    dealBillingGrossTotal.value -
-      dealBillingPaid.value -
-      dealBillingUnpaid.value,
-    0,
-  ),
+const hasNewWorkItems = computed(
+  () => Boolean(linkedJob.value) && newWorkRootItems.value.length > 0,
 );
+
+const buildWorkPreviewDeal = (
+  currentDeal: DealProperties,
+  rootItems: DealItem[],
+): DealProperties => {
+  const rootIds = new Set(rootItems.map((item) => String(item.id)));
+  const items = (currentDeal.items || []).filter(
+    (item) => rootIds.has(String(item.id)) || rootIds.has(String(item.parentItemId)),
+  );
+
+  return {
+    ...currentDeal,
+    items,
+  };
+};
+
+const averagePaymentTimeLabel = computed(() => {
+  if (hideDealFinancials.value) return "Hidden";
+
+  const durations = currentDealInvoices.value
+    .filter((record) => record.quotation.quotationStatus === "Paid")
+    .map((record) => {
+      const issuedTime = new Date(record.quotation.issuedDate || "").getTime();
+      const finalPayment = [...(record.payments || [])]
+        .filter((payment) => Number(payment.balanceAfter) <= 0)
+        .sort(
+          (left, right) =>
+            new Date(left.date || left.createdAt || 0).getTime() -
+            new Date(right.date || right.createdAt || 0).getTime(),
+        )
+        .at(-1);
+      const paidTime = finalPayment
+        ? new Date(finalPayment.date || finalPayment.createdAt || "").getTime()
+        : NaN;
+
+      if (Number.isNaN(issuedTime) || Number.isNaN(paidTime)) return null;
+
+      return Math.max(0, Math.round((paidTime - issuedTime) / 86400000));
+    })
+    .filter((value): value is number => value !== null);
+
+  if (!durations.length) return "No paid invoices yet";
+
+  const average =
+    durations.reduce((sum, duration) => sum + duration, 0) / durations.length;
+  const rounded = Math.round(average);
+
+  return `${rounded} ${rounded === 1 ? "day" : "days"}`;
+});
+
+const dealCreationDateLabel = computed(() =>
+  deal.value?.createdAt ? formatPreviewDate(deal.value.createdAt) : "--",
+);
+
+const dealStatusLabel = computed(() => deal.value?.stage || "--");
 
 const dealCollaboratorOptions = computed(() => getEmployeeOptions());
 const jobOwnerOptions = computed(() => getEmployeeOptions());
@@ -1371,6 +1392,9 @@ const numericEmployeeId = (value: unknown) => {
 };
 
 const resolveDefaultJobOwnerId = (currentDeal: DealProperties) => {
+  const linkedJobOwnerId = numericEmployeeId(linkedJob.value?.projectManagerId);
+  if (linkedJobOwnerId) return linkedJobOwnerId;
+
   const currentUserOption = findCurrentUserOption(jobOwnerOptions.value);
   const currentUserId = numericEmployeeId(currentUserOption?.value);
   if (currentUserId) return currentUserId;
@@ -1512,7 +1536,7 @@ const notifyJobConversionRecipients = (
       const created = systemNotificationsStore.addNotification({
         recipientEmployeeId: recipient.id,
         title: `Job assignment: ${executionJob.name}`,
-        body: `${dealLabel} was converted to ${executionJob.name}. Owner: ${selectedJobOwnerName.value}.`,
+        body: `${dealLabel} ${executeWorkMode.value === "update" ? "updated work for" : "started work as"} ${executionJob.name}. Owner: ${selectedJobOwnerName.value}.`,
         createdAt: now,
         type: "job-assignment",
         target: {
@@ -1535,17 +1559,6 @@ const linkedJob = computed(() => {
   return jobsStore.byId(linkedJobId) ?? null;
 });
 
-const dealExecutionNotice = computed(() => {
-  if (!linkedJob.value) return null;
-
-  const linkedJobLabel =
-    linkedJob.value.code?.trim() ||
-    linkedJob.value.name?.trim() ||
-    "linked job";
-
-  return `Already converted to ${linkedJobLabel}.`;
-});
-
 const currentDealResource = computed(() =>
   deal.value ? mapAuthorizationResource("deals", deal.value) : undefined,
 );
@@ -1561,6 +1574,7 @@ const canUpdateTask = computed(() => canMutate("tasks", "update"));
 const canDeleteTask = computed(() => canMutate("tasks", "delete"));
 const canCreateCalendar = computed(() => canMutate("calendar", "create"));
 const canCreateJob = computed(() => canMutate("jobs", "create"));
+const canUpdateJob = computed(() => canMutate("jobs", "update"));
 const canCreateFinance = computed(() => canMutate("finance", "create"));
 const canUpdateFinance = computed(() => canMutate("finance", "update"));
 const canDeleteFinance = computed(() => canMutate("finance", "delete"));
@@ -1587,15 +1601,51 @@ const financeCreateDisabledReason = computed(() =>
     : permissionDisabledReason("finance", "create"),
 );
 const canExecuteDeal = computed(
-  () => canUpdateDeal.value && canCreateJob.value && canCreateTask.value,
+  () =>
+    canUpdateDeal.value &&
+    canCreateTask.value &&
+    (linkedJob.value ? canUpdateJob.value : canCreateJob.value),
 );
 const executeDealDisabledReason = computed(() => {
-  if (dealExecutionNotice.value) return dealExecutionNotice.value;
   if (!canUpdateDeal.value) return dealUpdateDisabledReason.value;
-  if (!canCreateJob.value) return permissionDisabledReason("jobs", "create");
+  if (linkedJob.value && !canUpdateJob.value)
+    return permissionDisabledReason("jobs", "update");
+  if (!linkedJob.value && !canCreateJob.value)
+    return permissionDisabledReason("jobs", "create");
   if (!canCreateTask.value) return taskCreateDisabledReason.value;
 
   return "";
+});
+
+const workActionState = computed<"start" | "update" | "in_progress">(() => {
+  if (!linkedJob.value) return "start";
+  if (hasNewWorkItems.value) return "update";
+
+  return "in_progress";
+});
+
+const workActionLabel = computed(() => {
+  if (workActionState.value === "update") return "Update Work";
+  if (workActionState.value === "in_progress") return "Work in progress";
+
+  return "Start Work";
+});
+
+const workActionDisabled = computed(
+  () => workActionState.value === "in_progress" || !canExecuteDeal.value,
+);
+
+const workActionDisabledReason = computed(() =>
+  workActionState.value === "in_progress"
+    ? "Work has already started."
+    : executeDealDisabledReason.value,
+);
+
+const jobStatusLabel = computed(() => {
+  if (!linkedJob.value) return "Not started";
+  if (hasNewWorkItems.value) return "Work needs to be updated";
+
+  return "Work in progress";
 });
 
 const notifyDealUpdateDenied = () => {
@@ -1807,16 +1857,27 @@ const saveDealCollaborators = () => {
 const openExecutePreviewDialog = () => {
   const currentDeal = resolveLatestDealState();
   if (!currentDeal) return;
-  if (linkedJob.value) return;
+  if (workActionState.value === "in_progress") return;
   if (!canExecuteDeal.value) {
     notifyPermissionDenied(executeDealDisabledReason.value);
     return;
   }
 
   const executedAt = new Date().toISOString();
+  const updateMode = workActionState.value === "update";
+  const rootItems = updateMode ? newWorkRootItems.value : undefined;
+  const previewDeal =
+    updateMode && rootItems
+      ? buildWorkPreviewDeal(currentDeal, rootItems)
+      : currentDeal;
 
   try {
-    executePreview.value = buildExecutionPreview(currentDeal, executedAt);
+    executeWorkMode.value = updateMode ? "update" : "start";
+    executePreview.value = buildExecutionPreview(
+      previewDeal,
+      executedAt,
+      rootItems,
+    );
     executePreviewError.value = null;
     selectedJobOwnerId.value = resolveDefaultJobOwnerId(currentDeal);
   } catch (previewError) {
@@ -1838,7 +1899,7 @@ const confirmDealExecution = () => {
   }
   const projectManagerId = numericEmployeeId(selectedJobOwnerId.value);
   if (!projectManagerId) {
-    notifications.push("Select a job owner before converting.", "warning", 3000);
+    notifications.push("Select a job owner before starting work.", "warning", 3000);
     return;
   }
 
@@ -2013,7 +2074,7 @@ const confirmDealExecution = () => {
       ...notifyJobConversionRecipients(executionJob, projectManagerId),
     );
     notifications.push(
-      `Deal converted to job ${executionJob.name} with ${preview.summary.jobTaskCount} tasks`,
+      `${executeWorkMode.value === "update" ? "Work updated" : "Work started"} for ${executionJob.name} with ${preview.summary.jobTaskCount} tasks`,
       "success",
       4000,
     );
@@ -2698,7 +2759,6 @@ watch(
           :collaborators="dealEmployeeCollaborators"
           :linked-contact="linkedContact"
           :stage-options="dealStageOptions"
-          :execution-notice="dealExecutionNotice"
           :can-edit="canUpdateDeal"
           :edit-disabled-reason="dealUpdateDisabledReason"
           :can-add-task="canCreateTask"
@@ -2712,8 +2772,13 @@ watch(
           :can-add-note="canUpdateDeal"
           :note-disabled-reason="dealUpdateDisabledReason"
           :hide-financials="hideDealFinancials"
+          :work-action-label="workActionLabel"
+          :work-action-state="workActionState"
+          :work-action-disabled="workActionDisabled"
+          :work-action-disabled-reason="workActionDisabledReason"
           @back="goBackToDealsTable"
           @edit="openEditDialog"
+          @work-action="openExecutePreviewDialog"
           @toggle-important="toggleDealImportant"
           @open-add-task="handleAddTaskFromCommunication"
           @open-add-email="openEmail"
@@ -2723,15 +2788,24 @@ watch(
           @open-collaborators="openCollaboratorDialog"
         />
 
-        <DealBillingSummaryCard
-          class="mt-4"
-          :paid="dealBillingPaid"
-          :proforma-amount="dealProformaBillingAmount"
-          :proforma-count="dealProformaBillingCount"
-          :unpaid="dealBillingUnpaid"
-          :to-be-invoiced="dealBillingToBeInvoiced"
-          :hidden="hideDealFinancials"
-        />
+        <div class="deal-meta-summary mt-4">
+          <div class="deal-meta-summary__row">
+            <span>Deal creation date</span>
+            <strong>{{ dealCreationDateLabel }}</strong>
+          </div>
+          <div class="deal-meta-summary__row">
+            <span>Deal status</span>
+            <strong>{{ dealStatusLabel }}</strong>
+          </div>
+          <div class="deal-meta-summary__row">
+            <span>Job status</span>
+            <strong>{{ jobStatusLabel }}</strong>
+          </div>
+          <div class="deal-meta-summary__row">
+            <span>Average payment time</span>
+            <strong>{{ averagePaymentTimeLabel }}</strong>
+          </div>
+        </div>
       </VCol>
 
       <VCol cols="12" md="7" lg="8">
@@ -2742,36 +2816,7 @@ watch(
               <span>{{ tab.title }}</span>
             </VTab>
           </VTabs>
-
-          <VTooltip
-            :text="canExecuteDeal && !dealExecutionNotice ? 'Convert to job' : executeDealDisabledReason"
-            location="top"
-          >
-            <template #activator="{ props: tooltipProps }">
-              <span v-bind="tooltipProps" class="d-inline-flex">
-                <VBtn
-                  aria-label="Convert to job"
-                  variant="tonal"
-                  :disabled="!canExecuteDeal || Boolean(dealExecutionNotice)"
-                  @click="openExecutePreviewDialog"
-                >
-                  <VIcon start icon="tabler-play" />
-                  Convert to Job
-                </VBtn>
-              </span>
-            </template>
-          </VTooltip>
         </div>
-
-        <VAlert
-          v-if="dealExecutionNotice"
-          type="info"
-          variant="tonal"
-          density="comfortable"
-          class="mb-4"
-        >
-          {{ dealExecutionNotice }}
-        </VAlert>
 
         <VWindow
           v-model="dealTab"
@@ -2860,9 +2905,11 @@ watch(
       <DialogCloseBtn @click="closeExecutePreviewDialog" />
       <VCard>
         <VCardItem>
-          <VCardTitle>Convert to Job</VCardTitle>
+          <VCardTitle>
+            {{ executeWorkMode === "update" ? "Update Work" : "Start Work" }}
+          </VCardTitle>
           <VCardSubtitle>
-            Select the job owner and review job creation, milestones, goals, and tasks before confirming.
+            Select the job owner and review job milestones, goals, and tasks before confirming.
           </VCardSubtitle>
         </VCardItem>
 
@@ -2891,7 +2938,9 @@ watch(
             <VRow class="mb-2">
               <VCol cols="12" md="6">
                 <VCard variant="tonal" class="pa-4 h-100">
-                  <div class="text-overline mb-2">New Job</div>
+                  <div class="text-overline mb-2">
+                    {{ executeWorkMode === "update" ? "Linked Job" : "New Job" }}
+                  </div>
                   <div class="text-h6 mb-2">{{ executePreview.job.name }}</div>
                   <div class="text-body-2 text-medium-emphasis">
                     {{ executePreview.job.type }} |
@@ -2908,7 +2957,7 @@ watch(
 
               <VCol cols="12" md="6">
                 <VCard variant="tonal" class="pa-4 h-100">
-                  <div class="text-overline mb-2">Conversion Summary</div>
+                  <div class="text-overline mb-2">Work Summary</div>
                   <div class="d-flex flex-column gap-1 text-body-2">
                     <span>{{ executionTargetSummary }}</span>
                     <span>Owner: {{ selectedJobOwnerName }}</span>
@@ -3041,7 +3090,7 @@ watch(
             :disabled="!executePreview || Boolean(executePreviewError) || !selectedJobOwnerId"
             @click="confirmDealExecution"
           >
-            Convert to Job
+            {{ executeWorkMode === "update" ? "Update Work" : "Start Work" }}
           </VBtn>
         </VCardActions>
       </VCard>
@@ -3187,10 +3236,43 @@ watch(
   gap: 1rem;
 }
 
+.deal-meta-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-inline: 0.25rem;
+}
+
+.deal-meta-summary__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.875rem;
+}
+
+.deal-meta-summary__row strong {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: end;
+}
+
 @media (max-width: 960px) {
   .deal-view-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .deal-meta-summary__row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .deal-meta-summary__row strong {
+    text-align: start;
   }
 }
 </style>

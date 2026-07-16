@@ -40,6 +40,10 @@ interface Props {
   canAddNote?: boolean;
   noteDisabledReason?: string;
   hideFinancials?: boolean;
+  workActionLabel?: string;
+  workActionState?: "start" | "update" | "in_progress";
+  workActionDisabled?: boolean;
+  workActionDisabledReason?: string;
 }
 
 const props = defineProps<Props>();
@@ -48,6 +52,7 @@ const emit = defineEmits<{
   (e: "back"): void;
   (e: "edit"): void;
   (e: "execute"): void;
+  (e: "work-action"): void;
   (e: "toggle-important"): void;
   (e: "open-add-task"): void;
   (e: "open-add-email"): void;
@@ -452,6 +457,8 @@ const currentStageIndex = computed(() => {
             </VListItemTitle>
           </VListItem>
 
+          <VDivider class="my-3" />
+
           <VListItem>
             <VListItemTitle class="detail-row detail-row--stacked">
               <span class="detail-row__label">Collaborators:</span>
@@ -531,21 +538,45 @@ const currentStageIndex = computed(() => {
         </VList>
       </VCardText>
 
-      <VCardText class="d-flex flex-column align-center pb-6">
+      <VDivider class="mx-6" />
+
+      <VCardText class="summary-bottom-actions">
         <VTooltip
           :text="canEdit ? 'Edit deal' : editDisabledReason || defaultDisabledReason"
           location="top"
         >
           <template #activator="{ props: tooltipProps }">
-            <span v-bind="tooltipProps" class="d-inline-flex">
+            <span v-bind="tooltipProps" class="d-inline-flex flex-grow-1">
               <VBtn
                 aria-label="Edit deal"
                 variant="tonal"
                 :disabled="!canEdit"
+                block
                 @click="canEdit ? emit('edit') : undefined"
-                class="mb-2"
               >
                 Edit
+              </VBtn>
+            </span>
+          </template>
+        </VTooltip>
+
+        <VTooltip
+          :text="workActionDisabled ? workActionDisabledReason || defaultDisabledReason : workActionLabel || 'Start Work'"
+          location="top"
+        >
+          <template #activator="{ props: tooltipProps }">
+            <span v-bind="tooltipProps" class="d-inline-flex flex-grow-1">
+              <VBtn
+                aria-label="Work action"
+                :variant="workActionState === 'in_progress' ? 'flat' : 'tonal'"
+                :color="workActionState === 'update' ? 'warning' : workActionState === 'in_progress' ? 'secondary' : 'primary'"
+                :disabled="workActionDisabled"
+                block
+                class="summary-work-btn"
+                :class="{ 'summary-work-btn--progress': workActionState === 'in_progress' }"
+                @click="!workActionDisabled ? emit('work-action') : undefined"
+              >
+                {{ workActionLabel || "Start Work" }}
               </VBtn>
             </span>
           </template>
@@ -626,6 +657,17 @@ const currentStageIndex = computed(() => {
   block-size: 2.5rem;
   box-shadow: none;
   min-inline-size: 2.5rem;
+}
+
+.summary-bottom-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block-end: 1.5rem;
+}
+
+.summary-work-btn--progress {
+  color: rgb(var(--v-theme-primary)) !important;
 }
 
 .contact-code-line {
@@ -736,6 +778,11 @@ const currentStageIndex = computed(() => {
   .summary-actions {
     flex-wrap: wrap;
     justify-content: center;
+  }
+
+  .summary-bottom-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .summary-action-btn {
