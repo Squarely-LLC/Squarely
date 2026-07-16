@@ -411,14 +411,15 @@ const alreadyQuotedDialogResolver = ref<((value: boolean) => void) | null>(
   null,
 );
 
-const isItemsOverviewCollapsed = ref(true);
-const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
+const isItemsOverviewCollapsed = ref(false);
+const activeDocumentPanelKeys = ref<DealPreviewKind[]>([]);
 const highlightedDocumentRowKey = ref<string | null>(null);
 let highlightedDocumentRowTimer: ReturnType<typeof setTimeout> | null = null;
 const selectedPaymentDocument = ref<{
   id: number | string;
-  kind: "invoice";
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">;
 } | null>(null);
+const pendingDeleteTask = ref<DealSalesTaskRow | null>(null);
 const invoicePaymentDrawerOpen = ref(false);
 const previewActionFrame = ref<HTMLIFrameElement | null>(null);
 const previewActionFrameKind = ref<DealPreviewKind | null>(null);
@@ -2618,7 +2619,13 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
     };
   }
 
-  if ((item as DealItem).parentItemId) {
+  const metricType = String(
+    (item as DealItem).catalogueType || (item as DealItem).itemTypeLabel || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (metricType === "phase") {
     return {
       label: "Phase",
       value: String(getItemQuantityDisplayValue(item)),
@@ -3574,7 +3581,7 @@ const canPayDocument = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) =>
-  kind === "invoice" &&
+  (kind === "proforma" || kind === "invoice") &&
   !isDocumentPaid(record) &&
   record.balance > 0;
 
@@ -3921,20 +3928,8 @@ const dealDocumentPanels = computed<DealDocumentPanel[]>(() => [
   },
 ]);
 
-const resolvedActiveDocumentPanelKey = computed<DealPreviewKind | null>(() => {
-  if (
-    activeDocumentPanelKey.value &&
-    dealDocumentPanels.value.some(
-      (panel) => panel.key === activeDocumentPanelKey.value,
-    )
-  )
-    return activeDocumentPanelKey.value;
-
-  return null;
-});
-
 const isDocumentPanelExpanded = (key: DealPreviewKind) =>
-  resolvedActiveDocumentPanelKey.value === key;
+  activeDocumentPanelKeys.value.includes(key);
 
 const getDocumentSummaryRowKey = (
   kind: DealPreviewKind,
@@ -3955,7 +3950,9 @@ const jumpToDocumentSummaryRecord = async (
   const rowKey = getDocumentSummaryRowKey(kind, record);
 
   isItemsOverviewCollapsed.value = false;
-  activeDocumentPanelKey.value = kind;
+  if (!activeDocumentPanelKeys.value.includes(kind)) {
+    activeDocumentPanelKeys.value = [...activeDocumentPanelKeys.value, kind];
+  }
   highlightedDocumentRowKey.value = rowKey;
 
   await nextTick();
@@ -3976,14 +3973,13 @@ const jumpToDocumentSummaryRecord = async (
 };
 
 const setActiveDocumentPanel = (key: DealPreviewKind) => {
-  activeDocumentPanelKey.value =
-    activeDocumentPanelKey.value === key ? null : key;
+  activeDocumentPanelKeys.value = activeDocumentPanelKeys.value.includes(key)
+    ? activeDocumentPanelKeys.value.filter((panelKey) => panelKey !== key)
+    : [...activeDocumentPanelKeys.value, key];
 };
 
 const toggleItemsOverviewCollapsed = () => {
   isItemsOverviewCollapsed.value = !isItemsOverviewCollapsed.value;
-
-  if (isItemsOverviewCollapsed.value) activeDocumentPanelKey.value = null;
 };
 
 const getPreviewRouteName = (kind: DealPreviewKind) => {
@@ -4642,7 +4638,10 @@ const selectedPaymentRecord = computed(() => {
   const target = selectedPaymentDocument.value;
   if (!target) return null;
 
-  const source = dealInvoiceRecords.value;
+  const source =
+    target.kind === "proforma"
+      ? dealProformaRecords.value
+      : dealInvoiceRecords.value;
 
   return (
     source.find((record) => String(record.id) === String(target.id)) ?? null
@@ -4653,15 +4652,42 @@ const selectedPaymentBalance = computed(() =>
   Math.max(0, Number(selectedPaymentRecord.value?.balance || 0)),
 );
 
+const getConvertedInvoiceLabel = (record: DealDocumentPanelRecord) => {
+  const convertedInvoiceId =
+    record.record.convertedInvoiceId ??
+    (record.record.quotation as { convertedInvoiceId?: number | string | null })
+      .convertedInvoiceId ??
+    null;
+  if (convertedInvoiceId === null || convertedInvoiceId === undefined)
+    return "";
+
+  const invoice = invoicesStore.byId(convertedInvoiceId) as any;
+
+  return invoice?.quotation?.quoteNumber || `INV #${convertedInvoiceId}`;
+};
+
 const openDocumentPayment = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   record: DealDocumentPanelRecord,
 ) => {
-  if (kind !== "invoice") return;
   if (!canUseFinanceUpdate.value) {
     notifyFinanceDenied(financeUpdateReason.value);
     return;
   }
+
+  if (kind === "proforma" && isDocumentConverted(record)) {
+    const invoiceLabel = getConvertedInvoiceLabel(record);
+
+    notifications.push(
+      invoiceLabel
+        ? `This proforma was converted to ${invoiceLabel}. Record payment on the invoice.`
+        : "This proforma was converted to an invoice. Record payment on the invoice.",
+      "warning",
+      3500,
+    );
+    return;
+  }
+
   if (!canRecordInvoicePayment(record.record as any)) {
     notifications.push(FINANCE_APPROVAL_PAYMENT_MESSAGE, "warning", 3500);
     return;
@@ -4675,14 +4701,14 @@ const openDocumentPaymentFromPanel = (
   kind: DealPreviewKind,
   record: DealDocumentPanelRecord,
 ) => {
-  if (kind !== "invoice") return;
+  if (kind !== "proforma" && kind !== "invoice") return;
 
   openDocumentPayment(kind, record);
 };
 
 const saveInvoicePayment = (payment: InvoicePaymentInput) => {
   const target = selectedPaymentDocument.value;
-  if (!target || target.kind !== "invoice") return;
+  if (!target) return;
   if (!canUseFinanceUpdate.value) {
     notifyFinanceDenied(financeUpdateReason.value);
     return;
@@ -4693,7 +4719,27 @@ const saveInvoicePayment = (payment: InvoicePaymentInput) => {
     return;
   }
 
-  const updated = invoicesStore.recordPayment(target.id, payment);
+  if (target.kind === "proforma" && isDocumentConverted(paymentRecord)) {
+    const invoiceLabel = getConvertedInvoiceLabel(paymentRecord);
+
+    notifications.push(
+      invoiceLabel
+        ? `This proforma was converted to ${invoiceLabel}. Record payment on the invoice.`
+        : "This proforma was converted to an invoice. Record payment on the invoice.",
+      "warning",
+      3500,
+    );
+    return;
+  }
+
+  const paymentTargetId =
+    target.kind === "proforma"
+      ? convertProformaRecordToInvoice(paymentRecord)
+      : target.id;
+
+  if (!paymentTargetId) return;
+
+  const updated = invoicesStore.recordPayment(paymentTargetId, payment);
   const latestPayment = updated?.payments?.at(-1);
 
   if (!updated) {
@@ -4714,6 +4760,7 @@ const saveInvoicePayment = (payment: InvoicePaymentInput) => {
 
   notifications.push("Payment recorded.", "success", 2500);
   selectedPaymentDocument.value = null;
+  invoicePaymentDrawerOpen.value = false;
 };
 
 const resolveProductSelectionKey = (product: {
@@ -5626,6 +5673,72 @@ const jumpToSectionDocumentReference = (
   );
 };
 
+const getGoalDocumentUsageKeys = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+  billingPeriod?: DealBillingPeriod | null,
+) => {
+  const selectableItem = findGoalSelectableItem(parentItem, goal);
+  if (!selectableItem) return new Set<string>();
+
+  const usageKey = buildDealDocumentUsageKey(
+    selectableItem.selectionKey,
+    resolveGoalBillingPeriodKey(selectableItem, billingPeriod),
+  );
+
+  return new Set(usageKey ? [usageKey] : []);
+};
+
+const getGoalDocumentReference = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+  billingPeriod?: DealBillingPeriod | null,
+) => {
+  const usageKeys = getGoalDocumentUsageKeys(parentItem, goal, billingPeriod);
+  if (!usageKeys.size) return null;
+
+  const records =
+    kind === "proforma" ? dealProformaRecords.value : dealInvoiceRecords.value;
+
+  return (
+    records.find((record) =>
+      (record.record.purchasedProducts ?? []).some((product) => {
+        const usageKey = buildDealDocumentUsageKey(
+          resolveProductSelectionKey(product),
+          resolveStoredBillingPeriodKey(product),
+        );
+
+        return Boolean(usageKey) && usageKeys.has(usageKey);
+      }),
+    ) ?? null
+  );
+};
+
+const getGoalDocumentReferenceLabel = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+  billingPeriod?: DealBillingPeriod | null,
+) => {
+  const record = getGoalDocumentReference(kind, parentItem, goal, billingPeriod);
+  if (!record) return "";
+
+  return `${kind === "proforma" ? "PF" : "INV"} #${record.quoteNumber}`;
+};
+
+const jumpToGoalDocumentReference = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+  billingPeriod?: DealBillingPeriod | null,
+) => {
+  void jumpToDocumentSummaryRecord(
+    kind,
+    getGoalDocumentReference(kind, parentItem, goal, billingPeriod),
+  );
+};
+
 const isSectionDocumentActionDisabled = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   parentItem: DealItemWithPlan,
@@ -6166,7 +6279,7 @@ const getSectionHeaderMetrics = (
   },
 ];
 
-const getGoalHeaderMetrics = (goal: DerivedGoal) => [
+const getContractualPhaseHeaderMetrics = (goal: DerivedGoal) => [
   { label: "Price", value: formatHeaderMoney(goal.price) },
   {
     label: "Discount",
@@ -7893,8 +8006,19 @@ const formatTaskDueDate = (task: DealSalesTaskRow) => {
   return "Immediately";
 };
 
-const salesTaskRelationLabel = (task: DealSalesTaskRow) =>
-  task.relatedTo?.type === "job" ? "Linked job" : "Deal";
+const salesTaskRelationLabel = (task: DealSalesTaskRow) => {
+  if (task.relatedTo?.type === "job") {
+    const linkedJob = buildLinkedJobRelatedTo();
+    const reference =
+      task.relatedTo.name?.trim() ||
+      linkedJob?.name?.trim() ||
+      (task.relatedTo.id ? `Job #${task.relatedTo.id}` : "Job");
+
+    return `Linked job: ${reference}`;
+  }
+
+  return `Deal: ${props.deal.code || `Deal #${props.deal.id}`}`;
+};
 
 const isManualSalesTodo = (taskId: number | string) => {
   const todo = todosStore.byId(taskId) as DealTodo | undefined;
@@ -7976,6 +8100,27 @@ const toggleSalesTaskImportant = (task: DealSalesTaskRow) => {
     important,
     relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
   });
+};
+
+const openTaskDeleteConfirmation = (task: DealSalesTaskRow) => {
+  if (!canUseTaskDelete.value) {
+    notifications.push(taskDeleteReason.value, "warning", 3000);
+    return;
+  }
+
+  pendingDeleteTask.value = task;
+};
+
+const closeTaskDeleteConfirmation = () => {
+  pendingDeleteTask.value = null;
+};
+
+const confirmTaskDelete = () => {
+  const task = pendingDeleteTask.value;
+  if (!task) return;
+
+  emit("delete-task", task.id);
+  closeTaskDeleteConfirmation();
 };
 
 const formatTaskAfterWhen = (afterWhen?: string | null) => {
@@ -8920,7 +9065,7 @@ const openEditTask = (taskId: number | string) => {
                         class="goal-panel goal-panel--static goal-panel--contractual-phase"
                       >
                         <div class="phase-card-shell">
-                          <div class="flex-grow-1 min-w-0">
+                          <div class="phase-card-main flex-grow-1 min-w-0">
                             <div class="item-card-header">
                               <div class="item-card-title-row">
                                 <VTooltip :text="goal.name" location="top">
@@ -8951,41 +9096,31 @@ const openEditTask = (taskId: number | string) => {
                               </div>
 
                               <div
-                                v-if="
-                                  getSectionDateFields(item, section).length
-                                "
-                                class="item-card-date-row text-body-2"
+                                class="item-card-inline-metrics item-card-inline-metrics--contractual"
                               >
-                                <template
-                                  v-for="field in getSectionDateFields(
-                                    item,
-                                    section,
-                                  )"
-                                  :key="field.label"
-                                >
-                                  <span class="item-card-date-row__group">
-                                    {{ field.label }}:
-                                    <strong>{{ field.value }}</strong>
-                                  </span>
-                                </template>
-                              </div>
-
-                              <div class="item-card-inline-metrics">
                                 <template
                                   v-for="(
                                     metric, metricIndex
-                                  ) in getGoalHeaderMetrics(goal)"
+                                  ) in getContractualPhaseHeaderMetrics(goal)"
                                   :key="metric.label"
                                 >
                                   <span
                                     v-if="metricIndex > 0"
                                     class="item-card-row-separator"
+                                    :class="{
+                                      'item-card-row-separator--contractual-tax':
+                                        metric.label === 'TAX',
+                                    }"
                                     aria-hidden="true"
                                   >
                                     |
                                   </span>
                                   <span
                                     class="item-card-inline-metrics__group"
+                                    :class="{
+                                      'item-card-inline-metrics__group--tax':
+                                        metric.label === 'TAX',
+                                    }"
                                   >
                                     {{ metric.label }}:
                                     <strong>{{ metric.value }}</strong>
@@ -8999,6 +9134,83 @@ const openEditTask = (taskId: number | string) => {
                               class="item-card-note text-body-2 text-medium-emphasis"
                             >
                               {{ getGoalInvoiceState(item, goal) }}
+                            </div>
+
+                            <div
+                              v-if="
+                                getGoalDocumentReference(
+                                  'proforma',
+                                  item,
+                                  goal,
+                                  section.billingPeriod,
+                                ) ||
+                                getGoalDocumentReference(
+                                  'invoice',
+                                  item,
+                                  goal,
+                                  section.billingPeriod,
+                                )
+                              "
+                              class="period-action-panel__documents"
+                            >
+                              <button
+                                v-if="
+                                  getGoalDocumentReference(
+                                    'proforma',
+                                    item,
+                                    goal,
+                                    section.billingPeriod,
+                                  )
+                                "
+                                type="button"
+                                class="period-action-panel__doc-link"
+                                @click.stop="
+                                  jumpToGoalDocumentReference(
+                                    'proforma',
+                                    item,
+                                    goal,
+                                    section.billingPeriod,
+                                  )
+                                "
+                              >
+                                {{
+                                  getGoalDocumentReferenceLabel(
+                                    'proforma',
+                                    item,
+                                    goal,
+                                    section.billingPeriod,
+                                  )
+                                }}
+                              </button>
+                              <button
+                                v-if="
+                                  getGoalDocumentReference(
+                                    'invoice',
+                                    item,
+                                    goal,
+                                    section.billingPeriod,
+                                  )
+                                "
+                                type="button"
+                                class="period-action-panel__doc-link"
+                                @click.stop="
+                                  jumpToGoalDocumentReference(
+                                    'invoice',
+                                    item,
+                                    goal,
+                                    section.billingPeriod,
+                                  )
+                                "
+                              >
+                                {{
+                                  getGoalDocumentReferenceLabel(
+                                    'invoice',
+                                    item,
+                                    goal,
+                                    section.billingPeriod,
+                                  )
+                                }}
+                              </button>
                             </div>
 
                             <div
@@ -10119,7 +10331,7 @@ const openEditTask = (taskId: number | string) => {
               </VTooltip>
               <IconBtn
                 :disabled="!canUseTaskDelete"
-                @click.stop="canUseTaskDelete ? emit('delete-task', task.id) : undefined"
+                @click.stop="openTaskDeleteConfirmation(task)"
               >
                 <VIcon icon="tabler-trash" color="error" />
               </IconBtn>
@@ -10140,6 +10352,33 @@ const openEditTask = (taskId: number | string) => {
       </VCardText>
     </VCard>
   </div>
+
+  <VDialog
+    :model-value="Boolean(pendingDeleteTask)"
+    max-width="460"
+    @update:model-value="
+      (value) => {
+        if (!value) closeTaskDeleteConfirmation();
+      }
+    "
+  >
+    <DialogCloseBtn @click="closeTaskDeleteConfirmation" />
+    <VCard>
+      <VCardTitle>Delete task</VCardTitle>
+      <VCardText>
+        Delete <strong>{{ pendingDeleteTask?.title || "this task" }}</strong>?
+        This cannot be undone.
+      </VCardText>
+      <VCardActions class="justify-end">
+        <VBtn variant="text" color="secondary" @click="closeTaskDeleteConfirmation">
+          Cancel
+        </VBtn>
+        <VBtn color="error" variant="tonal" @click="confirmTaskDelete">
+          Delete
+        </VBtn>
+      </VCardActions>
+    </VCard>
+  </VDialog>
 
   <VDialog v-model="addItemDialogVisible" :max-width="addItemDialogMaxWidth">
     <DialogCloseBtn @click="addItemDialogVisible = false" />
@@ -11554,8 +11793,8 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .goal-panel--contractual-phase {
-  border: 1px solid rgba(var(--v-theme-primary), 0.14) !important;
-  background: rgba(var(--v-theme-primary), 0.05) !important;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: rgba(var(--v-theme-surface), 0.12) !important;
 }
 
 .goal-panels :deep(.v-expansion-panel + .v-expansion-panel) {
@@ -11586,16 +11825,16 @@ const openEditTask = (taskId: number | string) => {
 
 .goal-section-panel--grouped {
   padding: 0.8rem;
-  border: 1px solid rgba(var(--v-theme-primary), 0.14) !important;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08) !important;
   border-radius: 10px;
-  background: rgba(var(--v-theme-primary), 0.05) !important;
+  background: rgba(var(--v-theme-surface), 0.12) !important;
   box-shadow: none !important;
 }
 
 .goal-section-panel--grouped .goal-panels {
-  border: 1px solid rgba(var(--v-theme-primary), 0.14);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 8px;
-  background: rgba(var(--v-theme-primary), 0.05);
+  background: rgba(var(--v-theme-surface), 0.12);
   padding-block: 0.6rem;
   padding-inline: 0.7rem;
 }
@@ -11938,6 +12177,12 @@ const openEditTask = (taskId: number | string) => {
   padding-block: 0.125rem;
 }
 
+.phase-card-main {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
 .item-card-header {
   display: flex;
   align-items: center;
@@ -12031,6 +12276,34 @@ const openEditTask = (taskId: number | string) => {
 
 .item-card-inline-metrics {
   margin-block-start: 0.35rem;
+}
+
+.item-card-inline-metrics--contractual {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  margin-block-start: 0;
+  margin-inline-start: auto;
+  max-inline-size: min(20rem, 42%);
+}
+
+.goal-panel--contractual-phase .item-card-header {
+  align-items: flex-start;
+}
+
+.goal-panel--contractual-phase .item-card-title-row {
+  flex: 1 1 auto;
+  inline-size: auto;
+}
+
+.item-card-inline-metrics--contractual
+  .item-card-inline-metrics__group--tax {
+  flex-basis: auto;
+}
+
+.item-card-row-separator--contractual-tax {
+  flex-basis: 100%;
+  margin-inline-start: 0;
+  text-align: start;
 }
 
 .item-card-date-row {
@@ -12475,6 +12748,7 @@ const openEditTask = (taskId: number | string) => {
 
 .items-overview__actions {
   display: inline-flex;
+  gap: 0.1rem;
   justify-content: flex-end;
 }
 

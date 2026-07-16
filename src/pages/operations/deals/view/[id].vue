@@ -1448,28 +1448,35 @@ const toBeInvoicedDealValue = computed(() =>
   Math.max(totalDealValue.value - invoicedDealValue.value, 0),
 );
 
-const dealFinancialSummaryRows = computed(() => [
-  {
-    label: "Total Deal Value",
-    value: formatFinancialSummaryValue(totalDealValue.value),
-  },
-  {
-    label: "To be Invoiced",
-    value: formatFinancialSummaryValue(toBeInvoicedDealValue.value),
-  },
-  {
-    label: "Invoiced",
-    value: formatFinancialSummaryValue(invoicedDealValue.value),
-  },
-  {
-    label: "Unpaid",
-    value: formatFinancialSummaryValue(unpaidDealValue.value),
-  },
-  {
-    label: "Paid",
-    value: formatFinancialSummaryValue(paidDealValue.value),
-  },
-]);
+const dealFinancialSummaryRows = computed(() =>
+  [
+    {
+      label: "Total Deal Value",
+      amount: totalDealValue.value,
+      value: formatFinancialSummaryValue(totalDealValue.value),
+    },
+    {
+      label: "To be Invoiced",
+      amount: toBeInvoicedDealValue.value,
+      value: formatFinancialSummaryValue(toBeInvoicedDealValue.value),
+    },
+    {
+      label: "Invoiced",
+      amount: invoicedDealValue.value,
+      value: formatFinancialSummaryValue(invoicedDealValue.value),
+    },
+    {
+      label: "Unpaid",
+      amount: unpaidDealValue.value,
+      value: formatFinancialSummaryValue(unpaidDealValue.value),
+    },
+    {
+      label: "Paid",
+      amount: paidDealValue.value,
+      value: formatFinancialSummaryValue(paidDealValue.value),
+    },
+  ].filter((row) => hideDealFinancials.value || Math.max(row.amount, 0) > 0),
+);
 
 const dealCollaboratorOptions = computed(() => getEmployeeOptions());
 const jobOwnerOptions = computed(() => getEmployeeOptions());
