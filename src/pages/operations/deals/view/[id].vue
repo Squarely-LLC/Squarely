@@ -118,6 +118,7 @@ const addTodoDrawerRef = ref<InstanceType<typeof AddNewToDoDrawer> | null>(
 );
 const isAddTodoDrawerVisible = ref(false);
 const showImmediateDueOption = ref(false);
+const autofocusAddTodoTitleEnd = ref(false);
 const addTodoInitial = ref<Partial<ToDo> | null>(null);
 const editingTodo = ref<ToDo | null>(null);
 const editingSalesTaskTemplateId = ref<number | string | null>(null);
@@ -2397,6 +2398,9 @@ const openEmail = () => {
   });
 };
 
+const buildSalesTaskTitlePrefix = (currentDeal: DealProperties) =>
+  `${currentDeal.code?.trim() || `DEAL #${currentDeal.id}`} | `;
+
 const openAddTask = (payload: { initial: Partial<ToDo> }) => {
   if (!deal.value) return;
   if (!canCreateTask.value) {
@@ -2405,8 +2409,12 @@ const openAddTask = (payload: { initial: Partial<ToDo> }) => {
   }
 
   showImmediateDueOption.value = true;
+  autofocusAddTodoTitleEnd.value = true;
   addTodoInitial.value = {
     ...payload.initial,
+    title:
+      String(payload.initial?.title ?? "").trim() ||
+      buildSalesTaskTitlePrefix(deal.value),
     collaborators:
       payload?.initial?.collaborators &&
       Array.isArray(payload.initial.collaborators) &&
@@ -2613,11 +2621,15 @@ const onTodoCreated = (payload: any) => {
   } finally {
     isAddTodoDrawerVisible.value = false;
     showImmediateDueOption.value = false;
+    autofocusAddTodoTitleEnd.value = false;
   }
 };
 
 watch(isAddTodoDrawerVisible, (isOpen) => {
-  if (!isOpen) showImmediateDueOption.value = false;
+  if (!isOpen) {
+    showImmediateDueOption.value = false;
+    autofocusAddTodoTitleEnd.value = false;
+  }
 });
 
 const onTodoEdited = (payload: any) => {
@@ -2989,6 +3001,7 @@ watch(
     <AddNewToDoDrawer
       ref="addTodoDrawerRef"
       v-model:is-drawer-open="isAddTodoDrawerVisible"
+      :autofocus-title-end="autofocusAddTodoTitleEnd"
       :collaborators-options="taskCollaboratorOptions"
       :initial="addTodoInitial ?? undefined"
       @user-data="onTodoCreated"
