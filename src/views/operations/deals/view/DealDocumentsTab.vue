@@ -130,7 +130,6 @@ const AutoOpenGroups = defineComponent({
 });
 
 const selectedType = ref<string>("");
-const selectedStatus = ref<string>("");
 const searchQuery = ref("");
 const itemsPerPage = ref<number>(25);
 const page = ref(1);
@@ -164,17 +163,12 @@ const documentTypes = computed(() => {
   );
 });
 
-const isDocumentRenewable = computed(() => {
-  const renewable = configStore.configurations?.crm?.documentRenewable;
-  return renewable === "yes";
-});
-
 const fileCategories = ["JPG", "PNG", "PDF", "EXCEL", "WORD"] as const;
 const tableHeaders = [
-  { title: "Name", key: "name", width: "56%" },
-  { title: "Type", key: "type", width: "14%" },
-  { title: "Category", key: "category", width: "15%" },
-  { title: "Actions", key: "actions", sortable: false, width: "15%" },
+  { title: "Name", key: "name", width: "46%" },
+  { title: "Expiry", key: "expiry", width: "18%" },
+  { title: "Type", key: "type", width: "16%" },
+  { title: "Actions", key: "actions", sortable: false, width: "20%" },
 ] as const;
 const groupHeaderStyle = computed(() => ({
   backgroundColor: theme.current.value.dark
@@ -203,6 +197,13 @@ function docStatus(doc: JobDocument) {
   } catch {
     return "Active";
   }
+}
+
+function expiryClass(doc: JobDocument | DealDocumentRow) {
+  const status = docStatus(doc);
+  if (status === "Expired") return "text-error";
+  if (status === "Expiring") return "text-warning";
+  return "text-medium-emphasis";
 }
 
 const deal = computed(() => dealsStore.byId(props.dealId));
@@ -348,8 +349,6 @@ const filtered = computed(() => {
   const q = (searchQuery.value || "").toString().toLowerCase().trim();
   return docsList.value.filter((d) => {
     if (selectedType.value && String(d.type) !== String(selectedType.value))
-      return false;
-    if (selectedStatus.value && docStatus(d) !== selectedStatus.value)
       return false;
     if (!q) return true;
     return (
@@ -789,46 +788,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
     <VCol cols="12">
       <VCard>
         <VCardText>
-          <VRow>
-            <VCol cols="12" sm="3">
-              <AppSelect
-                v-model="selectedType"
-                placeholder="Filter Type"
-                :items="[
-                  { title: 'All', value: '' },
-                  ...documentTypes.map((t: string) => ({ title: t, value: t })),
-                ]"
-                clearable
-              />
-            </VCol>
-
-            <VCol v-if="isDocumentRenewable" cols="12" sm="3">
-              <AppSelect
-                v-model="selectedStatus"
-                placeholder="Status"
-                :items="[
-                  { title: 'All', value: '' },
-                  { title: 'Active', value: 'Active' },
-                  { title: 'Expiring', value: 'Expiring' },
-                  { title: 'Expired', value: 'Expired' },
-                ]"
-                clearable
-              />
-            </VCol>
-
-            <VCol cols="12" sm="6">
-              <AppTextField
-                v-model="searchQuery"
-                placeholder="Search Documents"
-              />
-            </VCol>
-          </VRow>
-        </VCardText>
-
-        <VDivider />
-
-        <VCardText class="d-flex flex-wrap gap-4">
-          <div class="me-3 d-flex gap-3">
+          <div class="documents-toolbar">
             <AppSelect
               :model-value="itemsPerPage"
               :items="[
@@ -838,34 +798,46 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                 { value: 100, title: '100' },
                 { value: -1, title: 'All' },
               ]"
-              style="inline-size: 6.25rem"
+              class="documents-toolbar__per-page"
               @update:model-value="updateItemsPerPage"
             />
-          </div>
 
-          <VSpacer />
+            <AppSelect
+              v-model="selectedType"
+              placeholder="Filter Type"
+              :items="[
+                { title: 'All', value: '' },
+                ...documentTypes.map((t: string) => ({ title: t, value: t })),
+              ]"
+              class="documents-toolbar__type"
+              clearable
+            />
 
-          <div
-            class="app-user-search-filter d-flex align-center flex-wrap gap-4"
-          >
-            <div class="d-flex align-center">
-              <VTooltip
-                :text="canMutateDocuments ? 'Add document' : dealUpdateReason"
-                location="top"
-              >
-                <template #activator="{ props: tooltipProps }">
-                  <span v-bind="tooltipProps" class="d-inline-flex">
-                    <VBtn
-                      prepend-icon="tabler-plus"
-                      :disabled="!canMutateDocuments"
-                      @click="openAdd"
-                    >
-                      Document
-                    </VBtn>
-                  </span>
-                </template>
-              </VTooltip>
-            </div>
+            <AppTextField
+              v-model="searchQuery"
+              placeholder="Search Documents"
+              class="documents-toolbar__search"
+            />
+
+            <VTooltip
+              :text="canMutateDocuments ? 'Add document' : dealUpdateReason"
+              location="top"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <span
+                  v-bind="tooltipProps"
+                  class="d-inline-flex documents-toolbar__add"
+                >
+                  <VBtn
+                    prepend-icon="tabler-plus"
+                    :disabled="!canMutateDocuments"
+                    @click="openAdd"
+                  >
+                    Document
+                  </VBtn>
+                </span>
+              </template>
+            </VTooltip>
           </div>
         </VCardText>
 
@@ -915,17 +887,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 
           <template #item.name="{ item }">
             <div class="document-cell document-cell--name">
-              <a class="text-link">{{ item.name }}</a>
-              <div
-                v-if="isDocumentRenewable"
-                class="text-sm text-medium-emphasis document-cell__meta"
-              >
-                {{
-                  item.expiry
-                    ? "Expiry: " + formatSystemDate(String(item.expiry))
-                    : ""
-                }}
-              </div>
+              <div class="document-cell__title">{{ item.name }}</div>
               <div class="text-sm text-medium-emphasis document-cell__meta">
                 {{ item.note ? item.note : "" }}
               </div>
@@ -936,38 +898,39 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
             <div class="document-cell document-cell--type">{{ item.type }}</div>
           </template>
 
-          <template #item.category="{ item }">
-            <div class="document-cell document-cell--category">
-              {{ item.category || "-" }}
+          <template #item.expiry="{ item }">
+            <div class="document-cell document-cell--expiry">
+              <span v-if="item.expiry" :class="expiryClass(item)">
+                {{ formatSystemDate(String(item.expiry)) }}
+              </span>
+              <span v-else class="text-medium-emphasis">-</span>
             </div>
-          </template>
-
-          <template #item.number="{ item }">-</template>
-          <template #item.expiry="{ item }">{{
-            item.expiry ? formatSystemDate(String(item.expiry)) : "-"
-          }}</template>
-
-          <template #item.status="{ item }">
-            <VChip
-              size="small"
-              :color="
-                docStatus(item) === 'Expired'
-                  ? 'error'
-                  : docStatus(item) === 'Expiring'
-                    ? 'warning'
-                    : 'success'
-              "
-              label
-              >{{
-                docStatus(item) === "Expiring"
-                  ? "Expiring Soon"
-                  : docStatus(item)
-              }}</VChip
-            >
           </template>
 
           <template #item.actions="{ item }">
             <div class="document-cell document-cell--actions">
+              <IconBtn
+                :disabled="!item.fileUrl || !canShareDocument(item)"
+                @click="
+                  item.fileUrl && canShareDocument(item)
+                    ? openPreview(item)
+                    : undefined
+                "
+              >
+                <VIcon icon="tabler-eye" />
+              </IconBtn>
+              <VTooltip
+                v-if="!item.fileUrl || !canShareDocument(item)"
+                activator="parent"
+                location="top"
+              >
+                {{
+                  item.fileUrl
+                    ? shareDisabledReason(item)
+                    : "No preview available"
+                }}
+              </VTooltip>
+
               <IconBtn
                 :disabled="isReadonlyDocument(item) || !canMutateDocuments"
                 @click="
@@ -994,17 +957,6 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
                 <VIcon icon="tabler-dots-vertical" />
                 <VMenu activator="parent">
                   <VList>
-                    <VListItem
-                      @click.prevent="openPreview(item)"
-                      v-if="item.fileUrl"
-                      :disabled="!canShareDocument(item)"
-                    >
-                      <template #prepend>
-                        <VIcon icon="tabler-eye" />
-                      </template>
-                      <VListItemTitle>View</VListItemTitle>
-                    </VListItem>
-
                     <VListItem
                       :disabled="!canShareDocument(item)"
                       @click.prevent="emailUserForDocument(item)"
@@ -1111,6 +1063,31 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 </template>
 
 <style lang="scss" scoped>
+.documents-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.documents-toolbar__per-page {
+  flex: 0 0 6.25rem;
+}
+
+.documents-toolbar__type {
+  flex: 0 1 13rem;
+  min-inline-size: 12rem;
+}
+
+.documents-toolbar__search {
+  flex: 1 1 16rem;
+  min-inline-size: 14rem;
+}
+
+.documents-toolbar__add {
+  flex: 0 0 auto;
+}
+
 .document-table {
   :deep(table) {
     border-collapse: collapse;
@@ -1141,22 +1118,22 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
 
   :deep(thead th:nth-child(2)),
   :deep(tbody td:nth-child(2)) {
-    inline-size: 56%;
+    inline-size: 46%;
   }
 
   :deep(thead th:nth-child(3)),
   :deep(tbody td:nth-child(3)) {
-    inline-size: 14%;
+    inline-size: 18%;
   }
 
   :deep(thead th:nth-child(4)),
   :deep(tbody td:nth-child(4)) {
-    inline-size: 15%;
+    inline-size: 16%;
   }
 
   :deep(thead th:nth-child(5)),
   :deep(tbody td:nth-child(5)) {
-    inline-size: 15%;
+    inline-size: 20%;
   }
 }
 
@@ -1182,8 +1159,12 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
   white-space: normal;
 }
 
+.document-cell__title {
+  color: rgb(var(--v-theme-on-surface));
+}
+
 .document-cell--type,
-.document-cell--category {
+.document-cell--expiry {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1203,8 +1184,4 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
   white-space: normal;
 }
 
-.text-link {
-  color: var(--v-theme-primary);
-  cursor: pointer;
-}
 </style>

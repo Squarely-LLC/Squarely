@@ -468,7 +468,7 @@ async function save() {
           </VCol>
 
           <VCol cols="12">
-            <AppTextarea v-model="form.note" label="Note" rows="3" />
+            <AppTextarea v-model="form.note" label="Note" rows="1" auto-grow />
           </VCol>
 
           <VCol cols="12">
