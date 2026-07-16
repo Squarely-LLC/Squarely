@@ -413,6 +413,8 @@ const alreadyQuotedDialogResolver = ref<((value: boolean) => void) | null>(
 
 const isItemsOverviewCollapsed = ref(true);
 const activeDocumentPanelKey = ref<DealPreviewKind | null>(null);
+const highlightedDocumentRowKey = ref<string | null>(null);
+let highlightedDocumentRowTimer: ReturnType<typeof setTimeout> | null = null;
 const selectedPaymentDocument = ref<{
   id: number | string;
   kind: "invoice";
@@ -3934,6 +3936,45 @@ const resolvedActiveDocumentPanelKey = computed<DealPreviewKind | null>(() => {
 const isDocumentPanelExpanded = (key: DealPreviewKind) =>
   resolvedActiveDocumentPanelKey.value === key;
 
+const getDocumentSummaryRowKey = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => `${kind}-${record.id}`;
+
+const getDocumentSummaryRowId = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => `deal-document-row-${kind}-${record.id}`;
+
+const jumpToDocumentSummaryRecord = async (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  record: DealDocumentPanelRecord | null,
+) => {
+  if (!record) return;
+
+  const rowKey = getDocumentSummaryRowKey(kind, record);
+
+  isItemsOverviewCollapsed.value = false;
+  activeDocumentPanelKey.value = kind;
+  highlightedDocumentRowKey.value = rowKey;
+
+  await nextTick();
+
+  document
+    .getElementById(getDocumentSummaryRowId(kind, record))
+    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  if (highlightedDocumentRowTimer) clearTimeout(highlightedDocumentRowTimer);
+
+  highlightedDocumentRowTimer = setTimeout(() => {
+    if (highlightedDocumentRowKey.value === rowKey) {
+      highlightedDocumentRowKey.value = null;
+    }
+
+    highlightedDocumentRowTimer = null;
+  }, 2400);
+};
+
 const setActiveDocumentPanel = (key: DealPreviewKind) => {
   activeDocumentPanelKey.value =
     activeDocumentPanelKey.value === key ? null : key;
@@ -4095,6 +4136,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("message", handlePreviewActionFrameMessage);
 
+  if (highlightedDocumentRowTimer) {
+    clearTimeout(highlightedDocumentRowTimer);
+    highlightedDocumentRowTimer = null;
+  }
+
   if (previewActionFrame.value?.parentNode) {
     previewActionFrame.value.parentNode.removeChild(previewActionFrame.value);
   }
@@ -4110,6 +4156,24 @@ watch(
   () => route.query,
   () => {
     void handleProducedProductReturn();
+  },
+);
+
+watch(
+  [
+    externalDocumentDialogVisible,
+    billingPeriodDialogVisible,
+    selectionDialogVisible,
+    invoiceConversionDialogVisible,
+    quotationConversionDialogVisible,
+    alreadyQuotedDialogVisible,
+  ],
+  (currentValues, previousValues) => {
+    const dialogClosed = currentValues.some(
+      (isOpen, index) => !isOpen && previousValues?.[index],
+    );
+
+    if (dialogClosed) activePeriodActionPanel.value = null;
   },
 );
 
@@ -5500,6 +5564,68 @@ const getSectionDocumentUsage = (
   };
 };
 
+const getSectionDocumentUsageKeys = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) =>
+  new Set(
+    getSectionDocumentTargetItems(parentItem, section)
+      .map((item) =>
+        buildDealDocumentUsageKey(
+          item.selectionKey,
+          resolveGoalBillingPeriodKey(item, section.billingPeriod),
+        ),
+      )
+      .filter((key): key is string => Boolean(key)),
+  );
+
+const getSectionDocumentReference = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const usageKeys = getSectionDocumentUsageKeys(parentItem, section);
+  if (!usageKeys.size) return null;
+
+  const records =
+    kind === "proforma" ? dealProformaRecords.value : dealInvoiceRecords.value;
+
+  return (
+    records.find((record) =>
+      (record.record.purchasedProducts ?? []).some((product) => {
+        const usageKey = buildDealDocumentUsageKey(
+          resolveProductSelectionKey(product),
+          resolveStoredBillingPeriodKey(product),
+        );
+
+        return Boolean(usageKey) && usageKeys.has(usageKey);
+      }),
+    ) ?? null
+  );
+};
+
+const getSectionDocumentReferenceLabel = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  const record = getSectionDocumentReference(kind, parentItem, section);
+  if (!record) return "";
+
+  return `${kind === "proforma" ? "PF" : "INV"} #${record.quoteNumber}`;
+};
+
+const jumpToSectionDocumentReference = (
+  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  void jumpToDocumentSummaryRecord(
+    kind,
+    getSectionDocumentReference(kind, parentItem, section),
+  );
+};
+
 const isSectionDocumentActionDisabled = (
   kind: Extract<DealPreviewKind, "proforma" | "invoice">,
   parentItem: DealItemWithPlan,
@@ -5940,6 +6066,114 @@ const getStoredBillingPeriodPrice = (
 
   return Number.isFinite(numeric) ? numeric : null;
 };
+
+const formatHeaderMoney = (value?: number | null) =>
+  value === null || value === undefined ? "--" : formatDealMoney(value);
+
+const formatHeaderDiscount = (value?: string | null) =>
+  value && value.trim() ? value : "--";
+
+const formatHeaderTax = (value?: boolean | null) =>
+  value === null || value === undefined ? "--" : formatTaxApplicable(value);
+
+const getSectionDateFields = (
+  parentItem: DealItemWithPlan,
+  section?: DerivedSection | null,
+) => {
+  if (section?.billingPeriod) {
+    const startDate = formatDocumentDate(section.billingPeriod.startDate);
+    const endDate = formatDocumentDate(section.billingPeriod.endDate);
+
+    return [
+      { label: "Start date", value: startDate },
+      {
+        label: "End date",
+        value:
+          startDate !== "--" && endDate === startDate
+            ? "same as start"
+            : endDate,
+      },
+    ];
+  }
+
+  return getItemDateFields(parentItem);
+};
+
+const getSharedGoalDiscountLabel = (goals: DerivedGoal[]) => {
+  const labels = goals.map((goal) => formatGoalDiscount(goal) || "--");
+  const [firstLabel] = labels;
+
+  return labels.length && labels.every((label) => label === firstLabel)
+    ? firstLabel
+    : "--";
+};
+
+const getSharedGoalTaxValue = (goals: DerivedGoal[]) => {
+  const values = goals.map((goal) => goal.taxApplicable);
+  const [firstValue] = values;
+
+  return values.length && values.every((value) => value === firstValue)
+    ? firstValue
+    : null;
+};
+
+const getSectionHeaderPrice = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  if (section.price !== null && section.price !== undefined)
+    return section.price;
+
+  if (section.billingPeriod) {
+    const [targetItem] = getSectionDocumentTargetItems(parentItem, section);
+    if (targetItem) {
+      return (
+        getStoredBillingPeriodPrice(targetItem, section.billingPeriod) ??
+        targetItem.unitPrice ??
+        null
+      );
+    }
+  }
+
+  return parentItem.unitPrice ?? null;
+};
+
+const getSectionHeaderMetrics = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => [
+  {
+    label: "Price",
+    value: formatHeaderMoney(getSectionHeaderPrice(parentItem, section)),
+  },
+  {
+    label: "Discount",
+    value: formatHeaderDiscount(
+      parentItem.discountPercent === null ||
+        parentItem.discountPercent === undefined
+        ? getSharedGoalDiscountLabel(section.goals)
+        : formatPercent(parentItem.discountPercent),
+    ),
+  },
+  {
+    label: "TAX",
+    value: formatHeaderTax(
+      parentItem.taxApplicable === null ||
+        parentItem.taxApplicable === undefined
+        ? getSharedGoalTaxValue(section.goals)
+        : parentItem.taxApplicable,
+    ),
+  },
+];
+
+const getGoalHeaderMetrics = (goal: DerivedGoal) => [
+  { label: "Price", value: formatHeaderMoney(goal.price) },
+  {
+    label: "Discount",
+    value: formatHeaderDiscount(formatGoalDiscount(goal)),
+  },
+  { label: "TAX", value: formatHeaderTax(goal.taxApplicable) },
+];
 
 const resetBillingPeriodPrices = () => {
   Object.keys(billingPeriodPrices).forEach((key) => {
@@ -8188,12 +8422,6 @@ const openEditTask = (taskId: number | string) => {
                                 >
                                   {{ goal.typeLabel }}
                                 </VChip>
-                                <span
-                                  v-if="goal.typeLabel === 'Retainer Service'"
-                                  class="text-body-2 text-medium-emphasis"
-                                >
-                                  Qty {{ goal.quantity ?? "--" }}
-                                </span>
                               </div>
                             </div>
 
@@ -8288,41 +8516,52 @@ const openEditTask = (taskId: number | string) => {
                           getPeriodActionPanelArrowLeft(item),
                       }"
                     >
-                      <div class="period-action-panel__info">
-                        <VIcon
-                          icon="tabler-info-circle"
-                          size="16"
-                          class="period-action-panel__info-icon"
-                        />
-                        <div class="period-action-panel__info-copy">
+                      <div class="period-action-panel__header">
+                        <div class="period-action-panel__info">
                           <div class="period-action-panel__info-title">
                             Period {{ getActivePeriodSectionIndex(item) + 1 }}
                           </div>
                           <div
-                            v-if="activeSection.billingPeriod"
-                            class="period-action-panel__dates"
+                            v-if="
+                              getSectionDateFields(item, activeSection).length
+                            "
+                            class="item-card-date-row text-body-2"
                           >
-                            <span>
-                              Start Date:
-                              <strong>{{
-                                formatDocumentDate(
-                                  activeSection.billingPeriod.startDate,
-                                )
-                              }}</strong>
-                            </span>
-                            <span
-                              class="period-action-panel__date-separator"
+                            <template
+                              v-for="field in getSectionDateFields(
+                                item,
+                                activeSection,
+                              )"
+                              :key="field.label"
                             >
-                              |
-                            </span>
-                            <span>
-                              End Date:
-                              <strong>{{
-                                formatDocumentDate(
-                                  activeSection.billingPeriod.endDate,
-                                )
-                              }}</strong>
-                            </span>
+                              <span class="item-card-date-row__group">
+                                {{ field.label }}:
+                                <strong>{{ field.value }}</strong>
+                              </span>
+                            </template>
+                          </div>
+                          <div class="item-card-inline-metrics">
+                            <template
+                              v-for="(
+                                metric, metricIndex
+                              ) in getSectionHeaderMetrics(
+                                item,
+                                activeSection,
+                              )"
+                              :key="metric.label"
+                            >
+                              <span
+                                v-if="metricIndex > 0"
+                                class="item-card-row-separator"
+                                aria-hidden="true"
+                              >
+                                |
+                              </span>
+                              <span class="item-card-inline-metrics__group">
+                                {{ metric.label }}:
+                                <strong>{{ metric.value }}</strong>
+                              </span>
+                            </template>
                           </div>
                           <div class="period-action-panel__info-status">
                             {{
@@ -8330,53 +8569,127 @@ const openEditTask = (taskId: number | string) => {
                               "No proforma or invoice"
                             }}
                           </div>
+                          <div class="period-action-panel__documents">
+                            <button
+                              v-if="
+                                getSectionDocumentReference(
+                                  'proforma',
+                                  item,
+                                  activeSection,
+                                )
+                              "
+                              type="button"
+                              class="period-action-panel__doc-link"
+                              @click.stop="
+                                jumpToSectionDocumentReference(
+                                  'proforma',
+                                  item,
+                                  activeSection,
+                                )
+                              "
+                            >
+                              {{
+                                getSectionDocumentReferenceLabel(
+                                  'proforma',
+                                  item,
+                                  activeSection,
+                                )
+                              }}
+                            </button>
+                            <button
+                              v-if="
+                                getSectionDocumentReference(
+                                  'invoice',
+                                  item,
+                                  activeSection,
+                                )
+                              "
+                              type="button"
+                              class="period-action-panel__doc-link"
+                              @click.stop="
+                                jumpToSectionDocumentReference(
+                                  'invoice',
+                                  item,
+                                  activeSection,
+                                )
+                              "
+                            >
+                              {{
+                                getSectionDocumentReferenceLabel(
+                                  'invoice',
+                                  item,
+                                  activeSection,
+                                )
+                              }}
+                            </button>
+                          </div>
+                        </div>
+                        <div class="period-action-panel__primary-actions">
+                          <VTooltip text="Create Proforma">
+                            <template #activator="{ props: tooltipProps }">
+                              <VBtn
+                                v-if="canCreateDocumentSource('proforma')"
+                                v-bind="tooltipProps"
+                                icon
+                                variant="tonal"
+                                color="secondary"
+                                size="small"
+                                :disabled="
+                                  !canUseFinanceCreate ||
+                                  isSectionDocumentActionDisabled(
+                                    'proforma',
+                                    item,
+                                    activeSection,
+                                  )
+                                "
+                                aria-label="Create Proforma"
+                                @click="
+                                  openSectionDocumentPage(
+                                    'proforma',
+                                    item,
+                                    activeSection,
+                                  )
+                                "
+                              >
+                                <VIcon
+                                  icon="tabler-file-certificate"
+                                  size="18"
+                                />
+                              </VBtn>
+                            </template>
+                          </VTooltip>
+                          <VTooltip text="Create Invoice">
+                            <template #activator="{ props: tooltipProps }">
+                              <VBtn
+                                v-if="canCreateDocumentSource('invoice')"
+                                v-bind="tooltipProps"
+                                icon
+                                variant="tonal"
+                                color="secondary"
+                                size="small"
+                                :disabled="
+                                  !canUseFinanceCreate ||
+                                  isSectionDocumentActionDisabled(
+                                    'invoice',
+                                    item,
+                                    activeSection,
+                                  )
+                                "
+                                aria-label="Create Invoice"
+                                @click="
+                                  openSectionDocumentPage(
+                                    'invoice',
+                                    item,
+                                    activeSection,
+                                  )
+                                "
+                              >
+                                <VIcon icon="tabler-file-invoice" size="18" />
+                              </VBtn>
+                            </template>
+                          </VTooltip>
                         </div>
                       </div>
-                      <VDivider class="my-1" />
-                      <VListItem
-                        v-if="canCreateDocumentSource('proforma')"
-                        :disabled="
-                          isSectionDocumentActionDisabled(
-                            'proforma',
-                            item,
-                            activeSection,
-                          )
-                        "
-                        @click="
-                          openSectionDocumentPage(
-                            'proforma',
-                            item,
-                            activeSection,
-                          )
-                        "
-                      >
-                        <template #prepend>
-                          <VIcon icon="tabler-file-certificate" />
-                        </template>
-                        <VListItemTitle>Create Proforma</VListItemTitle>
-                      </VListItem>
-                      <VListItem
-                        v-if="canCreateDocumentSource('invoice')"
-                        :disabled="
-                          isSectionDocumentActionDisabled(
-                            'invoice',
-                            item,
-                            activeSection,
-                          )
-                        "
-                        @click="
-                          openSectionDocumentPage(
-                            'invoice',
-                            item,
-                            activeSection,
-                          )
-                        "
-                      >
-                        <template #prepend>
-                          <VIcon icon="tabler-file-invoice" />
-                        </template>
-                        <VListItemTitle>Create Invoice</VListItemTitle>
-                      </VListItem>
                       <VDivider />
                       <VListItem
                         v-if="canAttachDocumentSource('proforma')"
@@ -8619,14 +8932,6 @@ const openEditTask = (taskId: number | string) => {
                                       class="item-card-title item-card-title--phase truncate-title"
                                     >
                                       {{ goal.name }}
-                                      <span
-                                        v-if="
-                                          isCompactGoal(goal) && goal.quantity
-                                        "
-                                        class="text-body-2 text-medium-emphasis"
-                                      >
-                                        - Qty {{ goal.quantity }}
-                                      </span>
                                     </div>
                                   </template>
                                 </VTooltip>
@@ -8644,6 +8949,49 @@ const openEditTask = (taskId: number | string) => {
                                   }}
                                 </VChip>
                               </div>
+
+                              <div
+                                v-if="
+                                  getSectionDateFields(item, section).length
+                                "
+                                class="item-card-date-row text-body-2"
+                              >
+                                <template
+                                  v-for="field in getSectionDateFields(
+                                    item,
+                                    section,
+                                  )"
+                                  :key="field.label"
+                                >
+                                  <span class="item-card-date-row__group">
+                                    {{ field.label }}:
+                                    <strong>{{ field.value }}</strong>
+                                  </span>
+                                </template>
+                              </div>
+
+                              <div class="item-card-inline-metrics">
+                                <template
+                                  v-for="(
+                                    metric, metricIndex
+                                  ) in getGoalHeaderMetrics(goal)"
+                                  :key="metric.label"
+                                >
+                                  <span
+                                    v-if="metricIndex > 0"
+                                    class="item-card-row-separator"
+                                    aria-hidden="true"
+                                  >
+                                    |
+                                  </span>
+                                  <span
+                                    class="item-card-inline-metrics__group"
+                                  >
+                                    {{ metric.label }}:
+                                    <strong>{{ metric.value }}</strong>
+                                  </span>
+                                </template>
+                              </div>
                             </div>
 
                             <div
@@ -8651,52 +8999,6 @@ const openEditTask = (taskId: number | string) => {
                               class="item-card-note text-body-2 text-medium-emphasis"
                             >
                               {{ getGoalInvoiceState(item, goal) }}
-                            </div>
-
-                            <div
-                              v-if="
-                                goal.showQuantity ||
-                                goal.showPrice ||
-                                goal.showDiscount ||
-                                goal.showTaxApplicable
-                              "
-                              class="product-metrics product-metrics--phase"
-                            >
-                              <div v-if="goal.showPrice" class="product-metric">
-                                <span>Price</span>
-                                <strong>{{ formatMoney(goal.price) }}</strong>
-                              </div>
-                              <div
-                                v-if="goal.showQuantity"
-                                class="product-metric"
-                              >
-                                <span>Qty</span>
-                                <strong>{{ goal.quantity ?? "--" }}</strong>
-                              </div>
-                              <div
-                                v-if="goal.showDiscount"
-                                class="product-metric"
-                              >
-                                <span>Discount</span>
-                                <strong>{{
-                                  formatGoalDiscount(goal) || "--"
-                                }}</strong>
-                              </div>
-                              <div
-                                v-if="goal.showTaxApplicable"
-                                class="product-metric"
-                              >
-                                <span>Tax</span>
-                                <strong>
-                                  {{ formatTaxApplicable(goal.taxApplicable) }}
-                                </strong>
-                              </div>
-                              <div v-if="goal.showPrice" class="product-metric">
-                                <span>Amount</span>
-                                <strong>{{
-                                  formatMoney(goalAmount(goal))
-                                }}</strong>
-                              </div>
                             </div>
 
                             <div
@@ -9092,7 +9394,13 @@ const openEditTask = (taskId: number | string) => {
                         <div
                           v-for="record in panel.records"
                           :key="`${panel.key}-${record.id}`"
+                          :id="getDocumentSummaryRowId(panel.key, record)"
                           class="items-overview__preview-table-row"
+                          :class="{
+                            'items-overview__preview-table-row--highlight':
+                              highlightedDocumentRowKey ===
+                              getDocumentSummaryRowKey(panel.key, record),
+                          }"
                           role="row"
                         >
                           <span role="cell">{{
@@ -11474,38 +11782,45 @@ const openEditTask = (taskId: number | string) => {
 
 .period-action-panel::before {
   position: absolute;
-  z-index: 1;
-  border-inline: 0.45rem solid transparent;
-  border-block-end: 0.45rem solid rgb(var(--v-theme-surface));
+  z-index: 2;
+  border-inline: 0.56rem solid transparent;
+  border-block-end: 0.56rem solid rgba(var(--v-theme-on-surface), 0.16);
   content: "";
-  inset-block-start: -0.42rem;
+  inset-block-start: -0.56rem;
   inset-inline-start: var(--period-panel-arrow-left, 50%);
   transform: translateX(-50%);
 }
 
-.period-action-panel__info {
+.period-action-panel::after {
+  position: absolute;
+  z-index: 3;
+  border-inline: 0.46rem solid transparent;
+  border-block-end: 0.46rem solid rgb(var(--v-theme-surface));
+  content: "";
+  inset-block-start: -0.44rem;
+  inset-inline-start: var(--period-panel-arrow-left, 50%);
+  transform: translateX(-50%);
+}
+
+.period-action-panel__header {
   display: flex;
   align-items: flex-start;
-  gap: 0.55rem;
-  padding-block: 0.55rem 0.45rem;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding-block: 0.65rem 0.55rem;
   padding-inline: 1rem;
 }
 
-.period-action-panel__info-icon {
-  flex: 0 0 auto;
-  color: rgb(var(--v-theme-primary));
-  margin-block-start: 0.1rem;
-}
-
-.period-action-panel__info-copy {
+.period-action-panel__info {
+  flex: 1 1 auto;
   min-inline-size: 0;
 }
 
 .period-action-panel__info-title {
   overflow: hidden;
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 500;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11515,8 +11830,8 @@ const openEditTask = (taskId: number | string) => {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.82rem;
   gap: 0.35rem;
   line-height: 1.35;
   margin-block-start: 0.2rem;
@@ -11529,22 +11844,51 @@ const openEditTask = (taskId: number | string) => {
 .period-action-panel__dates strong {
   color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
   font-size: inherit;
-  font-weight: 700;
+  font-weight: 500;
   line-height: inherit;
 }
 
 .period-action-panel__date-separator {
   color: rgb(var(--v-theme-primary));
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 
 .period-action-panel__info-status {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.82rem;
   line-height: 1.35;
   margin-block-start: 0.2rem;
+}
+
+.period-action-panel__documents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-block-start: 0.3rem;
+}
+
+.period-action-panel__doc-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.period-action-panel__primary-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
 }
 
 .goal-section-header {
@@ -12107,6 +12451,12 @@ const openEditTask = (taskId: number | string) => {
 
 .items-overview__preview-table-row:hover {
   background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.items-overview__preview-table-row--highlight,
+.items-overview__preview-table-row--highlight:hover {
+  background: rgba(var(--v-theme-warning), 0.18);
+  box-shadow: inset 3px 0 rgb(var(--v-theme-warning));
 }
 
 .items-overview__doc-link {
