@@ -133,6 +133,7 @@ const selectedType = ref<string>("");
 const searchQuery = ref("");
 const itemsPerPage = ref<number>(25);
 const page = ref(1);
+const sortBy = ref<Array<{ key: string; order?: "asc" | "desc" }>>([]);
 
 const configStore = useConfigStore();
 configStore.init();
@@ -359,11 +360,53 @@ const filtered = computed(() => {
   });
 });
 
-const totalItems = computed(() => filtered.value.length);
+const getExpirySortTime = (doc: JobDocument | DealDocumentRow) => {
+  if (!doc.expiry) return null;
+
+  const time = new Date(String(doc.expiry)).getTime();
+  return Number.isNaN(time) ? null : time;
+};
+
+const compareText = (left: unknown, right: unknown) =>
+  String(left ?? "").localeCompare(String(right ?? ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+const sorted = computed(() => {
+  const rows = [...filtered.value];
+  const activeSort = sortBy.value[0];
+  if (!activeSort?.key) return rows;
+
+  const direction = activeSort.order === "desc" ? -1 : 1;
+
+  return rows.sort((left, right) => {
+    if (activeSort.key === "expiry") {
+      const leftTime = getExpirySortTime(left);
+      const rightTime = getExpirySortTime(right);
+
+      if (leftTime === null && rightTime === null) return 0;
+      if (leftTime === null) return 1;
+      if (rightTime === null) return -1;
+
+      return (leftTime - rightTime) * direction;
+    }
+
+    if (activeSort.key === "name")
+      return compareText(left.name, right.name) * direction;
+
+    if (activeSort.key === "type")
+      return compareText(left.type, right.type) * direction;
+
+    return 0;
+  });
+});
+
+const totalItems = computed(() => sorted.value.length);
 const paged = computed(() => {
-  if (itemsPerPage.value === -1) return filtered.value;
+  if (itemsPerPage.value === -1) return sorted.value;
   const start = (page.value - 1) * itemsPerPage.value;
-  return filtered.value.slice(start, start + itemsPerPage.value);
+  return sorted.value.slice(start, start + itemsPerPage.value);
 });
 
 const editing = ref<JobDocument | null>(null);
@@ -846,6 +889,7 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
         <VDataTableServer
           v-model:items-per-page="itemsPerPage"
           v-model:page="page"
+          v-model:sort-by="sortBy"
           :items="paged"
           :items-length="totalItems"
           item-value="id"
@@ -1102,6 +1146,10 @@ defineExpose({ handleAddTodoSaved: onAddTodoSaved });
     padding-inline: 8px;
     text-align: start;
     vertical-align: top;
+  }
+
+  :deep(thead th) {
+    padding-block: 18px 16px;
   }
 
   :deep(thead tr th:first-child) {

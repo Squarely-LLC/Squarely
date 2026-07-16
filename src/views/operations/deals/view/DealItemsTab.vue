@@ -340,6 +340,8 @@ interface DealDocumentContainer {
 interface DealDocumentPanelRecord {
   id: number | string;
   balance: number;
+  clientAvatar: string;
+  clientName: string;
   dueDate: string;
   issuedDate: string;
   periodPhase: string;
@@ -3511,24 +3513,88 @@ const sortDealDocumentRecords = <T extends DealDocumentContainer>(
       return Number(right.quotation.id) - Number(left.quotation.id);
     });
 
+const getDealDocumentClientDisplay = (record: DealDocumentContainer) => {
+  const client = (record.quotation.client ?? {}) as {
+    avatar?: string | null;
+    company?: string | null;
+    name?: string | null;
+  };
+  const fallbackName =
+    String(contact.value?.fullName ?? "").trim() ||
+    String(props.deal.name ?? "").trim() ||
+    `Deal #${props.deal.id}`;
+
+  return {
+    avatar: String(client.avatar ?? "").trim(),
+    name:
+      String(client.name ?? "").trim() ||
+      String(client.company ?? "").trim() ||
+      fallbackName,
+  };
+};
+
 const mapDealDocumentPanelRecord = <T extends DealDocumentContainer>(
   record: T,
-): DealDocumentPanelRecord => ({
-  balance: getDealDocumentBalance(record),
-  dueDate: record.quotation.dueDate,
-  id: record.quotation.id,
-  issuedDate: record.quotation.issuedDate,
-  periodPhase: resolveDocumentPeriodPhase(record),
-  quoteNumber: record.quotation.quoteNumber,
-  record,
-  status: record.quotation.quotationStatus,
-  total: getDealDocumentTotal(record),
-});
+): DealDocumentPanelRecord => {
+  const clientDisplay = getDealDocumentClientDisplay(record);
+
+  return {
+    balance: getDealDocumentBalance(record),
+    clientAvatar: clientDisplay.avatar,
+    clientName: clientDisplay.name,
+    dueDate: record.quotation.dueDate,
+    id: record.quotation.id,
+    issuedDate: record.quotation.issuedDate,
+    periodPhase: resolveDocumentPeriodPhase(record),
+    quoteNumber: record.quotation.quoteNumber,
+    record,
+    status: record.quotation.quotationStatus,
+    total: getDealDocumentTotal(record),
+  };
+};
 
 const normalizeDocumentStatus = (value?: string | null) =>
   String(value || "")
     .trim()
     .toLowerCase();
+
+const getDocumentClientInitials = (record: DealDocumentPanelRecord) => {
+  const words = record.clientName
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!words.length) return "D";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+
+  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+};
+
+const getDocumentStatusDisplay = (
+  kind: DealPreviewKind,
+  record: DealDocumentPanelRecord,
+) => {
+  const normalized = normalizeDocumentStatus(record.status);
+
+  if (normalized === "paid") return { label: "Paid", color: "success" };
+  if (normalized === "partially paid")
+    return { label: "Partially Paid", color: "info" };
+  if (normalized === "not paid")
+    return { label: "Not Paid", color: "warning" };
+  if (normalized === "converted")
+    return { label: "Converted", color: "secondary" };
+  if (normalized === "canceled" || normalized === "cancelled")
+    return { label: "Canceled", color: "error" };
+  if (normalized === "lost") return { label: "Lost", color: "error" };
+  if (normalized === "sent") return { label: "Sent", color: "info" };
+  if (normalized === "approval") return { label: "Approval", color: "warning" };
+  if (normalized === "active") return { label: "Active", color: "success" };
+
+  return {
+    label: record.status || (kind === "quotation" ? "Active" : "Not Paid"),
+    color: "secondary",
+  };
+};
 
 const isDocumentPaid = (record: DealDocumentPanelRecord) =>
   normalizeDocumentStatus(record.status) === "paid" || record.balance <= 0;
@@ -4522,17 +4588,23 @@ const convertProformaRecordToInvoice = (record: DealDocumentPanelRecord) => {
 
 const toDealDocumentPanelRecord = (
   record: DealDocumentContainer,
-): DealDocumentPanelRecord => ({
-  balance: getDealDocumentBalance(record),
-  dueDate: record.quotation.dueDate,
-  id: record.quotation.id,
-  issuedDate: record.quotation.issuedDate,
-  periodPhase: resolveDocumentPeriodPhase(record),
-  quoteNumber: record.quotation.quoteNumber,
-  record,
-  status: record.quotation.quotationStatus,
-  total: getDealDocumentTotal(record),
-});
+): DealDocumentPanelRecord => {
+  const clientDisplay = getDealDocumentClientDisplay(record);
+
+  return {
+    balance: getDealDocumentBalance(record),
+    clientAvatar: clientDisplay.avatar,
+    clientName: clientDisplay.name,
+    dueDate: record.quotation.dueDate,
+    id: record.quotation.id,
+    issuedDate: record.quotation.issuedDate,
+    periodPhase: resolveDocumentPeriodPhase(record),
+    quoteNumber: record.quotation.quoteNumber,
+    record,
+    status: record.quotation.quotationStatus,
+    total: getDealDocumentTotal(record),
+  };
+};
 
 const convertDocumentToInvoice = (
   kind: Extract<DealPreviewKind, "quotation" | "proforma">,
@@ -9703,12 +9775,11 @@ const openEditTask = (taskId: number | string) => {
                           class="items-overview__preview-table-head"
                           role="row"
                         >
-                          <span role="columnheader">Date</span>
-                          <span role="columnheader">{{
-                            panel.numberHeader
-                          }}</span>
-                          <span role="columnheader">Phase / Period</span>
-                          <span role="columnheader">Amount</span>
+                          <span role="columnheader">#</span>
+                          <span role="columnheader">Client</span>
+                          <span role="columnheader">Issued Date</span>
+                          <span role="columnheader">Total</span>
+                          <span role="columnheader">Status</span>
                           <span role="columnheader" aria-label="Actions"></span>
                         </div>
 
@@ -9724,9 +9795,6 @@ const openEditTask = (taskId: number | string) => {
                           }"
                           role="row"
                         >
-                          <span role="cell">{{
-                            formatDocumentDate(record.issuedDate)
-                          }}</span>
                           <button
                             type="button"
                             class="items-overview__doc-link"
@@ -9735,10 +9803,54 @@ const openEditTask = (taskId: number | string) => {
                           >
                             {{ record.quoteNumber }}
                           </button>
-                          <span role="cell">{{ record.periodPhase }}</span>
-                          <strong role="cell">{{
-                            formatMoney(record.total)
+                          <span
+                            class="items-overview__document-client"
+                            role="cell"
+                          >
+                            <VAvatar
+                              size="34"
+                              :color="record.clientAvatar ? undefined : 'primary'"
+                              :variant="record.clientAvatar ? undefined : 'tonal'"
+                            >
+                              <VImg
+                                v-if="record.clientAvatar"
+                                :src="record.clientAvatar"
+                              />
+                              <span v-else>
+                                {{ getDocumentClientInitials(record) }}
+                              </span>
+                            </VAvatar>
+                            <span class="items-overview__document-client-text">
+                              <span class="items-overview__document-client-name">
+                                {{ record.clientName }}
+                              </span>
+                              <span class="items-overview__document-meta">
+                                {{ record.periodPhase }}
+                              </span>
+                            </span>
+                          </span>
+                          <span role="cell">{{
+                            formatSystemDate(record.issuedDate)
+                          }}</span>
+                          <strong class="items-overview__document-total" role="cell">{{
+                            formatDealMoney(record.total)
                           }}</strong>
+                          <span role="cell">
+                            <VChip
+                              :color="
+                                getDocumentStatusDisplay(panel.key, record)
+                                  .color
+                              "
+                              label
+                              size="x-small"
+                              variant="tonal"
+                            >
+                              {{
+                                getDocumentStatusDisplay(panel.key, record)
+                                  .label
+                              }}
+                            </VChip>
+                          </span>
                           <span class="items-overview__actions" role="cell">
                             <VBtn
                               icon
@@ -12824,10 +12936,11 @@ const openEditTask = (taskId: number | string) => {
   align-items: center;
   column-gap: 0.75rem;
   grid-template-columns:
-    minmax(6rem, 0.9fr)
-    minmax(7rem, 1fr)
-    minmax(0, 1.4fr)
+    minmax(6.5rem, 0.9fr)
+    minmax(12rem, 1.7fr)
+    minmax(6.5rem, 0.9fr)
     minmax(5rem, 0.8fr)
+    minmax(5.75rem, 0.8fr)
     2.25rem;
 }
 
@@ -12854,6 +12967,11 @@ const openEditTask = (taskId: number | string) => {
   text-align: start;
 }
 
+.items-overview__preview-table-row > span,
+.items-overview__preview-table-row > strong {
+  min-inline-size: 0;
+}
+
 .items-overview__preview-table-row:hover {
   background: rgba(var(--v-theme-primary), 0.04);
 }
@@ -12876,6 +12994,42 @@ const openEditTask = (taskId: number | string) => {
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.items-overview__document-client {
+  display: inline-flex;
+  align-items: center;
+  min-inline-size: 0;
+  gap: 0.65rem;
+}
+
+.items-overview__document-client-text {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.items-overview__document-client-name {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.items-overview__document-meta {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.76rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.items-overview__document-total {
+  color: rgba(var(--v-theme-on-surface), var(--v-high-emphasis-opacity));
+  font-weight: 600;
 }
 
 .items-overview__actions {
@@ -12908,13 +13062,15 @@ const openEditTask = (taskId: number | string) => {
 @media (max-width: 639px) {
   .items-overview__preview-table-head,
   .items-overview__preview-table-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 2rem;
+    grid-template-columns: minmax(5rem, 0.8fr) minmax(0, 1fr) 2rem;
   }
 
   .items-overview__preview-table-head span:nth-child(3),
   .items-overview__preview-table-head span:nth-child(4),
-  .items-overview__preview-table-row span:nth-child(3),
-  .items-overview__preview-table-row strong {
+  .items-overview__preview-table-head span:nth-child(5),
+  .items-overview__preview-table-row > span:nth-child(3),
+  .items-overview__preview-table-row > strong,
+  .items-overview__preview-table-row > span:nth-child(5) {
     display: none;
   }
 }
