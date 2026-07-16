@@ -8335,7 +8335,7 @@ const openEditTask = (taskId: number | string) => {
           v-model="expandedItems"
           variant="accordion"
           multiple
-          class="milestone-panels"
+          class="expansion-panels-width-border milestone-panels"
         >
           <VExpansionPanel
             v-for="item in dealItemsWithPlan"
@@ -11887,6 +11887,11 @@ const openEditTask = (taskId: number | string) => {
 .goal-panels :deep(.v-expansion-panel) {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgba(var(--v-theme-surface), 0.12);
+}
+
+.milestone-panels.expansion-panels-width-border
+  :deep(.milestone-panel.v-expansion-panel) {
+  border: 0;
 }
 
 .milestone-panels {
