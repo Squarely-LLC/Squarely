@@ -5175,6 +5175,30 @@ const getPeriodSelectionConflicts = (
   });
 };
 
+const getAvailableSelectablePeriodCount = (item: DealDocumentSelectableItem) => {
+  const itemMode = resolveDealDocumentBillingModeForItem(item);
+  const periods =
+    itemMode === "retainer-period"
+      ? buildRetainerBillingPeriods(item)
+      : itemMode === "recurrent-period"
+        ? buildRecurrentBillingPeriods(item)
+        : [];
+
+  if (!periods.length) return 0;
+
+  return periods.filter(
+    (period) => !getPeriodSelectionConflicts([item], period).length,
+  ).length;
+};
+
+const hasAvailableSelectablePeriods = (item: DealDocumentSelectableItem) => {
+  const itemMode = resolveDealDocumentBillingModeForItem(item);
+  if (itemMode !== "retainer-period" && itemMode !== "recurrent-period")
+    return true;
+
+  return getAvailableSelectablePeriodCount(item) > 0;
+};
+
 const selectedDocumentParentItem = computed(
   () =>
     (props.deal.items || []).find(
@@ -5902,13 +5926,15 @@ const filteredSelectableDocumentItems = computed(() => {
         )
       : filteredItems;
 
+  const availableItems = normalizedItems.filter(hasAvailableSelectablePeriods);
+
   if (selectedDocumentParentItemId.value) {
-    return normalizedItems.filter(
+    return availableItems.filter(
       (item) => String(item.id) === selectedDocumentParentItemId.value,
     );
   }
 
-  return normalizedItems;
+  return availableItems;
 });
 
 const billingModeOptions = computed(() => {
