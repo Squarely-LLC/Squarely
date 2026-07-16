@@ -2,6 +2,7 @@
 import { computed } from "vue";
 
 import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useCataloguesStore } from "@/stores/catalogues";
 import { getDealGrandTotal } from "@/utils/dealValue";
 
 type SummaryCollaborator = {
@@ -47,6 +48,8 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const cataloguesStore = useCataloguesStore();
+cataloguesStore.init();
 
 const emit = defineEmits<{
   (e: "back"): void;
@@ -80,7 +83,13 @@ const projectLabel = computed(
   () => props.deal.projectCode?.trim() || props.deal.projectName?.trim() || "",
 );
 
-const dealValue = computed(() => getDealGrandTotal(props.deal));
+const dealValue = computed(() =>
+  getDealGrandTotal(props.deal, (id, typeHint) =>
+    id == null
+      ? null
+      : cataloguesStore.recordById(String(id), typeHint || undefined),
+  ),
+);
 
 const noteText = computed(() => props.deal.note?.trim() || "");
 const hasNotes = computed(() => Boolean(noteText.value));

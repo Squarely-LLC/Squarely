@@ -77,6 +77,7 @@ import {
   getDealItemsGrandTotal,
   getDealItemsSubtotal,
 } from "@/utils/dealBilling";
+import { getDealGrandTotal } from "@/utils/dealValue";
 import {
   type DealDocumentSourceKind,
   isDocumentSourceExternal,
@@ -2793,6 +2794,23 @@ const itemAmount = (item: DealItem) =>
 
 const itemDiscountedUnitPrice = (item: DealItem) =>
   calculateAmount(item.unitPrice, 1, item.discountPercent || 0);
+
+const contractualItemAmount = (item: DealItem) =>
+  getDealGrandTotal({ items: [item] }, (id, typeHint) =>
+    id == null
+      ? null
+      : cataloguesStore.recordById(String(id), typeHint || undefined),
+  );
+
+const itemHeaderPrice = (item: DealItem) =>
+  isContractualParentDealItem(item)
+    ? contractualItemAmount(item)
+    : itemDiscountedUnitPrice(item);
+
+const itemHeaderAmount = (item: DealItem) =>
+  isContractualParentDealItem(item)
+    ? contractualItemAmount(item)
+    : itemAmount(item);
 
 const goalAmount = (goal: DerivedGoal) =>
   calculateAmount(goal.price, goal.quantity, goal.discountPercent || 0);
@@ -8315,7 +8333,7 @@ const openEditTask = (taskId: number | string) => {
                           <span class="item-card-inline-metrics__group">
                             Price:
                             <strong>{{
-                              formatDealMoney(itemDiscountedUnitPrice(item))
+                              formatDealMoney(itemHeaderPrice(item))
                             }}</strong>
                           </span>
                           <span
@@ -8327,7 +8345,7 @@ const openEditTask = (taskId: number | string) => {
                           <span class="item-card-inline-metrics__group">
                             Amount:
                             <strong>{{
-                              formatDealMoney(itemAmount(item))
+                              formatDealMoney(itemHeaderAmount(item))
                             }}</strong>
                           </span>
                         </div>

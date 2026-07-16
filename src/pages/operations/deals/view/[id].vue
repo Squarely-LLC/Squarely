@@ -1420,7 +1420,13 @@ const formatFinancialSummaryValue = (value: number) =>
   hideDealFinancials.value ? "Hidden" : Math.max(value, 0).toLocaleString();
 
 const totalDealValue = computed(() =>
-  deal.value ? getDealGrandTotal(deal.value) : 0,
+  deal.value
+    ? getDealGrandTotal(deal.value, (id, typeHint) =>
+        id == null
+          ? null
+          : cataloguesStore.recordById(String(id), typeHint || undefined),
+      )
+    : 0,
 );
 
 const invoicedDealValue = computed(() =>
