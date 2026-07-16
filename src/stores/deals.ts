@@ -764,6 +764,9 @@ function normalizeDocuments(
       fileUrl: normalizeString(document.fileUrl) || undefined,
       createdAt:
         normalizeString(document.createdAt) || new Date().toISOString(),
+      expiryReminderOffsetDays: document.expiryReminder
+        ? (normalizeNullableNumber(document.expiryReminderOffsetDays) ?? 14)
+        : null,
     }))
     .filter((document) => document.name);
 }

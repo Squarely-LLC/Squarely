@@ -79,6 +79,20 @@ function cloneGoal(goal: JobGoal): JobGoal {
 function cloneDocument(document: JobDocument): JobDocument {
   return safeClone(document, "job document");
 }
+function normalizeDocument(document: JobDocument): JobDocument {
+  const cloned = cloneDocument(document);
+  const offset = Number(cloned.expiryReminderOffsetDays);
+
+  return {
+    ...cloned,
+    expiryReminder: Boolean(cloned.expiryReminder),
+    expiryReminderOffsetDays: cloned.expiryReminder
+      ? Number.isFinite(offset) && offset > 0
+        ? offset
+        : 14
+      : null,
+  };
+}
 function cloneJob(job: JobProperties): JobProperties {
   const raw = toRaw(job) as JobProperties;
   try {
@@ -97,6 +111,7 @@ function cloneJob(job: JobProperties): JobProperties {
         cloned.collaborators,
         projectManagerId,
       ),
+      documents: ensureDocuments(cloned.documents),
       stakeholderConnectionImportIds: normalizeStakeholderConnectionImportIds(
         cloned.stakeholderConnectionImportIds,
       ),
@@ -197,7 +212,7 @@ function ensureDocuments(
   documents: JobDocument[] | undefined | null,
 ): JobDocument[] {
   if (!Array.isArray(documents)) return [];
-  return documents.map((document) => cloneDocument(document));
+  return documents.map((document) => normalizeDocument(document));
 }
 function loadFromStorage(): JobProperties[] | null {
   if (typeof window === "undefined") return null;

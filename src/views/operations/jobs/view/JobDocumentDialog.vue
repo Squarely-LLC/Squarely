@@ -1,10 +1,7 @@
-/* stylelint-disable @stylistic/no-eol-whitespace */ /* stylelint-disable
-@stylistic/no-eol-whitespace */
 <script setup lang="ts">
 import DialogActionBar from "@/components/DialogActionBar.vue";
 import type { JobDocument } from "@/plugins/fake-api/handlers/operations/jobs/types";
-import { useConfigStore } from "@/stores/config";
-import { getFileInfo, saveFile } from "@/utils/fileStore";
+import { getFileInfo, getFileObjectUrl, saveFile } from "@/utils/fileStore";
 import { computed, reactive, ref, watch } from "vue";
 
 const props = defineProps<{
@@ -21,239 +18,319 @@ const emits = defineEmits<{
   (e: "save", payload: JobDocument): void;
 }>();
 
-const configStore = useConfigStore();
-configStore.init();
-
-const isDocumentRenewable = computed(() => {
-  const renewable = configStore.configurations?.crm?.documentRenewable;
-  return renewable === "yes";
-});
-
 type FormModel = Partial<JobDocument> & {
-  linkUrl?: string | undefined;
-  fileAttachment?: File | undefined;
-  fileUrlBlob?: string | undefined;
+  expiryEnabled: boolean;
+  fileAttachment?: File | null;
+  linkUrl?: string | null;
+  storedFileUrl?: string | null;
 };
+
+const ACCEPTED_EXT = [
+  ".pdf",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+];
+const MAX_BYTES = 10 * 1024 * 1024;
+
+const reminderOptions = [
+  { title: "4 weeks before", value: 28 },
+  { title: "3 weeks before", value: 21 },
+  { title: "2 weeks before", value: 14 },
+  { title: "2 days before", value: 2 },
+  { title: "1 day before", value: 1 },
+] as const;
 
 const form = reactive<FormModel>({
   id: undefined,
   category: undefined,
   type: undefined,
   name: "",
-  expiry: undefined,
-  expiryReminder: false,
   note: "",
   fileUrl: undefined,
-  // helper fields (not part of final payload)
-  linkUrl: undefined,
-  fileAttachment: undefined,
-  fileUrlBlob: undefined,
+  expiry: undefined,
+  expiryReminder: false,
+  expiryReminderOffsetDays: 14,
+  expiryEnabled: false,
+  fileAttachment: null,
+  linkUrl: null,
+  storedFileUrl: null,
 });
-
-const fileError = ref<string | null>(null);
-
-const ACCEPTED_EXT = [".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx"];
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const fileError = ref<string | null>(null);
+const previewUrl = ref<string | null>(null);
+const previewKind = ref<"image" | "pdf" | "file" | "none">("none");
+const lastAutoFilledName = ref<string | null>(null);
+const uploading = ref(false);
 
-// unified getter/setter: expose string for the UI. When a file is selected we show the filename.
-const fileOrLink = computed<string | null>({
-  get() {
-    if (form.fileAttachment) {
-      const f = form.fileAttachment as File;
-      return `${f.name} (${formatBytes(f.size)})`;
-    }
-    // if we have an idb pointer stored in fileUrlBlob, show the friendly name+size instead of the raw id
-    if (form.fileUrlBlob && String(form.fileUrlBlob).startsWith("idb:")) {
-      const name = (form as any)._attachedName || form.name || null;
-      const size = (form as any)._attachedSize || null;
-      return size ? `${name} (${formatBytes(size)})` : name;
-    }
-    if (form.linkUrl) return form.linkUrl;
-    return null;
-  },
-  set(v: string | null) {
-    if (!v) {
-      form.linkUrl = undefined;
-      clearFile();
-      return;
-    }
-    // If there's no attached file (and no stored blob), only allow links with acceptable extensions.
-    const hasAttached = !!form.fileAttachment || !!form.fileUrlBlob;
-    if (!hasAttached) {
-      if (!isAcceptableLink(v)) {
-        fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
-          ", ",
-        )}`;
-        // do not set the link if invalid
-        return;
-      }
-    }
-    // accept link (in edit mode we allow replacing stored/attached file by a link)
-    fileError.value = null;
-    form.linkUrl = v;
-    clearFile();
-  },
+const open = computed({
+  get: () => props.modelValue,
+  set: (value: boolean) => emits("update:modelValue", value),
 });
 
-function onHiddenFileChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const f = input.files && input.files[0];
-  if (!f) return;
-  // validate accept list by extension
-  const name = f.name.toLowerCase();
-  const okExt = ACCEPTED_EXT.some((ext) => name.endsWith(ext));
-  if (!okExt) {
-    fileError.value = `Unsupported file type. Allowed: ${ACCEPTED_EXT.join(
-      ",",
-    )}`;
-    // clear any previous file
-    clearFile();
-    input.value = "";
-    return;
-  }
-
-  // validate size
-  if (f.size > MAX_BYTES) {
-    fileError.value = `File is too large. Max allowed is ${formatBytes(
-      MAX_BYTES,
-    )}.`;
-    clearFile();
-    input.value = "";
-    return;
-  }
-
-  fileError.value = null;
-  // set fileAttachment directly; watcher will handle blob URL and inferring category
-  form.fileAttachment = f;
-  form.linkUrl = undefined;
-  // reset input to allow selecting same file again later
-  input.value = "";
-}
-
-function triggerFilePicker() {
-  fileInputRef.value?.click();
-}
-
-function formatBytes(bytes?: number | null) {
-  if (!bytes || bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`;
-}
-
-function isAcceptableLink(url?: string | null) {
-  if (!url) return false;
-  const trimmed = String(url).trim();
-  // allow data/blob/idb pointers as they are handled elsewhere
-  if (/^data:/.test(trimmed) || /^blob:/.test(trimmed) || /^idb:/.test(trimmed))
-    return true;
-  // allow relative root paths
-  try {
-    const parsed = new URL(trimmed, window.location.href);
-    const pathname = parsed.pathname || "";
-    const lower = pathname.toLowerCase();
-    return ACCEPTED_EXT.some((ext) => lower.endsWith(ext));
-  } catch {
-    // if URL parsing fails, fallback to simple string check
-    const lower = trimmed.toLowerCase();
-    return ACCEPTED_EXT.some((ext) => lower.split(/[?#]/)[0].endsWith(ext));
-  }
-}
-
-// UI: expansion panel state for expiry (null = closed, 0 = opened)
-const expiryExpanded = ref<number | null>(null);
-const lastAutoFilledName = ref<string | null>(null);
-
-function resetForm() {
-  Object.assign(form, {
-    id: undefined,
-    category: undefined,
-    type: undefined,
-    name: "",
-    expiry: undefined,
-    expiryReminder: false,
-    note: "",
-    fileUrl: undefined,
-    linkUrl: undefined,
-    fileAttachment: undefined,
-    fileUrlBlob: undefined,
-  });
-  expiryExpanded.value = null;
-  lastAutoFilledName.value = null;
-  fileError.value = null;
-}
-
-function populateForm(d: JobDocument | null | undefined) {
-  if (!d) {
-    resetForm();
-    return;
-  }
-  Object.assign(form, { ...d });
-  lastAutoFilledName.value = null;
-  // populate helper fields when editing an existing doc
-  // prioritize idb: pointers (persisted files) so we show friendly name+size
-  if (d.fileUrl && String(d.fileUrl).startsWith("idb:")) {
-    form.linkUrl = undefined;
-    form.fileUrlBlob = undefined;
-    const without = String(d.fileUrl).slice(4);
-    const [key, encodedName] = without.split("|");
-    if (encodedName) {
-      const name = decodeURIComponent(encodedName || "");
-      try {
-        getFileInfo(key).then((info) => {
-          if (info) {
-            form.fileUrlBlob = `idb:${key}`;
-            (form as any)._attachedName = name;
-            (form as any)._attachedSize = info.size;
-          }
-        });
-      } catch {}
-    }
-  } else if (
-    d.fileUrl &&
-    (String(d.fileUrl).startsWith("blob:") ||
-      String(d.fileUrl).startsWith("data:"))
-  ) {
-    // blob or data URI
-    form.fileUrlBlob = String(d.fileUrl);
-    form.linkUrl = undefined;
-  } else {
-    form.linkUrl = d.fileUrl;
-    form.fileUrlBlob = undefined;
-  }
-  // open expiry panel when editing a doc that already has an expiry
-  expiryExpanded.value = d.expiry ? 0 : null;
-}
-
-// ensure form is populated when dialog opens and reset when no doc provided
-watch(
-  () => props.doc,
-  (d) => populateForm(d),
-  { immediate: true },
+const documentTypeItems = computed(() =>
+  (props.documentTypes || []).map((type) => ({ title: type, value: type })),
 );
 
-// When dialog is opened, we'll populate/reset the form — watch moved lower where `open` is defined.
+const hasAttachment = computed(
+  () =>
+    Boolean(form.fileAttachment) ||
+    Boolean(form.storedFileUrl) ||
+    Boolean(form.linkUrl),
+);
+const hasFileSource = computed(
+  () => Boolean(form.fileAttachment) || Boolean(form.storedFileUrl),
+);
+const hasLinkSource = computed(() => Boolean(String(form.linkUrl || "").trim()));
+const hasExactlyOneSource = computed(
+  () => (hasFileSource.value || hasLinkSource.value) && !(hasFileSource.value && hasLinkSource.value),
+);
+const expiryDateRequired = computed(
+  () => Boolean(form.expiryEnabled) && !form.expiry,
+);
+
+const isValid = computed(
+  () =>
+    Boolean(String(form.type || "").trim()) &&
+    Boolean(String(form.name || "").trim()) &&
+    hasExactlyOneSource.value &&
+    !expiryDateRequired.value &&
+    !fileError.value,
+);
+
+const previewLabel = computed(() => {
+  if (form.fileAttachment) return form.fileAttachment.name;
+  if ((form as any)._attachedName) return (form as any)._attachedName;
+  if (form.linkUrl) return form.linkUrl;
+  if (form.storedFileUrl) return form.name || "Attached file";
+  return "No attachment selected";
+});
 
 function close() {
   emits("update:modelValue", false);
 }
 
-const open = computed({
-  get: () => props.modelValue,
-  set: (v: boolean) => emits("update:modelValue", v),
-});
+function formatBytes(bytes?: number | null) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
 
-// When dialog is opened, always populate the form from props.doc (or reset for add).
-watch(open, (isOpen) => {
-  if (isOpen) {
-    populateForm(props.doc);
-  } else {
-    // on close: reset the form for a clean add state. This keeps the dialog predictable
-    // when reopened for add and prevents stale data when switching between edits.
-    resetForm();
+function inferCategoryFromFilename(name?: string | null) {
+  const lower = String(name || "").toLowerCase().split(/[?#]/)[0];
+  if (lower.endsWith(".pdf")) return "PDF";
+  if (lower.endsWith(".xls") || lower.endsWith(".xlsx")) return "EXCEL";
+  if (lower.endsWith(".doc") || lower.endsWith(".docx")) return "WORD";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "JPG";
+  if (lower.endsWith(".png")) return "PNG";
+  return undefined;
+}
+
+function isAcceptableLink(url?: string | null) {
+  const trimmed = String(url || "").trim();
+  if (!trimmed) return false;
+  if (/^data:|^blob:|^idb:/i.test(trimmed)) return true;
+
+  try {
+    const parsed = new URL(trimmed, window.location.href);
+    const lower = parsed.pathname.toLowerCase();
+    return ACCEPTED_EXT.some((ext) => lower.endsWith(ext));
+  } catch {
+    const lower = trimmed.toLowerCase().split(/[?#]/)[0];
+    return ACCEPTED_EXT.some((ext) => lower.endsWith(ext));
   }
+}
+
+function getPreviewKind(source?: string | null, file?: File | null) {
+  const type = file?.type || "";
+  const name = file?.name || source || "";
+  const lower = name.toLowerCase().split(/[?#]/)[0];
+
+  if (type.startsWith("image/") || /\.(jpg|jpeg|png)$/.test(lower))
+    return "image";
+  if (type === "application/pdf" || lower.endsWith(".pdf")) return "pdf";
+  if (source || file) return "file";
+  return "none";
+}
+
+function revokePreviewUrl() {
+  if (previewUrl.value?.startsWith("blob:")) {
+    try {
+      URL.revokeObjectURL(previewUrl.value);
+    } catch {}
+  }
+  previewUrl.value = null;
+  previewKind.value = "none";
+}
+
+async function refreshPreview() {
+  revokePreviewUrl();
+
+  if (form.fileAttachment) {
+    previewUrl.value = URL.createObjectURL(form.fileAttachment);
+    previewKind.value = getPreviewKind(previewUrl.value, form.fileAttachment);
+    return;
+  }
+
+  const source = String(form.storedFileUrl || form.linkUrl || "").trim();
+  if (!source) return;
+
+  previewKind.value = getPreviewKind(source);
+
+  if (source.startsWith("idb:")) {
+    const without = source.slice(4);
+    const [key] = without.split("|");
+    previewUrl.value = key ? await getFileObjectUrl(key) : null;
+    return;
+  }
+
+  if (source.startsWith("/")) {
+    previewUrl.value = window.location.origin + source;
+    return;
+  }
+
+  previewUrl.value = source;
+}
+
+function clearFile() {
+  form.fileAttachment = null;
+  form.storedFileUrl = null;
+  try {
+    (form as any)._attachedName = undefined;
+    (form as any)._attachedSize = undefined;
+  } catch {}
+  refreshPreview();
+}
+
+function clearLink() {
+  form.linkUrl = null;
+  fileError.value = null;
+  refreshPreview();
+}
+
+function triggerFilePicker() {
+  if (hasLinkSource.value) return;
+  fileInputRef.value?.click();
+}
+
+function onFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0] || null;
+  if (!file) return;
+
+  const lower = file.name.toLowerCase();
+  if (!ACCEPTED_EXT.some((ext) => lower.endsWith(ext))) {
+    fileError.value = `Unsupported file type. Allowed: ${ACCEPTED_EXT.join(", ")}`;
+    input.value = "";
+    return;
+  }
+
+  if (file.size > MAX_BYTES) {
+    fileError.value = `File is too large. Max allowed is ${formatBytes(MAX_BYTES)}.`;
+    input.value = "";
+    return;
+  }
+
+  fileError.value = null;
+  form.fileAttachment = file;
+  form.storedFileUrl = null;
+  form.linkUrl = null;
+  const inferred = inferCategoryFromFilename(file.name);
+  if (inferred) form.category = inferred;
+  input.value = "";
+  refreshPreview();
+}
+
+function validateLink() {
+  const value = String(form.linkUrl || "").trim();
+  if (!value) {
+    fileError.value = null;
+    refreshPreview();
+    return;
+  }
+
+  if (!isAcceptableLink(value)) {
+    fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(", ")}`;
+    refreshPreview();
+    return;
+  }
+
+  fileError.value = null;
+  clearFile();
+  form.linkUrl = value;
+  const inferred = inferCategoryFromFilename(value);
+  if (inferred) form.category = inferred;
+  refreshPreview();
+}
+
+function resetForm() {
+  revokePreviewUrl();
+  Object.assign(form, {
+    id: undefined,
+    category: undefined,
+    type: undefined,
+    name: "",
+    note: "",
+    fileUrl: undefined,
+    expiry: undefined,
+    expiryReminder: false,
+    expiryReminderOffsetDays: 14,
+    expiryEnabled: false,
+    fileAttachment: null,
+    linkUrl: null,
+    storedFileUrl: null,
+  });
+  lastAutoFilledName.value = null;
+  fileError.value = null;
+}
+
+function populateForm(document: JobDocument | null | undefined) {
+  if (!document) {
+    resetForm();
+    return;
+  }
+
+  resetForm();
+  Object.assign(form, {
+    ...document,
+    expiryEnabled: Boolean(document.expiry),
+    expiryReminder: Boolean(document.expiry),
+    expiryReminderOffsetDays: document.expiryReminderOffsetDays ?? 14,
+  });
+
+  if (document.fileUrl?.startsWith("idb:")) {
+    form.storedFileUrl = document.fileUrl;
+    const without = document.fileUrl.slice(4);
+    const [key, encodedName] = without.split("|");
+    const name = encodedName ? decodeURIComponent(encodedName) : document.name;
+    (form as any)._attachedName = name;
+    try {
+      getFileInfo(key).then((info) => {
+        if (info) (form as any)._attachedSize = info.size;
+      });
+    } catch {}
+  } else {
+    form.linkUrl = document.fileUrl || null;
+  }
+
+  refreshPreview();
+}
+
+watch(
+  () => props.doc,
+  (document) => populateForm(document),
+  { immediate: true },
+);
+
+watch(open, (isOpen) => {
+  if (isOpen) populateForm(props.doc);
+  else resetForm();
 });
 
 watch(
@@ -277,319 +354,275 @@ watch(
 );
 
 watch(
-  () => form.expiry,
-  (expiry) => {
-    if (!props.autoEnableExpiryReminderOnDate) return;
+  () => form.expiryEnabled,
+  (enabled) => {
+    if (!enabled) {
+      form.expiry = undefined;
+      form.expiryReminder = false;
+      form.expiryReminderOffsetDays = null;
+      return;
+    }
 
-    form.expiryReminder = Boolean(expiry);
+    form.expiryReminderOffsetDays = form.expiryReminderOffsetDays ?? 14;
+    form.expiryReminder = Boolean(form.expiry);
   },
 );
 
-// validation: require category, name and an attachment (fileAttachment or stored blob or link)
-const hasAttachment = computed(() => {
-  return !!form.fileAttachment || !!form.fileUrlBlob || !!form.linkUrl;
-});
+watch(
+  () => form.expiry,
+  (expiry) => {
+    if (!form.expiryEnabled) return;
+    form.expiryReminder = Boolean(expiry);
+    form.expiryReminderOffsetDays = expiry
+      ? (form.expiryReminderOffsetDays ?? 14)
+      : null;
+  },
+);
 
-const isValid = computed(() => {
-  return !!form.name && !!form.category && hasAttachment.value;
-});
-
-const uploading = ref(false);
-
-// fake upload helper - simulates async upload and returns a URL
-async function uploadFile(file: File): Promise<string> {
-  uploading.value = true;
-  // simulate delay
-  await new Promise((r) => setTimeout(r, 700));
-  // In a real app you'd POST the file and return the server URL. Here we return a fake http URL.
-  const fakeUrl = `https://cdn.example.test/${Date.now()}-${file.name}`;
-  uploading.value = false;
-  return fakeUrl;
+function openPreview() {
+  if (!previewUrl.value) return;
+  const link = document.createElement("a");
+  link.href = previewUrl.value;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 async function save() {
-  // Basic payload normalize
+  if (!hasExactlyOneSource.value) {
+    fileError.value = hasFileSource.value && hasLinkSource.value
+      ? "Choose either an attachment or a link, not both."
+      : "Attachment or link is required.";
+    return;
+  }
+
+  if (expiryDateRequired.value) return;
+
+  if (form.linkUrl && !isAcceptableLink(form.linkUrl)) {
+    fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(", ")}`;
+    return;
+  }
+
+  if (!isValid.value) return;
+
+  const expiryEnabled = Boolean(form.expiryEnabled && form.expiry);
   const payload: JobDocument = {
     id: Number(form.id ?? Date.now()),
-    category: (form.category as any) || undefined,
-    type: (form.type as any) || undefined,
-    name: form.name || "",
-    expiry:
-      expiryExpanded.value !== null ? form.expiry || undefined : undefined,
-    expiryReminder:
-      expiryExpanded.value !== null ? !!form.expiryReminder : false,
-    note: form.note || undefined,
-    fileUrl: (form.fileUrlBlob ?? form.linkUrl) || undefined,
-    createdAt: new Date().toISOString(),
+    category: form.category || undefined,
+    type: form.type || undefined,
+    name: String(form.name || "").trim(),
+    note: String(form.note || "").trim() || undefined,
+    fileUrl: form.storedFileUrl || form.linkUrl || undefined,
+    expiry: expiryEnabled ? form.expiry || undefined : undefined,
+    expiryReminder: expiryEnabled,
+    expiryReminderOffsetDays: expiryEnabled
+      ? (form.expiryReminderOffsetDays ?? 14)
+      : null,
+    createdAt: form.createdAt || new Date().toISOString(),
   };
 
-  // if there's a fileAttachment, save it to IndexedDB and store a pointer
   if (form.fileAttachment) {
     try {
       uploading.value = true;
-      const key = await saveFile(form.fileAttachment as File);
-      // store pointer in the form: idb:<key>|<encodedName>
-      const name = encodeURIComponent((form.fileAttachment as File).name);
-      payload.fileUrl = `idb:${key}|${name}`;
+      const key = await saveFile(form.fileAttachment);
+      payload.fileUrl = `idb:${key}|${encodeURIComponent(form.fileAttachment.name)}`;
     } finally {
       uploading.value = false;
     }
   }
 
-  // if link is present, ensure it's acceptable before saving
-  if (!form.fileAttachment && form.linkUrl) {
-    if (!isAcceptableLink(form.linkUrl)) {
-      fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
-        ", ",
-      )}`;
-      return;
-    }
-  }
-
   emits("save", payload);
-  // debug log: emitted payload
-  try {
-    // eslint-disable-next-line no-console
-    console.log("JobDocumentDialog: emitting save", payload);
-  } catch {}
   close();
 }
-
-// helper: map filename extension to category
-function inferCategoryFromFilename(name?: string | null) {
-  if (!name) return undefined;
-  const n = name.toLowerCase();
-  if (n.endsWith(".pdf")) return "PDF";
-  if (n.endsWith(".xls") || n.endsWith(".xlsx")) return "EXCEL";
-  if (n.endsWith(".doc") || n.endsWith(".docx")) return "WORD";
-  if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "JPG";
-  if (n.endsWith(".png")) return "PNG";
-  return undefined;
-}
-
-const showFileInput = computed(() => {
-  // show file input when no linkUrl provided
-  return !form.linkUrl;
-});
-
-const showLinkInput = computed(() => {
-  // show link input when no fileAttachment selected
-  return !form.fileAttachment && !form.fileUrlBlob;
-});
-
-const attachedName = computed(() => {
-  return (form as any)._attachedName || form.name || null;
-});
-
-const attachedSize = computed<number | null>(() => {
-  return (form as any)._attachedSize ?? null;
-});
-
-// when VFileInput updates form.fileAttachment create blob URL and infer category
-watch(
-  () => form.fileAttachment,
-  (f) => {
-    if (!f) return;
-    try {
-      if (form.fileUrlBlob) URL.revokeObjectURL(form.fileUrlBlob);
-    } catch {}
-    form.fileUrlBlob = URL.createObjectURL(f as File);
-    const inferred = inferCategoryFromFilename((f as File).name);
-    if (inferred) form.category = inferred as any;
-    // clear link when file is attached
-    form.linkUrl = undefined;
-  },
-);
-
-function clearFile() {
-  if (form.fileUrlBlob) {
-    try {
-      URL.revokeObjectURL(form.fileUrlBlob);
-    } catch {}
-  }
-  form.fileAttachment = undefined;
-  form.fileUrlBlob = undefined;
-  // clear helper fields
-  try {
-    (form as any)._attachedSize = undefined;
-    (form as any)._attachedName = undefined;
-  } catch {}
-}
-
-// ensure mutual exclusivity: when linkUrl is set, clear file; when fileAttachment is set, clear linkUrl
-watch(
-  () => form.linkUrl,
-  (v) => {
-    if (v) {
-      clearFile();
-      // validate that link matches accepted file types
-      if (!isAcceptableLink(v)) {
-        fileError.value = `Links must point to files with these extensions: ${ACCEPTED_EXT.join(
-          ", ",
-        )}`;
-      } else {
-        fileError.value = null;
-        // infer category from link extension
-        const inferred = inferCategoryFromFilename(v);
-        if (inferred) form.category = inferred as any;
-      }
-    }
-  },
-);
-
-watch(
-  () => form.fileAttachment,
-  (v) => {
-    if (v) {
-      form.linkUrl = undefined;
-    }
-  },
-);
 </script>
 
 <template>
   <VDialog
-    :width="$vuetify.display?.smAndDown ? 'auto' : 640"
     v-model="open"
-    @update:model-value="(v) => emits('update:modelValue', v)"
+    :width="$vuetify.display?.smAndDown ? 'auto' : 720"
+    @update:model-value="(value) => emits('update:modelValue', value)"
   >
     <DialogCloseBtn @click="open = false" />
 
-    <VCard class="pa-sm-8 pa-4">
+    <VCard class="job-document-dialog pa-sm-8 pa-4">
       <VCardText>
         <h4 class="text-h5 text-center mb-2">
           {{ doc ? "Edit Document" : "Add Document" }}
         </h4>
-        <p class="text-body-2 text-center mb-6">
-          Provide document details below.
-        </p>
 
         <VRow>
-          <VCol cols="12" md="12">
+          <VCol cols="12">
             <AppSelect
               v-model="form.type"
-              :items="
-                (props.documentTypes || []).map((t) => ({ title: t, value: t }))
-              "
+              :items="documentTypeItems"
               item-title="title"
               item-value="value"
-              placeholder="Type"
+              label="Type"
             />
           </VCol>
-
-          <!-- Category is inferred from file/link and hidden from manual selection -->
 
           <VCol cols="12">
             <AppTextField v-model="form.name" label="Name" />
           </VCol>
 
-          <VCol v-if="isDocumentRenewable" cols="12">
-            <label class="d-block mb-2">Expiry</label>
-            <VExpansionPanels v-model="expiryExpanded">
-              <VExpansionPanel>
-                <VExpansionPanelTitle>Expiry settings</VExpansionPanelTitle>
-                <VExpansionPanelText>
-                  <AppDateTimePicker
-                    v-model="form.expiry"
-                    type="date"
-                    label="Expiry Date"
-                    format="YYYY-MM-DD"
-                    placeholder="Select date"
-                  />
-                  <div class="mt-2">
-                    <VSwitch
-                      v-model="form.expiryReminder"
-                      label="Set reminder for expiry"
-                    />
-                  </div>
-                </VExpansionPanelText>
-              </VExpansionPanel>
-            </VExpansionPanels>
+          <VCol cols="12">
+            <AppTextarea v-model="form.note" label="Note" rows="3" />
           </VCol>
 
           <VCol cols="12">
-            <div>
-              <label class="d-block mb-2">Attachment</label>
-              <div class="d-flex gap-3 align-center">
-                <div
-                  style="
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    inline-size: 100%;
-                    /* stylelint-disable-next-line @stylistic/no-eol-whitespace */
-                  "
-                >
-                  <input
-                    ref="fileInputRef"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    style="display: none"
-                    @change="onHiddenFileChange"
-                  />
-
-                  <VTextField
-                    v-model="fileOrLink"
-                    label="Attachment (paste link or attach file)"
-                    clearable
-                    @click:clear="
-                      () => {
-                        form.linkUrl = undefined;
-                        clearFile();
-                      }
-                    "
-                  >
-                    <template #append>
-                      <VBtn icon variant="text" @click="triggerFilePicker">
-                        <VIcon icon="tabler-paperclip" />
-                      </VBtn>
-                    </template>
-                  </VTextField>
-                </div>
-              </div>
-              <div
-                v-if="form.fileAttachment || form.fileUrlBlob"
-                class="text-sm text-medium-emphasis mt-2"
+            <label class="document-field-label">Attachment</label>
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+              class="d-none"
+              @change="onFileChange"
+            />
+            <div class="document-upload-row">
+              <VBtn
+                variant="tonal"
+                prepend-icon="tabler-paperclip"
+                :disabled="hasLinkSource"
+                @click="triggerFilePicker"
               >
-                Selected:
+                Choose file
+              </VBtn>
+              <div class="document-upload-row__text">
                 <template v-if="form.fileAttachment">
                   {{ form.fileAttachment.name }}
                   <span>({{ formatBytes(form.fileAttachment.size) }})</span>
                 </template>
-                <template v-else>
-                  <!-- show attached name and size for idb-stored files or friendly label -->
-                  {{ attachedName || "Attached file" }}
-                  <span v-if="attachedSize"
-                    >({{ formatBytes(attachedSize) }})</span
-                  >
-                  <span class="text-xs text-muted">(preview available)</span>
+                <template v-else-if="form.storedFileUrl">
+                  {{ previewLabel }}
+                  <span v-if="(form as any)._attachedSize">
+                    ({{ formatBytes((form as any)._attachedSize) }})
+                  </span>
                 </template>
-                <VBtn small variant="text" color="error" @click="clearFile"
-                  >Remove</VBtn
-                >
+                <template v-else>No file selected</template>
               </div>
-              <div v-if="fileError" class="text-error text-sm mt-2">
-                {{ fileError }}
-              </div>
-              <div
-                v-else-if="!hasAttachment"
-                class="text-sm text-medium-emphasis mt-2"
+              <VBtn
+                v-if="form.fileAttachment || form.storedFileUrl"
+                variant="text"
+                color="error"
+                @click="clearFile"
               >
-                Attachment is required.
-              </div>
+                Remove
+              </VBtn>
             </div>
           </VCol>
 
           <VCol cols="12">
-            <VTextField v-model="form.note" label="Note" />
+            <AppTextField
+              v-model="form.linkUrl"
+              label="Link"
+              placeholder="https://example.com/document.pdf"
+              clearable
+              :disabled="hasFileSource"
+              @blur="validateLink"
+              @click:clear="clearLink"
+            />
+            <div
+              v-if="hasFileSource"
+              class="text-sm text-medium-emphasis mt-2"
+            >
+              Remove the attachment to use a link instead.
+            </div>
           </VCol>
+
+          <VCol cols="12">
+            <div v-if="fileError" class="text-error text-sm mb-3">
+              {{ fileError }}
+            </div>
+            <div
+              v-else-if="!hasAttachment"
+              class="text-sm text-medium-emphasis mb-3"
+            >
+              Attachment or link is required.
+            </div>
+
+            <div class="document-preview">
+              <template v-if="previewKind === 'image' && previewUrl">
+                <VImg
+                  :src="previewUrl"
+                  class="document-preview__media"
+                  cover
+                />
+              </template>
+              <template v-else-if="previewKind === 'pdf' && previewUrl">
+                <iframe
+                  :src="previewUrl"
+                  class="document-preview__pdf"
+                  title="Document preview"
+                />
+              </template>
+              <template v-else>
+                <div class="document-preview__placeholder">
+                  <VIcon
+                    :icon="hasAttachment ? 'tabler-file-description' : 'tabler-file-plus'"
+                    size="36"
+                  />
+                  <div class="document-preview__title">
+                    {{ previewLabel }}
+                  </div>
+                  <VBtn
+                    v-if="previewUrl"
+                    size="small"
+                    variant="tonal"
+                    prepend-icon="tabler-eye"
+                    @click="openPreview"
+                  >
+                    Open preview
+                  </VBtn>
+                </div>
+              </template>
+            </div>
+          </VCol>
+
+          <VCol cols="12">
+            <VSwitch
+              v-model="form.expiryEnabled"
+              label="Expiry"
+              color="primary"
+              hide-details
+            />
+          </VCol>
+
+          <template v-if="form.expiryEnabled">
+            <VCol cols="12" md="6">
+              <AppDateTimePicker
+                v-model="form.expiry"
+                type="date"
+                label="Expiry date"
+                format="YYYY-MM-DD"
+                placeholder="Select date"
+              />
+              <div
+                v-if="expiryDateRequired"
+                class="text-error text-sm mt-2"
+              >
+                Expiry date is required.
+              </div>
+            </VCol>
+
+            <VCol cols="12" md="6">
+              <AppSelect
+                v-model="form.expiryReminderOffsetDays"
+                :items="reminderOptions"
+                item-title="title"
+                item-value="value"
+                label="Reminder"
+              />
+            </VCol>
+          </template>
         </VRow>
       </VCardText>
 
       <VCardActions>
         <DialogActionBar
           :save-text="uploading ? 'Uploading...' : 'Save'"
-          :save-disabled="!isValid || uploading || !!fileError"
+          :save-disabled="!isValid || uploading"
           @save="save"
           @cancel="open = false"
         />
@@ -599,8 +632,73 @@ watch(
 </template>
 
 <style scoped>
-/* Small component-specific styles can go here */
 .job-document-dialog {
   padding: 0.25rem;
+}
+
+.document-field-label {
+  display: block;
+  margin-block-end: 0.5rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.8125rem;
+}
+
+.document-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.document-upload-row__text {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-preview {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  background: rgba(var(--v-theme-surface), 0.6);
+}
+
+.document-preview__media,
+.document-preview__pdf {
+  display: block;
+  border: 0;
+  block-size: 18rem;
+  inline-size: 100%;
+}
+
+.document-preview__placeholder {
+  display: flex;
+  min-block-size: 10rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  text-align: center;
+}
+
+.document-preview__title {
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .document-upload-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .document-upload-row__text {
+    white-space: normal;
+  }
 }
 </style>

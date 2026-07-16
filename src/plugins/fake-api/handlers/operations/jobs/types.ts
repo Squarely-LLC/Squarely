@@ -77,6 +77,7 @@ export interface JobDocument {
   name: string;
   expiry?: string | null;
   expiryReminder?: boolean;
+  expiryReminderOffsetDays?: number | null;
   note?: string;
   fileUrl?: string;
   createdAt?: string;
