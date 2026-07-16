@@ -1393,6 +1393,29 @@ const averagePaymentTimeLabel = computed(() => {
   return `${rounded} ${rounded === 1 ? "day" : "days"}`;
 });
 
+const dealSummaryParagraph = computed(() => {
+  const createdSentence = deal.value?.createdAt
+    ? `Created ${formatPreviewDate(deal.value.createdAt)}.`
+    : "Creation date is not available.";
+  const statusSentence = deal.value?.stage
+    ? `Deal status is ${deal.value.stage}.`
+    : "This deal has not been assigned a status yet.";
+  const workSentence = !linkedJob.value
+    ? "Work has not started yet."
+    : hasNewWorkItems.value
+      ? "Work needs to be updated because new items were added."
+      : "Work is in progress.";
+  const paymentSentence = hideDealFinancials.value
+    ? "Payment timing is hidden for this role."
+    : averagePaymentTimeLabel.value === "No paid invoices yet"
+      ? "No invoices have been fully paid yet."
+      : `Average payment time is ${averagePaymentTimeLabel.value}.`;
+
+  return [createdSentence, statusSentence, workSentence, paymentSentence].join(
+    " ",
+  );
+});
+
 const formatFinancialSummaryValue = (value: number) =>
   hideDealFinancials.value ? "Hidden" : Math.max(value, 0).toLocaleString();
 
@@ -1447,12 +1470,6 @@ const dealFinancialSummaryRows = computed(() => [
     value: formatFinancialSummaryValue(paidDealValue.value),
   },
 ]);
-
-const dealCreationDateLabel = computed(() =>
-  deal.value?.createdAt ? formatPreviewDate(deal.value.createdAt) : "--",
-);
-
-const dealStatusLabel = computed(() => deal.value?.stage || "--");
 
 const dealCollaboratorOptions = computed(() => getEmployeeOptions());
 const jobOwnerOptions = computed(() => getEmployeeOptions());
@@ -1711,13 +1728,6 @@ const workActionDisabledReason = computed(() =>
     ? "Work has already started."
     : executeDealDisabledReason.value,
 );
-
-const jobStatusLabel = computed(() => {
-  if (!linkedJob.value) return "Not started";
-  if (hasNewWorkItems.value) return "Work needs to be updated";
-
-  return "Work in progress";
-});
 
 const notifyDealUpdateDenied = () => {
   notifications.push(dealUpdateDisabledReason.value, "warning", 3000);
@@ -2870,9 +2880,7 @@ watch(
 
         <div class="deal-meta-summary mt-4">
           <p class="deal-meta-summary__text">
-            Created {{ dealCreationDateLabel }}. Deal status is {{ dealStatusLabel }}.
-            Job status is {{ jobStatusLabel }}. Average payment time is
-            {{ averagePaymentTimeLabel }}.
+            {{ dealSummaryParagraph }}
           </p>
 
           <div class="deal-finance-summary">

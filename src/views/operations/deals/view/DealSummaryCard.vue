@@ -568,12 +568,12 @@ const currentStageIndex = computed(() => {
             <span v-bind="tooltipProps" class="d-inline-flex flex-grow-1">
               <VBtn
                 aria-label="Work action"
-                :variant="workActionState === 'in_progress' ? 'flat' : 'tonal'"
-                :color="workActionState === 'update' ? 'warning' : workActionState === 'in_progress' ? 'secondary' : 'primary'"
+                variant="flat"
+                color="secondary"
                 :disabled="workActionDisabled"
                 block
                 class="summary-work-btn"
-                :class="{ 'summary-work-btn--progress': workActionState === 'in_progress' }"
+                :class="`summary-work-btn--${workActionState || 'start'}`"
                 @click="!workActionDisabled ? emit('work-action') : undefined"
               >
                 {{ workActionLabel || "Start Work" }}
@@ -666,7 +666,20 @@ const currentStageIndex = computed(() => {
   padding-block-end: 1.5rem;
 }
 
-.summary-work-btn--progress {
+.summary-work-btn {
+  background-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  box-shadow: none !important;
+}
+
+.summary-work-btn--start {
+  color: rgb(var(--v-theme-on-surface)) !important;
+}
+
+.summary-work-btn--update {
+  color: rgb(var(--v-theme-warning)) !important;
+}
+
+.summary-work-btn--in_progress {
   color: rgb(var(--v-theme-primary)) !important;
 }
 
