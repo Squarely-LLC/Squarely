@@ -2607,6 +2607,13 @@ const hasRetainerRemainingPeriods = (
   item?: DealItem | DealItemWithPlan | null,
 ) => getRetainerRemainingPeriods(item) > 0;
 
+const isContractualParentDealItem = (
+  item?: DealItem | DealItemWithPlan | null,
+) =>
+  String(item?.catalogueType ?? "")
+    .trim()
+    .toLowerCase() === "contractual service";
+
 const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item) return { label: "Qty", value: "--" };
 
@@ -6280,6 +6287,7 @@ const getSectionHeaderMetrics = (
 ];
 
 const getContractualPhaseHeaderMetrics = (goal: DerivedGoal) => [
+  { label: "Qty", value: String(goal.quantity ?? "--") },
   { label: "Price", value: formatHeaderMoney(goal.price) },
   {
     label: "Discount",
@@ -8290,18 +8298,20 @@ const openEditTask = (taskId: number | string) => {
                         </div>
 
                         <div class="item-card-inline-metrics">
-                          <span class="item-card-inline-metrics__group">
-                            {{ getItemDisplayMetric(item).label }}:
-                            <strong>{{
-                              getItemDisplayMetric(item).value
-                            }}</strong>
-                          </span>
-                          <span
-                            class="item-card-row-separator"
-                            aria-hidden="true"
-                          >
-                            |
-                          </span>
+                          <template v-if="!isContractualParentDealItem(item)">
+                            <span class="item-card-inline-metrics__group">
+                              {{ getItemDisplayMetric(item).label }}:
+                              <strong>{{
+                                getItemDisplayMetric(item).value
+                              }}</strong>
+                            </span>
+                            <span
+                              class="item-card-row-separator"
+                              aria-hidden="true"
+                            >
+                              |
+                            </span>
+                          </template>
                           <span class="item-card-inline-metrics__group">
                             Price:
                             <strong>{{
@@ -8559,6 +8569,12 @@ const openEditTask = (taskId: number | string) => {
                                     </div>
                                   </template>
                                 </VTooltip>
+                                <span
+                                  class="item-card-row-separator"
+                                  aria-hidden="true"
+                                >
+                                  |
+                                </span>
                                 <VChip
                                   color="primary"
                                   size="x-small"
@@ -9096,7 +9112,7 @@ const openEditTask = (taskId: number | string) => {
                               </div>
 
                               <div
-                                class="item-card-inline-metrics item-card-inline-metrics--contractual"
+                                class="item-card-inline-metrics"
                               >
                                 <template
                                   v-for="(
@@ -9107,21 +9123,11 @@ const openEditTask = (taskId: number | string) => {
                                   <span
                                     v-if="metricIndex > 0"
                                     class="item-card-row-separator"
-                                    :class="{
-                                      'item-card-row-separator--contractual-tax':
-                                        metric.label === 'TAX',
-                                    }"
                                     aria-hidden="true"
                                   >
                                     |
                                   </span>
-                                  <span
-                                    class="item-card-inline-metrics__group"
-                                    :class="{
-                                      'item-card-inline-metrics__group--tax':
-                                        metric.label === 'TAX',
-                                    }"
-                                  >
+                                  <span class="item-card-inline-metrics__group">
                                     {{ metric.label }}:
                                     <strong>{{ metric.value }}</strong>
                                   </span>
@@ -12191,6 +12197,16 @@ const openEditTask = (taskId: number | string) => {
   min-inline-size: 0;
 }
 
+.goal-panel--contractual-phase .item-card-header {
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.goal-panel--contractual-phase .item-card-inline-metrics {
+  margin-block-start: 0.35rem;
+}
+
 .item-card-header__main {
   flex: 1 1 auto;
   min-inline-size: 0;
@@ -12276,34 +12292,6 @@ const openEditTask = (taskId: number | string) => {
 
 .item-card-inline-metrics {
   margin-block-start: 0.35rem;
-}
-
-.item-card-inline-metrics--contractual {
-  flex: 0 0 auto;
-  justify-content: flex-end;
-  margin-block-start: 0;
-  margin-inline-start: auto;
-  max-inline-size: min(20rem, 42%);
-}
-
-.goal-panel--contractual-phase .item-card-header {
-  align-items: flex-start;
-}
-
-.goal-panel--contractual-phase .item-card-title-row {
-  flex: 1 1 auto;
-  inline-size: auto;
-}
-
-.item-card-inline-metrics--contractual
-  .item-card-inline-metrics__group--tax {
-  flex-basis: auto;
-}
-
-.item-card-row-separator--contractual-tax {
-  flex-basis: 100%;
-  margin-inline-start: 0;
-  text-align: start;
 }
 
 .item-card-date-row {
