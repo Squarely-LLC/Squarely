@@ -5230,6 +5230,32 @@ const selectedRecurrentBillingPeriods = computed(() =>
   ),
 );
 
+const allAvailableBillingPeriodsSelected = computed(
+  () =>
+    Boolean(availableRetainerBillingPeriods.value.length) &&
+    availableRetainerBillingPeriods.value.every((period) =>
+      selectedRecurrentBillingPeriodKeys.value.includes(period.key),
+    ),
+);
+
+const selectAllAvailableBillingPeriods = () => {
+  selectedRecurrentBillingPeriodKeys.value =
+    availableRetainerBillingPeriods.value.map((period) => period.key);
+};
+
+const clearSelectedBillingPeriods = () => {
+  selectedRecurrentBillingPeriodKeys.value = [];
+};
+
+const toggleAllAvailableBillingPeriods = () => {
+  if (allAvailableBillingPeriodsSelected.value) {
+    clearSelectedBillingPeriods();
+    return;
+  }
+
+  selectAllAvailableBillingPeriods();
+};
+
 const billingPeriodPreviewLabel = computed(() => {
   if (isMultiPeriodBillingSelection.value) {
     return selectedRecurrentBillingPeriods.value.length
@@ -11023,6 +11049,39 @@ const openEditTask = (taskId: number | string) => {
 
         <div class="rounded border pa-4 bg-var-theme-background">
           <template v-if="isRetainerBillingPeriodSelection">
+            <div
+              v-if="isMultiPeriodBillingSelection"
+              class="d-flex align-center justify-space-between flex-wrap gap-2 mb-3"
+            >
+              <div class="text-sm text-medium-emphasis">
+                {{ selectedRecurrentBillingPeriods.length }} of
+                {{ availableRetainerBillingPeriods.length }} available selected
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <VBtn
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  :disabled="!availableRetainerBillingPeriods.length"
+                  @click="toggleAllAvailableBillingPeriods"
+                >
+                  {{
+                    allAvailableBillingPeriodsSelected
+                      ? "Deselect all"
+                      : "Select all"
+                  }}
+                </VBtn>
+                <VBtn
+                  size="small"
+                  variant="text"
+                  :disabled="!selectedRecurrentBillingPeriods.length"
+                  @click="clearSelectedBillingPeriods"
+                >
+                  Clear
+                </VBtn>
+              </div>
+            </div>
+
             <VSelect
               v-if="isMultiPeriodBillingSelection"
               v-model="selectedRecurrentBillingPeriodKeys"
