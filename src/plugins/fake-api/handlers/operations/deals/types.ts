@@ -143,6 +143,7 @@ export interface DealProperties {
   projectName?: string | null;
   relatedTo?: number | null;
   linkedJobId?: number | null;
+  workItemSnapshotIds?: Array<number | string>;
   salesman?: number | string | null;
   type?: string | null;
   estimatedDeliveryDate?: string | null;

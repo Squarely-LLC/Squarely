@@ -335,6 +335,36 @@ function normalizeNullableNumber(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeWorkItemSnapshotIds(values: unknown): Array<number | string> {
+  if (!Array.isArray(values)) return [];
+
+  const seen = new Set<string>();
+  const result: Array<number | string> = [];
+
+  values.forEach((value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw || seen.has(raw)) return;
+
+    seen.add(raw);
+    const numeric = Number(raw);
+    result.push(Number.isFinite(numeric) ? numeric : raw);
+  });
+
+  return result;
+}
+
+function collectRootDealItemIds(
+  items: DealProperties["items"] | undefined | null,
+) {
+  if (!Array.isArray(items)) return [];
+
+  return normalizeWorkItemSnapshotIds(
+    items
+      .filter((item) => !item.parentItemId)
+      .map((item) => item.id),
+  );
+}
+
 function normalizeAmount(value: unknown): number | null {
   if (value === "" || value === null || value === undefined) return null;
 
@@ -646,6 +676,9 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
     normalizeString(deal.createdAt) ||
     normalizeString(seedMatch?.createdAt) ||
     new Date().toISOString();
+  const workItemSnapshotIds = normalizeWorkItemSnapshotIds(
+    deal.workItemSnapshotIds,
+  );
 
   return {
     ...deal,
@@ -663,6 +696,10 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
       normalizeString(seedMatch?.projectName),
     relatedTo: normalizeNullableNumber(deal.relatedTo),
     linkedJobId: normalizeNullableNumber(deal.linkedJobId),
+    workItemSnapshotIds:
+      normalizeNullableNumber(deal.linkedJobId) && !workItemSnapshotIds.length
+        ? collectRootDealItemIds(deal.items)
+        : workItemSnapshotIds,
     salesman: normalizeSalesman(deal.salesman, deal.collaborators),
     type: normalizeString(deal.type),
     estimatedDeliveryDate: normalizeDateString(deal.estimatedDeliveryDate),
@@ -772,6 +809,9 @@ function normaliseDeal(
     projectName: payload.projectName?.trim() || null,
     relatedTo: normalizeNullableNumber(payload.relatedTo),
     linkedJobId: normalizeNullableNumber(payload.linkedJobId),
+    workItemSnapshotIds: normalizeWorkItemSnapshotIds(
+      payload.workItemSnapshotIds,
+    ),
     salesman: normalizeSalesman(payload.salesman, payload.collaborators),
     type: normalizeString(payload.type),
     estimatedDeliveryDate: normalizeDateString(payload.estimatedDeliveryDate),
@@ -828,6 +868,10 @@ function mergeDeal(
         : patch.linkedJobId === null
           ? null
           : Number(patch.linkedJobId),
+    workItemSnapshotIds:
+      patch.workItemSnapshotIds === undefined
+        ? normalizeWorkItemSnapshotIds(original.workItemSnapshotIds)
+        : normalizeWorkItemSnapshotIds(patch.workItemSnapshotIds),
     salesman:
       patch.salesman === undefined
         ? normalizeSalesman(original.salesman, original.collaborators)

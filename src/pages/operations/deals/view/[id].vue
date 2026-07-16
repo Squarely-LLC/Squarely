@@ -36,8 +36,12 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import {
-  getDealRetainerServiceLines,
-} from "@/utils/dealDocumentDraft";
+  getDealDocumentBalance,
+  getDealDocumentPaid,
+  getDealDocumentTotal,
+} from "@/utils/dealBilling";
+import { getDealRetainerServiceLines } from "@/utils/dealDocumentDraft";
+import { getDealGrandTotal } from "@/utils/dealValue";
 import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import {
   getContactAndEmployeeRefs,
@@ -122,6 +126,7 @@ const isEditTodoDrawerVisible = ref(false);
 const isExecutePreviewDialogVisible = ref(false);
 const isExecutingDeal = ref(false);
 const executeWorkMode = ref<"start" | "update">("start");
+const executePreviewRootItemIds = ref<Array<number | string>>([]);
 const executePreviewError = ref<string | null>(null);
 const executePreview = ref<DealExecutionPreview | null>(null);
 const selectedJobOwnerId = ref<number | null>(null);
@@ -1130,6 +1135,7 @@ const closeExecutePreviewDialog = () => {
   isExecutePreviewDialogVisible.value = false;
   isExecutingDeal.value = false;
   executeWorkMode.value = "start";
+  executePreviewRootItemIds.value = [];
   executePreview.value = null;
   executePreviewError.value = null;
   selectedJobOwnerId.value = null;
@@ -1139,6 +1145,22 @@ const cloneDeal = (value: DealProperties | null) => {
   if (!value) return null;
 
   return JSON.parse(JSON.stringify(value)) as DealProperties;
+};
+
+const mergeWorkItemSnapshotIds = (
+  currentIds: Array<number | string> | undefined,
+  processedIds: Array<number | string>,
+) => {
+  const merged = new Map<string, number | string>();
+
+  [...(currentIds || []), ...processedIds].forEach((id) => {
+    const raw = String(id ?? "").trim();
+    if (!raw || merged.has(raw)) return;
+
+    merged.set(raw, id);
+  });
+
+  return [...merged.values()];
 };
 
 const resolveLatestDealState = () => {
@@ -1305,22 +1327,16 @@ const dealRootItems = computed(() =>
   (deal.value?.items || []).filter((item) => !item.parentItemId),
 );
 
-const linkedJobDealItemIds = computed(() => {
-  const ids = new Set<string>();
-  (linkedJob.value?.goals || []).forEach((goal) => {
-    const sourceId = goal.source?.dealItemId;
-    if (sourceId !== null && sourceId !== undefined && sourceId !== "")
-      ids.add(String(sourceId));
-  });
-
-  return ids;
-});
+const workItemSnapshotIds = computed(
+  () =>
+    new Set((deal.value?.workItemSnapshotIds || []).map((id) => String(id))),
+);
 
 const newWorkRootItems = computed(() => {
   if (!linkedJob.value) return dealRootItems.value;
 
   return dealRootItems.value.filter(
-    (item) => !linkedJobDealItemIds.value.has(String(item.id)),
+    (item) => !workItemSnapshotIds.value.has(String(item.id)),
   );
 });
 
@@ -1376,6 +1392,61 @@ const averagePaymentTimeLabel = computed(() => {
 
   return `${rounded} ${rounded === 1 ? "day" : "days"}`;
 });
+
+const formatFinancialSummaryValue = (value: number) =>
+  hideDealFinancials.value ? "Hidden" : Math.max(value, 0).toLocaleString();
+
+const totalDealValue = computed(() =>
+  deal.value ? getDealGrandTotal(deal.value) : 0,
+);
+
+const invoicedDealValue = computed(() =>
+  currentDealInvoices.value.reduce(
+    (sum, invoice) => sum + getDealDocumentTotal(invoice),
+    0,
+  ),
+);
+
+const unpaidDealValue = computed(() =>
+  currentDealInvoices.value.reduce(
+    (sum, invoice) => sum + getDealDocumentBalance(invoice),
+    0,
+  ),
+);
+
+const paidDealValue = computed(() =>
+  currentDealInvoices.value.reduce(
+    (sum, invoice) => sum + getDealDocumentPaid(invoice),
+    0,
+  ),
+);
+
+const toBeInvoicedDealValue = computed(() =>
+  Math.max(totalDealValue.value - invoicedDealValue.value, 0),
+);
+
+const dealFinancialSummaryRows = computed(() => [
+  {
+    label: "Total Deal Value",
+    value: formatFinancialSummaryValue(totalDealValue.value),
+  },
+  {
+    label: "To be Invoiced",
+    value: formatFinancialSummaryValue(toBeInvoicedDealValue.value),
+  },
+  {
+    label: "Invoiced",
+    value: formatFinancialSummaryValue(invoicedDealValue.value),
+  },
+  {
+    label: "Unpaid",
+    value: formatFinancialSummaryValue(unpaidDealValue.value),
+  },
+  {
+    label: "Paid",
+    value: formatFinancialSummaryValue(paidDealValue.value),
+  },
+]);
 
 const dealCreationDateLabel = computed(() =>
   deal.value?.createdAt ? formatPreviewDate(deal.value.createdAt) : "--",
@@ -1873,6 +1944,9 @@ const openExecutePreviewDialog = () => {
 
   try {
     executeWorkMode.value = updateMode ? "update" : "start";
+    executePreviewRootItemIds.value = (
+      updateMode ? newWorkRootItems.value : dealRootItems.value
+    ).map((item) => item.id);
     executePreview.value = buildExecutionPreview(
       previewDeal,
       executedAt,
@@ -1883,6 +1957,7 @@ const openExecutePreviewDialog = () => {
   } catch (previewError) {
     console.error("Failed to build deal conversion preview", previewError);
     executePreview.value = null;
+    executePreviewRootItemIds.value = [];
     executePreviewError.value = "Unable to build conversion preview.";
     selectedJobOwnerId.value = null;
   }
@@ -1959,8 +2034,13 @@ const confirmDealExecution = () => {
       name: executionJob.name,
       type: "job",
     };
+    const nextWorkItemSnapshotIds = mergeWorkItemSnapshotIds(
+      currentDeal.workItemSnapshotIds,
+      executePreviewRootItemIds.value,
+    );
     const updatedDeal = dealsStore.updateDeal(currentDealId, {
       linkedJobId: Number(executionJob.id),
+      workItemSnapshotIds: nextWorkItemSnapshotIds,
     });
     if (updatedDeal) deal.value = cloneDeal(updatedDeal);
 
@@ -2789,21 +2869,21 @@ watch(
         />
 
         <div class="deal-meta-summary mt-4">
-          <div class="deal-meta-summary__row">
-            <span>Deal creation date</span>
-            <strong>{{ dealCreationDateLabel }}</strong>
-          </div>
-          <div class="deal-meta-summary__row">
-            <span>Deal status</span>
-            <strong>{{ dealStatusLabel }}</strong>
-          </div>
-          <div class="deal-meta-summary__row">
-            <span>Job status</span>
-            <strong>{{ jobStatusLabel }}</strong>
-          </div>
-          <div class="deal-meta-summary__row">
-            <span>Average payment time</span>
-            <strong>{{ averagePaymentTimeLabel }}</strong>
+          <p class="deal-meta-summary__text">
+            Created {{ dealCreationDateLabel }}. Deal status is {{ dealStatusLabel }}.
+            Job status is {{ jobStatusLabel }}. Average payment time is
+            {{ averagePaymentTimeLabel }}.
+          </p>
+
+          <div class="deal-finance-summary">
+            <div
+              v-for="row in dealFinancialSummaryRows"
+              :key="row.label"
+              class="deal-finance-summary__row"
+            >
+              <span>{{ row.label }}</span>
+              <strong>{{ row.value }}</strong>
+            </div>
           </div>
         </div>
       </VCol>
@@ -3239,11 +3319,24 @@ watch(
 .deal-meta-summary {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.8rem;
   padding-inline: 0.25rem;
 }
 
-.deal-meta-summary__row {
+.deal-meta-summary__text {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.deal-finance-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.deal-finance-summary__row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -3252,7 +3345,7 @@ watch(
   font-size: 0.875rem;
 }
 
-.deal-meta-summary__row strong {
+.deal-finance-summary__row strong {
   color: rgb(var(--v-theme-on-surface));
   font-size: 0.9rem;
   font-weight: 600;
@@ -3265,13 +3358,13 @@ watch(
     align-items: stretch;
   }
 
-  .deal-meta-summary__row {
+  .deal-finance-summary__row {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.15rem;
   }
 
-  .deal-meta-summary__row strong {
+  .deal-finance-summary__row strong {
     text-align: start;
   }
 }
