@@ -44,6 +44,18 @@ export const db: DB = {
       type: "Retail",
       estimatedDeliveryDate: "2026-05-20",
       stage: "Negotation",
+      stageHistory: [
+        {
+          stage: "Pre-Sale",
+          enteredAt: "2026-04-10T09:30:00Z",
+          source: "created",
+        },
+        {
+          stage: "Negotation",
+          enteredAt: "2026-04-11T09:00:00Z",
+          source: "lifecycle",
+        },
+      ],
       important: true,
       location: "Dubai",
       collaborators: [
@@ -223,6 +235,13 @@ export const db: DB = {
       type: "Wholesale",
       estimatedDeliveryDate: "2026-06-05",
       stage: "Pre-Sale",
+      stageHistory: [
+        {
+          stage: "Pre-Sale",
+          enteredAt: "2026-04-14T13:15:00Z",
+          source: "created",
+        },
+      ],
       pendingStageTransition: {
         targetStage: "Negotation",
         reason: "Sales manager requested approval to move showroom refresh into negotiation.",
@@ -350,6 +369,18 @@ export const db: DB = {
       type: "Retail",
       estimatedDeliveryDate: "2026-05-12",
       stage: "Active",
+      stageHistory: [
+        {
+          stage: "Pre-Sale",
+          enteredAt: "2026-04-18T08:00:00Z",
+          source: "created",
+        },
+        {
+          stage: "Active",
+          enteredAt: "2026-06-23T12:00:00Z",
+          source: "lifecycle",
+        },
+      ],
       important: true,
       location: "Online",
       collaborators: [

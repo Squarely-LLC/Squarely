@@ -115,6 +115,12 @@ export interface DealNote {
   stage?: string | null;
 }
 
+export interface DealStageHistoryEntry {
+  stage: string;
+  enteredAt: string;
+  source?: "created" | "manual" | "lifecycle" | "approval" | "legacy" | null;
+}
+
 export type DealStageLifecycleEvent =
   | "deal-created"
   | "quotation-created"
@@ -156,6 +162,7 @@ export interface DealProperties {
   customFieldValues: Record<string, DealFieldValue>;
   stageManuallyManaged?: boolean;
   pendingStageTransition?: DealPendingStageTransition | null;
+  stageHistory?: DealStageHistoryEntry[];
   notes?: DealNote[];
   items: DealItem[];
   salesTasks?: DealSalesTaskTemplate[];

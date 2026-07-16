@@ -12,6 +12,7 @@ import type {
   DealProducedCustomization,
   DealProperties,
   DealSalesTaskTemplate,
+  DealStageHistoryEntry,
   DealStageLifecycleEvent,
 } from "@/plugins/fake-api/handlers/operations/deals/types";
 import { useConfigStore } from "@/stores/config";
@@ -101,6 +102,9 @@ function cloneDeal(deal: DealProperties): DealProperties {
       customFieldValues: { ...(raw.customFieldValues || {}) },
       notes: Array.isArray(raw.notes)
         ? raw.notes.map((note) => ({ ...note }))
+        : [],
+      stageHistory: Array.isArray(raw.stageHistory)
+        ? raw.stageHistory.map((entry) => ({ ...entry }))
         : [],
       items: Array.isArray(raw.items)
         ? raw.items.map((item) => ({ ...item }))
@@ -713,6 +717,11 @@ function applyDealFieldMigrations(deal: DealProperties): DealProperties {
     pendingStageTransition: normalizePendingStageTransition(
       deal.pendingStageTransition,
     ),
+    stageHistory: normalizeStageHistory(
+      deal.stageHistory,
+      deal.stage,
+      createdAt,
+    ),
     createdAt,
     updatedAt:
       normalizeString(deal.updatedAt) ||
@@ -729,6 +738,11 @@ function sanitizeDeals(deals: DealProperties[]) {
     documents: normalizeDocuments(deal.documents),
     financials: normalizeFinancials(deal.financials),
     notes: normalizeNotes(deal.notes, deal.stage),
+    stageHistory: normalizeStageHistory(
+      deal.stageHistory,
+      deal.stage,
+      deal.createdAt,
+    ),
   }));
 }
 
@@ -797,6 +811,81 @@ function normalizeNotes(
     .filter((note) => note.body);
 }
 
+function normalizeStageHistory(
+  history: DealStageHistoryEntry[] | undefined | null,
+  fallbackStage?: string | null,
+  fallbackDate?: string | null,
+): DealStageHistoryEntry[] {
+  const entries = Array.isArray(history)
+    ? history
+        .flatMap((entry): DealStageHistoryEntry[] => {
+          const stage = normalizeDealStageValue(entry.stage);
+          const enteredAt = normalizeString(entry.enteredAt);
+          if (!stage || !enteredAt) return [];
+
+          return [
+            {
+              stage,
+              enteredAt,
+              source: entry.source ?? null,
+            },
+          ];
+        })
+    : [];
+
+  const fallbackEnteredAt =
+    normalizeString(fallbackDate) || new Date().toISOString();
+  const createdStage = resolveCanonicalStage("Pre-Sale") || "Pre-Sale";
+
+  if (!entries.length) {
+    entries.push({
+      stage: createdStage,
+      enteredAt: fallbackEnteredAt,
+      source: "created",
+    });
+  }
+
+  const normalizedFallbackStage = normalizeDealStageValue(fallbackStage);
+  if (
+    normalizedFallbackStage &&
+    entries.every((entry) => entry.stage !== normalizedFallbackStage)
+  ) {
+    entries.push({
+      stage: normalizedFallbackStage,
+      enteredAt: fallbackEnteredAt,
+      source: "legacy",
+    });
+  }
+
+  return entries.sort(
+    (left, right) =>
+      new Date(left.enteredAt).getTime() - new Date(right.enteredAt).getTime(),
+  );
+}
+
+function appendStageHistoryEntry(
+  history: DealStageHistoryEntry[] | undefined | null,
+  stage: string | null | undefined,
+  source: DealStageHistoryEntry["source"],
+  enteredAt = new Date().toISOString(),
+) {
+  const normalizedStage = normalizeDealStageValue(stage);
+  if (!normalizedStage) return normalizeStageHistory(history, stage, enteredAt);
+
+  const entries = normalizeStageHistory(history, normalizedStage, enteredAt);
+  const lastEntry = entries[entries.length - 1];
+  if (lastEntry?.stage === normalizedStage) return entries;
+
+  return [
+    ...entries,
+    {
+      stage: normalizedStage,
+      enteredAt,
+      source,
+    },
+  ];
+}
+
 function normaliseDeal(
   payload: Partial<DealProperties>,
   assignedId: number,
@@ -829,6 +918,11 @@ function normaliseDeal(
     customFieldValues: normalizeCustomFieldValues(payload.customFieldValues),
     stageManuallyManaged: false,
     pendingStageTransition: null,
+    stageHistory: normalizeStageHistory(
+      payload.stageHistory,
+      payload.stage,
+      payload.createdAt || now,
+    ),
     notes: normalizeNotes(payload.notes, payload.stage),
     items: normalizeItems(payload.items),
     salesTasks: normalizeSalesTasks(payload.salesTasks),
@@ -908,6 +1002,18 @@ function mergeDeal(
       patch.pendingStageTransition === undefined
         ? normalizePendingStageTransition(original.pendingStageTransition)
         : normalizePendingStageTransition(patch.pendingStageTransition),
+    stageHistory:
+      patch.stageHistory === undefined
+        ? normalizeStageHistory(
+            original.stageHistory,
+            patch.stage ?? original.stage,
+            original.createdAt,
+          )
+        : normalizeStageHistory(
+            patch.stageHistory,
+            patch.stage ?? original.stage,
+            original.createdAt,
+          ),
     notes:
       patch.notes === undefined
         ? normalizeNotes(original.notes, original.stage)
@@ -1056,11 +1162,17 @@ export const useDealsStore = defineStore("deals", {
     updateDealStageManually(id: number | string, stage: string | null) {
       const normalizedStage = normalizeDealStageValue(stage);
       if (!normalizedStage) return null;
+      const currentDeal = this.byId(id);
 
       return this.updateDeal(id, {
         stage: normalizedStage,
         stageManuallyManaged: true,
         pendingStageTransition: null,
+        stageHistory: appendStageHistoryEntry(
+          currentDeal?.stageHistory,
+          normalizedStage,
+          "manual",
+        ),
       });
     },
 
@@ -1112,6 +1224,11 @@ export const useDealsStore = defineStore("deals", {
           stage: targetStage,
           stageManuallyManaged: false,
           pendingStageTransition: null,
+          stageHistory: appendStageHistoryEntry(
+            currentDeal.stageHistory,
+            targetStage,
+            "lifecycle",
+          ),
         },
         { system: true },
       );
@@ -1144,6 +1261,11 @@ export const useDealsStore = defineStore("deals", {
         stage: pendingTransition.targetStage,
         stageManuallyManaged: false,
         pendingStageTransition: null,
+        stageHistory: appendStageHistoryEntry(
+          currentDeal.stageHistory,
+          pendingTransition.targetStage,
+          "approval",
+        ),
       });
     },
 

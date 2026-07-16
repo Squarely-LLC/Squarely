@@ -1,35 +1,22 @@
 <script setup lang="ts">
 import type { ContactRef } from "@/data/schema";
+import type { CatalogueContractualServiceRecord } from "@/plugins/fake-api/handlers/catalogues/types";
 import type { DealProperties } from "@/plugins/fake-api/handlers/operations/deals/types";
+import { useCataloguesStore } from "@/stores/catalogues";
+import { useJobsStore } from "@/stores/jobs";
 import { useTodos } from "@/stores/todos";
+import { getDealContractualPhaseLines } from "@/utils/dealDocumentDraft";
 import { formatSystemDate } from "@core/utils/formatters";
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
 
 type StageKey = "created" | "negotation" | "active" | "canceled" | "lost";
 
-type ActivityItem = {
+type NoteActivity = {
   id: string;
-  kind:
-    | "task"
-    | "email"
-    | "meeting"
-    | "call"
-    | "deal"
-    | "delivery"
-    | "item"
-    | "document"
-    | "financial"
-    | "note";
   title: string;
   body: string;
-  date: string | null | undefined;
-  meta?: string;
+  date: string | null;
   stage: StageKey;
-  duration?: number | null;
-  meetingId?: number | string;
-  rawType?: string;
-  linkedTo: ContactRef[];
 };
 
 const props = defineProps<{
@@ -38,8 +25,12 @@ const props = defineProps<{
   hideFinancials?: boolean;
 }>();
 
+const cataloguesStore = useCataloguesStore();
+const jobsStore = useJobsStore();
 const todosStore = useTodos();
-const router = useRouter();
+
+cataloguesStore.init();
+jobsStore.init();
 todosStore.init();
 
 const EMAIL_THREAD_NOTE = "__deal_email_thread__";
@@ -82,10 +73,6 @@ function stageLabel(stage: StageKey) {
   return timelineStageOptions.find((option) => option.key === stage)?.label || "";
 }
 
-function stageColor(stage: StageKey) {
-  return timelineStageOptions.find((option) => option.key === stage)?.color || "primary";
-}
-
 function stageIcon(stage: StageKey) {
   if (stage === "created") return "tabler-circle-plus";
   if (stage === "negotation") return "tabler-messages";
@@ -95,6 +82,56 @@ function stageIcon(stage: StageKey) {
 
   return "tabler-point";
 }
+
+function parseTime(value?: string | null) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function formatDisplayDate(value?: string | null) {
+  const time = parseTime(value);
+  if (time === null) return "--";
+
+  try {
+    return formatSystemDate(time);
+  } catch {
+    return value || "--";
+  }
+}
+
+function daysBetween(start?: string | null, end?: string | null) {
+  const startTime = parseTime(start);
+  const endTime = end ? parseTime(end) : Date.now();
+  if (startTime === null || endTime === null) return null;
+
+  return Math.max(
+    0,
+    Math.floor((endTime - startTime) / (24 * 60 * 60 * 1000)),
+  );
+}
+
+function formatDays(days: number | null) {
+  if (days === null) return "No time recorded yet";
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+function initials(name?: string | null) {
+  return (
+    name
+      ?.match(/\b\w/g)
+      ?.slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
+const linkedJob = computed(() => {
+  const linkedJobId = props.deal.linkedJobId;
+  if (linkedJobId === null || linkedJobId === undefined) return null;
+
+  return jobsStore.byId(linkedJobId) ?? null;
+});
 
 const dealTodos = computed(() => {
   const dealId = String(props.deal.id ?? "").trim();
@@ -133,313 +170,179 @@ const dealMeetings = computed(() => {
   });
 });
 
-function formatDisplayDate(value?: string | null) {
-  if (!value) return "--";
+const callCount = computed(
+  () =>
+    dealMeetings.value.filter(
+      (meeting: any) =>
+        meeting?.type === "Brief" ||
+        String(meeting?.location || "")
+          .toLowerCase()
+          .includes("phone"),
+    ).length,
+);
 
-  try {
-    return formatSystemDate(new Date(value).getTime());
-  } catch {
-    return value;
+const meetingCount = computed(
+  () => Math.max(0, dealMeetings.value.length - callCount.value),
+);
+
+const rootItems = computed(() =>
+  (props.deal.items || []).filter(
+    (item) => item.parentItemId === null || item.parentItemId === undefined,
+  ),
+);
+
+const phaseCount = computed(() =>
+  rootItems.value.reduce((count, item) => {
+    if (item.catalogueType !== "Contractual Service" || !item.catalogueItemId)
+      return count;
+
+    const record = cataloguesStore.recordById(
+      item.catalogueItemId,
+      item.catalogueType,
+    ) as CatalogueContractualServiceRecord | null;
+    if (!record || record.type !== "Contractual Service") return count;
+
+    return count + getDealContractualPhaseLines(item, record).length;
+  }, 0),
+);
+
+function positiveCount(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+const periodCount = computed(() =>
+  rootItems.value.reduce(
+    (count, item) =>
+      count +
+      positiveCount(item.retainerPeriods) +
+      positiveCount(item.recurrentPeriods),
+    0,
+  ),
+);
+
+const stageHistory = computed(() => {
+  const entries = Array.isArray(props.deal.stageHistory)
+    ? props.deal.stageHistory
+        .map((entry) => ({
+          stage: normalizeStageBucket(entry.stage),
+          enteredAt: entry.enteredAt,
+        }))
+        .filter((entry) => parseTime(entry.enteredAt) !== null)
+    : [];
+
+  if (!entries.length && props.deal.createdAt) {
+    entries.push({
+      stage: "created" as const,
+      enteredAt: props.deal.createdAt,
+    });
   }
+
+  return entries.sort(
+    (left, right) =>
+      (parseTime(left.enteredAt) ?? 0) - (parseTime(right.enteredAt) ?? 0),
+  );
+});
+
+function stageEntry(stage: StageKey) {
+  return stageHistory.value.find((entry) => entry.stage === stage) ?? null;
 }
 
-function timeAgo(iso?: string | null) {
-  if (!iso) return "";
+function nextStageEntry(stage: StageKey) {
+  const startIndex = stageHistory.value.findIndex(
+    (entry) => entry.stage === stage,
+  );
+  if (startIndex === -1) return null;
 
-  try {
-    const then = new Date(iso).getTime();
-    const now = Date.now();
-    const diff = now - then;
-    const absMins = Math.round(Math.abs(diff) / 60000);
+  return (
+    stageHistory.value
+      .slice(startIndex + 1)
+      .find((entry) => entry.stage !== stage) ?? null
+  );
+}
 
-    if (diff >= 0) {
-      if (absMins < 1) return "just now";
-      if (absMins < 60) return `${absMins} min${absMins > 1 ? "s" : ""} ago`;
+function stageDurationDays(stage: StageKey) {
+  const entry = stageEntry(stage);
+  if (!entry) return null;
 
-      const hours = Math.round(absMins / 60);
-      if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  return daysBetween(entry.enteredAt, nextStageEntry(stage)?.enteredAt);
+}
 
-      const days = Math.round(hours / 24);
-      if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`;
+const activeConvertedAt = computed(
+  () =>
+    stageEntry("active")?.enteredAt ||
+    linkedJob.value?.createdAt ||
+    linkedJob.value?.startDate ||
+    null,
+);
 
-      return formatDisplayDate(iso);
-    }
+const activeDays = computed(() => daysBetween(activeConvertedAt.value));
 
-    if (absMins < 60) return `in ${absMins} min${absMins > 1 ? "s" : ""}`;
+const jobTasks = computed(() => {
+  const jobId = linkedJob.value?.id;
+  if (jobId === null || jobId === undefined) return [] as any[];
 
-    const hours = Math.round(absMins / 60);
-    if (hours < 24) return `in ${hours} hour${hours > 1 ? "s" : ""}`;
+  return (todosStore.items || []).filter(
+    (todo: any) =>
+      todo.relatedTo &&
+      String(todo.relatedTo.id) === String(jobId) &&
+      (todo.relatedTo.type ? todo.relatedTo.type === "job" : true),
+  );
+});
 
-    const days = Math.round(hours / 24);
-    if (days < 7) return `in ${days} day${days > 1 ? "s" : ""}`;
+const jobProgress = computed(() => {
+  if (jobTasks.value.length) {
+    const completed = jobTasks.value.filter(
+      (task: any) => task.status === "completed",
+    ).length;
 
-    return `on ${formatDisplayDate(iso)}`;
-  } catch {
-    return String(iso);
+    return Math.round((completed / jobTasks.value.length) * 100);
   }
-}
 
-function formatDuration(mins?: number | null) {
-  if (!mins && mins !== 0) return "";
+  const job = linkedJob.value;
+  if (!job) return 0;
+  if (job.status === "Completed" || job.status === "Closed") return 100;
+  if (job.status === "In Progress" || job.stage === "Project | In Progress")
+    return 50;
+  if (job.startDate && job.endDate) {
+    const total = (parseTime(job.endDate) ?? 0) - (parseTime(job.startDate) ?? 0);
+    const elapsed = Date.now() - (parseTime(job.startDate) ?? Date.now());
+    if (total > 0) return Math.min(99, Math.max(0, Math.round((elapsed / total) * 100)));
+  }
 
-  const hours = Math.floor(mins / 60);
-  const minutes = mins % 60;
+  return 0;
+});
 
-  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
-}
-
-function linkedParticipants(item: any): ContactRef[] {
-  if (!item || !Array.isArray(item.linkedTo)) return [];
-
-  return item.linkedTo.filter((linked: any) => linked?.type !== "deal");
-}
-
-function taskStatusLabel(status?: string) {
-  if (status === "in_progress") return "In Progress";
-  if (status === "for_review") return "For Review";
-  if (status === "completed") return "Completed";
-
-  return "Pending";
-}
-
-function labelColorName(kind: ActivityItem["kind"], rawType?: string) {
-  if (kind === "task") return "warning";
-  if (kind === "email") return "primary";
-  if (kind === "call") return "info";
-  if (kind === "deal") return "primary";
-  if (kind === "delivery") return "info";
-  if (kind === "item") return "success";
-  if (kind === "document") return "secondary";
-  if (kind === "financial") return "warning";
-  if (kind === "note") return "secondary";
-  if (rawType === "Sales") return "success";
-
-  return "success";
-}
-
-function labelText(kind: ActivityItem["kind"]) {
-  if (kind === "task") return "Task";
-  if (kind === "email") return "Email";
-  if (kind === "call") return "Call";
-  if (kind === "deal") return "Deal";
-  if (kind === "delivery") return "Delivery";
-  if (kind === "item") return "Item";
-  if (kind === "document") return "Document";
-  if (kind === "financial") return "Financial";
-  if (kind === "note") return "Note";
-
-  return "Meeting";
-}
-
-function activityStage(value?: string | null) {
-  return normalizeStageBucket(value || props.deal.stage);
-}
-
-const noteActivities = computed<ActivityItem[]>(() =>
+const noteActivities = computed<NoteActivity[]>(() =>
   (props.deal.notes || []).map((note) => ({
     id: `note-${note.id}`,
-    kind: "note",
     title: note.authorName || "Note",
     body: note.body || "",
     date: note.createdAt || null,
-    meta: stageLabel(normalizeStageBucket(note.stage || props.deal.stage)),
     stage: normalizeStageBucket(note.stage || props.deal.stage),
-    linkedTo: [],
   })),
 );
-
-const communicationActivities = computed<ActivityItem[]>(() => {
-  const stage = currentStage.value;
-  const tasks: ActivityItem[] = dealTaskTodos.value.map((todo: any) => ({
-    id: `task-${todo.id}`,
-    kind: "task",
-    title: todo.title || "Task",
-    body: todo.notes || "",
-    date: todo.updatedAt || todo.createdAt || todo.dueAt || null,
-    meta: taskStatusLabel(todo.status),
-    stage,
-    linkedTo: Array.isArray(todo.collaborators) ? todo.collaborators : [],
-  }));
-
-  const emails: ActivityItem[] = dealTodos.value.flatMap((todo: any) =>
-    Array.isArray(todo.messages)
-      ? todo.messages.map((message: any, index: number) => ({
-          id: `email-${todo.id}-${message.id ?? index}`,
-          kind: "email" as const,
-          title: message.author?.name
-            ? `Email from ${message.author.name}`
-            : "Email",
-          body: message.body || "",
-          date: message.createdAt || todo.updatedAt || todo.createdAt || null,
-          meta: todo.title || "Email thread",
-          stage,
-          linkedTo: Array.isArray(todo.collaborators) ? todo.collaborators : [],
-        }))
-      : [],
-  );
-
-  const meetings: ActivityItem[] = dealMeetings.value.map((meeting: any) => {
-    const isCall =
-      meeting?.type === "Brief" ||
-      String(meeting?.location || "")
-        .toLowerCase()
-        .includes("phone");
-
-    return {
-      id: `${isCall ? "call" : "meeting"}-${meeting.id}`,
-      kind: isCall ? "call" : "meeting",
-      title: meeting.subject || (isCall ? "Call" : "Meeting"),
-      body: meeting.agenda || meeting.note || "",
-      date: meeting.startAt || meeting.createdAt || null,
-      duration: meeting.duration,
-      meetingId: meeting.id,
-      rawType: meeting.type,
-      stage,
-      linkedTo: linkedParticipants(meeting),
-    };
-  });
-
-  return [...tasks, ...emails, ...meetings];
-});
-
-const timelineActivities = computed<ActivityItem[]>(() => {
-  const dealReference = props.deal.code || `Deal #${props.deal.id}`;
-
-  return [
-    {
-      id: `deal-${props.deal.id}`,
-      kind: "deal",
-      title: "Deal created",
-      body: dealReference,
-      date: props.deal.createdAt || null,
-      meta: props.deal.stage || "",
-      stage: "created" as const,
-      linkedTo: [],
-    },
-    ...(props.deal.estimatedDeliveryDate
-      ? [
-          {
-            id: `delivery-${props.deal.id}`,
-            kind: "delivery" as const,
-            title: "Expected close date",
-            body: props.deal.estimatedDeliveryDate,
-            date: props.deal.estimatedDeliveryDate,
-            meta: "Delivery target",
-            stage: currentStage.value,
-            linkedTo: [],
-          },
-        ]
-      : []),
-    ...(props.deal.items || []).map((item) => ({
-      id: `item-${item.id}`,
-      kind: "item" as const,
-      title: `Item added: ${item.name}`,
-      body: (item as any).note || "",
-      date: (item as any).createdAt || props.deal.createdAt || null,
-      meta: item.status || item.catalogueType || "",
-      stage: activityStage(item.status || item.catalogueType),
-      linkedTo: [],
-    })),
-    ...(props.deal.documents || []).map((document) => ({
-      id: `document-${document.id}`,
-      kind: "document" as const,
-      title: `Document linked: ${document.name}`,
-      body: document.note || "",
-      date: document.createdAt || props.deal.createdAt || null,
-      meta: document.type || "",
-      stage: activityStage((document as any).status || document.type),
-      linkedTo: [],
-    })),
-    ...(props.deal.financials || []).map((entry) => ({
-      id: `financial-${entry.id}`,
-      kind: "financial" as const,
-      title: entry.title || "Financial entry",
-      body: (entry as any).note || "",
-      date: entry.createdAt || null,
-      meta: props.hideFinancials
-        ? `${entry.type} - Hidden`
-        : `${entry.type} - ${Number(entry.amount || 0).toLocaleString()}`,
-      stage: activityStage(entry.status || entry.type),
-      linkedTo: [],
-    })),
-  ];
-});
-
-const allActivities = computed(() =>
-  [
-    ...timelineActivities.value,
-    ...communicationActivities.value,
-    ...noteActivities.value,
-  ].sort((a, b) => {
-    const aTime = a.date ? new Date(a.date).getTime() : 0;
-    const bTime = b.date ? new Date(b.date).getTime() : 0;
-
-    return bTime - aTime;
-  }),
-);
-
-const preSaleSummary = computed(() => {
-  const calls = communicationActivities.value.filter(
-    (activity) => activity.kind === "call",
-  );
-  const meetings = communicationActivities.value.filter(
-    (activity) => activity.kind === "meeting",
-  );
-
-  return {
-    tasks: dealTaskTodos.value,
-    calls,
-    meetings,
-  };
-});
 
 const visibleStageSections = computed(() =>
   timelineStageOptions
     .filter((stage) => stageFilter.value === "all" || stage.key === stageFilter.value)
     .map((stage) => ({
       ...stage,
-      activities: allActivities.value.filter((activity) => activity.stage === stage.key),
+      notes: noteActivities.value.filter((note) => note.stage === stage.key),
     })),
 );
 
-const hasAnyActivities = computed(
-  () =>
-    allActivities.value.length > 0 ||
-    Boolean(props.deal.createdAt) ||
-    Boolean((props.collaborators || []).length),
-);
+function jobReference() {
+  const job = linkedJob.value;
+  if (!job) return "--";
 
-function activityTimeLabel(date?: string | null) {
-  return timeAgo(date);
-}
-
-function activityDateTooltip(date?: string | null) {
-  return formatDisplayDate(date);
-}
-
-function openActivity(activity: ActivityItem) {
-  if ((activity.kind === "meeting" || activity.kind === "call") && activity.meetingId) {
-    router.push({
-      name: "apps-meetings-id-minutes",
-      params: { id: activity.meetingId },
-    });
-  }
-}
-
-function initials(name?: string | null) {
-  return (
-    name
-      ?.match(/\b\w/g)
-      ?.slice(0, 2)
-      .join("")
-      .toUpperCase() || "?"
-  );
+  return job.jobOrderNumber || job.code || `Job #${job.id}`;
 }
 </script>
 
 <template>
   <VCard class="activity-card">
-    <VCardItem>
+    <VCardItem class="activity-card__header">
       <template #title>
         {{ `${deal.code || `Deal #${deal.id}`} Activity` }}
       </template>
@@ -466,13 +369,6 @@ function initials(name?: string | null) {
     </VCardItem>
 
     <VCardText class="activity-card__body">
-      <template v-if="!hasAnyActivities">
-        <div class="activity-empty">
-          <VIcon icon="tabler-timeline" size="36" class="mb-2" />
-          <div class="text-subtitle-1">No activity yet</div>
-        </div>
-      </template>
-
       <VTimeline
         align="start"
         justify="center"
@@ -507,7 +403,7 @@ function initials(name?: string | null) {
               <div>
                 <div class="deal-stage-section__title">{{ stage.label }}</div>
                 <div class="deal-stage-section__meta">
-                  {{ stage.activities.length }} timeline item{{ stage.activities.length === 1 ? "" : "s" }}
+                  {{ stage.notes.length }} note{{ stage.notes.length === 1 ? "" : "s" }}
                 </div>
               </div>
               <VChip size="small" :color="stage.color" label>
@@ -518,7 +414,7 @@ function initials(name?: string | null) {
             <VCard
               v-if="stage.key === 'created'"
               variant="tonal"
-              class="activity-entry activity-entry--overview"
+              class="activity-entry"
             >
               <VCardText>
                 <div class="activity-entry__title">Created overview</div>
@@ -595,112 +491,146 @@ function initials(name?: string | null) {
                 <div class="activity-count-grid">
                   <div>
                     <span>Tasks</span>
-                    <strong>{{ preSaleSummary.tasks.length }}</strong>
+                    <strong>{{ dealTaskTodos.length }}</strong>
                   </div>
                   <div>
                     <span>Calls</span>
-                    <strong>{{ preSaleSummary.calls.length }}</strong>
+                    <strong>{{ callCount }}</strong>
                   </div>
                   <div>
                     <span>Meetings</span>
-                    <strong>{{ preSaleSummary.meetings.length }}</strong>
+                    <strong>{{ meetingCount }}</strong>
                   </div>
                 </div>
               </VCardText>
             </VCard>
 
             <VCard
-              v-for="activity in stage.activities"
-              :key="activity.id"
+              v-if="stage.key === 'negotation'"
               variant="tonal"
               class="activity-entry"
-              :class="activity.kind === 'note' ? 'activity-entry--note' : ''"
             >
               <VCardText>
-                <div class="activity-entry__header">
-                  <div
-                    class="activity-entry__main"
-                    :class="activity.meetingId ? 'activity-clickable' : ''"
-                    @click="openActivity(activity)"
-                  >
-                    <div class="activity-entry__title">{{ activity.title }}</div>
-                    <VChip
-                      size="small"
-                      class="timeline-chip"
-                      :color="labelColorName(activity.kind, activity.rawType)"
-                      density="compact"
-                    >
-                      {{ labelText(activity.kind) }}
-                    </VChip>
+                <div class="activity-entry__title">Negotation summary</div>
+                <div class="activity-count-grid">
+                  <div>
+                    <span>Items</span>
+                    <strong>{{ rootItems.length }}</strong>
                   </div>
-
-                  <VTooltip
-                    v-if="activity.date"
-                    :text="activityDateTooltip(activity.date)"
-                    location="top"
-                  >
-                    <template #activator="{ props: tooltipProps }">
-                      <span v-bind="tooltipProps" class="activity-entry__time">
-                        {{ activityTimeLabel(activity.date) }}
-                      </span>
-                    </template>
-                  </VTooltip>
-                </div>
-
-                <div v-if="activity.meta" class="activity-entry__meta">
-                  {{ activity.meta }}
-                </div>
-
-                <div v-if="activity.body" class="activity-entry__body">
-                  {{ activity.body }}
-                </div>
-
-                <div
-                  v-if="activity.duration || activity.linkedTo.length"
-                  class="activity-entry__footer"
-                >
-                  <div v-if="activity.duration" class="activity-entry__meta">
-                    <VIcon icon="tabler-stopwatch" size="16" class="me-1" />
-                    {{ formatDuration(activity.duration) }}
+                  <div v-if="phaseCount">
+                    <span>Phases</span>
+                    <strong>{{ phaseCount }}</strong>
                   </div>
-
-                  <div v-if="activity.linkedTo.length" class="v-avatar-group">
-                    <VTooltip
-                      v-for="(linked, index) in activity.linkedTo.slice(0, 4)"
-                      :key="linked.id || index"
-                      :text="linked.name"
-                      location="top"
-                    >
-                      <template #activator="{ props: tooltipProps }">
-                        <VAvatar v-bind="tooltipProps" :size="30" color="primary">
-                          <VImg v-if="linked.avatarUrl" :src="linked.avatarUrl" />
-                          <span v-else class="text-xs font-weight-medium">
-                            {{ initials(linked.name) }}
-                          </span>
-                        </VAvatar>
-                      </template>
-                    </VTooltip>
-                    <VAvatar
-                      v-if="activity.linkedTo.length > 4"
-                      :size="30"
-                      color="secondary"
-                    >
-                      +{{ activity.linkedTo.length - 4 }}
-                    </VAvatar>
+                  <div v-if="periodCount">
+                    <span>Periods</span>
+                    <strong>{{ periodCount }}</strong>
+                  </div>
+                  <div>
+                    <span>Tasks</span>
+                    <strong>{{ dealTaskTodos.length }}</strong>
+                  </div>
+                  <div>
+                    <span>Calls</span>
+                    <strong>{{ callCount }}</strong>
+                  </div>
+                  <div>
+                    <span>Meetings</span>
+                    <strong>{{ meetingCount }}</strong>
                   </div>
                 </div>
               </VCardText>
             </VCard>
 
-            <div
-              v-if="
-                !stage.activities.length &&
-                stage.key !== 'created'
-              "
-              class="activity-stage-section__empty"
+            <VCard
+              v-if="stage.key === 'active'"
+              variant="tonal"
+              class="activity-entry"
             >
-              No activity in this stage yet.
-            </div>
+              <VCardText>
+                <div class="activity-entry__header">
+                  <div class="activity-entry__title">Active work summary</div>
+                  <VChip size="small" color="success" label>
+                    {{ jobReference() }}
+                  </VChip>
+                </div>
+
+                <div class="activity-count-grid mt-3">
+                  <div>
+                    <span>Items</span>
+                    <strong>{{ rootItems.length }}</strong>
+                  </div>
+                  <div>
+                    <span>Active for</span>
+                    <strong>{{ formatDays(activeDays) }}</strong>
+                  </div>
+                  <div v-if="phaseCount">
+                    <span>Phases</span>
+                    <strong>{{ phaseCount }}</strong>
+                  </div>
+                  <div v-if="periodCount">
+                    <span>Periods</span>
+                    <strong>{{ periodCount }}</strong>
+                  </div>
+                  <div>
+                    <span>Estimated end date</span>
+                    <strong>{{ formatDisplayDate(linkedJob?.endDate || deal.estimatedDeliveryDate) }}</strong>
+                  </div>
+                </div>
+
+                <div class="activity-progress mt-4">
+                  <div class="activity-progress__label">
+                    <span>Job progress</span>
+                    <strong>{{ jobProgress }}%</strong>
+                  </div>
+                  <VProgressLinear
+                    :model-value="jobProgress"
+                    color="success"
+                    height="8"
+                    rounded
+                  />
+                </div>
+              </VCardText>
+            </VCard>
+
+            <VCard variant="tonal" class="activity-entry activity-entry--duration">
+              <VCardText>
+                <template v-if="stage.key === 'active'">
+                  <div class="activity-entry__title">
+                    Converted to active on {{ formatDisplayDate(activeConvertedAt) }}
+                  </div>
+                  <div class="activity-entry__meta mt-1">
+                    Days since: {{ formatDays(activeDays) }}
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="activity-entry__title">Time in phase</div>
+                  <div class="activity-entry__meta mt-1">
+                    Days spent in this phase:
+                    {{ formatDays(stageDurationDays(stage.key)) }}
+                  </div>
+                </template>
+              </VCardText>
+            </VCard>
+
+            <VCard
+              v-for="note in stage.notes"
+              :key="note.id"
+              variant="tonal"
+              class="activity-entry activity-entry--note"
+            >
+              <VCardText>
+                <div class="activity-entry__header">
+                  <div class="activity-entry__title">{{ note.title }}</div>
+                  <span class="activity-entry__time">
+                    {{ formatDisplayDate(note.date) }}
+                  </span>
+                </div>
+
+                <div class="activity-entry__body">
+                  {{ note.body }}
+                </div>
+              </VCardText>
+            </VCard>
           </div>
         </VTimelineItem>
       </VTimeline>
@@ -711,8 +641,13 @@ function initials(name?: string | null) {
 <style scoped>
 .activity-card {
   display: flex;
+  min-block-size: 42rem;
+  block-size: calc(100vh - 10rem);
   flex-direction: column;
-  block-size: 39rem;
+}
+
+.activity-card__header {
+  flex: 0 0 auto;
 }
 
 .activity-stage-filter {
@@ -724,6 +659,7 @@ function initials(name?: string | null) {
 .activity-card__body {
   overflow: auto;
   flex: 1 1 auto;
+  min-block-size: 0;
   padding-inline-end: 0.5rem;
   scrollbar-color: rgba(0 0 0 / 12%) transparent;
   scrollbar-width: thin;
@@ -749,16 +685,6 @@ function initials(name?: string | null) {
   background-color: rgba(0 0 0 / 18%);
 }
 
-.activity-empty {
-  display: flex;
-  min-block-size: 18rem;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-  text-align: center;
-}
-
 .deal-stage-timeline {
   min-block-size: 0;
 }
@@ -776,16 +702,16 @@ function initials(name?: string | null) {
 
 .deal-stage-section__heading,
 .activity-entry__header,
-.activity-entry__main,
-.activity-entry__footer,
-.activity-collaborators {
+.activity-collaborators,
+.activity-progress__label {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
 .deal-stage-section__heading,
-.activity-entry__header {
+.activity-entry__header,
+.activity-progress__label {
   justify-content: space-between;
 }
 
@@ -798,11 +724,11 @@ function initials(name?: string | null) {
 .deal-stage-section__meta,
 .activity-entry__meta,
 .activity-entry__time,
-.activity-stage-section__empty,
 .activity-entry__body,
 .activity-overview-grid span,
 .activity-count-grid span,
-.activity-collaborators > span {
+.activity-collaborators > span,
+.activity-progress__label span {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.8125rem;
 }
@@ -815,15 +741,14 @@ function initials(name?: string | null) {
   border-inline-start: 3px solid rgb(var(--v-theme-secondary));
 }
 
+.activity-entry--duration {
+  background-color: rgba(var(--v-theme-surface), 0.72);
+}
+
 .activity-entry__body {
   margin-block-start: 0.5rem;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.activity-entry__footer {
-  justify-content: space-between;
-  margin-block-start: 0.75rem;
 }
 
 .activity-overview-grid,
@@ -871,17 +796,10 @@ function initials(name?: string | null) {
   inline-size: 0.5rem;
 }
 
-.activity-clickable {
-  cursor: pointer;
-}
-
-.timeline-chip {
-  flex: 0 0 auto;
-}
-
 @media (max-width: 959px) {
   .activity-card {
     block-size: auto;
+    min-block-size: 36rem;
   }
 
   .activity-stage-filter {
@@ -897,7 +815,7 @@ function initials(name?: string | null) {
 
   .deal-stage-section__heading,
   .activity-entry__header,
-  .activity-entry__footer {
+  .activity-progress__label {
     align-items: flex-start;
     flex-direction: column;
   }
