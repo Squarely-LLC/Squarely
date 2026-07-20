@@ -2620,11 +2620,9 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item) return { label: "Qty", value: "--" };
 
   if (isRetainerParentDealItem(item) || isRecurrentParentDealItem(item)) {
-    const periodLabel = getPeriodPriceLabel(item);
-
     return {
       label: "Periods",
-      value: periodLabel || String(getItemEffectiveQuantity(item)),
+      value: String(getItemEffectiveQuantity(item)),
     };
   }
 
@@ -2652,7 +2650,7 @@ const isPeriodDrivenHeaderItem = (item?: DealItem | DealItemWithPlan | null) =>
 
 const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item)
-    return [] as Array<{ label: "Start date" | "End date"; value: string }>;
+    return [] as Array<{ label: "Start" | "End"; value: string }>;
 
   const rawStartDate = isRetainerCatalogueType(item.catalogueType)
     ? item.retainerStartDate
@@ -2667,15 +2665,15 @@ const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
 
   const startDate = formatDocumentDate(rawStartDate);
   const endDate = formatDocumentDate(rawEndDate);
-  const fields: Array<{ label: "Start date" | "End date"; value: string }> = [];
+  const fields: Array<{ label: "Start" | "End"; value: string }> = [];
 
   if (startDate !== "--") {
-    fields.push({ label: "Start date", value: startDate });
+    fields.push({ label: "Start", value: startDate });
   }
 
   if (endDate !== "--") {
     fields.push({
-      label: "End date",
+      label: "End",
       value:
         startDate !== "--" && endDate === startDate ? "same as start" : endDate,
     });
@@ -5374,6 +5372,29 @@ const isBillableChildGoal = (goal: DerivedGoal) =>
 const isCompactGoal = (goal: DerivedGoal) =>
   isRetainerGoal(goal) || isRecurrentGoal(goal);
 
+const getPeriodServicesTitle = (item: DealItemWithPlan) =>
+  item.derivedSections[0]?.goalTypePlural === "Retainer Services"
+    ? "Retainer"
+    : item.derivedSections[0]?.goalTypePlural || "Period Services";
+
+const getPeriodServiceChipLabel = (goal: DerivedGoal) =>
+  isRetainerGoal(goal)
+    ? `Qty: ${goal.quantity ?? "--"}`
+    : goal.typeLabel;
+
+const getTopPeriodServiceGoals = (item: DealItemWithPlan) => {
+  const sections = item.derivedSections;
+
+  return isRecurrentParentDealItem(item) ? [] : sections[0]?.goals ?? [];
+};
+
+const isActivePeriodTimelineSection = (
+  item: DealItemWithPlan,
+  section: DerivedSection,
+) =>
+  activePeriodActionPanel.value?.itemId === item.id &&
+  activePeriodActionPanel.value?.sectionId === section.id;
+
 const shouldShowPeriodSectionGoals = (
   item: DealItemWithPlan,
   section: DerivedSection,
@@ -5884,6 +5905,16 @@ const isSectionDocumentActionDisabled = (
   return usage.proformaCount > 0;
 };
 
+const isSectionExternalDocumentActionDisabled = (
+  kind: DealPreviewKind,
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) => {
+  if (kind === "quotation") return false;
+
+  return isSectionDocumentActionDisabled(kind, parentItem, section);
+};
+
 const openSectionDocumentPage = async (
   kind: Extract<DealDocumentKind, "proforma" | "invoice">,
   parentItem: DealItemWithPlan,
@@ -5914,7 +5945,7 @@ const openSectionDocumentPage = async (
 };
 
 const openSectionExternalDocumentDialog = (
-  kind: Extract<DealPreviewKind, "proforma" | "invoice">,
+  kind: DealPreviewKind,
   parentItem: DealItemWithPlan,
   section: DerivedSection,
 ) => {
@@ -6348,9 +6379,9 @@ const getSectionDateFields = (
     const endDate = formatDocumentDate(section.billingPeriod.endDate);
 
     return [
-      { label: "Start date", value: startDate },
+      { label: "Start", value: startDate },
       {
-        label: "End date",
+        label: "End",
         value:
           startDate !== "--" && endDate === startDate
             ? "same as start"
@@ -8428,6 +8459,29 @@ const openEditTask = (taskId: number | string) => {
                         </div>
 
                         <div
+                          v-if="item.note"
+                          class="item-card-note text-body-2 text-medium-emphasis"
+                        >
+                          {{ item.note }}
+                        </div>
+
+                        <div
+                          v-if="getProducedProductCustomizationSummary(item)"
+                          class="item-card-note text-body-2 text-medium-emphasis"
+                        >
+                          Customizations:
+                          {{ getProducedProductCustomizationSummary(item) }}
+                        </div>
+
+                        <div
+                          v-if="getProducedProductSubItemsSummary(item)"
+                          class="item-card-note text-body-2 text-medium-emphasis"
+                        >
+                          Sub items:
+                          {{ getProducedProductSubItemsSummary(item) }}
+                        </div>
+
+                        <div
                           v-if="getItemDateFields(item).length"
                           class="item-card-date-row text-body-2"
                         >
@@ -8436,8 +8490,12 @@ const openEditTask = (taskId: number | string) => {
                             :key="field.label"
                           >
                             <span class="item-card-date-row__group">
-                              {{ field.label }}:
-                              <strong>{{ field.value }}</strong>
+                              <span class="item-card-date-row__label">
+                                {{ field.label }}:
+                              </span>
+                              <strong class="item-card-date-row__value">
+                                {{ field.value }}
+                              </strong>
                             </span>
                           </template>
                         </div>
@@ -8477,28 +8535,6 @@ const openEditTask = (taskId: number | string) => {
                           </span>
                         </div>
                       </div>
-                    </div>
-
-                    <div
-                      v-if="item.note"
-                      class="item-card-note text-body-2 text-medium-emphasis"
-                    >
-                      {{ item.note }}
-                    </div>
-
-                    <div
-                      v-if="getProducedProductCustomizationSummary(item)"
-                      class="item-card-note text-body-2 text-medium-emphasis"
-                    >
-                      Customizations:
-                      {{ getProducedProductCustomizationSummary(item) }}
-                    </div>
-
-                    <div
-                      v-if="getProducedProductSubItemsSummary(item)"
-                      class="item-card-note text-body-2 text-medium-emphasis"
-                    >
-                      Sub items: {{ getProducedProductSubItemsSummary(item) }}
                     </div>
                   </div>
                 </div>
@@ -8677,18 +8713,15 @@ const openEditTask = (taskId: number | string) => {
                   class="period-timeline"
                 >
                   <div
-                    v-if="item.derivedSections[0]?.goals.length"
+                    v-if="getTopPeriodServiceGoals(item).length"
                     class="period-timeline__services"
                   >
                     <div class="period-timeline__services-title">
-                      {{
-                        item.derivedSections[0]?.goalTypePlural ||
-                        "Period Services"
-                      }}
+                      {{ getPeriodServicesTitle(item) }}
                     </div>
                     <div class="period-timeline__services-list">
                       <VCard
-                        v-for="goal in item.derivedSections[0].goals"
+                        v-for="goal in getTopPeriodServiceGoals(item)"
                         :key="goal.id"
                         variant="flat"
                         class="goal-panel goal-panel--static period-timeline__service-row"
@@ -8721,8 +8754,14 @@ const openEditTask = (taskId: number | string) => {
                                   variant="plain"
                                   class="item-type-chip item-type-chip--phase"
                                 >
-                                  {{ goal.typeLabel }}
+                                  {{ getPeriodServiceChipLabel(goal) }}
                                 </VChip>
+                              </div>
+                              <div
+                                v-if="goal.note"
+                                class="item-card-note text-body-2 text-medium-emphasis"
+                              >
+                                {{ goal.note }}
                               </div>
                             </div>
                           </div>
@@ -8777,9 +8816,13 @@ const openEditTask = (taskId: number | string) => {
                       v-for="(section, sectionIndex) in item.derivedSections"
                       :key="section.id"
                       class="period-timeline__step"
-                      :class="
-                        getPeriodTimelineSectionStatusClass(item, section)
-                      "
+                      :class="[
+                        getPeriodTimelineSectionStatusClass(item, section),
+                        {
+                          'period-timeline__step--active':
+                            isActivePeriodTimelineSection(item, section),
+                        },
+                      ]"
                     >
                       <button
                         type="button"
@@ -8835,8 +8878,12 @@ const openEditTask = (taskId: number | string) => {
                               :key="field.label"
                             >
                               <span class="item-card-date-row__group">
-                                {{ field.label }}:
-                                <strong>{{ field.value }}</strong>
+                                <span class="item-card-date-row__label">
+                                  {{ field.label }}:
+                                </span>
+                                <strong class="item-card-date-row__value">
+                                  {{ field.value }}
+                                </strong>
                               </span>
                             </template>
                           </div>
@@ -8859,6 +8906,107 @@ const openEditTask = (taskId: number | string) => {
                                 <strong>{{ metric.value }}</strong>
                               </span>
                             </template>
+                          </div>
+                          <div
+                            v-if="
+                              isRecurrentParentDealItem(item) &&
+                              activeSection.goals.length
+                            "
+                            class="period-action-panel__services"
+                          >
+                            <VCard
+                              v-for="goal in activeSection.goals"
+                              :key="goal.id"
+                              variant="flat"
+                              class="goal-panel goal-panel--static period-timeline__service-row"
+                            >
+                              <div class="phase-card-shell">
+                                <div class="flex-grow-1 min-w-0">
+                                  <div class="item-card-header">
+                                    <div class="item-card-title-row">
+                                      <VTooltip
+                                        :text="goal.name"
+                                        location="top"
+                                      >
+                                        <template
+                                          #activator="{ props: tooltipProps }"
+                                        >
+                                          <div
+                                            v-bind="tooltipProps"
+                                            class="item-card-title item-card-title--phase truncate-title"
+                                          >
+                                            {{ goal.name }}
+                                          </div>
+                                        </template>
+                                      </VTooltip>
+                                      <span
+                                        class="item-card-row-separator"
+                                        aria-hidden="true"
+                                      >
+                                        |
+                                      </span>
+                                      <VChip
+                                        color="primary"
+                                        size="x-small"
+                                        variant="plain"
+                                        class="item-type-chip item-type-chip--phase"
+                                      >
+                                        {{ getPeriodServiceChipLabel(goal) }}
+                                      </VChip>
+                                    </div>
+                                    <div
+                                      v-if="goal.note"
+                                      class="item-card-note text-body-2 text-medium-emphasis"
+                                    >
+                                      {{ goal.note }}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div class="goal-card-actions">
+                                  <VBtn
+                                    icon
+                                    variant="text"
+                                    size="x-small"
+                                    class="phase-edit-btn"
+                                  >
+                                    <VIcon
+                                      icon="tabler-dots-vertical"
+                                      size="16"
+                                    />
+                                    <VMenu activator="parent">
+                                      <VList>
+                                        <VListItem
+                                          @click="openEditGoal(item, goal)"
+                                        >
+                                          <template #prepend>
+                                            <VIcon icon="tabler-pencil" />
+                                          </template>
+                                          <VListItemTitle>Edit</VListItemTitle>
+                                        </VListItem>
+                                        <VDivider
+                                          v-if="isRemovableChildGoal(goal)"
+                                        />
+                                        <VListItem
+                                          v-if="isRemovableChildGoal(goal)"
+                                          @click="removeGoal(item, goal)"
+                                        >
+                                          <template #prepend>
+                                            <VIcon
+                                              icon="tabler-trash"
+                                              color="error"
+                                            />
+                                          </template>
+                                          <VListItemTitle>
+                                            Remove {{ goal.typeLabel }}
+                                          </VListItemTitle>
+                                        </VListItem>
+                                      </VList>
+                                    </VMenu>
+                                  </VBtn>
+                                </div>
+                              </div>
+                            </VCard>
                           </div>
                           <div class="period-action-panel__info-status">
                             {{
@@ -8922,120 +9070,139 @@ const openEditTask = (taskId: number | string) => {
                           </div>
                         </div>
                         <div class="period-action-panel__primary-actions">
-                          <VTooltip text="Create Proforma">
-                            <template #activator="{ props: tooltipProps }">
-                              <VBtn
-                                v-if="canCreateDocumentSource('proforma')"
-                                v-bind="tooltipProps"
-                                icon
-                                variant="tonal"
-                                color="secondary"
-                                size="small"
-                                :disabled="
-                                  !canUseFinanceCreate ||
-                                  isSectionDocumentActionDisabled(
-                                    'proforma',
-                                    item,
-                                    activeSection,
-                                  )
-                                "
-                                aria-label="Create Proforma"
-                                @click="
-                                  openSectionDocumentPage(
-                                    'proforma',
-                                    item,
-                                    activeSection,
-                                  )
-                                "
-                              >
-                                <VIcon
-                                  icon="tabler-file-certificate"
-                                  size="18"
-                                />
-                              </VBtn>
-                            </template>
-                          </VTooltip>
-                          <VTooltip text="Create Invoice">
-                            <template #activator="{ props: tooltipProps }">
-                              <VBtn
-                                v-if="canCreateDocumentSource('invoice')"
-                                v-bind="tooltipProps"
-                                icon
-                                variant="tonal"
-                                color="secondary"
-                                size="small"
-                                :disabled="
-                                  !canUseFinanceCreate ||
-                                  isSectionDocumentActionDisabled(
-                                    'invoice',
-                                    item,
-                                    activeSection,
-                                  )
-                                "
-                                aria-label="Create Invoice"
-                                @click="
-                                  openSectionDocumentPage(
-                                    'invoice',
-                                    item,
-                                    activeSection,
-                                  )
-                                "
-                              >
-                                <VIcon icon="tabler-file-invoice" size="18" />
-                              </VBtn>
-                            </template>
-                          </VTooltip>
+                          <VBtn
+                            icon
+                            variant="text"
+                            size="x-small"
+                            class="phase-edit-btn"
+                          >
+                            <VIcon icon="tabler-dots-vertical" size="16" />
+                            <VMenu activator="parent">
+                              <VList>
+                                <VListItem
+                                  v-if="canCreateDocumentSource('proforma')"
+                                  :disabled="
+                                    !canUseFinanceCreate ||
+                                    isSectionDocumentActionDisabled(
+                                      'proforma',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionDocumentPage(
+                                      'proforma',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-file-certificate" />
+                                  </template>
+                                  <VListItemTitle>
+                                    Create Proforma
+                                  </VListItemTitle>
+                                </VListItem>
+                                <VListItem
+                                  v-if="canCreateDocumentSource('invoice')"
+                                  :disabled="
+                                    !canUseFinanceCreate ||
+                                    isSectionDocumentActionDisabled(
+                                      'invoice',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionDocumentPage(
+                                      'invoice',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-file-invoice" />
+                                  </template>
+                                  <VListItemTitle>
+                                    Create Invoice
+                                  </VListItemTitle>
+                                </VListItem>
+                                <VDivider />
+                                <VListItem
+                                  v-if="canAttachDocumentSource('quotation')"
+                                  :disabled="!canUseFinanceCreate"
+                                  @click="
+                                    openSectionExternalDocumentDialog(
+                                      'quotation',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-file-upload" />
+                                  </template>
+                                  <VListItemTitle>
+                                    Attach External Quotation
+                                  </VListItemTitle>
+                                </VListItem>
+                                <VListItem
+                                  v-if="canAttachDocumentSource('proforma')"
+                                  :disabled="
+                                    !canUseFinanceCreate ||
+                                    isSectionExternalDocumentActionDisabled(
+                                      'proforma',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionExternalDocumentDialog(
+                                      'proforma',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-paperclip" />
+                                  </template>
+                                  <VListItemTitle>
+                                    Attach External Proforma
+                                  </VListItemTitle>
+                                </VListItem>
+                                <VListItem
+                                  v-if="canAttachDocumentSource('invoice')"
+                                  :disabled="
+                                    !canUseFinanceCreate ||
+                                    isSectionExternalDocumentActionDisabled(
+                                      'invoice',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                  @click="
+                                    openSectionExternalDocumentDialog(
+                                      'invoice',
+                                      item,
+                                      activeSection,
+                                    )
+                                  "
+                                >
+                                  <template #prepend>
+                                    <VIcon icon="tabler-paperclip" />
+                                  </template>
+                                  <VListItemTitle>
+                                    Attach External Invoice
+                                  </VListItemTitle>
+                                </VListItem>
+                              </VList>
+                            </VMenu>
+                          </VBtn>
                         </div>
                       </div>
-                      <VDivider />
-                      <VListItem
-                        v-if="canAttachDocumentSource('proforma')"
-                        :disabled="
-                          isSectionDocumentActionDisabled(
-                            'proforma',
-                            item,
-                            activeSection,
-                          )
-                        "
-                        @click="
-                          openSectionExternalDocumentDialog(
-                            'proforma',
-                            item,
-                            activeSection,
-                          )
-                        "
-                      >
-                        <template #prepend>
-                          <VIcon icon="tabler-paperclip" />
-                        </template>
-                        <VListItemTitle>
-                          Attach External Proforma
-                        </VListItemTitle>
-                      </VListItem>
-                      <VListItem
-                        v-if="canAttachDocumentSource('invoice')"
-                        :disabled="
-                          isSectionDocumentActionDisabled(
-                            'invoice',
-                            item,
-                            activeSection,
-                          )
-                        "
-                        @click="
-                          openSectionExternalDocumentDialog(
-                            'invoice',
-                            item,
-                            activeSection,
-                          )
-                        "
-                      >
-                        <template #prepend>
-                          <VIcon icon="tabler-paperclip" />
-                        </template>
-                        <VListItemTitle>
-                          Attach External Invoice
-                        </VListItemTitle>
-                      </VListItem>
                     </VList>
                   </template>
                 </div>
@@ -9259,6 +9426,13 @@ const openEditTask = (taskId: number | string) => {
                                 </VChip>
                               </div>
 
+                              <div
+                                v-if="goal.note && !isCompactGoal(goal)"
+                                class="item-card-note text-body-2 text-medium-emphasis"
+                              >
+                                {{ goal.note }}
+                              </div>
+
                               <div class="item-card-inline-metrics">
                                 <template
                                   v-for="(
@@ -9363,13 +9537,6 @@ const openEditTask = (taskId: number | string) => {
                                   )
                                 }}
                               </button>
-                            </div>
-
-                            <div
-                              v-if="goal.note && !isCompactGoal(goal)"
-                              class="item-card-note text-body-2 text-medium-emphasis"
-                            >
-                              {{ goal.note }}
                             </div>
                           </div>
 
@@ -10349,6 +10516,7 @@ const openEditTask = (taskId: number | string) => {
               <span v-bind="tooltipProps" class="d-inline-flex">
                 <VBtn
                   prepend-icon="tabler-plus"
+                  variant="tonal"
                   :disabled="!canUseTaskCreate"
                   @click="openAddTask"
                 >
@@ -12280,6 +12448,19 @@ const openEditTask = (taskId: number | string) => {
   background: rgb(var(--v-theme-warning));
 }
 
+.period-timeline__step--active .period-timeline__button {
+  color: rgb(var(--v-theme-primary));
+}
+
+.period-timeline__step--active .period-timeline__segment {
+  background: rgb(var(--v-theme-primary));
+}
+
+.period-timeline__step--active .period-timeline__dot {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary));
+}
+
 .period-action-panel {
   position: relative;
   overflow: visible;
@@ -12372,6 +12553,17 @@ const openEditTask = (taskId: number | string) => {
   margin-block-start: 0.2rem;
 }
 
+.period-action-panel__services {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block-start: 0.65rem;
+}
+
+.period-action-panel__services .period-timeline__service-row {
+  background: rgba(var(--v-theme-surface), 0.12) !important;
+}
+
 .period-action-panel__documents {
   display: flex;
   flex-wrap: wrap;
@@ -12394,11 +12586,12 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .period-action-panel__primary-actions {
-  display: flex;
-  flex: 0 0 auto;
+  display: grid;
+  flex: 0 0 2rem;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.35rem;
+  justify-content: center;
+  inline-size: 2rem;
+  justify-items: center;
 }
 
 .goal-section-header {
@@ -12462,7 +12655,8 @@ const openEditTask = (taskId: number | string) => {
   min-inline-size: 0;
 }
 
-.goal-panel--contractual-phase .item-card-header {
+.goal-panel--contractual-phase .item-card-header,
+.period-timeline__service-row .item-card-header {
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
@@ -12571,6 +12765,14 @@ const openEditTask = (taskId: number | string) => {
   font-size: inherit;
   font-weight: 500;
   line-height: inherit;
+}
+
+.item-card-date-row__label {
+  flex: 0 0 3rem;
+}
+
+.item-card-date-row__value {
+  flex: 0 0 auto;
 }
 
 .product-metrics {
@@ -12691,6 +12893,7 @@ const openEditTask = (taskId: number | string) => {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
+  inline-size: 100%;
   -webkit-line-clamp: 1;
   line-clamp: 1;
   margin-block-start: 0.45rem;
