@@ -389,10 +389,7 @@ const createDraftItemFormRef = ref<VForm>();
 const editLineFormRef = ref<VForm>();
 const externalDocumentFormRef = ref<VForm>();
 const expandedItems = ref<Array<number | string>>([]);
-const activePeriodActionPanel = ref<{
-  itemId: number | string;
-  sectionId: string;
-} | null>(null);
+const activePeriodActionPanels = ref<Record<string, string>>({});
 const selectedBillingMode = ref<DealDocumentBillingMode | null>(null);
 const selectedCatalogueItemId = ref<string | null>(null);
 const selectedCreateItemType = ref<CatalogueItemType | null>(null);
@@ -4238,7 +4235,7 @@ watch(
       (isOpen, index) => !isOpen && previousValues?.[index],
     );
 
-    if (dialogClosed) activePeriodActionPanel.value = null;
+    if (dialogClosed) activePeriodActionPanels.value = {};
   },
 );
 
@@ -5391,9 +5388,7 @@ const getTopPeriodServiceGoals = (item: DealItemWithPlan) => {
 const isActivePeriodTimelineSection = (
   item: DealItemWithPlan,
   section: DerivedSection,
-) =>
-  activePeriodActionPanel.value?.itemId === item.id &&
-  activePeriodActionPanel.value?.sectionId === section.id;
+) => activePeriodActionPanels.value[String(item.id)] === section.id;
 
 const shouldShowPeriodSectionGoals = (
   item: DealItemWithPlan,
@@ -5493,8 +5488,7 @@ const getPeriodStepLabel = (index: number) => `P${index + 1}`;
 const getActivePeriodSectionIndex = (item: DealItemWithPlan) =>
   item.derivedSections.findIndex(
     (section) =>
-      activePeriodActionPanel.value?.itemId === item.id &&
-      activePeriodActionPanel.value?.sectionId === section.id,
+      activePeriodActionPanels.value[String(item.id)] === section.id,
   );
 
 const getPeriodActionPanelArrowLeft = (item: DealItemWithPlan) => {
@@ -5508,16 +5502,17 @@ const togglePeriodActionPanel = (
   item: DealItemWithPlan,
   section: DerivedSection,
 ) => {
-  const isActive =
-    activePeriodActionPanel.value?.itemId === item.id &&
-    activePeriodActionPanel.value?.sectionId === section.id;
+  const itemKey = String(item.id);
+  const isActive = activePeriodActionPanels.value[itemKey] === section.id;
+  const nextPanels = { ...activePeriodActionPanels.value };
 
-  activePeriodActionPanel.value = isActive
-    ? null
-    : {
-        itemId: item.id,
-        sectionId: section.id,
-      };
+  if (isActive) {
+    delete nextPanels[itemKey];
+  } else {
+    nextPanels[itemKey] = section.id;
+  }
+
+  activePeriodActionPanels.value = nextPanels;
 };
 
 const resolveGoalBillingPeriodKey = (
@@ -8828,8 +8823,7 @@ const openEditTask = (taskId: number | string) => {
                         type="button"
                         class="period-timeline__button"
                         :aria-expanded="
-                          activePeriodActionPanel?.itemId === item.id &&
-                          activePeriodActionPanel?.sectionId === section.id
+                          isActivePeriodTimelineSection(item, section)
                         "
                         @click.stop="togglePeriodActionPanel(item, section)"
                       >
@@ -8847,8 +8841,7 @@ const openEditTask = (taskId: number | string) => {
                   <template
                     v-for="activeSection in item.derivedSections.filter(
                       (section) =>
-                        activePeriodActionPanel?.itemId === item.id &&
-                        activePeriodActionPanel?.sectionId === section.id,
+                        isActivePeriodTimelineSection(item, section),
                     )"
                     :key="`period-action-panel-${activeSection.id}`"
                   >
