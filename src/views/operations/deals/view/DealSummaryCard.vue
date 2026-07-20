@@ -244,8 +244,8 @@ const currentStageIndex = computed(() => {
   </template>
 
   <template v-else>
-    <VCard>
-      <VCardText class="text-center pt-4">
+    <VCard class="deal-summary-card">
+      <VCardText class="summary-section text-center pt-4">
         <div class="summary-card-header">
           <VBtn
             variant="text"
@@ -254,7 +254,7 @@ const currentStageIndex = computed(() => {
             @click="emit('back')"
           >
             <VIcon start icon="tabler-chevron-left" />
-            Back to deals table
+            Back
           </VBtn>
 
           <VTooltip
@@ -266,6 +266,7 @@ const currentStageIndex = computed(() => {
                 <VBtn
                   icon
                   variant="text"
+                  class="summary-favorite-btn"
                   :color="deal.important ? 'warning' : 'secondary'"
                   aria-label="Toggle favorite"
                   :disabled="!canEdit"
@@ -279,6 +280,8 @@ const currentStageIndex = computed(() => {
             </template>
           </VTooltip>
         </div>
+
+        <VDivider class="summary-card-header-divider" />
 
         <VAvatar
           rounded
@@ -430,10 +433,10 @@ const currentStageIndex = computed(() => {
         </div>
       </VCardText>
 
-      <VCardText>
+      <VCardText class="summary-section">
         <VDivider class="my-4" />
 
-        <VList class="py-0 card-list">
+        <VList class="summary-detail-list py-0 card-list">
           <VListItem>
             <VListItemTitle class="detail-row">
               <span class="detail-row__label">Date:</span>
@@ -547,9 +550,9 @@ const currentStageIndex = computed(() => {
         </VList>
       </VCardText>
 
-      <VDivider class="mx-6" />
+      <VDivider class="summary-card-section-divider" />
 
-      <VCardText class="summary-bottom-actions">
+      <VCardText class="summary-section summary-bottom-actions">
         <VTooltip
           :text="canEdit ? 'Edit deal' : editDisabledReason || defaultDisabledReason"
           location="top"
@@ -636,6 +639,30 @@ const currentStageIndex = computed(() => {
   white-space: normal;
 }
 
+.deal-summary-card {
+  --deal-summary-inline-padding: 1.5rem;
+}
+
+.summary-section {
+  padding-inline: var(--deal-summary-inline-padding) !important;
+}
+
+.summary-card-section-divider {
+  margin-inline: var(--deal-summary-inline-padding);
+}
+
+.summary-detail-list {
+  background: transparent;
+}
+
+.summary-detail-list :deep(.v-list-item) {
+  padding-inline: 0;
+}
+
+.summary-detail-list :deep(.v-list-item__content) {
+  overflow: visible;
+}
+
 .summary-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -651,13 +678,21 @@ const currentStageIndex = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-block-end: 1.75rem;
+  margin-block-end: 1rem;
   min-inline-size: 0;
 }
 
+.summary-card-header-divider {
+  margin-block-end: 1.75rem;
+}
+
 .summary-back-btn {
-  padding-inline-start: 0;
-  min-inline-size: 0;
+  padding-inline: 0 !important;
+  min-inline-size: auto !important;
+}
+
+.summary-favorite-btn {
+  margin-inline: 0 !important;
 }
 
 .summary-action-btn {

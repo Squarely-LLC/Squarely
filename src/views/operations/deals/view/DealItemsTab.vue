@@ -41,15 +41,23 @@ import { cloneQuotationRecord, useQuotationsStore } from "@/stores/quotations";
 import { useReceiptsStore } from "@/stores/receipts";
 import { useTodos } from "@/stores/todos";
 import {
+  getDealDocumentBalance,
+  getDealDocumentPaid,
+  getDealDocumentTotal,
+  getDealItemsDiscountTotal,
+  getDealItemsGrandTotal,
+  getDealItemsSubtotal,
+} from "@/utils/dealBilling";
+import {
   type DealDocumentBillingMode,
   type DealDocumentKind,
   type DealDocumentSelectableItem,
   type DealQuotationConversionOption,
   buildCustomBillingPeriod,
   buildDealDocumentDraftRecord,
+  buildDealDocumentUsageKey,
   buildDealQuotationConversionOptions,
   buildDealQuotationConversionProducts,
-  buildDealDocumentUsageKey,
   buildMonthlyBillingPeriod,
   buildQuarterlyBillingPeriod,
   buildYearlyBillingPeriod,
@@ -62,21 +70,13 @@ import {
   getDealRecurrentServiceLines,
   getDealRetainerServiceLines,
   getQuotationTopLevelDealItems,
-  hasDealDocumentPhaseOrPeriodLines,
   getSelectableDealItems,
+  hasDealDocumentPhaseOrPeriodLines,
   resolveDealDocumentBillingMode,
   resolveDealDocumentBillingModeForItem,
   resolveStoredBillingPeriodKey,
   saveDealDocumentDraft,
 } from "@/utils/dealDocumentDraft";
-import {
-  getDealDocumentBalance,
-  getDealDocumentPaid,
-  getDealDocumentTotal,
-  getDealItemsDiscountTotal,
-  getDealItemsGrandTotal,
-  getDealItemsSubtotal,
-} from "@/utils/dealBilling";
 import { getDealGrandTotal } from "@/utils/dealValue";
 import {
   type DealDocumentSourceKind,
@@ -85,8 +85,8 @@ import {
 } from "@/utils/documentSourceModes";
 import { saveFile } from "@/utils/fileStore";
 import {
-  canRecordInvoicePayment,
   canConvertFinanceDocument,
+  canRecordInvoicePayment,
   FINANCE_APPROVAL_CONVERSION_MESSAGE,
   FINANCE_APPROVAL_PAYMENT_MESSAGE,
   normalizeFinanceApprovalStatus,
@@ -2647,9 +2647,8 @@ const getItemDisplayMetric = (item?: DealItem | DealItemWithPlan | null) => {
   };
 };
 
-const isPeriodDrivenHeaderItem = (
-  item?: DealItem | DealItemWithPlan | null,
-) => isRetainerParentDealItem(item) || isRecurrentParentDealItem(item);
+const isPeriodDrivenHeaderItem = (item?: DealItem | DealItemWithPlan | null) =>
+  isRetainerParentDealItem(item) || isRecurrentParentDealItem(item);
 
 const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
   if (!item)
@@ -2678,9 +2677,7 @@ const getItemDateFields = (item?: DealItem | DealItemWithPlan | null) => {
     fields.push({
       label: "End date",
       value:
-        startDate !== "--" && endDate === startDate
-          ? "same as start"
-          : endDate,
+        startDate !== "--" && endDate === startDate ? "same as start" : endDate,
     });
   }
 
@@ -3563,8 +3560,7 @@ const getDocumentStatusDisplay = (
   if (normalized === "paid") return { label: "Paid", color: "success" };
   if (normalized === "partially paid")
     return { label: "Partially Paid", color: "info" };
-  if (normalized === "not paid")
-    return { label: "Not Paid", color: "warning" };
+  if (normalized === "not paid") return { label: "Not Paid", color: "warning" };
   if (normalized === "converted")
     return { label: "Converted", color: "secondary" };
   if (normalized === "canceled" || normalized === "cancelled")
@@ -5230,7 +5226,9 @@ const getPeriodSelectionConflicts = (
   });
 };
 
-const getAvailableSelectablePeriodCount = (item: DealDocumentSelectableItem) => {
+const getAvailableSelectablePeriodCount = (
+  item: DealDocumentSelectableItem,
+) => {
   const itemMode = resolveDealDocumentBillingModeForItem(item);
   const periods =
     itemMode === "retainer-period"
@@ -5851,7 +5849,12 @@ const getGoalDocumentReferenceLabel = (
   goal: DerivedGoal,
   billingPeriod?: DealBillingPeriod | null,
 ) => {
-  const record = getGoalDocumentReference(kind, parentItem, goal, billingPeriod);
+  const record = getGoalDocumentReference(
+    kind,
+    parentItem,
+    goal,
+    billingPeriod,
+  );
   if (!record) return "";
 
   return `${kind === "proforma" ? "PF" : "INV"} #${record.quoteNumber}`;
@@ -8351,6 +8354,7 @@ const openEditTask = (taskId: number | string) => {
                     <VBtn
                       v-bind="menuProps"
                       prepend-icon="tabler-plus"
+                      variant="tonal"
                       :disabled="!canUseDealUpdate"
                     >
                       Add Item
@@ -8376,6 +8380,7 @@ const openEditTask = (taskId: number | string) => {
               </VListItem>
             </VList>
           </VMenu>
+          <VDivider />
         </div>
 
         <div
@@ -8496,7 +8501,6 @@ const openEditTask = (taskId: number | string) => {
                       Sub items: {{ getProducedProductSubItemsSummary(item) }}
                     </div>
                   </div>
-
                 </div>
 
                 <div
@@ -8507,7 +8511,9 @@ const openEditTask = (taskId: number | string) => {
                   <VMenu :disabled="!canUseDealUpdate">
                     <template #activator="{ props: menuProps }">
                       <VTooltip
-                        :text="canUseDealUpdate ? 'Item actions' : dealUpdateReason"
+                        :text="
+                          canUseDealUpdate ? 'Item actions' : dealUpdateReason
+                        "
                         location="top"
                       >
                         <template #activator="{ props: tooltipProps }">
@@ -8525,127 +8531,121 @@ const openEditTask = (taskId: number | string) => {
                         </template>
                       </VTooltip>
                     </template>
-                      <VList>
-                        <VListItem @click="openEditItem(item)">
-                          <template #prepend>
-                            <VIcon icon="tabler-pencil" />
-                          </template>
-                          <VListItemTitle>Edit</VListItemTitle>
-                        </VListItem>
-                        <VDivider v-if="getExpandableServiceRecord(item)" />
+                    <VList>
+                      <VListItem @click="openEditItem(item)">
+                        <template #prepend>
+                          <VIcon icon="tabler-pencil" />
+                        </template>
+                        <VListItemTitle>Edit</VListItemTitle>
+                      </VListItem>
+                      <VDivider v-if="getExpandableServiceRecord(item)" />
+                      <VListItem
+                        v-if="getExpandableServiceRecord(item)"
+                        @click="openAddPhase(item)"
+                      >
+                        <template #prepend>
+                          <VIcon icon="tabler-layout-grid-add" />
+                        </template>
+                        <VListItemTitle>
+                          Add {{ item.childTypeSingular }}
+                        </VListItemTitle>
+                      </VListItem>
+                      <template v-if="isRetainerParentDealItem(item)">
+                        <VDivider />
                         <VListItem
-                          v-if="getExpandableServiceRecord(item)"
-                          @click="openAddPhase(item)"
+                          v-if="canCreateDocumentSource('proforma')"
+                          :disabled="
+                            isRetainerParentDocumentActionDisabled(
+                              'proforma',
+                              item,
+                            )
+                          "
+                          @click="openRetainerDocumentPage('proforma', item)"
                         >
                           <template #prepend>
-                            <VIcon icon="tabler-layout-grid-add" />
+                            <VIcon icon="tabler-file-certificate" />
                           </template>
-                          <VListItemTitle>
-                            Add {{ item.childTypeSingular }}
-                          </VListItemTitle>
+                          <VListItemTitle>Create Proforma</VListItemTitle>
                         </VListItem>
-                        <template v-if="isRetainerParentDealItem(item)">
-                          <VDivider />
-                          <VListItem
-                            v-if="canCreateDocumentSource('proforma')"
-                            :disabled="
-                              isRetainerParentDocumentActionDisabled(
-                                'proforma',
-                                item,
-                              )
-                            "
-                            @click="openRetainerDocumentPage('proforma', item)"
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-file-certificate" />
-                            </template>
-                            <VListItemTitle>Create Proforma</VListItemTitle>
-                          </VListItem>
-                          <VListItem
-                            v-if="canCreateDocumentSource('invoice')"
-                            :disabled="
-                              isRetainerParentDocumentActionDisabled(
-                                'invoice',
-                                item,
-                              )
-                            "
-                            @click="openRetainerDocumentPage('invoice', item)"
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-file-invoice" />
-                            </template>
-                            <VListItemTitle>Create Invoice</VListItemTitle>
-                          </VListItem>
-                          <VDivider />
-                          <VListItem
-                            v-if="canAttachDocumentSource('quotation')"
-                            @click="
-                              openRetainerExternalDocumentDialog(
-                                'quotation',
-                                item,
-                              )
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-paperclip" />
-                            </template>
-                            <VListItemTitle
-                              >Attach External Quotation</VListItemTitle
-                            >
-                          </VListItem>
-                          <VListItem
-                            v-if="canAttachDocumentSource('proforma')"
-                            :disabled="
-                              isRetainerParentDocumentActionDisabled(
-                                'proforma',
-                                item,
-                              )
-                            "
-                            @click="
-                              openRetainerExternalDocumentDialog(
-                                'proforma',
-                                item,
-                              )
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-paperclip" />
-                            </template>
-                            <VListItemTitle
-                              >Attach External Proforma</VListItemTitle
-                            >
-                          </VListItem>
-                          <VListItem
-                            v-if="canAttachDocumentSource('invoice')"
-                            :disabled="
-                              isRetainerParentDocumentActionDisabled(
-                                'invoice',
-                                item,
-                              )
-                            "
-                            @click="
-                              openRetainerExternalDocumentDialog(
-                                'invoice',
-                                item,
-                              )
-                            "
-                          >
-                            <template #prepend>
-                              <VIcon icon="tabler-paperclip" />
-                            </template>
-                            <VListItemTitle
-                              >Attach External Invoice</VListItemTitle
-                            >
-                          </VListItem>
-                        </template>
-                        <VDivider />
-                        <VListItem @click="removeDealItem(item)">
+                        <VListItem
+                          v-if="canCreateDocumentSource('invoice')"
+                          :disabled="
+                            isRetainerParentDocumentActionDisabled(
+                              'invoice',
+                              item,
+                            )
+                          "
+                          @click="openRetainerDocumentPage('invoice', item)"
+                        >
                           <template #prepend>
-                            <VIcon icon="tabler-trash" color="error" />
+                            <VIcon icon="tabler-file-invoice" />
                           </template>
-                          <VListItemTitle>Remove</VListItemTitle>
+                          <VListItemTitle>Create Invoice</VListItemTitle>
                         </VListItem>
-                      </VList>
+                        <VDivider />
+                        <VListItem
+                          v-if="canAttachDocumentSource('quotation')"
+                          @click="
+                            openRetainerExternalDocumentDialog(
+                              'quotation',
+                              item,
+                            )
+                          "
+                        >
+                          <template #prepend>
+                            <VIcon icon="tabler-paperclip" />
+                          </template>
+                          <VListItemTitle
+                            >Attach External Quotation</VListItemTitle
+                          >
+                        </VListItem>
+                        <VListItem
+                          v-if="canAttachDocumentSource('proforma')"
+                          :disabled="
+                            isRetainerParentDocumentActionDisabled(
+                              'proforma',
+                              item,
+                            )
+                          "
+                          @click="
+                            openRetainerExternalDocumentDialog('proforma', item)
+                          "
+                        >
+                          <template #prepend>
+                            <VIcon icon="tabler-paperclip" />
+                          </template>
+                          <VListItemTitle
+                            >Attach External Proforma</VListItemTitle
+                          >
+                        </VListItem>
+                        <VListItem
+                          v-if="canAttachDocumentSource('invoice')"
+                          :disabled="
+                            isRetainerParentDocumentActionDisabled(
+                              'invoice',
+                              item,
+                            )
+                          "
+                          @click="
+                            openRetainerExternalDocumentDialog('invoice', item)
+                          "
+                        >
+                          <template #prepend>
+                            <VIcon icon="tabler-paperclip" />
+                          </template>
+                          <VListItemTitle
+                            >Attach External Invoice</VListItemTitle
+                          >
+                        </VListItem>
+                      </template>
+                      <VDivider />
+                      <VListItem @click="removeDealItem(item)">
+                        <template #prepend>
+                          <VIcon icon="tabler-trash" color="error" />
+                        </template>
+                        <VListItemTitle>Remove</VListItemTitle>
+                      </VListItem>
+                    </VList>
                   </VMenu>
 
                   <VBtn
@@ -8725,7 +8725,6 @@ const openEditTask = (taskId: number | string) => {
                                 </VChip>
                               </div>
                             </div>
-
                           </div>
 
                           <div class="goal-card-actions">
@@ -8845,10 +8844,7 @@ const openEditTask = (taskId: number | string) => {
                             <template
                               v-for="(
                                 metric, metricIndex
-                              ) in getSectionHeaderMetrics(
-                                item,
-                                activeSection,
-                              )"
+                              ) in getSectionHeaderMetrics(item, activeSection)"
                               :key="metric.label"
                             >
                               <span
@@ -8891,7 +8887,7 @@ const openEditTask = (taskId: number | string) => {
                             >
                               {{
                                 getSectionDocumentReferenceLabel(
-                                  'proforma',
+                                  "proforma",
                                   item,
                                   activeSection,
                                 )
@@ -8917,7 +8913,7 @@ const openEditTask = (taskId: number | string) => {
                             >
                               {{
                                 getSectionDocumentReferenceLabel(
-                                  'invoice',
+                                  "invoice",
                                   item,
                                   activeSection,
                                 )
@@ -9263,9 +9259,7 @@ const openEditTask = (taskId: number | string) => {
                                 </VChip>
                               </div>
 
-                              <div
-                                class="item-card-inline-metrics"
-                              >
+                              <div class="item-card-inline-metrics">
                                 <template
                                   v-for="(
                                     metric, metricIndex
@@ -9333,7 +9327,7 @@ const openEditTask = (taskId: number | string) => {
                               >
                                 {{
                                   getGoalDocumentReferenceLabel(
-                                    'proforma',
+                                    "proforma",
                                     item,
                                     goal,
                                     section.billingPeriod,
@@ -9362,7 +9356,7 @@ const openEditTask = (taskId: number | string) => {
                               >
                                 {{
                                   getGoalDocumentReferenceLabel(
-                                    'invoice',
+                                    "invoice",
                                     item,
                                     goal,
                                     section.billingPeriod,
@@ -9558,7 +9552,11 @@ const openEditTask = (taskId: number | string) => {
             >
               <template #activator="{ props: menuProps }">
                 <VTooltip
-                  :text="canUseFinanceCreate ? 'Attach document' : financeCreateReason"
+                  :text="
+                    canUseFinanceCreate
+                      ? 'Attach document'
+                      : financeCreateReason
+                  "
                   location="top"
                 >
                   <template #activator="{ props: tooltipProps }">
@@ -9579,42 +9577,38 @@ const openEditTask = (taskId: number | string) => {
                   </template>
                 </VTooltip>
               </template>
-                <VList density="compact">
-                  <VListItem
-                    v-if="canAttachDocumentSource('quotation')"
-                    :disabled="
-                      isRetainerPanelDocumentActionDisabled('quotation')
-                    "
-                    @click="openPanelExternalDocumentFlow('quotation')"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-paperclip" />
-                    </template>
-                    <VListItemTitle>Attach Quotation</VListItemTitle>
-                  </VListItem>
-                  <VListItem
-                    v-if="canAttachDocumentSource('proforma')"
-                    :disabled="
-                      isRetainerPanelDocumentActionDisabled('proforma')
-                    "
-                    @click="openPanelExternalDocumentFlow('proforma')"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-paperclip" />
-                    </template>
-                    <VListItemTitle>Attach Proforma</VListItemTitle>
-                  </VListItem>
-                  <VListItem
-                    v-if="canAttachDocumentSource('invoice')"
-                    :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
-                    @click="openPanelExternalDocumentFlow('invoice')"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-paperclip" />
-                    </template>
-                    <VListItemTitle>Attach Invoice</VListItemTitle>
-                  </VListItem>
-                </VList>
+              <VList density="compact">
+                <VListItem
+                  v-if="canAttachDocumentSource('quotation')"
+                  :disabled="isRetainerPanelDocumentActionDisabled('quotation')"
+                  @click="openPanelExternalDocumentFlow('quotation')"
+                >
+                  <template #prepend>
+                    <VIcon icon="tabler-paperclip" />
+                  </template>
+                  <VListItemTitle>Attach Quotation</VListItemTitle>
+                </VListItem>
+                <VListItem
+                  v-if="canAttachDocumentSource('proforma')"
+                  :disabled="isRetainerPanelDocumentActionDisabled('proforma')"
+                  @click="openPanelExternalDocumentFlow('proforma')"
+                >
+                  <template #prepend>
+                    <VIcon icon="tabler-paperclip" />
+                  </template>
+                  <VListItemTitle>Attach Proforma</VListItemTitle>
+                </VListItem>
+                <VListItem
+                  v-if="canAttachDocumentSource('invoice')"
+                  :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
+                  @click="openPanelExternalDocumentFlow('invoice')"
+                >
+                  <template #prepend>
+                    <VIcon icon="tabler-paperclip" />
+                  </template>
+                  <VListItemTitle>Attach Invoice</VListItemTitle>
+                </VListItem>
+              </VList>
             </VMenu>
             <VMenu
               v-if="canCreateAnyDocumentSource()"
@@ -9622,7 +9616,11 @@ const openEditTask = (taskId: number | string) => {
             >
               <template #activator="{ props: menuProps }">
                 <VTooltip
-                  :text="canUseFinanceCreate ? 'Create document' : financeCreateReason"
+                  :text="
+                    canUseFinanceCreate
+                      ? 'Create document'
+                      : financeCreateReason
+                  "
                   location="top"
                 >
                   <template #activator="{ props: tooltipProps }">
@@ -9643,42 +9641,38 @@ const openEditTask = (taskId: number | string) => {
                   </template>
                 </VTooltip>
               </template>
-                <VList density="compact">
-                  <VListItem
-                    v-if="canCreateDocumentSource('quotation')"
-                    :disabled="
-                      isRetainerPanelDocumentActionDisabled('quotation')
-                    "
-                    @click="openPanelDocumentPage('quotation')"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-file-text" />
-                    </template>
-                    <VListItemTitle>Create Quotation</VListItemTitle>
-                  </VListItem>
-                  <VListItem
-                    v-if="canCreateDocumentSource('proforma')"
-                    :disabled="
-                      isRetainerPanelDocumentActionDisabled('proforma')
-                    "
-                    @click="openPanelDocumentPage('proforma')"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-file-dollar" />
-                    </template>
-                    <VListItemTitle>Create Proforma</VListItemTitle>
-                  </VListItem>
-                  <VListItem
-                    v-if="canCreateDocumentSource('invoice')"
-                    :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
-                    @click="openPanelDocumentPage('invoice')"
-                  >
-                    <template #prepend>
-                      <VIcon icon="tabler-file-invoice" />
-                    </template>
-                    <VListItemTitle>Create Invoice</VListItemTitle>
-                  </VListItem>
-                </VList>
+              <VList density="compact">
+                <VListItem
+                  v-if="canCreateDocumentSource('quotation')"
+                  :disabled="isRetainerPanelDocumentActionDisabled('quotation')"
+                  @click="openPanelDocumentPage('quotation')"
+                >
+                  <template #prepend>
+                    <VIcon icon="tabler-file-text" />
+                  </template>
+                  <VListItemTitle>Create Quotation</VListItemTitle>
+                </VListItem>
+                <VListItem
+                  v-if="canCreateDocumentSource('proforma')"
+                  :disabled="isRetainerPanelDocumentActionDisabled('proforma')"
+                  @click="openPanelDocumentPage('proforma')"
+                >
+                  <template #prepend>
+                    <VIcon icon="tabler-file-dollar" />
+                  </template>
+                  <VListItemTitle>Create Proforma</VListItemTitle>
+                </VListItem>
+                <VListItem
+                  v-if="canCreateDocumentSource('invoice')"
+                  :disabled="isRetainerPanelDocumentActionDisabled('invoice')"
+                  @click="openPanelDocumentPage('invoice')"
+                >
+                  <template #prepend>
+                    <VIcon icon="tabler-file-invoice" />
+                  </template>
+                  <VListItemTitle>Create Invoice</VListItemTitle>
+                </VListItem>
+              </VList>
             </VMenu>
             <button
               type="button"
@@ -9725,10 +9719,7 @@ const openEditTask = (taskId: number | string) => {
                   >
                     <strong class="items-overview__preview-title">
                       {{ panel.title }}
-                      <span
-                        class="item-card-row-separator"
-                        aria-hidden="true"
-                      >
+                      <span class="item-card-row-separator" aria-hidden="true">
                         |
                       </span>
                       <span class="items-overview__preview-meta">
@@ -9791,7 +9782,9 @@ const openEditTask = (taskId: number | string) => {
                             role="cell"
                           >
                             <span class="items-overview__document-client-text">
-                              <span class="items-overview__document-client-name">
+                              <span
+                                class="items-overview__document-client-name"
+                              >
                                 {{ record.clientName }}
                               </span>
                               <span class="items-overview__document-meta">
@@ -9802,9 +9795,11 @@ const openEditTask = (taskId: number | string) => {
                           <span role="cell">{{
                             formatSystemDate(record.issuedDate)
                           }}</span>
-                          <strong class="items-overview__document-total" role="cell">{{
-                            formatDealMoney(record.total)
-                          }}</strong>
+                          <strong
+                            class="items-overview__document-total"
+                            role="cell"
+                            >{{ formatDealMoney(record.total) }}</strong
+                          >
                           <span role="cell">
                             <VChip
                               :color="
@@ -9834,7 +9829,12 @@ const openEditTask = (taskId: number | string) => {
                                   <VListItem
                                     :disabled="
                                       !canUseFinanceUpdate ||
-                                      Boolean(getDocumentLockReason(panel.key, record))
+                                      Boolean(
+                                        getDocumentLockReason(
+                                          panel.key,
+                                          record,
+                                        ),
+                                      )
                                     "
                                     @click="openDocumentEdit(panel.key, record)"
                                   >
@@ -9846,7 +9846,12 @@ const openEditTask = (taskId: number | string) => {
                                   <VListItem
                                     :disabled="
                                       !canUseFinanceCreate ||
-                                      Boolean(getDocumentLockReason(panel.key, record))
+                                      Boolean(
+                                        getDocumentLockReason(
+                                          panel.key,
+                                          record,
+                                        ),
+                                      )
                                     "
                                     @click="
                                       reviseDocumentRecord(panel.key, record)
@@ -9871,7 +9876,8 @@ const openEditTask = (taskId: number | string) => {
                                   <VListItem
                                     :disabled="
                                       !canUseFinanceUpdate ||
-                                      getApprovalAction(panel.key, record).disabled
+                                      getApprovalAction(panel.key, record)
+                                        .disabled
                                     "
                                     @click="requestApproval(panel.key, record)"
                                   >
@@ -10037,7 +10043,12 @@ const openEditTask = (taskId: number | string) => {
                                     class="text-error"
                                     :disabled="
                                       !canUseFinanceDelete ||
-                                      Boolean(getDocumentLockReason(panel.key, record))
+                                      Boolean(
+                                        getDocumentLockReason(
+                                          panel.key,
+                                          record,
+                                        ),
+                                      )
                                     "
                                     @click="
                                       deleteDocumentRecord(panel.key, record)
@@ -10379,7 +10390,9 @@ const openEditTask = (taskId: number | string) => {
                       @click.stop="toggleSalesTaskImportant(task)"
                     >
                       <VIcon
-                        :icon="task.important ? 'tabler-star-filled' : 'tabler-star'"
+                        :icon="
+                          task.important ? 'tabler-star-filled' : 'tabler-star'
+                        "
                         color="warning"
                         size="20"
                       />
@@ -10455,7 +10468,9 @@ const openEditTask = (taskId: number | string) => {
               <VMenu location="bottom start" :disabled="!canUseTaskUpdate">
                 <template #activator="{ props: menuProps }">
                   <VTooltip
-                    :text="canUseTaskUpdate ? 'Change status' : taskUpdateReason"
+                    :text="
+                      canUseTaskUpdate ? 'Change status' : taskUpdateReason
+                    "
                     location="top"
                   >
                     <template #activator="{ props: tooltipProps }">
@@ -10472,7 +10487,11 @@ const openEditTask = (taskId: number | string) => {
                           <span class="text-body-2">
                             {{ todoStatusLabel(task.status) }}
                           </span>
-                          <VIcon icon="tabler-chevron-down" size="16" class="ms-1" />
+                          <VIcon
+                            icon="tabler-chevron-down"
+                            size="16"
+                            class="ms-1"
+                          />
                         </VBtn>
                       </span>
                     </template>
@@ -10509,7 +10528,9 @@ const openEditTask = (taskId: number | string) => {
             <div class="sales-task-row__actions">
               <IconBtn
                 :disabled="!canUseTaskUpdate"
-                @click.stop="canUseTaskUpdate ? openEditTask(task.id) : undefined"
+                @click.stop="
+                  canUseTaskUpdate ? openEditTask(task.id) : undefined
+                "
               >
                 <VIcon icon="tabler-edit" />
               </IconBtn>
@@ -10557,11 +10578,15 @@ const openEditTask = (taskId: number | string) => {
     <VCard>
       <VCardTitle>Delete task</VCardTitle>
       <VCardText>
-        Delete <strong>{{ pendingDeleteTask?.title || "this task" }}</strong>?
-        This cannot be undone.
+        Delete <strong>{{ pendingDeleteTask?.title || "this task" }}</strong
+        >? This cannot be undone.
       </VCardText>
       <VCardActions class="justify-end">
-        <VBtn variant="text" color="secondary" @click="closeTaskDeleteConfirmation">
+        <VBtn
+          variant="text"
+          color="secondary"
+          @click="closeTaskDeleteConfirmation"
+        >
           Cancel
         </VBtn>
         <VBtn color="error" variant="tonal" @click="confirmTaskDelete">
@@ -12167,8 +12192,8 @@ const openEditTask = (taskId: number | string) => {
   align-items: center;
   gap: 0.3rem;
   inline-size: 100%;
-  min-inline-size: 0;
   margin-block-start: 0.45rem;
+  min-inline-size: 0;
 }
 
 .period-timeline__dot {
@@ -12256,8 +12281,8 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .period-action-panel {
-  overflow: visible;
   position: relative;
+  overflow: visible;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 8px;
   background: rgb(var(--v-theme-surface));
@@ -12268,8 +12293,8 @@ const openEditTask = (taskId: number | string) => {
 .period-action-panel::before {
   position: absolute;
   z-index: 2;
-  border-inline: 0.56rem solid transparent;
   border-block-end: 0.56rem solid rgba(var(--v-theme-on-surface), 0.16);
+  border-inline: 0.56rem solid transparent;
   content: "";
   inset-block-start: -0.56rem;
   inset-inline-start: var(--period-panel-arrow-left, 50%);
@@ -12279,8 +12304,8 @@ const openEditTask = (taskId: number | string) => {
 .period-action-panel::after {
   position: absolute;
   z-index: 3;
-  border-inline: 0.46rem solid transparent;
   border-block-end: 0.46rem solid rgb(var(--v-theme-surface));
+  border-inline: 0.46rem solid transparent;
   content: "";
   inset-block-start: -0.44rem;
   inset-inline-start: var(--period-panel-arrow-left, 50%);
@@ -12438,8 +12463,8 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .goal-panel--contractual-phase .item-card-header {
-  align-items: flex-start;
   flex-direction: column;
+  align-items: flex-start;
   justify-content: flex-start;
 }
 
@@ -12522,8 +12547,8 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .item-card-date-row {
-  align-items: flex-start;
   flex-direction: column;
+  align-items: flex-start;
   margin-block-start: 0.35rem;
 }
 
@@ -13003,8 +13028,8 @@ const openEditTask = (taskId: number | string) => {
 
 .items-overview__actions {
   display: inline-flex;
-  gap: 0.1rem;
   justify-content: flex-end;
+  gap: 0.1rem;
 }
 
 .items-overview__preview-empty {
