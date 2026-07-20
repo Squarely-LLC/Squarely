@@ -8915,108 +8915,6 @@ const openEditTask = (taskId: number | string) => {
                               </span>
                             </template>
                           </div>
-                          <div
-                            v-if="
-                              isRecurrentParentDealItem(item) &&
-                              activeSection.goals.length
-                            "
-                            class="period-action-panel__services"
-                          >
-                            <VDivider class="period-action-panel__services-divider" />
-                            <VCard
-                              v-for="goal in activeSection.goals"
-                              :key="goal.id"
-                              variant="flat"
-                              class="goal-panel goal-panel--static period-timeline__service-row"
-                            >
-                              <div class="phase-card-shell">
-                                <div class="flex-grow-1 min-w-0">
-                                  <div class="item-card-header">
-                                    <div class="item-card-title-row">
-                                      <VTooltip
-                                        :text="goal.name"
-                                        location="top"
-                                      >
-                                        <template
-                                          #activator="{ props: tooltipProps }"
-                                        >
-                                          <div
-                                            v-bind="tooltipProps"
-                                            class="item-card-title item-card-title--phase truncate-title"
-                                          >
-                                            {{ goal.name }}
-                                          </div>
-                                        </template>
-                                      </VTooltip>
-                                      <span
-                                        class="item-card-row-separator"
-                                        aria-hidden="true"
-                                      >
-                                        |
-                                      </span>
-                                      <VChip
-                                        color="primary"
-                                        size="x-small"
-                                        variant="plain"
-                                        class="item-type-chip item-type-chip--phase"
-                                      >
-                                        {{ getPeriodServiceChipLabel(goal) }}
-                                      </VChip>
-                                    </div>
-                                    <div
-                                      v-if="goal.note"
-                                      class="item-card-note text-body-2 text-medium-emphasis"
-                                    >
-                                      {{ goal.note }}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div class="goal-card-actions">
-                                  <VBtn
-                                    icon
-                                    variant="text"
-                                    size="x-small"
-                                    class="phase-edit-btn"
-                                  >
-                                    <VIcon
-                                      icon="tabler-dots-vertical"
-                                      size="16"
-                                    />
-                                    <VMenu activator="parent">
-                                      <VList>
-                                        <VListItem
-                                          @click="openEditGoal(item, goal)"
-                                        >
-                                          <template #prepend>
-                                            <VIcon icon="tabler-pencil" />
-                                          </template>
-                                          <VListItemTitle>Edit</VListItemTitle>
-                                        </VListItem>
-                                        <VDivider
-                                          v-if="isRemovableChildGoal(goal)"
-                                        />
-                                        <VListItem
-                                          v-if="isRemovableChildGoal(goal)"
-                                          @click="removeGoal(item, goal)"
-                                        >
-                                          <template #prepend>
-                                            <VIcon
-                                              icon="tabler-trash"
-                                              color="error"
-                                            />
-                                          </template>
-                                          <VListItemTitle>
-                                            Remove {{ goal.typeLabel }}
-                                          </VListItemTitle>
-                                        </VListItem>
-                                      </VList>
-                                    </VMenu>
-                                  </VBtn>
-                                </div>
-                              </div>
-                            </VCard>
-                          </div>
                           <div class="period-action-panel__info-status">
                             {{
                               getSectionInvoiceState(item, activeSection) ||
@@ -9213,6 +9111,105 @@ const openEditTask = (taskId: number | string) => {
                         </div>
                       </div>
                     </VList>
+                    <VCard
+                      v-if="
+                        isRecurrentParentDealItem(item) &&
+                        activeSection.goals.length
+                      "
+                      variant="flat"
+                      class="period-action-panel__services-card"
+                    >
+                      <div class="period-timeline__services-list">
+                        <VCard
+                          v-for="goal in activeSection.goals"
+                          :key="goal.id"
+                          variant="flat"
+                          class="goal-panel goal-panel--static period-timeline__service-row"
+                        >
+                          <div class="phase-card-shell">
+                            <div class="flex-grow-1 min-w-0">
+                              <div class="item-card-header">
+                                <div class="item-card-title-row">
+                                  <VTooltip :text="goal.name" location="top">
+                                    <template
+                                      #activator="{ props: tooltipProps }"
+                                    >
+                                      <div
+                                        v-bind="tooltipProps"
+                                        class="item-card-title item-card-title--phase truncate-title"
+                                      >
+                                        {{ goal.name }}
+                                      </div>
+                                    </template>
+                                  </VTooltip>
+                                  <span
+                                    class="item-card-row-separator"
+                                    aria-hidden="true"
+                                  >
+                                    |
+                                  </span>
+                                  <VChip
+                                    color="primary"
+                                    size="x-small"
+                                    variant="plain"
+                                    class="item-type-chip item-type-chip--phase"
+                                  >
+                                    {{ getPeriodServiceChipLabel(goal) }}
+                                  </VChip>
+                                </div>
+                                <div
+                                  v-if="goal.note"
+                                  class="item-card-note text-body-2 text-medium-emphasis"
+                                >
+                                  {{ goal.note }}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div class="goal-card-actions">
+                              <VBtn
+                                icon
+                                variant="text"
+                                size="x-small"
+                                class="phase-edit-btn"
+                              >
+                                <VIcon
+                                  icon="tabler-dots-vertical"
+                                  size="16"
+                                />
+                                <VMenu activator="parent">
+                                  <VList>
+                                    <VListItem @click="openEditGoal(item, goal)">
+                                      <template #prepend>
+                                        <VIcon icon="tabler-pencil" />
+                                      </template>
+                                      <VListItemTitle>Edit</VListItemTitle>
+                                    </VListItem>
+                                    <VDivider
+                                      v-if="isRemovableChildGoal(goal)"
+                                    />
+                                    <VListItem
+                                      v-if="isRemovableChildGoal(goal)"
+                                      @click="removeGoal(item, goal)"
+                                    >
+                                      <template #prepend>
+                                        <VIcon
+                                          icon="tabler-trash"
+                                          color="error"
+                                        />
+                                      </template>
+                                      <VListItemTitle>
+                                        Remove {{ goal.typeLabel }}
+                                      </VListItemTitle>
+                                    </VListItem>
+                                  </VList>
+                                </VMenu>
+                              </VBtn>
+                            </div>
+                          </div>
+                        </VCard>
+                      </div>
+                    </VCard>
                   </template>
                 </div>
 
@@ -12557,18 +12554,16 @@ const openEditTask = (taskId: number | string) => {
   margin-block-start: 0.2rem;
 }
 
-.period-action-panel__services {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
+.period-action-panel__services-card {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface)) !important;
+  inline-size: 100%;
   margin-block-start: 0.65rem;
+  padding: 0.85rem;
 }
 
-.period-action-panel__services-divider {
-  margin-block-end: 0.15rem;
-}
-
-.period-action-panel__services .period-timeline__service-row {
+.period-action-panel__services-card .period-timeline__service-row {
   background: rgba(var(--v-theme-surface), 0.12) !important;
 }
 
