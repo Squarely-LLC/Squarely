@@ -2808,6 +2808,27 @@ const itemHeaderAmount = (item: DealItem) =>
 const goalAmount = (goal: DerivedGoal) =>
   calculateAmount(goal.price, goal.quantity, goal.discountPercent || 0);
 
+const getPhaseLetter = (phaseNumber?: number | null) => {
+  let index = Math.floor(Number(phaseNumber ?? 0));
+  if (!Number.isFinite(index) || index <= 0) return "";
+
+  let label = "";
+  while (index > 0) {
+    index -= 1;
+    label = String.fromCharCode(65 + (index % 26)) + label;
+    index = Math.floor(index / 26);
+  }
+
+  return label;
+};
+
+const getContractualPhaseLabel = (goal: DerivedGoal) => {
+  if (goal.typeLabel !== "Phase") return goal.typeLabel;
+
+  const phaseLetter = getPhaseLetter(goal.phaseNumber);
+  return phaseLetter ? `Phase ${phaseLetter}` : "Phase";
+};
+
 const formatGoalDiscount = (goal: DerivedGoal) =>
   goal.discountPercent === null || goal.discountPercent === undefined
     ? goal.discountLabel
@@ -6456,13 +6477,7 @@ const getSectionHeaderMetrics = (
 ];
 
 const getContractualPhaseHeaderMetrics = (goal: DerivedGoal) => [
-  { label: "Qty", value: String(goal.quantity ?? "--") },
-  { label: "Price", value: formatHeaderMoney(goal.price) },
-  {
-    label: "Discount",
-    value: formatHeaderDiscount(formatGoalDiscount(goal)),
-  },
-  { label: "TAX", value: formatHeaderTax(goal.taxApplicable) },
+  { label: "Amount", value: formatHeaderMoney(goalAmount(goal)) },
 ];
 
 const resetBillingPeriodPrices = () => {
@@ -8509,19 +8524,19 @@ const openEditTask = (taskId: number | string) => {
                             >
                               |
                             </span>
+                            <span class="item-card-inline-metrics__group">
+                              Price:
+                              <strong>{{
+                                formatDealMoney(itemHeaderPrice(item))
+                              }}</strong>
+                            </span>
+                            <span
+                              class="item-card-row-separator"
+                              aria-hidden="true"
+                            >
+                              |
+                            </span>
                           </template>
-                          <span class="item-card-inline-metrics__group">
-                            Price:
-                            <strong>{{
-                              formatDealMoney(itemHeaderPrice(item))
-                            }}</strong>
-                          </span>
-                          <span
-                            class="item-card-row-separator"
-                            aria-hidden="true"
-                          >
-                            |
-                          </span>
                           <span class="item-card-inline-metrics__group">
                             Amount:
                             <strong>{{
@@ -9387,6 +9402,20 @@ const openEditTask = (taskId: number | string) => {
                           <div class="phase-card-main flex-grow-1 min-w-0">
                             <div class="item-card-header">
                               <div class="item-card-title-row">
+                                <VChip
+                                  color="primary"
+                                  size="x-small"
+                                  variant="plain"
+                                  class="item-type-chip item-type-chip--phase"
+                                >
+                                  {{ getContractualPhaseLabel(goal) }}
+                                </VChip>
+                                <span
+                                  class="item-card-row-separator"
+                                  aria-hidden="true"
+                                >
+                                  |
+                                </span>
                                 <VTooltip :text="goal.name" location="top">
                                   <template
                                     #activator="{ props: tooltipProps }"
@@ -9399,25 +9428,6 @@ const openEditTask = (taskId: number | string) => {
                                     </div>
                                   </template>
                                 </VTooltip>
-                                <span
-                                  class="item-card-row-separator"
-                                  aria-hidden="true"
-                                >
-                                  |
-                                </span>
-                                <VChip
-                                  color="primary"
-                                  size="x-small"
-                                  variant="plain"
-                                  class="item-type-chip item-type-chip--phase"
-                                >
-                                  {{
-                                    goal.typeLabel === "Phase" &&
-                                    goal.phaseNumber
-                                      ? `Phase ${goal.phaseNumber}`
-                                      : goal.typeLabel
-                                  }}
-                                </VChip>
                               </div>
 
                               <div
@@ -12882,6 +12892,18 @@ const openEditTask = (taskId: number | string) => {
   align-self: flex-start;
   gap: 0.15rem;
   margin-block-start: -0.25rem;
+}
+
+.goal-panel--contractual-phase .goal-card-actions {
+  display: grid;
+  flex: 0 0 3.75rem;
+  align-self: center;
+  justify-content: center;
+  grid-template-columns: 1.75rem;
+  inline-size: 3.75rem;
+  justify-items: center;
+  margin-block-start: 0;
+  margin-inline-start: auto;
 }
 
 .phase-edit-btn {
