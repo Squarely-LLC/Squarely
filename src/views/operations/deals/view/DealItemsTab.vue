@@ -8907,6 +8907,7 @@ const openEditTask = (taskId: number | string) => {
                             "
                             class="period-action-panel__services"
                           >
+                            <VDivider class="period-action-panel__services-divider" />
                             <VCard
                               v-for="goal in activeSection.goals"
                               :key="goal.id"
@@ -12488,7 +12489,7 @@ const openEditTask = (taskId: number | string) => {
 
 .period-action-panel__header {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: space-between;
   gap: 0.85rem;
   padding-block: 0.65rem 0.55rem;
@@ -12549,8 +12550,12 @@ const openEditTask = (taskId: number | string) => {
 .period-action-panel__services {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.65rem;
   margin-block-start: 0.65rem;
+}
+
+.period-action-panel__services-divider {
+  margin-block-end: 0.15rem;
 }
 
 .period-action-panel__services .period-timeline__service-row {
@@ -12582,6 +12587,7 @@ const openEditTask = (taskId: number | string) => {
   display: grid;
   flex: 0 0 2rem;
   align-items: center;
+  align-self: stretch;
   justify-content: center;
   inline-size: 2rem;
   justify-items: center;
