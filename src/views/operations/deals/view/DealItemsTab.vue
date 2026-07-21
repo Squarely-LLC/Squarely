@@ -5780,6 +5780,62 @@ const getSectionInvoiceStateClass = (
     getResolvedPeriodTimelineSectionStatus(parentItem, section),
   );
 
+const getChronologicalPeriodSections = (item: DealItemWithPlan) =>
+  item.derivedSections
+    .map((section, index) => ({
+      index,
+      section,
+      startTime:
+        parseIsoDateValue(section.billingPeriod?.startDate)?.getTime() ??
+        Number.POSITIVE_INFINITY,
+    }))
+    .sort(
+      (left, right) =>
+        left.startTime - right.startTime || left.index - right.index,
+    )
+    .map(({ section }) => section);
+
+watch(expandedItems, (currentItems, previousItems) => {
+  const currentPanelKeys = new Set(currentItems.map(String));
+  const previousPanelKeys = new Set((previousItems || []).map(String));
+  const changedPanelKeys = new Set([
+    ...currentPanelKeys,
+    ...previousPanelKeys,
+  ]);
+  const nextPanels = { ...activePeriodActionPanels.value };
+
+  changedPanelKeys.forEach((panelKey) => {
+    const item = dealItemsWithPlan.value.find(
+      (candidate) => String(candidate.panelId) === panelKey,
+    );
+
+    if (
+      !item ||
+      !isPeriodDrivenParentDealItem(item) ||
+      !shouldRenderPeriodTimeline(item)
+    )
+      return;
+
+    const itemKey = String(item.id);
+    if (!currentPanelKeys.has(panelKey)) {
+      delete nextPanels[itemKey];
+      return;
+    }
+
+    if (previousPanelKeys.has(panelKey)) return;
+
+    const earliestUnpaidSection = getChronologicalPeriodSections(item).find(
+      (section) =>
+        getResolvedPeriodTimelineSectionStatus(item, section) !== "paid",
+    );
+
+    if (earliestUnpaidSection) nextPanels[itemKey] = earliestUnpaidSection.id;
+    else delete nextPanels[itemKey];
+  });
+
+  activePeriodActionPanels.value = nextPanels;
+});
+
 const getSectionSelectableItems = (
   parentItem: DealItemWithPlan,
   section: DerivedSection,
@@ -10643,17 +10699,33 @@ const openEditTask = (taskId: number | string) => {
             <div class="sales-task-row__main">
               <VTooltip :text="task.title" location="top">
                 <template #activator="{ props: tooltipProps }">
-                  <h6 v-bind="tooltipProps" class="text-base mb-0">
+                  <h6
+                    v-bind="tooltipProps"
+                    class="sales-task-row__title text-base mb-0"
+                  >
                     {{ task.title }}
                   </h6>
                 </template>
               </VTooltip>
-              <div class="text-sm text-medium-emphasis truncate-title">
-                {{
+              <VTooltip
+                :text="
                   task.notes ||
                   formatTaskStart(task.afterWhen, task.startTrigger)
-                }}
-              </div>
+                "
+                location="top"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <div
+                    v-bind="tooltipProps"
+                    class="sales-task-row__secondary text-sm text-medium-emphasis"
+                  >
+                    {{
+                      task.notes ||
+                      formatTaskStart(task.afterWhen, task.startTrigger)
+                    }}
+                  </div>
+                </template>
+              </VTooltip>
               <div class="d-flex align-center flex-wrap gap-2 text-xs mt-1">
                 <span class="text-medium-emphasis">
                   {{ salesTaskRelationLabel(task) }}
@@ -13440,7 +13512,26 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .sales-task-row__main {
+  overflow: hidden;
   min-inline-size: 0;
+  padding-inline-end: 1rem;
+}
+
+.sales-task-row__title {
+  display: block;
+  overflow: hidden;
+  inline-size: min(100%, 24ch);
+  max-inline-size: 24ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sales-task-row__secondary {
+  overflow: hidden;
+  inline-size: min(100%, 24ch);
+  max-inline-size: 24ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sales-task-row__due,
