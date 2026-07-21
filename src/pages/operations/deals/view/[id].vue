@@ -36,33 +36,30 @@ import { useQuotationsStore } from "@/stores/quotations";
 import { useSystemNotificationsStore } from "@/stores/systemNotifications";
 import { useTodos } from "@/stores/todos";
 import {
-  getDealDocumentBalance,
-  getDealDocumentPaid,
-  getDealDocumentTotal,
-} from "@/utils/dealBilling";
-import { getDealRetainerServiceLines } from "@/utils/dealDocumentDraft";
-import { getDealGrandTotal } from "@/utils/dealValue";
-import EmailDialog from "@/views/apps/email/EmailDialog.vue";
-import {
-  getContactAndEmployeeRefs,
-  getEmployeeOptions,
-  getEmployeeRefs,
-} from "@/utils/peopleOptions";
-import {
-  findCurrentUserOption,
-  getSignedInAuthorRef,
-  getSignedInIdentity,
-} from "@/utils/currentAccount";
-import {
   canCurrentUser,
   hasHiddenFinancials,
   isPermissionDeniedError,
   mapAuthorizationResource,
 } from "@/utils/authorization";
 import {
-  canMutate,
-  permissionDisabledReason,
-} from "@/utils/permissionUi";
+  findCurrentUserOption,
+  getSignedInAuthorRef,
+  getSignedInIdentity,
+} from "@/utils/currentAccount";
+import {
+  getDealDocumentBalance,
+  getDealDocumentPaid,
+  getDealDocumentTotal,
+} from "@/utils/dealBilling";
+import { getDealRetainerServiceLines } from "@/utils/dealDocumentDraft";
+import { getDealGrandTotal } from "@/utils/dealValue";
+import {
+  getContactAndEmployeeRefs,
+  getEmployeeOptions,
+  getEmployeeRefs,
+} from "@/utils/peopleOptions";
+import { canMutate, permissionDisabledReason } from "@/utils/permissionUi";
+import EmailDialog from "@/views/apps/email/EmailDialog.vue";
 import AddMeetingDrawer from "@/views/apps/todo/list/AddMeetingDrawer.vue";
 import AddNewToDoDrawer from "@/views/apps/todo/list/AddNewToDoDrawer.vue";
 import EditToDoDrawer from "@/views/apps/todo/list/EditToDoDrawer.vue";
@@ -249,7 +246,11 @@ const addMonthsClamped = (date: Date, months: number) => {
   const targetDay = next.getDate();
   next.setDate(1);
   next.setMonth(next.getMonth() + months);
-  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  const lastDay = new Date(
+    next.getFullYear(),
+    next.getMonth() + 1,
+    0,
+  ).getDate();
   next.setDate(Math.min(targetDay, lastDay));
 
   return next;
@@ -264,8 +265,9 @@ const buildJobPeriodRanges = (
   const endValue =
     kind === "recurrent" ? item.recurrentEndDate : item.retainerEndDate;
   const periodCount = Math.max(
-    Number(kind === "recurrent" ? item.recurrentPeriods : item.retainerPeriods) ||
-      1,
+    Number(
+      kind === "recurrent" ? item.recurrentPeriods : item.retainerPeriods,
+    ) || 1,
     1,
   );
   const startDate = startValue ? new Date(startValue) : new Date();
@@ -392,9 +394,9 @@ const resolveConvertedTaskSchedule = (
   task: Partial<CatalogueJobConfigTask>,
   baselineIso: string,
 ) => {
-  const startAt = resolveScheduledDate(task.afterWhen, baselineIso) || baselineIso;
-  const explicitDue =
-    (task as any).dueAt ?? (task as any).dueDate ?? null;
+  const startAt =
+    resolveScheduledDate(task.afterWhen, baselineIso) || baselineIso;
+  const explicitDue = (task as any).dueAt ?? (task as any).dueDate ?? null;
 
   return {
     startAt,
@@ -444,9 +446,7 @@ const rollupGoalPreviewDates = (goal: ExecutionPreviewGoal) => {
   goal.dueDate = latestIso(childDues) ?? goal.dueDate;
 };
 
-const rollupMilestonePreviewDates = (
-  milestone: ExecutionPreviewMilestone,
-) => {
+const rollupMilestonePreviewDates = (milestone: ExecutionPreviewMilestone) => {
   milestone.goals.forEach(rollupGoalPreviewDates);
   if (milestone.dateOverride) return;
 
@@ -870,7 +870,9 @@ const buildExecutionPreview = (
 
     if (itemPeriodKind) {
       const retainerServices =
-        itemPeriodKind === "retainer" ? buildRetainerServiceOptions(item) : null;
+        itemPeriodKind === "retainer"
+          ? buildRetainerServiceOptions(item)
+          : null;
       const periodRanges = buildJobPeriodRanges(item, itemPeriodKind).map(
         (period) =>
           itemPeriodKind === "retainer"
@@ -900,8 +902,7 @@ const buildExecutionPreview = (
           key: milestoneKey,
           name: String(milestone.name || item.name).trim() || item.name,
           startDate: periodRanges[0]?.periodStartDate || executedAt,
-          dueDate:
-            periodRanges[periodRanges.length - 1]?.periodEndDate ?? null,
+          dueDate: periodRanges[periodRanges.length - 1]?.periodEndDate ?? null,
           dateOverride: true,
           priority: milestone.priority ?? "Normal",
           note: String(milestone.note || "").trim() || null,
@@ -913,7 +914,8 @@ const buildExecutionPreview = (
 
         previewMilestone.goals = periodRanges.map((period) => {
           const goalKey = `goal:${item.id}:${milestone.id}:period:${period.periodNumber}:${milestoneIndex}`;
-          const periodLabel = period.periodLabel || `Period ${period.periodNumber}`;
+          const periodLabel =
+            period.periodLabel || `Period ${period.periodNumber}`;
           const previewGoal: ExecutionPreviewGoal = {
             key: goalKey,
             milestoneKey,
@@ -1351,7 +1353,8 @@ const buildWorkPreviewDeal = (
 ): DealProperties => {
   const rootIds = new Set(rootItems.map((item) => String(item.id)));
   const items = (currentDeal.items || []).filter(
-    (item) => rootIds.has(String(item.id)) || rootIds.has(String(item.parentItemId)),
+    (item) =>
+      rootIds.has(String(item.id)) || rootIds.has(String(item.parentItemId)),
   );
 
   return {
@@ -1626,7 +1629,9 @@ const notifyJobConversionRecipients = (
   );
   const now = new Date().toISOString();
   const dealLabel =
-    deal.value?.code?.trim() || deal.value?.name?.trim() || `Deal #${deal.value?.id}`;
+    deal.value?.code?.trim() ||
+    deal.value?.name?.trim() ||
+    `Deal #${deal.value?.id}`;
 
   return recipientIds
     .map((recipientId) => {
@@ -1999,7 +2004,11 @@ const confirmDealExecution = () => {
   }
   const projectManagerId = numericEmployeeId(selectedJobOwnerId.value);
   if (!projectManagerId) {
-    notifications.push("Select a job owner before starting work.", "warning", 3000);
+    notifications.push(
+      "Select a job owner before starting work.",
+      "warning",
+      3000,
+    );
     return;
   }
 
@@ -2550,14 +2559,18 @@ const deleteTask = (todoId: number | string) => {
 
   if (!deal.value) return;
 
-  const updatedDeal = dealsStore.updateDeal(deal.value.id, {
-    salesTasks: resolveDealSalesTasks(deal.value)
-      .filter((task) => String(task.id) !== String(todoId))
-      .map((task) => ({
-        ...task,
-        relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
-      })),
-  }, { system: true });
+  const updatedDeal = dealsStore.updateDeal(
+    deal.value.id,
+    {
+      salesTasks: resolveDealSalesTasks(deal.value)
+        .filter((task) => String(task.id) !== String(todoId))
+        .map((task) => ({
+          ...task,
+          relatedTo: normalizeSalesTaskRelatedTo(task.relatedTo),
+        })),
+    },
+    { system: true },
+  );
   if (updatedDeal) deal.value = cloneDeal(updatedDeal);
   notifications.push("Task deleted", "success", 3000);
 };
@@ -2904,7 +2917,7 @@ watch(
           @open-collaborators="openCollaboratorDialog"
         />
 
-        <div class="deal-meta-summary mt-4">
+        <div class="deal-meta-summary">
           <p class="deal-meta-summary__text">
             {{ dealSummaryParagraph }}
           </p>
@@ -3021,7 +3034,8 @@ watch(
             {{ executeWorkMode === "update" ? "Update Work" : "Start Work" }}
           </VCardTitle>
           <VCardSubtitle>
-            Select the job owner and review job milestones, goals, and tasks before confirming.
+            Select the job owner and review job milestones, goals, and tasks
+            before confirming.
           </VCardSubtitle>
         </VCardItem>
 
@@ -3051,7 +3065,9 @@ watch(
               <VCol cols="12" md="6">
                 <VCard variant="tonal" class="pa-4 h-100">
                   <div class="text-overline mb-2">
-                    {{ executeWorkMode === "update" ? "Linked Job" : "New Job" }}
+                    {{
+                      executeWorkMode === "update" ? "Linked Job" : "New Job"
+                    }}
                   </div>
                   <div class="text-h6 mb-2">{{ executePreview.job.name }}</div>
                   <div class="text-body-2 text-medium-emphasis">
@@ -3199,7 +3215,11 @@ watch(
           <VBtn
             color="primary"
             :loading="isExecutingDeal"
-            :disabled="!executePreview || Boolean(executePreviewError) || !selectedJobOwnerId"
+            :disabled="
+              !executePreview ||
+              Boolean(executePreviewError) ||
+              !selectedJobOwnerId
+            "
             @click="confirmDealExecution"
           >
             {{ executeWorkMode === "update" ? "Update Work" : "Start Work" }}
@@ -3352,14 +3372,15 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+  margin-block-start: 2.5rem;
   padding-inline: 0.25rem;
 }
 
 .deal-meta-summary__text {
+  margin: 0;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.9rem;
   line-height: 1.45;
-  margin: 0;
 }
 
 .deal-finance-summary {
@@ -3372,9 +3393,9 @@ watch(
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
   font-size: 0.875rem;
+  gap: 1rem;
 }
 
 .deal-finance-summary__row strong {
@@ -3391,8 +3412,8 @@ watch(
   }
 
   .deal-finance-summary__row {
-    align-items: flex-start;
     flex-direction: column;
+    align-items: flex-start;
     gap: 0.15rem;
   }
 

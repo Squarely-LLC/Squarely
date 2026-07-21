@@ -5445,6 +5445,7 @@ const shouldRenderPeriodTimeline = (item: DealItemWithPlan) =>
 type PeriodTimelineSectionStatus =
   | "not-invoiced"
   | "proforma"
+  | "proforma-overdue"
   | "invoiced"
   | "paid"
   | "overdue"
@@ -5454,14 +5455,16 @@ const getPeriodTimelineStatusLabel = (status: PeriodTimelineSectionStatus) => {
   switch (status) {
     case "paid":
       return "Invoiced - Paid";
+    case "proforma-overdue":
+      return "Proforma - Overdue";
     case "overdue":
       return "Invoiced - Overdue";
     case "missed":
       return "Missed period";
     case "proforma":
-      return "Proforma";
+      return "Proforma - Not paid";
     case "invoiced":
-      return "Invoiced";
+      return "Invoiced - Not paid";
     default:
       return "No proforma or invoice";
   }
@@ -5471,29 +5474,46 @@ const isInvoiceStoreRecordPaid = (record: any) =>
   normalizeDocumentStatus(record?.quotation?.quotationStatus) === "paid" ||
   Number(record?.quotation?.balance ?? record?.quotation?.total ?? 0) <= 0;
 
-const isInvoiceStoreRecordOverdue = (record: any) => {
+const isDocumentRecordUnpaidMoreThan30Days = (record: any) => {
   if (isInvoiceStoreRecordPaid(record)) return false;
 
-  const dueDate = parseIsoDateValue(record?.quotation?.dueDate);
-  if (!dueDate) return false;
+  const issuedDate = parseIsoDateValue(record?.quotation?.issuedDate);
+  if (!issuedDate) return false;
 
-  dueDate.setHours(0, 0, 0, 0);
+  issuedDate.setHours(0, 0, 0, 0);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  return dueDate.getTime() < today.getTime();
+  const elapsedDays = Math.floor(
+    (today.getTime() - issuedDate.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  return elapsedDays > 30;
 };
 
 const resolvePeriodTimelineDocumentStatus = (
   hasProforma: boolean,
   hasInvoice: boolean,
+  matchingProformas: any[],
   matchingInvoices: any[],
 ): PeriodTimelineSectionStatus => {
-  if (!hasInvoice) return hasProforma ? "proforma" : "not-invoiced";
+  if (!hasInvoice) {
+    if (!hasProforma) return "not-invoiced";
+    if (
+      matchingProformas.length &&
+      matchingProformas.every(isInvoiceStoreRecordPaid)
+    )
+      return "paid";
+    if (matchingProformas.some(isDocumentRecordUnpaidMoreThan30Days))
+      return "proforma-overdue";
+
+    return "proforma";
+  }
   if (!matchingInvoices.length) return "invoiced";
   if (matchingInvoices.every(isInvoiceStoreRecordPaid)) return "paid";
-  if (matchingInvoices.some(isInvoiceStoreRecordOverdue)) return "overdue";
+  if (matchingInvoices.some(isDocumentRecordUnpaidMoreThan30Days))
+    return "overdue";
 
   return "invoiced";
 };
@@ -5503,6 +5523,14 @@ const getPeriodTimelineSectionStatusClass = (
   section: DerivedSection,
 ) =>
   `period-timeline__step--${getResolvedPeriodTimelineSectionStatus(parentItem, section)}`;
+
+const getDocumentStatusTextClass = (status: PeriodTimelineSectionStatus) => ({
+  "document-state-text--paid": status === "paid",
+  "document-state-text--unpaid": status === "proforma" || status === "invoiced",
+  "document-state-text--overdue":
+    status === "proforma-overdue" || status === "overdue",
+  "document-state-text--missed": status === "missed",
+});
 
 const getPeriodStepLabel = (index: number) => `P${index + 1}`;
 
@@ -5564,23 +5592,23 @@ const getGoalDocumentUsage = (
   );
 };
 
-const getGoalInvoiceState = (
+const getGoalTimelineStatus = (
   parentItem: DealItemWithPlan,
   goal: DerivedGoal,
-) => {
+): PeriodTimelineSectionStatus | null => {
   if (goal.typeLabel !== "Phase") return null;
 
   const selectableItem = findGoalSelectableItem(parentItem, goal);
   const selectionKey = selectableItem?.selectionKey;
-  if (!selectionKey) return "No proforma or invoice";
+  if (!selectionKey) return "not-invoiced";
 
   const billingPeriodKey = resolveSelectableItemBillingPeriodKey(selectionKey);
   const usageKey = buildDealDocumentUsageKey(selectionKey, billingPeriodKey);
-  if (!usageKey) return "No proforma or invoice";
+  if (!usageKey) return "not-invoiced";
 
   const usage = getDocumentUsage(selectionKey, billingPeriodKey);
 
-  const matchingInvoices = invoicesStore.items.filter((record) => {
+  const matchesGoalUsage = (record: any) => {
     if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
       return false;
 
@@ -5594,15 +5622,34 @@ const getGoalInvoiceState = (
 
       return productUsageKey === usageKey;
     });
-  });
+  };
+  const matchingProformas = proformasStore.items.filter(matchesGoalUsage);
+  const matchingInvoices = invoicesStore.items.filter(matchesGoalUsage);
 
-  return getPeriodTimelineStatusLabel(
-    resolvePeriodTimelineDocumentStatus(
-      usage.proformaCount > 0,
-      usage.invoiceCount > 0,
-      matchingInvoices,
-    ),
+  return resolvePeriodTimelineDocumentStatus(
+    usage.proformaCount > 0,
+    usage.invoiceCount > 0,
+    matchingProformas,
+    matchingInvoices,
   );
+};
+
+const getGoalInvoiceState = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => {
+  const status = getGoalTimelineStatus(parentItem, goal);
+
+  return status ? getPeriodTimelineStatusLabel(status) : null;
+};
+
+const getGoalInvoiceStateClass = (
+  parentItem: DealItemWithPlan,
+  goal: DerivedGoal,
+) => {
+  const status = getGoalTimelineStatus(parentItem, goal);
+
+  return status ? getDocumentStatusTextClass(status) : {};
 };
 
 const getPeriodTimelineSectionStatus = (
@@ -5621,7 +5668,7 @@ const getPeriodTimelineSectionStatus = (
       periodDrivenSectionBillingKey,
     );
 
-    const matchingInvoices = invoicesStore.items.filter((record) => {
+    const matchesPeriodUsage = (record: any) => {
       if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
         return false;
 
@@ -5634,11 +5681,14 @@ const getPeriodTimelineSectionStatus = (
           selectionKey === `item-${parentItem.id}`
         );
       });
-    });
+    };
+    const matchingProformas = proformasStore.items.filter(matchesPeriodUsage);
+    const matchingInvoices = invoicesStore.items.filter(matchesPeriodUsage);
 
     return resolvePeriodTimelineDocumentStatus(
       usage.proformaCount > 0,
       usage.invoiceCount > 0,
+      matchingProformas,
       matchingInvoices,
     );
   }
@@ -5651,7 +5701,7 @@ const getPeriodTimelineSectionStatus = (
   const hasProforma = usageByGoal.some((usage) => usage.proformaCount > 0);
   const periodKey = getDealBillingPeriodKey(section.billingPeriod);
 
-  const matchingInvoices = invoicesStore.items.filter((record) => {
+  const matchesSectionUsage = (record: any) => {
     if (String(record.quotation.dealId ?? "") !== String(props.deal.id))
       return false;
 
@@ -5667,11 +5717,14 @@ const getPeriodTimelineSectionStatus = (
         return selectableItem?.selectionKey === selectionKey;
       });
     });
-  });
+  };
+  const matchingProformas = proformasStore.items.filter(matchesSectionUsage);
+  const matchingInvoices = invoicesStore.items.filter(matchesSectionUsage);
 
   return resolvePeriodTimelineDocumentStatus(
     hasProforma,
     hasInvoice,
+    matchingProformas,
     matchingInvoices,
   );
 };
@@ -5701,6 +5754,8 @@ const getResolvedPeriodTimelineSectionStatus = (
       (candidate) =>
         getPeriodTimelineSectionStatus(parentItem, candidate) === "invoiced" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "proforma" ||
+        getPeriodTimelineSectionStatus(parentItem, candidate) ===
+          "proforma-overdue" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "paid" ||
         getPeriodTimelineSectionStatus(parentItem, candidate) === "overdue",
     );
@@ -5716,6 +5771,14 @@ const getSectionInvoiceState = (
     getResolvedPeriodTimelineSectionStatus(parentItem, section),
   );
 };
+
+const getSectionInvoiceStateClass = (
+  parentItem: DealItemWithPlan,
+  section: DerivedSection,
+) =>
+  getDocumentStatusTextClass(
+    getResolvedPeriodTimelineSectionStatus(parentItem, section),
+  );
 
 const getSectionSelectableItems = (
   parentItem: DealItemWithPlan,
@@ -8915,7 +8978,12 @@ const openEditTask = (taskId: number | string) => {
                               </span>
                             </template>
                           </div>
-                          <div class="period-action-panel__info-status">
+                          <div
+                            class="period-action-panel__info-status"
+                            :class="
+                              getSectionInvoiceStateClass(item, activeSection)
+                            "
+                          >
                             {{
                               getSectionInvoiceState(item, activeSection) ||
                               "No proforma or invoice"
@@ -9459,6 +9527,7 @@ const openEditTask = (taskId: number | string) => {
                             <div
                               v-if="goal.typeLabel === 'Phase'"
                               class="item-card-note text-body-2 text-medium-emphasis"
+                              :class="getGoalInvoiceStateClass(item, goal)"
                             >
                               {{ getGoalInvoiceState(item, goal) }}
                             </div>
@@ -12195,6 +12264,9 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .milestone-panel {
+  --deal-item-action-column-width: 3.75rem;
+  --deal-item-action-menu-width: 1.75rem;
+
   overflow: hidden;
   border-radius: 8px;
   transition:
@@ -12300,7 +12372,7 @@ const openEditTask = (taskId: number | string) => {
   gap: 0.45rem;
   margin-block-end: 0.9rem;
   padding-block: 0.6rem;
-  padding-inline: 0.7rem;
+  padding-inline: 0;
 }
 
 .period-timeline__services-title {
@@ -12308,6 +12380,7 @@ const openEditTask = (taskId: number | string) => {
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1;
+  padding-inline: 1rem 0.75rem;
   text-transform: uppercase;
 }
 
@@ -12321,7 +12394,7 @@ const openEditTask = (taskId: number | string) => {
   background: rgba(var(--v-theme-surface), 0.12) !important;
   inline-size: 100%;
   padding-block: 0.65rem;
-  padding-inline: 0.75rem;
+  padding-inline: 1rem 0.75rem;
 }
 
 .period-timeline__steps {
@@ -12385,29 +12458,29 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .period-timeline__step--invoiced .period-timeline__button {
-  color: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-warning));
 }
 
 .period-timeline__step--invoiced .period-timeline__segment {
-  background: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-warning));
 }
 
 .period-timeline__step--invoiced .period-timeline__dot {
-  border-color: rgb(var(--v-theme-primary));
-  background: rgb(var(--v-theme-primary));
+  border-color: rgb(var(--v-theme-warning));
+  background: rgb(var(--v-theme-warning));
 }
 
 .period-timeline__step--proforma .period-timeline__button {
-  color: rgb(var(--v-theme-info));
+  color: rgb(var(--v-theme-warning));
 }
 
 .period-timeline__step--proforma .period-timeline__segment {
-  background: rgb(var(--v-theme-info));
+  background: rgb(var(--v-theme-warning));
 }
 
 .period-timeline__step--proforma .period-timeline__dot {
-  border-color: rgb(var(--v-theme-info));
-  background: rgb(var(--v-theme-info));
+  border-color: rgb(var(--v-theme-warning));
+  background: rgb(var(--v-theme-warning));
 }
 
 .period-timeline__step--paid .period-timeline__button {
@@ -12436,17 +12509,30 @@ const openEditTask = (taskId: number | string) => {
   background: rgb(var(--v-theme-error));
 }
 
+.period-timeline__step--proforma-overdue .period-timeline__button {
+  color: rgb(var(--v-theme-error));
+}
+
+.period-timeline__step--proforma-overdue .period-timeline__segment {
+  background: rgb(var(--v-theme-error));
+}
+
+.period-timeline__step--proforma-overdue .period-timeline__dot {
+  border-color: rgb(var(--v-theme-error));
+  background: rgb(var(--v-theme-error));
+}
+
 .period-timeline__step--missed .period-timeline__button {
-  color: rgb(var(--v-theme-warning));
+  color: rgb(var(--v-theme-info));
 }
 
 .period-timeline__step--missed .period-timeline__segment {
-  background: rgb(var(--v-theme-warning));
+  background: rgb(var(--v-theme-info));
 }
 
 .period-timeline__step--missed .period-timeline__dot {
-  border-color: rgb(var(--v-theme-warning));
-  background: rgb(var(--v-theme-warning));
+  border-color: rgb(var(--v-theme-info));
+  background: rgb(var(--v-theme-info));
 }
 
 .period-timeline__step--active .period-timeline__button {
@@ -12500,7 +12586,7 @@ const openEditTask = (taskId: number | string) => {
   justify-content: space-between;
   gap: 0.85rem;
   padding-block: 0.65rem 0.55rem;
-  padding-inline: 1rem;
+  padding-inline: 1rem 0.75rem;
 }
 
 .period-action-panel__info {
@@ -12554,13 +12640,30 @@ const openEditTask = (taskId: number | string) => {
   margin-block-start: 0.2rem;
 }
 
+.document-state-text--paid {
+  color: rgb(var(--v-theme-success)) !important;
+}
+
+.document-state-text--unpaid {
+  color: rgb(var(--v-theme-warning)) !important;
+}
+
+.document-state-text--missed {
+  color: rgb(var(--v-theme-info)) !important;
+}
+
+.document-state-text--overdue {
+  color: rgb(var(--v-theme-error)) !important;
+}
+
 .period-action-panel__services-card {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 8px;
   background: rgb(var(--v-theme-surface)) !important;
   inline-size: 100%;
   margin-block-start: 0.65rem;
-  padding: 0.85rem;
+  overflow: hidden;
+  padding: 0;
 }
 
 .period-action-panel__services-card .period-timeline__service-row {
@@ -12590,12 +12693,14 @@ const openEditTask = (taskId: number | string) => {
 
 .period-action-panel__primary-actions {
   display: grid;
-  flex: 0 0 2rem;
+  flex: 0 0 var(--deal-item-action-column-width);
   align-items: center;
   align-self: stretch;
-  justify-content: center;
-  inline-size: 2rem;
+  justify-content: end;
+  grid-template-columns: var(--deal-item-action-menu-width);
+  inline-size: var(--deal-item-action-column-width);
   justify-items: center;
+  margin-inline-start: auto;
 }
 
 .goal-section-header {
@@ -12883,19 +12988,12 @@ const openEditTask = (taskId: number | string) => {
 }
 
 .goal-card-actions {
-  display: flex;
-  align-self: flex-start;
-  gap: 0.15rem;
-  margin-block-start: -0.25rem;
-}
-
-.goal-panel--contractual-phase .goal-card-actions {
   display: grid;
-  flex: 0 0 3.75rem;
+  flex: 0 0 var(--deal-item-action-column-width);
   align-self: center;
-  justify-content: center;
-  grid-template-columns: 1.75rem;
-  inline-size: 3.75rem;
+  justify-content: end;
+  grid-template-columns: var(--deal-item-action-menu-width);
+  inline-size: var(--deal-item-action-column-width);
   justify-items: center;
   margin-block-start: 0;
   margin-inline-start: auto;
@@ -12917,17 +13015,23 @@ const openEditTask = (taskId: number | string) => {
 
 .milestone-actions {
   display: grid;
-  flex: 0 0 3.75rem;
+  flex: 0 0 var(--deal-item-action-column-width);
   align-self: center;
   justify-content: end;
-  grid-template-columns: 1.75rem 1.75rem;
-  inline-size: 3.75rem;
+  grid-template-columns: repeat(2, var(--deal-item-action-menu-width));
+  inline-size: var(--deal-item-action-column-width);
   justify-items: center;
   margin-inline-start: auto;
 }
 
-.milestone-actions :deep(.v-btn) {
+.milestone-actions :deep(.v-btn),
+.goal-card-actions :deep(.v-btn),
+.period-action-panel__primary-actions :deep(.v-btn) {
+  block-size: var(--deal-item-action-menu-width);
+  inline-size: var(--deal-item-action-menu-width);
   margin: 0;
+  min-block-size: var(--deal-item-action-menu-width);
+  min-inline-size: var(--deal-item-action-menu-width);
 }
 
 .item-expand-placeholder {
@@ -13367,6 +13471,11 @@ const openEditTask = (taskId: number | string) => {
 }
 
 @media (max-width: 767px) {
+  .milestone-panel {
+    --deal-item-action-column-width: 3.5rem;
+    --deal-item-action-menu-width: 1.625rem;
+  }
+
   .milestone-panels :deep(.v-expansion-panel-title),
   .goal-panels :deep(.v-expansion-panel-title) {
     padding-block: 0.875rem;
@@ -13397,14 +13506,7 @@ const openEditTask = (taskId: number | string) => {
   }
 
   .milestone-actions {
-    flex-basis: 3.5rem;
-    grid-template-columns: 1.625rem 1.625rem;
-    inline-size: 3.5rem;
-  }
-
-  .milestone-actions :deep(.v-btn) {
-    max-inline-size: 100%;
-    min-block-size: 30px;
+    flex-basis: var(--deal-item-action-column-width);
   }
 
   .item-card-shell,
